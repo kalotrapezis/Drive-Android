@@ -1888,9 +1888,9 @@ private fun PhotoTab(
         ) {
             IconButton(onClick = { searchQuery = "" }) {
                 Icon(
-                    painterResource(R.drawable.ic_cancel),
+                    painterResource(R.drawable.ic_clear_search),
                     contentDescription = "Clear search",
-                    tint = Color(0xFFFF9D42),
+                    tint = Color.Unspecified,
                 )
             }
         }

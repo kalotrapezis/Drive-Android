@@ -22,4 +22,14 @@ class PhotoMetadataRulesTest {
         assertEquals(false, PhotoMetadataRules.visibleInGallery(isScreenshot = false, isDocument = true, hideScreenshots = false, hideDocuments = true))
         assertEquals(true, PhotoMetadataRules.visibleInGallery(isScreenshot = false, isDocument = false, hideScreenshots = true, hideDocuments = true))
     }
+
+    @Test fun `only paper labels reach document OCR`() {
+        assertEquals(true, isPaperPhoto(listOf("Paper", "Text")))
+        assertEquals(false, isPaperPhoto(listOf("Poster", "Screenshot", "Person")))
+    }
+
+    @Test fun `fast remains the default analysis mode`() {
+        assertEquals("local-v7-fast", "local-v7-${PhotoSearchQuality.Fast.name.lowercase()}")
+        assertEquals("local-v7-advanced", "local-v7-${PhotoSearchQuality.Advanced.name.lowercase()}")
+    }
 }

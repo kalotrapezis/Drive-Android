@@ -1,6 +1,25 @@
 # Continue Drive Android
 
-Updated: 2026-09-19. Read `ROADMAP.md` and the original `Plan.md` first.
+Updated: 2026-09-20. Read `ROADMAP.md`, `Plan.md`, and
+`DOCUMENT_SCANNER_PDF_MANAGER.md` first.
+
+## Map and photo-location checkpoint — 2026-09-20
+
+- The Map collection is implemented and installed on Xiaomi 15 (`208c8192`).
+  It reads only embedded EXIF/ISO-6709 media coordinates after the Android
+  photo-location permission is granted; it never asks for the phone's live
+  location.
+- The map uses MapLibre/OpenFreeMap and app-accent pins. It first renders local
+  coordinates, then resolves and caches a nearby main place name locally for
+  Details and location search. The Details map preview and `Show on map` are
+  accepted as complete.
+- The Map route intentionally hides the Gallery island and Search button.
+  They fade upward from the bottom when returning to Collections. Map loading
+  shows an indeterminate animated map and message instead of a false numeric
+  percentage; it remains visible until the map style is ready.
+- Map tiles and reverse geocoding need internet. A failed or slow tile request
+  must show the loader rather than a white screen. Do not add a cloud photo
+  upload, live-location lookup, or background location scan.
 
 ## UI checkpoint — 2026-09-19
 
@@ -195,10 +214,10 @@ use personal documents as test fixtures.
 
 ## Explicitly deferred Photos work
 
-- Map/location search using the photo's embedded GPS (city search and
-  tappable photo pins) comes after the core Photos timeline and viewer.
-- Do not add a mapping/geocoding dependency, network service, or background
-  location collection before that slice is separately designed.
+- Map/location search using embedded coordinates, nearby main-place labels,
+  tappable accent pins, and the Details preview is implemented. Marker
+  clustering at wide zoom levels is the next optional map refinement; do not
+  add it until it is specifically requested.
 - Real Videos index, edit-date, metadata export/sync and collection rename/delete
   are deferred. Android Trash browsing remains separate from Android-confirmed
   move-to-trash; do not add a decorative/non-working action.

@@ -6,20 +6,29 @@ import android.app.PendingIntent
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.graphics.Rect
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.CancellationSignal
 import android.provider.MediaStore
 import android.provider.Settings
 import android.text.format.Formatter
 import android.webkit.MimeTypeMap
+import android.widget.MediaController
+import android.widget.Toast
+import android.widget.VideoView
+import android.media.MediaMetadataRetriever
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -34,13 +43,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
@@ -66,20 +79,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -90,6 +113,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -98,6 +122,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
@@ -108,6 +135,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -118,7 +146,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -133,6 +165,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 private const val DRIVE_PATH = "/sdcard/Drive/"
@@ -147,7 +180,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Entry(
+private fun authenticateVault(activity: Activity, success: () -> Unit, failure: (String) -> Unit) {
+    val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    val manager = activity.getSystemService(BiometricManager::class.java)
+    if (manager.canAuthenticate(allowed) != BiometricManager.BIOMETRIC_SUCCESS) {
+        failure("Set up a screen lock or biometric unlock in Android settings first.")
+        return
+    }
+    BiometricPrompt.Builder(activity)
+        .setTitle("Unlock Hidden")
+        .setSubtitle("Use biometrics or your phone screen lock")
+        .setAllowedAuthenticators(allowed)
+        .build()
+        .authenticate(CancellationSignal(), activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = success()
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED && errorCode != BiometricPrompt.BIOMETRIC_ERROR_CANCELED) failure(errString.toString())
+            }
+        })
+}
+
+internal data class Entry(
     val name: String,
     val detail: String,
     val relativePath: String? = null,
@@ -155,6 +208,7 @@ private data class Entry(
     val takenMillis: Long = 0,
     val sizeBytes: Long = 0,
     val photoKey: String = "",
+    val isVideo: Boolean = false,
 )
 private sealed interface ListState {
     data object Idle : ListState
@@ -210,21 +264,31 @@ private fun LocalDriveApp() {
             }
         }.start()
     }
-    fun photoPermission(): String = when {
-        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED -> "Full photo access"
-        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED -> "Selected photos only"
-        Build.VERSION.SDK_INT == 33 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED -> "Photo access granted"
-        Build.VERSION.SDK_INT <= 32 && context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED -> "Photo access granted"
-        else -> "Photo access not granted"
+    fun hasVisualAccess(): Boolean = when {
+        Build.VERSION.SDK_INT >= 34 ->
+            (context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED) ||
+                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT == 33 ->
+            context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        else -> context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     }
-    fun canReadPhotos() = photoPermission() != "Photo access not granted"
+    fun photoPermission(): String = when {
+        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> "Full photo and video access"
+        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED -> "Selected photos and videos only"
+        Build.VERSION.SDK_INT == 33 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> "Photo and video access granted"
+        Build.VERSION.SDK_INT <= 32 && context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED -> "Photo and video access granted"
+        else -> "Photo and video access not granted"
+    }
+    fun canReadPhotos() = hasVisualAccess()
     fun photoPermissions() = when {
-        Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
     fun loadPhotos() {
-        if (!canReadPhotos()) { photosState = ListState.Error("Allow photos to view DCIM and Screenshots."); return }
+        if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
         photosState = ListState.Loading
         Thread {
             val result = runCatching { listPhotos(context) }
@@ -330,6 +394,7 @@ private fun LocalDriveApp() {
                 Screen.Home -> Home(
                     openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
                     openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
+                    openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
                     openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") },
                     openFavorites = { screen = Screen.Drive; drivePane = DrivePane.Favorites; driveFolder = "" },
                     openRecent = { screen = Screen.Drive; drivePane = DrivePane.Home; driveFolder = "" },
@@ -363,11 +428,14 @@ private fun LocalDriveApp() {
                 }, ::loadPhotos, ::movePhotosToTrash,
                     { uris, favorite -> metadataAction { photoMetadata.setFavorite(selectedEntries(uris).map { it.photoKey }, favorite) } },
                     { collectionId, uris -> metadataAction { photoMetadata.addToCollection(collectionId, selectedEntries(uris).map { it.photoKey }) } },
+                    { collectionId, uris -> metadataAction { photoMetadata.removeFromCollection(collectionId, selectedEntries(uris).map { it.photoKey }) } },
                     { name -> runCatching { photoMetadata.createCollection(name) }.onSuccess { metadataVersion++ } },
+                    { collectionId -> metadataAction { photoMetadata.deleteCollection(collectionId) } },
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home }, openSettings = { screen = Screen.Settings })
                 Screen.Settings -> SettingsTab(
                     back = { screen = Screen.Home },
+                    metadataStore = photoMetadata,
                     photoPermission = photoPermission(),
                     hasDriveAccess = hasAllFilesAccess(),
                     managePhotos = {
@@ -396,6 +464,8 @@ private sealed interface PhotoFilter {
     data object Screenshots : PhotoFilter
     data object Videos : PhotoFilter
     data object Review : PhotoFilter
+    data object Hidden : PhotoFilter
+    data object Map : PhotoFilter
     data class Collection(val id: Long) : PhotoFilter
 }
 
@@ -403,6 +473,7 @@ private sealed interface PhotoFilter {
 private fun Home(
     openPhotos: () -> Unit,
     openScreenshots: () -> Unit,
+    openDocuments: () -> Unit,
     openFiles: () -> Unit,
     openFavorites: () -> Unit,
     openRecent: () -> Unit,
@@ -429,7 +500,7 @@ private fun Home(
                     HomePrimaryCard("Photos", R.drawable.ic_gallery, openPhotos, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Screenshots", R.drawable.ic_gallery, openScreenshots)
-                        HomeCompactCard("Documents", R.drawable.ic_file, openFiles)
+                        HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
                     }
                 }
             }
@@ -538,12 +609,14 @@ private fun SyncTab(back: () -> Unit, openSettings: () -> Unit) {
 @Composable
 private fun SettingsTab(
     back: () -> Unit,
+    metadataStore: PhotoMetadataStore,
     photoPermission: String,
     hasDriveAccess: Boolean,
     managePhotos: () -> Unit,
     manageDrive: () -> Unit,
     openSync: () -> Unit,
 ) {
+    var searchQuality by remember { mutableStateOf(metadataStore.searchQuality()) }
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize().padding(start = 16.dp, top = 160.dp, end = 16.dp),
@@ -567,6 +640,20 @@ private fun SettingsTab(
             }
         }
         item {
+            SettingsCard("Gallery") {
+                Text("Search quality", style = MaterialTheme.typography.titleMedium)
+                SearchQualityOption("Fast", "Default · quick local labels", searchQuality == PhotoSearchQuality.Fast) {
+                    searchQuality = PhotoSearchQuality.Fast
+                    metadataStore.setSearchQuality(searchQuality)
+                }
+                SearchQualityOption("Advanced", "Fast labels plus experimental Scene tags; slower", searchQuality == PhotoSearchQuality.Advanced) {
+                    searchQuality = PhotoSearchQuality.Advanced
+                    metadataStore.setSearchQuality(searchQuality)
+                }
+                Text("Changing this re-analyzes photos the next time you open People or Documents. Advanced keeps the Fast tags too.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        item {
             SettingsCard("Connections and devices") {
                 Text("No device is paired yet.", style = MaterialTheme.typography.bodyMedium)
                 Text("A future trusted device uses a device ID and public-key fingerprint. IP and port are discovered again after a network change; a MAC address is not used as identity.", style = MaterialTheme.typography.bodySmall)
@@ -582,6 +669,21 @@ private fun SettingsTab(
             item { Box(Modifier.heightIn(min = 32.dp)) }
         }
         ModuleHeader("Settings", back, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+@Composable
+private fun SearchQualityOption(title: String, detail: String, selected: Boolean, choose: () -> Unit) = Surface(
+    shape = MaterialTheme.shapes.medium,
+    color = if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
+    modifier = Modifier.fillMaxWidth().clickable(onClick = choose),
+) {
+    Row(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = choose, colors = RadioButtonDefaults.colors(selectedColor = driveNavigationSelectedColor()))
+        Column(Modifier.padding(end = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -613,8 +715,8 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
 @Composable
 private fun PhotoSetup(allow: () -> Unit, skip: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Photos setup", style = MaterialTheme.typography.headlineMedium)
-        Text("Local Drive needs permission to show your real Camera and Screenshots photos.")
+        Text("Gallery setup", style = MaterialTheme.typography.headlineMedium)
+        Text("Local Drive needs permission to show your real Camera and Screenshots photos and videos.")
         Text("Photos stay where they are. The app does not choose a folder or copy them into LocalDrive.", style = MaterialTheme.typography.bodyMedium)
         Text("You can change this later from the Gallery pull-up tools.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text("Yes, allow photos") }
@@ -724,7 +826,7 @@ private fun DriveTab(
                 expand = { toolsOpen = true },
                 visible = !toolsOpen,
             )
-            SearchButton(active = searchQuery.isNotBlank() || selectedTag != null, visible = !toolsOpen, description = "Search files") {
+            SearchButton(visible = !toolsOpen, description = "Search files") {
                 setPane(DrivePane.Files)
                 searchOpen = true
             }
@@ -876,7 +978,7 @@ private fun DriveFiles(
 }
 
 @Composable
-private fun FilesPageHeader(
+internal fun FilesPageHeader(
     title: String,
     icon: Int,
     back: () -> Unit,
@@ -1273,8 +1375,8 @@ private fun driveFolderAccent(color: DriveFolderColor): Color = when (color) {
     DriveFolderColor.Purple -> Color(0xFFAD68CF)
 }
 private fun formatOpenedTime(time: Long): String = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(time))
-@Composable private fun islandColor(): Color = if (isSystemInDarkTheme()) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.78f)
-@Composable private fun islandContentColor(): Color = if (isSystemInDarkTheme()) Color.White else Color.Black
+@Composable internal fun islandColor(): Color = if (isSystemInDarkTheme()) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.78f)
+@Composable internal fun islandContentColor(): Color = if (isSystemInDarkTheme()) Color.White else Color.Black
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1293,61 +1395,356 @@ private fun PhotoTab(
     moveToTrash: (Set<Uri>) -> Unit,
     setFavorite: (Set<Uri>, Boolean) -> String?,
     addToCollection: (Long, Set<Uri>) -> String?,
+    removeFromCollection: (Long, Set<Uri>) -> String?,
     createCollection: (String) -> Result<PhotoCollection>,
+    deleteCollection: (Long) -> String?,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val vault = remember(context) { SecureVault(context.applicationContext) }
+    var vaultVersion by remember { mutableStateOf(0) }
+    var vaultUnlocked by remember { mutableStateOf(false) }
+    var stagedHide by remember { mutableStateOf<Pair<List<VaultItem>, List<Uri>>?>(null) }
+    var openMapAfterPermission by remember { mutableStateOf(false) }
+    var hasMediaLocationAccess by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED) }
+    var locationVersion by remember { mutableStateOf(0) }
+    var mapFocusPhotoKey by remember { mutableStateOf<String?>(null) }
+    var hideWarningOpen by remember { mutableStateOf(false) }
     var toolsOpen by remember { mutableStateOf(false) }
+    var collectionToolsOpen by remember { mutableStateOf(false) }
     var scale by remember { mutableStateOf(TimelineScale.Month) }
     var viewerUri by remember { mutableStateOf<Uri?>(null) }
+    var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var returnToCollections by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var recentTags by remember { mutableStateOf(emptyList<String>()) }
     var collectionSheetFor by remember { mutableStateOf<Set<Uri>?>(null) }
     var newCollectionOpen by remember { mutableStateOf(false) }
+    var selectedCollection by remember { mutableStateOf<PhotoCollection?>(null) }
+    var collectionPendingDelete by remember { mutableStateOf<PhotoCollection?>(null) }
+    var analysisConsentFor by remember { mutableStateOf<PhotoFilter?>(null) }
+    var analysisRunning by remember { mutableStateOf(false) }
+    var analysisPaused by remember { mutableStateOf(false) }
+    val pauseRequested = remember { AtomicBoolean(false) }
+    var analysisDone by remember { mutableStateOf(0) }
+    var analysisTotal by remember { mutableStateOf(0) }
+    var analysisVersion by remember { mutableStateOf(0) }
+    var analysisError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    val deleteHiddenOriginals = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val staged = stagedHide
+        stagedHide = null
+        if (staged != null && result.resultCode != Activity.RESULT_OK) Thread {
+            vault.remove(staged.first)
+            Handler(Looper.getMainLooper()).post { vaultVersion++; actionError = "Hidden was cancelled; the verified private copies were removed." }
+        }.start()
+        if (result.resultCode == Activity.RESULT_OK) {
+            Thread {
+                staged?.first?.let { metadataStore.forgetPhotos(it.map(VaultItem::photoKey)) }
+                Handler(Looper.getMainLooper()).post {
+                    vaultVersion++
+                    analysisVersion++
+                    selectedUris = emptySet()
+                    refresh()
+                }
+            }.start()
+        }
+    }
+    val requestMediaLocation = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        hasMediaLocationAccess = context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasMediaLocationAccess && openMapAfterPermission) {
+            setFilter(PhotoFilter.Map)
+            returnToCollections = true
+            setPane(PhotosPane.Timeline)
+        } else if (!hasMediaLocationAccess) actionError = "Choose photos and allow their location metadata to use the map."
+        openMapAfterPermission = false
+    }
+    fun requestPhotoLocations() = requestMediaLocation.launch(when {
+        Build.VERSION.SDK_INT >= 34 -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+            Manifest.permission.ACCESS_MEDIA_LOCATION,
+        )
+        Build.VERSION.SDK_INT == 33 -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.ACCESS_MEDIA_LOCATION,
+        )
+        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.ACCESS_MEDIA_LOCATION)
+    })
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, filter) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) {
+            vaultUnlocked = false
+            if (filter == PhotoFilter.Hidden) {
+                viewerUri = null
+                selectedUris = emptySet()
+            }
+        } }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val timelineState = rememberLazyGridState()
     val allEntries = (state as? ListState.Items)?.entries.orEmpty()
-    val metadata = remember(allEntries, metadataVersion) { metadataStore.states(allEntries.map { it.photoKey }) }
-    val collections = remember(metadataVersion) { metadataStore.collections() }
-    val collectionPreviews = remember(allEntries, collections, metadataVersion) {
+    val vaultItems = remember(vaultVersion) { vault.items() }
+    LaunchedEffect(vaultItems) {
+        withContext(Dispatchers.IO) { metadataStore.forgetPhotos(vaultItems.map(VaultItem::photoKey)) }
+    }
+    val vaultEntries = remember(vaultItems, vaultUnlocked) { if (!vaultUnlocked) emptyList() else vaultItems.map { item ->
+        Entry(
+            name = item.displayName,
+            detail = "Hidden · ${item.sizeBytes} bytes",
+            relativePath = item.relativePath,
+            contentUri = vault.contentUri(item),
+            takenMillis = item.takenMillis,
+            sizeBytes = item.sizeBytes,
+            photoKey = "vault:${item.id}",
+            isVideo = item.isVideo,
+        )
+    } }
+    val metadataRevision = metadataVersion + analysisVersion
+    val metadata = remember(allEntries, metadataRevision) { metadataStore.states(allEntries.map { it.photoKey }) }
+    val collections = remember(metadataRevision) { metadataStore.collections() }
+    val collectionPreviews = remember(allEntries, collections, metadataRevision) {
         val entriesByKey = allEntries.associateBy(Entry::photoKey)
         collections.associate { collection -> collection.id to metadataStore.collectionKeys(collection.id).firstNotNullOfOrNull(entriesByKey::get) }
     }
-    val documentKeys = remember(metadataVersion) { metadataStore.classifiedKeys("document") }
-    val reviewKeys = remember(metadataVersion) { metadataStore.reviewKeys() }
+    val documentKeys = remember(metadataRevision) { metadataStore.classifiedKeys("document") }
+    val peopleKeys = remember(metadataRevision) { metadataStore.peopleKeys() }
+    val labelsByPhoto = remember(allEntries, metadataRevision) { metadataStore.labelsByPhoto(allEntries.map(Entry::photoKey)) }
+    val peopleNamesByPhoto = remember(allEntries, metadataRevision) { metadataStore.peopleNamesByPhoto(allEntries.map(Entry::photoKey)) }
+    val locationsByPhoto = remember(allEntries, locationVersion) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
+    val faceGroups = remember(metadataRevision) { metadataStore.faceGroups() }
+    val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
+    val pendingReview = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.nextReview() else null }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
-    val collectionKeys = remember(filter, metadataVersion) {
+    var hidePeopleFromCollections by remember { mutableStateOf(metadataStore.hidesPeopleFromCollections()) }
+    var hideDocumentsFromCollections by remember { mutableStateOf(metadataStore.hidesDocumentsFromCollections()) }
+    val activeCollection = (filter as? PhotoFilter.Collection)?.let { chosen -> collections.firstOrNull { it.id == chosen.id } }
+    val collectionKeys = remember(filter, metadataRevision) {
         (filter as? PhotoFilter.Collection)?.let { metadataStore.collectionKeys(it.id) }.orEmpty()
     }
-    val entries = allEntries.filter { entry -> when (filter) {
+    val entries = if (filter == PhotoFilter.Hidden) vaultEntries else allEntries.filter { entry -> when (filter) {
         PhotoFilter.Timeline -> PhotoMetadataRules.visibleInGallery(entry.isScreenshot(), entry.photoKey in documentKeys, hideScreenshots, hideDocuments)
         PhotoFilter.Favorites -> metadata[entry.photoKey].orDefault().favorite
-        PhotoFilter.People -> false
+        PhotoFilter.People -> entry.photoKey in peopleKeys
         PhotoFilter.Documents -> entry.photoKey in documentKeys
         PhotoFilter.Screenshots -> entry.isScreenshot()
-        PhotoFilter.Videos -> false
+        PhotoFilter.Videos -> entry.isVideo
         PhotoFilter.Review -> entry.photoKey in reviewKeys
+        PhotoFilter.Map -> true
+        PhotoFilter.Hidden -> false
         is PhotoFilter.Collection -> entry.photoKey in collectionKeys
     } }.filter { entry ->
-        searchQuery.isBlank() || entry.name.contains(searchQuery, ignoreCase = true) || entry.relativePath.orEmpty().contains(searchQuery, ignoreCase = true)
+        searchQuery.isBlank() || entry.name.contains(searchQuery, ignoreCase = true) || entry.relativePath.orEmpty().contains(searchQuery, ignoreCase = true) ||
+            PhotoSearchRules.matches(searchQuery, labelsByPhoto[entry.photoKey].orEmpty() + peopleNamesByPhoto[entry.photoKey].orEmpty() + listOfNotNull(locationsByPhoto[entry.photoKey]?.placeName))
+    }
+    val suggestedTags = remember(entries, labelsByPhoto, recentTags) {
+        (recentTags + PhotoSearchRules.frequentTags(entries.flatMap { labelsByPhoto[it.photoKey].orEmpty() })).distinct().take(5)
+    }
+    fun scanUnclassified() {
+        if (analysisRunning) return
+        val pending = allEntries.filter { !it.isVideo && it.contentUri != null && metadataStore.needsAnalysis(it.photoKey) }
+        if (pending.isEmpty()) return
+        analysisRunning = true
+        analysisDone = 0
+        analysisTotal = pending.size
+        analysisError = null
+        Thread {
+            val result = runCatching {
+                val quality = metadataStore.searchQuality()
+                val modelVersion = "local-v7-${quality.name.lowercase(Locale.ROOT)}"
+                PhotoClassifier(context, advancedSceneTags = quality == PhotoSearchQuality.Advanced).use { classifier ->
+                    var skipped = 0
+                    pending.forEachIndexed { index, entry ->
+                        while (pauseRequested.get()) Thread.sleep(100)
+                        entry.contentUri?.let { uri -> runCatching {
+                            classifier.classify(uri, entry.takenMillis, analyzeFaces = !entry.isScreenshot() && entry.photoKey !in documentKeys).also { result ->
+                                metadataStore.recordClassification(entry.photoKey, result.documentConfidence, result.faces, result.labels, modelVersion)
+                            }
+                        }.onFailure { skipped++ } }
+                        Handler(Looper.getMainLooper()).post { analysisDone = index + 1 }
+                    }
+                    skipped
+                }
+            }
+            Handler(Looper.getMainLooper()).post {
+                analysisRunning = false
+                analysisPaused = false
+                pauseRequested.set(false)
+                result.onSuccess { skipped ->
+                    analysisVersion++
+                    if (skipped > 0) analysisError = "Skipped $skipped photos that could not be read."
+                }.onFailure { analysisError = it.message ?: "Could not analyze this gallery." }
+            }
+        }.start()
+    }
+    fun performHide(targets: Set<Uri>) {
+        val selected = entries.filter { it.contentUri in targets && it.contentUri != null }
+        if (selected.isEmpty()) return
+        authenticateVault(context as Activity, success = {
+            vaultUnlocked = true
+            Thread {
+                val result = runCatching { vault.stage(selected.map { entry -> VaultImport(
+                    photoKey = entry.photoKey,
+                    uri = requireNotNull(entry.contentUri),
+                    displayName = entry.name,
+                    mimeType = context.contentResolver.getType(entry.contentUri) ?: if (entry.isVideo) "video/*" else "image/*",
+                    relativePath = entry.relativePath.orEmpty(),
+                    takenMillis = entry.takenMillis,
+                    isVideo = entry.isVideo,
+                ) }) }
+                Handler(Looper.getMainLooper()).post {
+                    result.onSuccess { hidden ->
+                        val uris = selected.mapNotNull(Entry::contentUri)
+                        stagedHide = hidden to uris
+                        runCatching { MediaStore.createDeleteRequest(context.contentResolver, uris) }
+                            .onSuccess { deleteHiddenOriginals.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+                            .onFailure {
+                                stagedHide = null
+                                Thread { vault.remove(hidden) }.start()
+                                actionError = "Could not request removal of the public originals."
+                            }
+                    }.onFailure { actionError = it.message ?: "Could not create verified private copies." }
+                }
+            }.start()
+        }, failure = { actionError = it })
+    }
+    fun hideSelected(targets: Set<Uri> = selectedUris) {
+        selectedUris = targets
+        if (vault.warningAccepted()) performHide(targets) else hideWarningOpen = true
+    }
+    fun restoreHidden(targets: Set<Uri> = selectedUris) {
+        val selected = vaultItems.filter { vault.contentUri(it) in targets }
+        if (selected.isEmpty()) return
+        Thread {
+            val result = runCatching { vault.restore(selected) }
+            Handler(Looper.getMainLooper()).post {
+                result.onSuccess { vaultVersion++; selectedUris = emptySet(); refresh() }
+                    .onFailure {
+                        vaultVersion++
+                        selectedUris = emptySet()
+                        refresh()
+                        actionError = it.message ?: "Could not restore all hidden media. Items already verified were restored safely."
+                    }
+            }
+        }.start()
+    }
+    fun openCollection(chosen: PhotoFilter) {
+        if (chosen == PhotoFilter.Hidden) {
+            authenticateVault(context as Activity, success = {
+                vaultUnlocked = true
+                setFilter(chosen)
+                returnToCollections = true
+                setPane(PhotosPane.Timeline)
+            }, failure = { actionError = it })
+        } else if (chosen == PhotoFilter.Map) {
+            mapFocusPhotoKey = null
+            searchOpen = false
+            toolsOpen = false
+            collectionToolsOpen = false
+            setFilter(chosen)
+            returnToCollections = true
+            setPane(PhotosPane.Timeline)
+        } else if ((chosen == PhotoFilter.People || chosen == PhotoFilter.Documents) && !metadataStore.peopleAnalysisEnabled()) {
+            analysisConsentFor = chosen
+        } else {
+            if (chosen == PhotoFilter.People || chosen == PhotoFilter.Documents) scanUnclassified()
+            setFilter(chosen)
+            returnToCollections = true
+            setPane(PhotosPane.Timeline)
+        }
+    }
+    fun navigateBack() {
+        when {
+            selectedCollection != null -> selectedCollection = null
+            viewingFaceGroup != null -> viewingFaceGroup = null
+            viewerUri != null -> viewerUri = null
+            selectedUris.isNotEmpty() -> selectedUris = emptySet()
+            searchOpen -> searchOpen = false
+            toolsOpen -> toolsOpen = false
+            collectionToolsOpen -> collectionToolsOpen = false
+            pane == PhotosPane.Timeline && filter != PhotoFilter.Timeline && returnToCollections -> {
+                setFilter(PhotoFilter.Timeline)
+                returnToCollections = false
+                setPane(PhotosPane.Collections)
+            }
+            else -> home()
+        }
+    }
+    BackHandler(onBack = ::navigateBack)
+    viewingFaceGroup?.let { group ->
+        PersonGroupScreen(
+            group = group,
+            entries = allEntries.filter { it.photoKey in metadataStore.faceGroupKeys(group.id) },
+            allGroups = faceGroups,
+            entriesByKey = allEntries.associateBy(Entry::photoKey),
+            back = { viewingFaceGroup = null },
+            openPhoto = { entry ->
+                viewingFaceGroup = null
+                viewerUri = entry.contentUri
+            },
+            rename = { name ->
+                metadataStore.renameFaceGroup(group.id, name)
+                viewingFaceGroup = group.copy(name = PhotoMetadataRules.collectionName(name))
+                analysisVersion++
+            },
+            merge = { source -> metadataStore.mergeFaceGroups(source.id, group.id).also { analysisVersion++ } },
+            undoMerge = { undo -> metadataStore.undoFaceMerge(undo); analysisVersion++ },
+        )
+        return
     }
     val openViewerUri = viewerUri
     if (openViewerUri != null) {
-        PhotoViewer(entries, openViewerUri, { viewerUri = it }, { viewerUri = null },
+        PhotoViewer(entries, openViewerUri, { uri ->
+            viewerUri = uri
+            allEntries.firstOrNull { it.contentUri == uri }?.let { recentTags = labelsByPhoto[it.photoKey].orEmpty() }
+        }, { viewerUri = null },
             { entriesForAction, favorite -> setFavorite(entriesForAction.mapNotNullTo(mutableSetOf()) { it.contentUri }, favorite) },
-            { uris -> collectionSheetFor = uris },
+            if (activeCollection == null) { uris -> collectionSheetFor = uris } else null,
+            if (filter == PhotoFilter.Hidden) { entry ->
+                entry.contentUri?.let { uri ->
+                    viewerUri = null
+                    restoreHidden(setOf(uri))
+                }
+            } else null,
+            activeCollection?.let { collection -> { entry ->
+                entry.contentUri?.let { uri ->
+                    actionError = removeFromCollection(collection.id, setOf(uri))
+                    if (actionError == null) viewerUri = null
+                }
+            } },
             metadata,
+            labelsByPhoto,
+            peopleNamesByPhoto,
+            metadataStore,
+            hasMediaLocationAccess,
+            { openMapAfterPermission = true; requestPhotoLocations() },
+            { locationVersion++ },
+            { entry ->
+                viewerUri = null
+                mapFocusPhotoKey = entry.photoKey
+                setFilter(PhotoFilter.Map)
+                returnToCollections = true
+                setPane(PhotosPane.Timeline)
+            },
         )
         collectionSheetFor?.let { targets -> CollectionPickerSheet(
             collections = collections,
+            previews = collectionPreviews,
             onDismiss = { collectionSheetFor = null },
+            onHide = {
+                collectionSheetFor = null
+                viewerUri = null
+                hideSelected(targets)
+            },
             onAdd = { collectionId ->
                 actionError = addToCollection(collectionId, targets)
                 if (actionError == null) collectionSheetFor = null
             },
-            onCreate = createCollection,
         )
         }
         return
@@ -1356,14 +1753,7 @@ private fun PhotoTab(
         val available = entries.mapNotNullTo(mutableSetOf()) { it.contentUri }
         selectedUris = selectedUris.intersect(available)
     }
-    BackHandler(enabled = selectedUris.isNotEmpty()) { selectedUris = emptySet() }
-    val back = {
-        if (pane == PhotosPane.Timeline && filter != PhotoFilter.Timeline && returnToCollections) {
-            setFilter(PhotoFilter.Timeline)
-            returnToCollections = false
-            setPane(PhotosPane.Collections)
-        } else home()
-    }
+    val back = { navigateBack() }
     val timelineTitle = when (filter) {
         PhotoFilter.Timeline -> null
         PhotoFilter.Favorites -> "Favorites"
@@ -1372,46 +1762,77 @@ private fun PhotoTab(
         PhotoFilter.Screenshots -> "Screenshots"
         PhotoFilter.Videos -> "Videos"
         PhotoFilter.Review -> "Help organize"
+        PhotoFilter.Hidden -> "Hidden"
+        PhotoFilter.Map -> "Map"
         is PhotoFilter.Collection -> collections.firstOrNull { it.id == filter.id }?.name
     }
     val timelineIcon = when (filter) {
         PhotoFilter.Favorites -> R.drawable.ic_favorite_border
         PhotoFilter.Documents -> R.drawable.ic_file
         PhotoFilter.Review -> R.drawable.ic_tag
+        PhotoFilter.Hidden -> R.drawable.ic_lock
+        PhotoFilter.Map -> R.drawable.ic_map
         is PhotoFilter.Collection, PhotoFilter.People -> R.drawable.ic_collections
         else -> R.drawable.ic_gallery
     }
     Box(Modifier.fillMaxSize()) {
+        val mapCollection = pane == PhotosPane.Timeline && filter == PhotoFilter.Map
         when (pane) {
-            PhotosPane.Timeline -> PhotoTimeline(
+            PhotosPane.Timeline -> when {
+                filter == PhotoFilter.People -> PeopleGroups(faceGroups, allEntries.associateBy(Entry::photoKey), { viewingFaceGroup = it }, back)
+                filter == PhotoFilter.Map -> PhotoMapScreen(
+                    entries = allEntries,
+                    metadataStore = metadataStore,
+                    hasLocationAccess = hasMediaLocationAccess,
+                    requestLocationAccess = { openMapAfterPermission = true; requestPhotoLocations() },
+                    locationsUpdated = { locationVersion++ },
+                    focusPhotoKey = mapFocusPhotoKey,
+                    back = back,
+                    openPhoto = { viewerUri = it.contentUri },
+                )
+                filter == PhotoFilter.Hidden && !vaultUnlocked -> LockedVaultScreen(back) {
+                    authenticateVault(context as Activity, success = { vaultUnlocked = true }, failure = { actionError = it })
+                }
+                else -> PhotoTimeline(
                 if (state is ListState.Items) ListState.Items(entries) else state,
                 scale, { scale = it }, timelineState, selectedUris,
                 { entry -> entry.contentUri?.let { selectedUris = selectedUris + it } },
                 { entry -> entry.contentUri?.let { uri -> selectedUris = if (uri in selectedUris) selectedUris - uri else selectedUris + uri } },
-                { entry -> viewerUri = entry.contentUri },
+                { entry ->
+                    recentTags = labelsByPhoto[entry.photoKey].orEmpty()
+                    viewerUri = entry.contentUri
+                },
                 refresh,
                 title = timelineTitle,
                 icon = timelineIcon,
                 back = back,
+                showTimelineIsland = !searchOpen,
                 emptyMessage = when (filter) {
-                    PhotoFilter.People -> "People recognition is not enabled yet."
                     PhotoFilter.Documents -> "No local document classifications yet."
-                    PhotoFilter.Videos -> "Videos are not indexed yet."
+                    PhotoFilter.Videos -> "No videos found in this collection."
                     PhotoFilter.Review -> "Nothing needs your review."
+                    PhotoFilter.Hidden -> "Hidden is empty. Select photos or videos and tap the lock button to add them."
                     else -> "No photos found in this collection."
                 },
             )
+            }
             PhotosPane.Collections -> PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().padding(bottom = 76.dp)) {
-                    Collections(allEntries, metadata, collections, collectionPreviews, documentKeys, reviewKeys, back, { newCollectionOpen = true }, { chosen ->
-                        setFilter(chosen)
-                        returnToCollections = true
-                        setPane(PhotosPane.Timeline)
-                    })
+                    Collections(
+                        allEntries, metadata, collections, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, vaultItems.size,
+                        !hidePeopleFromCollections, !hideDocumentsFromCollections, analysisRunning, analysisPaused,
+                        analysisDone, analysisTotal, {
+                            val paused = !analysisPaused
+                            analysisPaused = paused
+                            pauseRequested.set(paused)
+                        }, back, { newCollectionOpen = true }, ::openCollection,
+                        selectedCollection?.id,
+                        { collection -> selectedCollection = if (selectedCollection?.id == collection.id) null else collection },
+                    )
                 }
             }
         }
-        if (pane == PhotosPane.Timeline && timelineTitle == null) Surface(
+        if (pane == PhotosPane.Timeline && !mapCollection && timelineTitle == null && !searchOpen) Surface(
             color = islandColor(),
             contentColor = islandContentColor(),
             shape = CircleShape,
@@ -1421,35 +1842,93 @@ private fun PhotoTab(
                 Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home")
             }
         }
+        if (pane == PhotosPane.Timeline && !mapCollection && searchQuery.isNotBlank() && !searchOpen) Surface(
+            color = islandColor(),
+            contentColor = islandContentColor(),
+            shape = CircleShape,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = 12.dp, top = 12.dp),
+        ) {
+            IconButton(onClick = { Toast.makeText(context, "Ενεργή αναζήτηση", Toast.LENGTH_SHORT).show() }) {
+                Icon(
+                    painterResource(R.drawable.ic_search_active),
+                    contentDescription = "Active search",
+                    tint = Color(0xFF65D47E),
+                )
+            }
+        }
         if (selectedUris.isNotEmpty()) {
-            SelectionActions(
+            if (filter == PhotoFilter.Hidden) HiddenSelectionActions(
+                count = selectedUris.size,
+                restore = { restoreHidden() },
+                cancel = { selectedUris = emptySet() },
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).fillMaxWidth(),
+            ) else SelectionActions(
                 count = selectedUris.size,
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp),
                 share = { sharePhotos(context, entries.filter { it.contentUri in selectedUris }) },
-                addToCollection = { collectionSheetFor = selectedUris },
+                addToCollection = if (activeCollection == null) ({ collectionSheetFor = selectedUris }) else null,
+                removeFromCollection = activeCollection?.let { collection -> {
+                    actionError = removeFromCollection(collection.id, selectedUris)
+                    if (actionError == null) selectedUris = emptySet()
+                } },
                 toggleFavorite = {
                     val allFavorite = entries.filter { it.contentUri in selectedUris }.all { metadata[it.photoKey].orDefault().favorite }
                     actionError = setFavorite(selectedUris, !allFavorite)
                     if (actionError == null) selectedUris = emptySet()
                 },
                 moveToTrash = { moveToTrash(selectedUris) },
+                hide = ::hideSelected,
                 cancel = { selectedUris = emptySet() },
             )
         } else {
-            Row(
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            AnimatedVisibility(
+                visible = !mapCollection,
+                enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it },
+                exit = fadeOut(tween(100)),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).fillMaxWidth(),
             ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                 PhotoBottomBar(
                     pane = pane,
                     gallery = { setFilter(PhotoFilter.Timeline); returnToCollections = false; setPane(PhotosPane.Timeline) },
-                collections = { setPane(PhotosPane.Collections) },
-                expand = { toolsOpen = true },
-                visible = !toolsOpen,
+                    collections = { setPane(PhotosPane.Collections) },
+                    expand = { if (pane == PhotosPane.Timeline) toolsOpen = true else collectionToolsOpen = true },
+                    visible = !toolsOpen && !collectionToolsOpen && !searchOpen,
                 )
-                SearchButton(active = searchQuery.isNotBlank(), visible = !toolsOpen) { searchOpen = true }
+                SearchButton(visible = !toolsOpen && !collectionToolsOpen && !searchOpen && selectedCollection == null) {
+                    setFilter(PhotoFilter.Timeline)
+                    returnToCollections = false
+                    setPane(PhotosPane.Timeline)
+                    searchOpen = true
+                    if (metadataStore.peopleAnalysisEnabled()) scanUnclassified() else analysisConsentFor = PhotoFilter.Timeline
+                }
+                IslandVisibility(!toolsOpen && !collectionToolsOpen && !searchOpen && selectedCollection != null) {
+                    Surface(color = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError, shape = CircleShape) {
+                        IconButton(onClick = { collectionPendingDelete = selectedCollection }) {
+                            Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete selected collection")
+                        }
+                    }
+                }
+                }
             }
+        }
+        AnimatedVisibility(
+            visible = searchOpen && !mapCollection,
+            enter = fadeIn(tween(150)) + slideInVertically(tween(150)) { it / 2 },
+            exit = fadeOut(tween(100)),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 12.dp).padding(top = 12.dp).fillMaxWidth(),
+        ) {
+            PhotoSearchPanel(
+                query = searchQuery,
+                setQuery = { searchQuery = it },
+                clear = { searchQuery = "" },
+                dismiss = { searchOpen = false },
+                suggestions = suggestedTags,
+            )
         }
     }
     if (toolsOpen) GalleryToolsSheet(
@@ -1464,15 +1943,42 @@ private fun PhotoTab(
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromGallery(hide); hideDocuments = hide },
         dismiss = { toolsOpen = false },
     )
-    if (searchOpen) SearchSheet(
-        query = searchQuery,
-        setQuery = { searchQuery = it },
-        clear = { searchQuery = "" },
-        dismiss = { searchOpen = false },
+    if (collectionToolsOpen) CollectionsToolsSheet(
+        hidePeople = hidePeopleFromCollections,
+        hideDocuments = hideDocumentsFromCollections,
+        setHidePeople = { hide -> metadataStore.setHidesPeopleFromCollections(hide); hidePeopleFromCollections = hide },
+        setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromCollections(hide); hideDocumentsFromCollections = hide },
+        dismiss = { collectionToolsOpen = false },
     )
+    analysisConsentFor?.let { requested ->
+        AlertDialog(
+            onDismissRequest = { analysisConsentFor = null },
+            title = { Text("Analyze your gallery?") },
+            text = { Text("No download or internet is needed. The first analysis finds search tags, documents and groups faces locally. It can take time and use battery. Later visits analyze only new or changed photos. Nothing leaves this device.") },
+            confirmButton = {
+                Button(onClick = {
+                    metadataStore.setPeopleAnalysisEnabled(true)
+                    metadataStore.setDocumentsAnalysisEnabled(true)
+                    analysisConsentFor = null
+                    scanUnclassified()
+                    if (requested != PhotoFilter.Timeline) {
+                        setFilter(requested)
+                        returnToCollections = true
+                        setPane(PhotosPane.Timeline)
+                    }
+                }) { Text("Analyze now") }
+            },
+            dismissButton = { Button(onClick = { analysisConsentFor = null }) { Text("Not now") } },
+        )
+    }
     collectionSheetFor?.let { targets -> CollectionPickerSheet(
         collections = collections,
+        previews = collectionPreviews,
         onDismiss = { collectionSheetFor = null },
+        onHide = {
+            collectionSheetFor = null
+            hideSelected(targets)
+        },
         onAdd = { collectionId ->
             actionError = addToCollection(collectionId, targets)
             if (actionError == null) {
@@ -1480,7 +1986,6 @@ private fun PhotoTab(
                 collectionSheetFor = null
             }
         },
-        onCreate = createCollection,
     )
     }
     if (newCollectionOpen) NewCollectionSheet(
@@ -1489,25 +1994,289 @@ private fun PhotoTab(
             createCollection(name).onSuccess { newCollectionOpen = false }
         },
     )
+    collectionPendingDelete?.let { collection -> AlertDialog(
+        onDismissRequest = { collectionPendingDelete = null },
+        title = { Text("Delete ${collection.name}?") },
+        text = { Text("The collection will be removed. Its photos and videos will stay in your gallery and on the device.") },
+        confirmButton = { Button(onClick = {
+            actionError = deleteCollection(collection.id)
+            if (actionError == null) selectedCollection = null
+            collectionPendingDelete = null
+        }, colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.error,
+            contentColor = MaterialTheme.colorScheme.onError,
+        )) {
+            Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
+            Text("Delete collection", modifier = Modifier.padding(start = 8.dp))
+        } },
+        dismissButton = { Button(onClick = { collectionPendingDelete = null }, colors = neutralButtonColors()) {
+            Icon(painterResource(R.drawable.ic_cancel), contentDescription = null)
+            Text("Cancel", modifier = Modifier.padding(start = 8.dp))
+        } },
+    ) }
+    if (hideWarningOpen) AlertDialog(
+        onDismissRequest = { hideWarningOpen = false },
+        title = { Text("Before using Hidden") },
+        text = { Text("Hidden photos and videos are stored only inside Local Drive's private storage. Uninstalling the app deletes them. Restore everything from Hidden before uninstalling. The public original is removed only after a verified private copy and Android confirmation.") },
+        confirmButton = { Button(onClick = {
+            vault.acceptWarning()
+            hideWarningOpen = false
+                    performHide(selectedUris)
+        }, colors = neutralButtonColors()) { Text("I understand") } },
+        dismissButton = { Button(onClick = { hideWarningOpen = false }, colors = neutralButtonColors()) { Text("Cancel") } },
+    )
+    pendingReview?.let { review ->
+        allEntries.firstOrNull { it.photoKey == review.photoKey }?.let { entry ->
+            val candidate = remember(review) { review.candidateGroupId?.let(metadataStore::faceGroup) }
+            ReviewPromptSheet(
+                entry = entry,
+                review = review,
+                candidate = candidate,
+                entriesByKey = allEntries.associateBy(Entry::photoKey),
+                dismiss = {
+                    setFilter(PhotoFilter.Timeline)
+                    setPane(PhotosPane.Collections)
+                },
+                answer = { accepted ->
+                    metadataStore.resolveReview(review, accepted)
+                    analysisVersion++
+                },
+                skip = {
+                    metadataStore.skipReview(review)
+                    analysisVersion++
+                },
+            )
+        }
+    }
     actionError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+    analysisError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+}
+
+internal fun analysisProgressFraction(done: Int, total: Int): Float = if (total <= 0) 0f else done.toFloat().coerceIn(0f, total.toFloat()) / total
+
+@Composable
+private fun AnalysisProgress(done: Int, total: Int, paused: Boolean, togglePause: () -> Unit, modifier: Modifier = Modifier) = Surface(
+    shape = MaterialTheme.shapes.large,
+    color = islandColor(),
+    contentColor = islandContentColor(),
+    modifier = modifier.fillMaxWidth(),
+) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Analyzing locally", style = MaterialTheme.typography.titleSmall)
+        Text("$done / $total photos · no download or internet", style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            LinearProgressIndicator(progress = { analysisProgressFraction(done, total) }, modifier = Modifier.weight(1f))
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(40.dp).clickable(onClick = togglePause)) {
+                Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause), contentDescription = if (paused) "Resume analysis" else "Pause analysis", modifier = Modifier.padding(9.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReviewPromptSheet(entry: Entry, review: PendingReview, candidate: FaceGroup?, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, answer: (Boolean) -> Unit, skip: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (review.candidateGroupId != null && review.faceSample != null && candidate != null) {
+                Text("Compare the two face crops", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FaceReviewCrop("This photo", entry, review.faceSample.bounds, Modifier.weight(1f))
+                    FaceReviewCrop(candidate.name, entriesByKey[candidate.photoKey], candidate.bounds(), Modifier.weight(1f))
+                }
+            } else if (review.candidateGroupId == null) ViewerImage(entry, Modifier.fillMaxWidth().height(240.dp).clip(MaterialTheme.shapes.large))
+            if (review.candidateGroupId != null && (review.faceSample == null || candidate == null)) {
+                Text("This face comparison is no longer available.", style = MaterialTheme.typography.titleLarge)
+                Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text("Skip") }
+            } else {
+                Text(review.question, style = MaterialTheme.typography.titleLarge)
+                if (review.candidateGroupId != null) Text("Compare the two labelled face crops. Confirm only if they are the same person.")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
+                    Button(onClick = { answer(false) }, modifier = Modifier.weight(1f)) { Text("No") }
+                    Button(onClick = skip, modifier = Modifier.weight(1f)) { Text("Skip") }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>, custom: List<PhotoCollection>, previews: Map<Long, Entry?>, documentKeys: Set<String>, reviewKeys: Set<String>, back: () -> Unit, create: () -> Unit, open: (PhotoFilter) -> Unit) {
+private fun FaceReviewCrop(label: String, entry: Entry?, bounds: Rect, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    FaceCrop(entry, bounds, Modifier.fillMaxWidth().aspectRatio(1f).clip(MaterialTheme.shapes.large))
+    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+@Composable
+private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, back: () -> Unit) {
+    if (groups.isEmpty()) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FilesPageHeader("People", R.drawable.ic_collections, back)
+            Text("No people found yet.")
+        }
+        return
+    }
+    LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_collections, back) }
+        items(groups, key = { it.id }) { group ->
+            FaceGroupCard(group, entries[group.photoKey]) { open(group) }
+        }
+    }
+}
+
+@Composable
+private fun FaceGroupCard(group: FaceGroup, entry: Entry?, open: () -> Unit) = Surface(
+    shape = MaterialTheme.shapes.extraLarge,
+    color = MaterialTheme.colorScheme.surfaceVariant,
+    modifier = Modifier.aspectRatio(1f).clickable(onClick = open),
+) { Box(Modifier.fillMaxSize()) {
+    FaceCrop(entry, group, Modifier.fillMaxSize())
+    Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+        Column(Modifier.padding(10.dp)) {
+            Text(group.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(group.count.toString(), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+} }
+
+@Composable
+private fun FaceCrop(entry: Entry?, group: FaceGroup, modifier: Modifier = Modifier) = FaceCrop(entry, group.bounds(), modifier)
+
+@Composable
+private fun FaceCrop(entry: Entry?, bounds: Rect, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, entry?.contentUri, bounds) {
+        value = entry?.contentUri?.let { uri -> withContext(Dispatchers.IO) { runCatching {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
+                val scale = minOf(1f, 1280f / maxOf(info.size.width, info.size.height))
+                decoder.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }.let { source ->
+                bounds.let { rect ->
+                    Bitmap.createBitmap(source, rect.left.coerceIn(0, source.width - 1), rect.top.coerceIn(0, source.height - 1), rect.width().coerceAtMost(source.width - rect.left.coerceIn(0, source.width - 1)), rect.height().coerceAtMost(source.height - rect.top.coerceIn(0, source.height - 1)))
+                }
+            }
+        }.getOrNull() } }
+    }
+    bitmap?.let { Image(it.asImageBitmap(), null, modifier = modifier, contentScale = ContentScale.Crop) }
+        ?: Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_collections), null) }
+}
+
+@Composable
+private fun PersonGroupScreen(group: FaceGroup, entries: List<Entry>, allGroups: List<FaceGroup>, entriesByKey: Map<String, Entry>, back: () -> Unit, openPhoto: (Entry) -> Unit, rename: (String) -> Unit, merge: (FaceGroup) -> FaceMergeUndo, undoMerge: (FaceMergeUndo) -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    var combining by remember { mutableStateOf(false) }
+    var mergeTargets by remember { mutableStateOf<List<FaceGroup>?>(null) }
+    var recentMerges by remember { mutableStateOf(emptyList<FaceMergeUndo>()) }
+    var name by remember(group.id, group.name) { mutableStateOf(group.name) }
+    LaunchedEffect(recentMerges) {
+        if (recentMerges.isNotEmpty()) {
+            delay(8_000)
+            recentMerges = emptyList()
+        }
+    }
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FilesPageHeader(group.name, R.drawable.ic_collections, back, trailing = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.medium, modifier = Modifier.clickable { combining = true }) { Text("Combine", modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) }
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) { IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Rename") } }
+            }
+        })
+        if (editing) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(name, { name = it }, modifier = Modifier.weight(1f), singleLine = true)
+            Button(onClick = { rename(name); editing = false }) { Text("Save") }
+        }
+        recentMerges.takeIf { it.isNotEmpty() }?.let { undos -> Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${undos.size} people combined", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Text("Undo", modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
+            }
+        } }
+        LazyVerticalGrid(GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            items(entries, key = { it.photoKey }) { entry -> PhotoThumbnail(entry, false) { openPhoto(entry) } }
+        }
+    }
+    if (combining) CombineFaceGroupsSheet(group, allGroups.filter { it.id != group.id }, entriesByKey, dismiss = { combining = false }, combine = { mergeTargets = it })
+    mergeTargets?.let { sources -> AlertDialog(
+        onDismissRequest = { mergeTargets = null },
+        title = { Text("Combine people?") },
+        text = { Text("Move every photo from ${sources.size} selected groups into ${group.name}. You can undo this for a few seconds.") },
+        confirmButton = { Button(onClick = { recentMerges = sources.map(merge); mergeTargets = null; combining = false }, colors = neutralButtonColors()) { Text("Combine") } },
+        dismissButton = { Button(onClick = { mergeTargets = null }, colors = neutralButtonColors()) { Text("Cancel") } },
+    ) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CombineFaceGroupsSheet(current: FaceGroup, choices: List<FaceGroup>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, combine: (List<FaceGroup>) -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
+    val visibleChoices = remember(choices, query) { choices.filter { it.name.contains(query, ignoreCase = true) } }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Manually combine with ${current.name}", style = MaterialTheme.typography.titleLarge)
+            Text("These are all people groups, not AI suggestions. Choose one only when it is the same person.")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(query, { query = it }, label = { Text("Find a person") }, modifier = Modifier.weight(1f), singleLine = true)
+                Button(onClick = { combine(choices.filter { it.id in selectedIds }) }, enabled = selectedIds.isNotEmpty(), colors = neutralButtonColors()) { Text("Combine") }
+            }
+            if (choices.isEmpty()) Text("There are no other people groups yet.")
+            else if (visibleChoices.isEmpty()) Text("No people match this name.")
+            else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(visibleChoices, key = { it.id }) { choice ->
+                    val selected = choice.id in selectedIds
+                    Surface(shape = MaterialTheme.shapes.large, color = if (selected) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (selected) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().clickable {
+                        selectedIds = if (selected) selectedIds - choice.id else selectedIds + choice.id
+                    }) {
+                    Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FaceCrop(entriesByKey[choice.photoKey], choice, Modifier.size(72.dp).clip(MaterialTheme.shapes.medium))
+                        Column(Modifier.weight(1f)) {
+                            Text(choice.name, style = MaterialTheme.typography.titleMedium)
+                            Text("${choice.count} face${if (choice.count == 1) "" else "s"}", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected")
+                    }
+                } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LockedVaultScreen(back: () -> Unit, unlock: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        FilesPageHeader("Hidden", R.drawable.ic_lock, back)
+        Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(painterResource(R.drawable.ic_lock), contentDescription = null, modifier = Modifier.size(54.dp))
+            Text("Hidden is locked", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
+            Text("Unlock with biometrics or your phone screen lock.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+            Button(onClick = unlock, colors = neutralButtonColors(), modifier = Modifier.padding(top = 16.dp)) { Text("Unlock") }
+        }
+    }
+}
+
+@Composable
+private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>, custom: List<PhotoCollection>, previews: Map<Long, Entry?>, documentKeys: Set<String>, peopleCount: Int, reviewKeys: Set<String>, hiddenCount: Int, showPeople: Boolean, showDocuments: Boolean, analysisRunning: Boolean, analysisPaused: Boolean, analysisDone: Int, analysisTotal: Int, toggleAnalysisPause: () -> Unit, back: () -> Unit, create: () -> Unit, open: (PhotoFilter) -> Unit, selectedCollectionId: Long?, selectCollection: (PhotoCollection) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { FilesPageHeader("Collections", R.drawable.ic_collections, back, trailing = {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 IconButton(onClick = create) { Icon(painterResource(R.drawable.ic_add), contentDescription = "Create collection") }
             }
         }) }
+        if (analysisRunning) item { AnalysisProgress(analysisDone, analysisTotal, analysisPaused, toggleAnalysisPause) }
         item { Text("System collections", style = MaterialTheme.typography.labelLarge) }
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("People", 0, R.drawable.ic_collections, { open(PhotoFilter.People) }, Modifier.weight(1f))
-            SystemCollectionButton("Documents", entries.count { it.photoKey in documentKeys }, R.drawable.ic_file, { open(PhotoFilter.Documents) }, Modifier.weight(1f))
+        if (showPeople || showDocuments) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (showPeople) SystemCollectionButton("People", peopleCount, R.drawable.ic_collections, { open(PhotoFilter.People) }, Modifier.weight(1f))
+            if (showDocuments) SystemCollectionButton("Documents", entries.count { it.photoKey in documentKeys }, R.drawable.ic_file, { open(PhotoFilter.Documents) }, Modifier.weight(1f))
+            if (!showPeople || !showDocuments) Box(Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemCollectionButton("Screenshots", entries.count(Entry::isScreenshot), R.drawable.ic_gallery, { open(PhotoFilter.Screenshots) }, Modifier.weight(1f))
-            SystemCollectionButton("Videos", 0, R.drawable.ic_gallery, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
+            SystemCollectionButton("Videos", entries.count(Entry::isVideo), R.drawable.ic_gallery, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
+        } }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SystemCollectionButton("Hidden", hiddenCount, R.drawable.ic_lock, { open(PhotoFilter.Hidden) }, Modifier.weight(1f))
+            SystemCollectionButton("Map", null, R.drawable.ic_map, { open(PhotoFilter.Map) }, Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemCollectionButton("Help organize", entries.count { it.photoKey in reviewKeys }, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
@@ -1517,28 +2286,40 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
         if (custom.isEmpty()) item { Text("Tap + to create your first collection.", style = MaterialTheme.typography.bodyMedium) }
         custom.chunked(2).forEach { row -> item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                row.forEach { collection -> MyCollectionCard(collection, previews[collection.id], { open(PhotoFilter.Collection(collection.id)) }, Modifier.weight(1f)) }
+                row.forEach { collection -> MyCollectionCard(
+                    collection = collection,
+                    preview = previews[collection.id],
+                    selected = selectedCollectionId == collection.id,
+                    open = { if (selectedCollectionId == null) open(PhotoFilter.Collection(collection.id)) else selectCollection(collection) },
+                    select = { selectCollection(collection) },
+                    modifier = Modifier.weight(1f),
+                ) }
                 if (row.size == 1) Box(Modifier.weight(1f))
             }
         } }
-        item { Text("People and Documents are private local-AI foundations. No model has analysed photos yet; Videos and Android Trash remain separate system collections.", style = MaterialTheme.typography.bodySmall) }
+        item { Text("Hidden media stays in private app storage and unlocks with your phone security. Map coordinates are read locally; the OpenStreetMap background needs internet. Pull the bottom island here to manage system collections.", style = MaterialTheme.typography.bodySmall) }
     }
 }
 
-@Composable private fun RowScope.SystemCollectionButton(name: String, count: Int, icon: Int, open: () -> Unit, modifier: Modifier = Modifier) = Surface(
+@Composable private fun RowScope.SystemCollectionButton(name: String, count: Int?, icon: Int, open: () -> Unit, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = modifier.height(68.dp).clickable(onClick = open),
 ) { Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
     Icon(painterResource(icon), contentDescription = name, modifier = Modifier.size(22.dp))
     Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    Text(count.toString(), style = MaterialTheme.typography.labelSmall)
+    count?.let { Text(it.toString(), style = MaterialTheme.typography.labelSmall) }
 } }
 
-@Composable private fun MyCollectionCard(collection: PhotoCollection, preview: Entry?, open: () -> Unit, modifier: Modifier = Modifier) = Surface(
+@Composable private fun MyCollectionCard(collection: PhotoCollection, preview: Entry?, selected: Boolean = false, open: () -> Unit, select: () -> Unit = {}, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = modifier.aspectRatio(1f).clickable(onClick = open),
+    modifier = modifier.aspectRatio(1f).pointerInput(collection.id) {
+        detectTapGestures(onTap = { open() }, onLongPress = { select() })
+    }.then(if (selected) Modifier.border(3.dp, islandContentColor(), MaterialTheme.shapes.extraLarge) else Modifier),
 ) { Box(Modifier.fillMaxSize()) {
     CollectionCover(preview, Modifier.fillMaxSize())
+    if (selected) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+        Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected collection", modifier = Modifier.padding(8.dp).size(22.dp))
+    }
     Surface(
         color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White,
         modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
@@ -1578,26 +2359,46 @@ private fun NewCollectionSheet(dismiss: () -> Unit, create: (String) -> Result<P
 @Composable
 private fun CollectionPickerSheet(
     collections: List<PhotoCollection>,
+    previews: Map<Long, Entry?>,
     onDismiss: () -> Unit,
+    onHide: () -> Unit,
     onAdd: (Long) -> Unit,
-    onCreate: (String) -> Result<PhotoCollection>,
 ) {
-    var name by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Add to collection", style = MaterialTheme.typography.titleMedium)
-            collections.forEach { collection ->
-                Text(collection.name, modifier = Modifier.fillMaxWidth().clickable { onAdd(collection.id) }.padding(vertical = 10.dp))
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onHide),
+            ) {
+                Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_lock), contentDescription = null)
+                    Column {
+                        Text("Hidden", style = MaterialTheme.typography.titleSmall)
+                        Text("Lock behind biometrics or screen lock", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
-            OutlinedTextField(name, { name = it; error = null }, label = { Text("New collection") }, modifier = Modifier.fillMaxWidth(), isError = error != null)
-            Button(onClick = {
-                onCreate(name).fold(
-                    onSuccess = { onAdd(it.id) },
-                    onFailure = { error = it.message ?: "Could not create collection." },
-                )
-            }, modifier = Modifier.fillMaxWidth()) { Text("Create and add") }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_map), contentDescription = null)
+                    Column {
+                        Text("Map", style = MaterialTheme.typography.titleSmall)
+                        Text("Added automatically when the photo has coordinates", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Text("My collections", style = MaterialTheme.typography.labelLarge)
+            if (collections.isEmpty()) Text("No personal collections yet.", style = MaterialTheme.typography.bodySmall)
+            collections.chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { collection ->
+                        MyCollectionCard(collection, previews[collection.id], open = { onAdd(collection.id) }, modifier = Modifier.weight(1f))
+                    }
+                    if (row.size == 1) Box(Modifier.weight(1f))
+                }
+            }
         }
     }
 }
@@ -1638,17 +2439,17 @@ private fun GalleryToolsSheet(
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Gallery tools", style = MaterialTheme.typography.titleLarge)
             Text(permission, style = MaterialTheme.typography.bodyMedium)
-            if (permission != "Full photo access" && permission != "Photo access granted") {
-                DriveWideAction(R.drawable.ic_check, "Allow photos") { allowPhotos(); dismiss() }
+            if (permission != "Full photo and video access" && permission != "Photo and video access granted") {
+                DriveWideAction(R.drawable.ic_check, "Allow photos and videos") { allowPhotos(); dismiss() }
             }
             DriveWideAction(R.drawable.ic_refresh, "Refresh") { refresh(); dismiss() }
             Text("Hide from Gallery", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideScreenshots(!hideScreenshots) }) {
-                Checkbox(checked = hideScreenshots, onCheckedChange = setHideScreenshots)
+                Checkbox(checked = hideScreenshots, onCheckedChange = setHideScreenshots, colors = neutralCheckboxColors())
                 Text("Screenshots")
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideDocuments(!hideDocuments) }) {
-                Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments)
+                Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
                 Text("Documents")
             }
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)
@@ -1666,8 +2467,48 @@ private fun GalleryToolsSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchButton(active: Boolean, visible: Boolean = true, description: String = "Search photos", open: () -> Unit) {
+private fun CollectionsToolsSheet(
+    hidePeople: Boolean,
+    hideDocuments: Boolean,
+    setHidePeople: (Boolean) -> Unit,
+    setHideDocuments: (Boolean) -> Unit,
+    dismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Collections tools", style = MaterialTheme.typography.titleLarge)
+            Text("Hide system collections", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHidePeople(!hidePeople) }) {
+                Checkbox(checked = hidePeople, onCheckedChange = setHidePeople, colors = neutralCheckboxColors())
+                Text("People")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideDocuments(!hideDocuments) }) {
+                Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
+                Text("Documents")
+            }
+        }
+    }
+}
+
+@Composable
+private fun neutralCheckboxColors() = CheckboxDefaults.colors(
+    checkedColor = driveNavigationSelectedColor(),
+    checkmarkColor = driveNavigationSelectedContentColor(),
+    uncheckedColor = islandContentColor().copy(alpha = 0.72f),
+)
+
+@Composable
+private fun neutralButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = driveNavigationSelectedColor(),
+    contentColor = driveNavigationSelectedContentColor(),
+    disabledContainerColor = islandContentColor().copy(alpha = 0.12f),
+    disabledContentColor = islandContentColor().copy(alpha = 0.38f),
+)
+
+@Composable
+private fun SearchButton(visible: Boolean = true, description: String = "Search photos", open: () -> Unit) {
     IslandVisibility(visible) {
         Surface(
             color = islandColor(),
@@ -1678,7 +2519,7 @@ private fun SearchButton(active: Boolean, visible: Boolean = true, description: 
                 Icon(
                     painterResource(R.drawable.ic_search),
                     contentDescription = description,
-                    tint = if (active) MaterialTheme.colorScheme.primary else islandContentColor(),
+                    tint = islandContentColor(),
                 )
             }
         }
@@ -1687,7 +2528,7 @@ private fun SearchButton(active: Boolean, visible: Boolean = true, description: 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> Unit, dismiss: () -> Unit, title: String = "Search photos", hint: String = "Name or folder") {
+private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> Unit, dismiss: () -> Unit, title: String = "Search photos", hint: String = "Name or folder", suggestions: List<String> = emptyList()) {
     ModalBottomSheet(onDismissRequest = dismiss) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -1698,7 +2539,50 @@ private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> 
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            if (suggestions.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(suggestions) { suggestion ->
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.clickable { setQuery(suggestion) }) {
+                        Text(suggestion, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
             if (query.isNotBlank()) Text("Clear", modifier = Modifier.clickable(onClick = clear).padding(vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun PhotoSearchPanel(query: String, setQuery: (String) -> Unit, clear: () -> Unit, dismiss: () -> Unit, suggestions: List<String>) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val glass = islandColor()
+    val ink = islandContentColor()
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = glass, contentColor = ink, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = setQuery,
+                label = { Text("Name, place or English AI label") },
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ink.copy(alpha = 0.65f), unfocusedBorderColor = ink.copy(alpha = 0.35f),
+                    focusedLabelColor = ink, unfocusedLabelColor = ink.copy(alpha = 0.72f), cursorColor = ink,
+                    focusedTextColor = ink, unfocusedTextColor = ink,
+                ),
+            )
+            if (suggestions.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(suggestions) { suggestion ->
+                    Surface(shape = MaterialTheme.shapes.small, color = Color.White.copy(alpha = 0.62f), modifier = Modifier.clickable { setQuery(suggestion) }) {
+                        Text(suggestion, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("English AI tags", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                if (query.isNotBlank()) Text("Clear", modifier = Modifier.clickable(onClick = clear).padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelLarge)
+                IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Close search") }
+            }
         }
     }
 }
@@ -1707,9 +2591,11 @@ private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> 
 private fun SelectionActions(
     count: Int,
     share: () -> Unit,
-    addToCollection: () -> Unit,
+    addToCollection: (() -> Unit)?,
+    removeFromCollection: (() -> Unit)?,
     toggleFavorite: () -> Unit,
     moveToTrash: () -> Unit,
+    hide: () -> Unit,
     cancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1720,15 +2606,40 @@ private fun SelectionActions(
         modifier = modifier,
     ) {
         Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            removeFromCollection?.let { remove ->
+                Button(onClick = remove, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = null)
+                    Text("Remove from this collection", modifier = Modifier.padding(start = 10.dp))
+                }
+            }
             Row(horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share selected photos") }
-                IconButton(onClick = addToCollection) { Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add selected photos to collection") }
+                addToCollection?.let { add -> IconButton(onClick = add) {
+                    Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add selected photos to collection")
+                } }
                 IconButton(onClick = toggleFavorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = "Toggle favorite for selected photos") }
                 IconButton(onClick = moveToTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move selected photos to trash") }
+                IconButton(onClick = hide) { Icon(painterResource(R.drawable.ic_lock), contentDescription = "Move selected photos to Hidden") }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("$count selected", style = MaterialTheme.typography.labelLarge)
                 Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HiddenSelectionActions(count: Int, restore: () -> Unit, cancel: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Button(onClick = restore, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
+                Text("Restore", modifier = Modifier.padding(start = 10.dp))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text("$count selected", style = MaterialTheme.typography.labelLarge)
+                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -1748,6 +2659,7 @@ private fun PhotoTimeline(
     title: String?,
     icon: Int,
     back: () -> Unit,
+    showTimelineIsland: Boolean,
     emptyMessage: String,
 ) {
     PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
@@ -1819,7 +2731,7 @@ private fun PhotoTimeline(
                     }
                 }
                 AnimatedVisibility(
-                    visible = title == null || gridState.firstVisibleItemIndex > 0,
+                    visible = showTimelineIsland && (title == null || gridState.firstVisibleItemIndex > 0),
                     enter = fadeIn(tween(150)) + slideInVertically(tween(150)) { -it / 3 },
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp),
@@ -1830,6 +2742,16 @@ private fun PhotoTimeline(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                             style = MaterialTheme.typography.titleMedium,
                         )
+                    }
+                }
+                if (title != null) AnimatedVisibility(
+                    visible = gridState.firstVisibleItemIndex > 0,
+                    enter = fadeIn(tween(150)) + slideInVertically(tween(150)) { -it / 3 },
+                    exit = fadeOut(tween(100)),
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 12.dp),
+                ) {
+                    Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                        IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                     }
                 }
                 if (itemGroupKeys.size > 8) TimelineFastScrollbar(
@@ -1950,23 +2872,36 @@ private fun Modifier.timelinePinch(scale: TimelineScale, setScale: (TimelineScal
 }
 
 @Composable
-private fun PhotoThumbnail(entry: Entry, selected: Boolean, open: () -> Unit) {
+internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier = Modifier, open: () -> Unit) {
     val context = LocalContext.current
     val halfPixel = with(LocalDensity.current) { (0.5f / density).dp }
     val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri) {
         value = entry.contentUri?.let { uri ->
-            withContext(Dispatchers.IO) { runCatching { context.contentResolver.loadThumbnail(uri, android.util.Size(240, 240), null) }.getOrNull() }
+            withContext(Dispatchers.IO) {
+                runCatching { context.contentResolver.loadThumbnail(uri, android.util.Size(240, 240), null) }.getOrNull()
+                    ?: runCatching {
+                        if (entry.isVideo) MediaMetadataRetriever().let { retriever ->
+                            try {
+                                retriever.setDataSource(context, uri)
+                                retriever.getFrameAtTime(-1, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            } finally { retriever.release() }
+                        } else ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, _, _ ->
+                            decoder.setTargetSize(240, 240)
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        }
+                    }.getOrNull()
+            }
         }
     }
     Box(
-        Modifier
+        modifier
             .padding(halfPixel)
             .aspectRatio(1f)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary) else Modifier)
             .clickable(onClick = open)
             .semantics {
-                contentDescription = "Photo ${entry.name}"
+                contentDescription = "${if (entry.isVideo) "Video" else "Photo"} ${entry.name}"
                 this.selected = selected
                 stateDescription = if (selected) "Selected" else "Not selected"
             },
@@ -1980,6 +2915,12 @@ private fun PhotoThumbnail(entry: Entry, selected: Boolean, open: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        if (entry.isVideo) Surface(
+            color = Color.Black.copy(alpha = 0.65f),
+            contentColor = Color.White,
+            shape = CircleShape,
+            modifier = Modifier.align(Alignment.Center),
+        ) { Text("▶", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) }
         if (selected) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
             Box(
@@ -2068,16 +3009,29 @@ private fun Modifier.timelineSelection(
     }
 }
 
+private class ViewerZoomState {
+    var scale by mutableStateOf(1f)
+    var offset by mutableStateOf(Offset.Zero)
+
+    fun reset() {
+        scale = 1f
+        offset = Offset.Zero
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PhotoViewer(
     entries: List<Entry>, selectedUri: Uri, select: (Uri) -> Unit, close: () -> Unit,
-    setFavorite: (List<Entry>, Boolean) -> String?, addToCollection: (Set<Uri>) -> Unit,
-    metadata: Map<String, PhotoState>,
+    setFavorite: (List<Entry>, Boolean) -> String?, addToCollection: ((Set<Uri>) -> Unit)?,
+    restore: ((Entry) -> Unit)?,
+    removeFromCollection: ((Entry) -> Unit)?,
+    metadata: Map<String, PhotoState>, labelsByPhoto: Map<String, List<String>>, peopleNamesByPhoto: Map<String, List<String>>,
+    metadataStore: PhotoMetadataStore, hasLocationAccess: Boolean, requestLocationAccess: () -> Unit,
+    locationsUpdated: () -> Unit, openMap: (Entry) -> Unit,
 ) {
     val context = LocalContext.current
     val filmstripState = rememberLazyListState()
-    BackHandler(onBack = close)
     val selected = entries.firstOrNull { it.contentUri == selectedUri }
     if (selected == null) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2087,8 +3041,49 @@ private fun PhotoViewer(
         }
         return
     }
+    val initialPage = entries.indexOfFirst { it.contentUri == selectedUri }.coerceAtLeast(0)
+    val pagerState = rememberPagerState(initialPage = initialPage) { entries.size }
+    val currentPage = pagerState.currentPage
     var detailsOpen by remember(selectedUri) { mutableStateOf(false) }
     var actionError by remember(selectedUri) { mutableStateOf<String?>(null) }
+    var manualFullscreen by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    val videoPlayback = remember { mutableMapOf<String, VideoPlaybackState>() }
+    val imageZoom = remember { mutableMapOf<String, ViewerZoomState>() }
+    val selectedZoom = imageZoom.getOrPut(selected.photoKey) { ViewerZoomState() }
+    val location by produceState<PhotoLocation?>(initialValue = null, selected.photoKey, hasLocationAccess) {
+        value = if (hasLocationAccess) withContext(Dispatchers.IO) { loadPhotoLocation(context, selected, metadataStore) } else null
+        if (hasLocationAccess) locationsUpdated()
+    }
+    val zoomMode = !selected.isVideo && selectedZoom.scale > 1f
+    val rotatedLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val fullscreen = zoomMode || manualFullscreen || rotatedLandscape
+    BackHandler {
+        when {
+            zoomMode -> selectedZoom.reset()
+            manualFullscreen -> manualFullscreen = false
+            else -> close()
+        }
+    }
+    LaunchedEffect(zoomMode) { if (!zoomMode) controlsVisible = true }
+    val activity = context as? Activity
+    androidx.compose.runtime.DisposableEffect(fullscreen, activity) {
+        val controller = activity?.let { WindowCompat.getInsetsController(it.window, it.window.decorView) }
+        if (fullscreen) {
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (fullscreen) controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    LaunchedEffect(selectedUri, entries) {
+        val target = entries.indexOfFirst { it.contentUri == selectedUri }
+        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
+    }
+    LaunchedEffect(currentPage, entries) {
+        entries.getOrNull(currentPage)?.contentUri?.takeIf { it != selectedUri }?.let(select)
+    }
     LaunchedEffect(selectedUri, entries) {
         val selectedIndex = entries.indexOfFirst { it.contentUri == selectedUri }
         if (selectedIndex >= 0) {
@@ -2100,81 +3095,184 @@ private fun PhotoViewer(
             }
         }
     }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Surface(
-            color = islandColor(),
-            contentColor = islandContentColor(),
-            shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = close) {
-                    Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back")
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(formatPhotoDateTime(selected.takenMillis), style = MaterialTheme.typography.titleSmall)
-                    Text(selected.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
-            }
-        }
-        ViewerImage(selected, Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp))
-        LazyRow(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            state = filmstripState,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(entries, key = { it.contentUri.toString() }) { entry ->
-                FilmstripThumbnail(entry, entry.contentUri == selectedUri) { entry.contentUri?.let(select) }
-            }
-        }
-        Surface(
-            color = islandColor(),
-            contentColor = islandContentColor(),
-            shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                IconButton(onClick = { sharePhotos(context, listOf(selected)) }) {
-                    Icon(painterResource(R.drawable.ic_share), contentDescription = "Share photo")
-                }
-                IconButton(onClick = { detailsOpen = true }) {
-                    Icon(painterResource(R.drawable.ic_info), contentDescription = "Photo details")
-                }
-                IconButton(onClick = { actionError = setFavorite(listOf(selected), !metadata[selected.photoKey].orDefault().favorite) }) {
-                    Icon(painterResource(if (metadata[selected.photoKey].orDefault().favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = "Toggle favorite")
-                }
-                IconButton(onClick = { selected.contentUri?.let { addToCollection(setOf(it)) } }) {
-                    Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add photo to collection")
-                }
-            }
-        }
+    val pager: @Composable (Modifier) -> Unit = { modifier ->
+        ViewerPager(
+            entries = entries,
+            state = pagerState,
+            playback = videoPlayback,
+            imageZoom = imageZoom,
+            zoomMode = zoomMode,
+            modifier = modifier,
+            background = if (fullscreen) Color.Black else MaterialTheme.colorScheme.surfaceVariant,
+            toggleControls = { if (fullscreen && !zoomMode) controlsVisible = !controlsVisible },
+            showDetails = { detailsOpen = true },
+        )
     }
+    val actions: @Composable (Modifier) -> Unit = { modifier ->
+        ViewerActionsIsland(
+            favorite = metadata[selected.photoKey].orDefault().favorite,
+            isVideo = selected.isVideo && (!rotatedLandscape || manualFullscreen),
+            fullscreen = fullscreen,
+            share = { sharePhotos(context, listOf(selected)) },
+            details = { detailsOpen = true },
+            toggleFavorite = { actionError = setFavorite(listOf(selected), !metadata[selected.photoKey].orDefault().favorite) },
+            add = addToCollection?.let { action -> { selected.contentUri?.let { action(setOf(it)) } } },
+            restore = restore?.let { action -> { action(selected) } },
+            removeFromCollection = removeFromCollection?.let { action -> { action(selected) } },
+            edit = { Toast.makeText(context, "Η επεξεργασία θα προστεθεί αργότερα", Toast.LENGTH_SHORT).show() },
+            toggleFullscreen = { manualFullscreen = !manualFullscreen },
+            modifier = modifier,
+        )
+    }
+    if (fullscreen) Box(Modifier.fillMaxSize().background(Color.Black)) {
+        pager(Modifier.fillMaxSize())
+        AnimatedVisibility(controlsVisible && !zoomMode, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
+                Surface(
+                    color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                ) { IconButton(onClick = { if (manualFullscreen) manualFullscreen = false else close() }) {
+                    Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back")
+                } }
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                    ViewerFilmstrip(entries, selectedUri, filmstripState, select)
+                    actions(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
+        }
+    } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        ViewerHeader(selected, close)
+        pager(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp))
+        ViewerFilmstrip(entries, selectedUri, filmstripState, select)
+        actions(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
+    }
+    val aiTags = labelsByPhoto[selected.photoKey].orEmpty().joinToString(" · ").ifBlank { "Not analyzed yet" }
     if (detailsOpen) ModalBottomSheet(onDismissRequest = { detailsOpen = false }) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Details", style = MaterialTheme.typography.titleMedium)
             Text("Name: ${selected.name}")
-            Text("Location: ${selected.relativePath ?: "Unavailable"}")
+            Text("File: ${selected.relativePath ?: "Unavailable"}")
+            if (!hasLocationAccess) Button(onClick = requestLocationAccess) { Text("Allow photo locations") }
+            else location?.let { photoLocation ->
+                Text("Place: ${photoLocation.placeName ?: "Not named"}")
+                PhotoLocationPreview(photoLocation)
+                Text("Coordinates: ${"%.5f".format(photoLocation.latitude)}, ${"%.5f".format(photoLocation.longitude)}")
+                Button(onClick = { openMap(selected) }) { Text("Show on map") }
+            } ?: Text("No embedded location in this photo.")
             Text("Date: ${formatPhotoDateTime(selected.takenMillis)}")
             Text("Size: ${selected.detail.substringAfter(" · ", selected.detail)}")
+            Text("AI tags (English): $aiTags")
+            peopleNamesByPhoto[selected.photoKey]?.takeIf { it.isNotEmpty() }?.let { Text("People: ${it.joinToString(" · ")}") }
         }
     }
     actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
 }
 
 @Composable
-private fun ViewerImage(entry: Entry, modifier: Modifier = Modifier) {
+private fun ViewerHeader(entry: Entry, close: () -> Unit) = Surface(
+    color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge,
+    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp),
+) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+        Column(Modifier.weight(1f)) {
+            Text(formatPhotoDateTime(entry.takenMillis), style = MaterialTheme.typography.titleSmall)
+            Text(entry.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ViewerFilmstrip(entries: List<Entry>, selectedUri: Uri, state: androidx.compose.foundation.lazy.LazyListState, select: (Uri) -> Unit) {
+    LazyRow(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        state = state,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(entries, key = { it.contentUri.toString() }) { entry ->
+            FilmstripThumbnail(entry, entry.contentUri == selectedUri) { entry.contentUri?.let(select) }
+        }
+    }
+}
+
+@Composable
+private fun ViewerPager(
+    entries: List<Entry>, state: PagerState, playback: MutableMap<String, VideoPlaybackState>,
+    imageZoom: MutableMap<String, ViewerZoomState>, zoomMode: Boolean, modifier: Modifier,
+    background: Color, toggleControls: () -> Unit, showDetails: () -> Unit,
+) {
+    HorizontalPager(state = state, modifier = modifier, userScrollEnabled = !zoomMode, key = { entries[it].contentUri.toString() }) { page ->
+        val entry = entries[page]
+        if (entry.isVideo) {
+            if (page == state.currentPage) ViewerVideo(entry, Modifier.fillMaxSize(), playback.getOrPut(entry.photoKey) { VideoPlaybackState() }, toggleControls)
+            else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_play), contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+            }
+        } else ViewerImage(entry, Modifier.fillMaxSize(), toggleControls, showDetails, background, imageZoom.getOrPut(entry.photoKey) { ViewerZoomState() })
+    }
+}
+
+@Composable
+private fun ViewerActionsIsland(
+    favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
+    share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
+    restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: () -> Unit,
+    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(true) }
+    Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.fillMaxWidth().height(22.dp).clickable { expanded = !expanded }, contentAlignment = Alignment.Center) {
+                Box(Modifier.width(34.dp).height(4.dp).clip(CircleShape).background(islandContentColor().copy(alpha = 0.72f)))
+            }
+            AnimatedVisibility(expanded) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                    IconButton(onClick = details) { Icon(painterResource(R.drawable.ic_info), contentDescription = "Details") }
+                    IconButton(onClick = toggleFavorite) { Icon(painterResource(if (favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = "Toggle favorite") }
+                    add?.let { action -> IconButton(onClick = action) {
+                        Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add to collection")
+                    } }
+                    restore?.let { action -> IconButton(onClick = action) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore from Hidden") } }
+                    removeFromCollection?.let { action -> IconButton(onClick = action) {
+                        Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
+                    } }
+                    IconButton(onClick = edit) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
+                    if (isVideo) IconButton(onClick = toggleFullscreen) {
+                        Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerImage(
+    entry: Entry,
+    modifier: Modifier = Modifier,
+    toggleControls: () -> Unit = {},
+    showDetails: () -> Unit = {},
+    background: Color = Color.Unspecified,
+    zoom: ViewerZoomState? = null,
+) {
     val context = LocalContext.current
-    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+    val zoomState = zoom ?: remember(entry.contentUri) { ViewerZoomState() }
+    val viewerBackground = if (background == Color.Unspecified) MaterialTheme.colorScheme.surfaceVariant else background
+    BoxWithConstraints(modifier.background(viewerBackground)) {
         val density = LocalDensity.current
         val targetWidth = with(density) { maxWidth.roundToPx() }.coerceAtLeast(1)
         val targetHeight = with(density) { maxHeight.roundToPx() }.coerceAtLeast(1)
+        val transform = rememberTransformableState { _, zoomChange, pan, _ ->
+            val nextScale = (zoomState.scale * zoomChange).coerceIn(1f, 5f)
+            val maxX = (nextScale - 1f) * targetWidth / 2f
+            val maxY = (nextScale - 1f) * targetHeight / 2f
+            zoomState.scale = nextScale
+            zoomState.offset = if (nextScale == 1f) Offset.Zero else Offset(
+                (zoomState.offset.x + pan.x).coerceIn(-maxX, maxX),
+                (zoomState.offset.y + pan.y).coerceIn(-maxY, maxY),
+            )
+        }
         val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri, targetWidth, targetHeight) {
             value = entry.contentUri?.let { uri ->
                 withContext(Dispatchers.IO) {
@@ -2192,12 +3290,64 @@ private fun ViewerImage(entry: Entry, modifier: Modifier = Modifier) {
                 }
             }
         }
+        val infoGesture = if (zoomState.scale == 1f) Modifier.pointerInput(entry.contentUri) {
+            var verticalDrag = 0f
+            detectVerticalDragGestures(
+                onVerticalDrag = { _, amount -> verticalDrag += amount },
+                onDragEnd = { if (verticalDrag < -80f) showDetails() },
+            )
+        } else Modifier
         val image = bitmap
         if (image == null) Text("Photo unavailable", modifier = Modifier.padding(16.dp)) else androidx.compose.foundation.Image(
             bitmap = image.asImageBitmap(),
             contentDescription = entry.name,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer(scaleX = zoomState.scale, scaleY = zoomState.scale, translationX = zoomState.offset.x, translationY = zoomState.offset.y)
+                .transformable(state = transform, canPan = { zoomState.scale > 1f })
+                .then(infoGesture)
+                .pointerInput(entry.contentUri) {
+                    detectTapGestures(
+                        onTap = { if (zoomState.scale == 1f) toggleControls() },
+                        onDoubleTap = {
+                            if (zoomState.scale > 1f) zoomState.reset() else zoomState.scale = 2f
+                        },
+                    )
+                },
+        )
+    }
+}
+
+private class VideoPlaybackState(var positionMs: Int = 0, var playWhenReady: Boolean = true)
+
+@Composable
+private fun ViewerVideo(entry: Entry, modifier: Modifier = Modifier, playback: VideoPlaybackState, toggleControls: () -> Unit = {}) {
+    val uri = entry.contentUri ?: return
+    key(uri) {
+        AndroidView(
+            factory = { viewContext ->
+                VideoView(viewContext).apply {
+                    val controller = MediaController(viewContext)
+                    controller.setAnchorView(this)
+                    setMediaController(controller)
+                    setOnClickListener { toggleControls() }
+                    setVideoURI(uri)
+                    setOnPreparedListener {
+                        if (playback.positionMs > 0) seekTo(playback.positionMs)
+                        if (playback.playWhenReady) start()
+                    }
+                    setOnCompletionListener {
+                        playback.positionMs = 0
+                        playback.playWhenReady = false
+                    }
+                }
+            },
+            modifier = modifier.background(Color.Black),
+            onRelease = { video ->
+                playback.positionMs = video.currentPosition
+                playback.playWhenReady = video.isPlaying
+                video.stopPlayback()
+            },
         )
     }
 }
@@ -2244,7 +3394,12 @@ private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0
         .format(Instant.ofEpochMilli(takenMillis).atZone(ZoneId.systemDefault()))
 } else "Date unavailable"
 
-private fun listPhotos(context: Context): List<Entry> {
+private fun listPhotos(context: Context): List<Entry> = (
+    listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
+        listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+).sortedByDescending { it.takenMillis }
+
+private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean): List<Entry> {
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
         MediaStore.Images.Media.DISPLAY_NAME,
@@ -2254,12 +3409,12 @@ private fun listPhotos(context: Context): List<Entry> {
         MediaStore.Images.Media.DATE_MODIFIED,
     )
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-    return context.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection,
+    return context.contentResolver.query(collection, projection, selection,
         arrayOf("DCIM/%", "Pictures/Screenshots/%", "DCIM/Screenshots/%"), null)?.use { cursor ->
         buildList { while (cursor.moveToNext()) {
             val path = cursor.string(2)
             val sizeBytes = cursor.long(3)
-            val uri = android.content.ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.long(0))
+            val uri = android.content.ContentUris.withAppendedId(collection, cursor.long(0))
             val takenMillis = cursor.long(4).takeIf { it > 0 } ?: cursor.long(5) * 1000
             add(Entry(
                 name = cursor.string(1),
@@ -2269,8 +3424,9 @@ private fun listPhotos(context: Context): List<Entry> {
                 takenMillis = takenMillis,
                 sizeBytes = sizeBytes,
                 photoKey = PhotoMetadataRules.stableKey(uri.toString(), path, cursor.string(1), sizeBytes),
+                isVideo = isVideo,
             ))
-        } }.sortedByDescending { it.takenMillis }
+        } }
     } ?: error("MediaStore query failed")
 }
 

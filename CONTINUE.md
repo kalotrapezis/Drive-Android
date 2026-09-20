@@ -3,6 +3,13 @@
 Updated: 2026-09-20. Read `ROADMAP.md`, `Plan.md`, and
 `DOCUMENT_SCANNER_PDF_MANAGER.md` first.
 
+## Current Photos guide
+
+`FEATURES.md` is the authoritative user-facing inventory of the current Files
+and Photos implementation: Collections, Hidden, viewer actions, gestures, map,
+search, and known limits. Use it instead of older historical checkpoint text
+below when deciding what the app currently does.
+
 ## Map and photo-location checkpoint — 2026-09-20
 
 - The Map collection is implemented and installed on Xiaomi 15 (`208c8192`).
@@ -36,11 +43,9 @@ Updated: 2026-09-20. Read `ROADMAP.md`, `Plan.md`, and
   buttons; user-created collections are square cards with a real local cover
   when populated, otherwise an empty-collection graphic. The `+` creation
   sheet is functional.
-- Android `Videos` remains an explicit placeholder: the app queries only
-  `MediaStore.Images.Media`, `PhotoFilter.Videos` is intentionally empty, and
-  there is no video thumbnail or playback implementation. Add it as one slice:
-  query `MediaStore.Video.Media`, preserve mime/duration in entries, render
-  video thumbnails and open playback via Android's native video intent/player.
+- Gallery reads both `MediaStore.Images.Media` and `MediaStore.Video.Media`.
+  Videos have thumbnails, a Videos collection, page navigation, native
+  `VideoView` playback and a fullscreen control.
 
 ## Current state
 
@@ -75,12 +80,14 @@ Updated: 2026-09-20. Read `ROADMAP.md`, `Plan.md`, and
   and size). The selected filmstrip image has an accent border. It follows the
   Android system light/dark mode and, on Android 12+, the system dynamic colour.
   It safely reports a missing selected URI after a refresh or permission change.
-  Photo metadata is private app SQLite: Favorites, legacy Archive and named
-  custom collections are currently implemented. Metadata never changes source
-  media bytes or MediaStore fields. Archive is now a withdrawn legacy feature:
-  do not extend it; replace it with the local AI collections design in
-  `AI_COLLECTIONS_ARCHITECTURE.md` before the next Photos implementation slice.
-- Android Auto Backup is disabled. Uninstalling the app clears this private metadata; it does not remove or alter the original DCIM/Screenshots media. Metadata export/sync is deliberately not implemented yet. Local AI classification, OCR, face embeddings, people/clusters and correction history are documented only in `AI_COLLECTIONS_ARCHITECTURE.md`; no model or background scan is present.
+  Photo metadata is private app SQLite: Favorites, named custom collections,
+  locally cached place names, local AI labels, face groups, and review state.
+  It never changes source media bytes or MediaStore fields. Archive remains a
+  withdrawn legacy feature.
+- Android Auto Backup is disabled. Uninstalling the app clears private metadata
+  and Hidden-vault data; it does not alter public DCIM/Screenshots media.
+  Local analysis runs only after an explicit People/Documents request and never
+  uploads media or runs as a background service.
 - Timeline is compact: its thumbnail grid uses one physical-pixel white gaps,
   no rounded tiles, and compact translucent top/bottom controls so photos use
   the available space. Long-press starts in-memory selection; dragging over
@@ -201,7 +208,7 @@ use personal documents as test fixtures.
    permanent global `Sync/Drive/Photos/New` navigation bar.
 6. Photos uses `Timeline`, `Collections`, `More` as its bottom actions.
    Collections includes People, Documents, Videos, Screenshots and Trash.
-   People and Documents are pending the local-only AI architecture; Archive is
+   People and Documents use explicitly started, local-only analysis; Archive is
    withdrawn. Trash is a Photo
    collection and means Android-confirmed move-to-trash, never default
    permanent deletion.
@@ -218,9 +225,10 @@ use personal documents as test fixtures.
   tappable accent pins, and the Details preview is implemented. Marker
   clustering at wide zoom levels is the next optional map refinement; do not
   add it until it is specifically requested.
-- Real Videos index, edit-date, metadata export/sync and collection rename/delete
-  are deferred. Android Trash browsing remains separate from Android-confirmed
-  move-to-trash; do not add a decorative/non-working action.
+- Edit-date, metadata export/sync, and custom-collection rename are deferred.
+  Custom-collection deletion is implemented and deletes only the collection
+  record, never its photos. Android Trash browsing remains separate from
+  Android-confirmed move-to-trash; do not add a decorative/non-working action.
 - Implement `AI_COLLECTIONS_ARCHITECTURE.md` in its stated order. Do not add a
   cloud AI API, automatic filing/deletion, face scan, or model dependency until
   the local data foundation and model/licence decision are accepted.

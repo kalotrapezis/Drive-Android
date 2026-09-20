@@ -46,6 +46,8 @@ below when deciding what the app currently does.
 - Gallery reads both `MediaStore.Images.Media` and `MediaStore.Video.Media`.
   Videos have thumbnails, a Videos collection, page navigation, native
   `VideoView` playback and a fullscreen control.
+- An active Gallery search shows a top-right monochrome orange eraser. It is
+  the direct **Clear search** action, rather than a passive search indicator.
 
 ## Current state
 

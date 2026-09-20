@@ -71,6 +71,8 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   collections.
 - Search matches filename, folder/path, local English AI labels, named people,
   and cached nearby place names. It does not upload a photo to search.
+- While a Gallery search is active, the top-right orange eraser is a direct
+  **Clear search** action.
 
 ### Collections
 

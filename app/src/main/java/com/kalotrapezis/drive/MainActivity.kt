@@ -104,6 +104,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -170,6 +171,7 @@ import kotlin.math.roundToInt
 
 private const val DRIVE_PATH = "/sdcard/Drive/"
 private const val PHOTO_SETUP_COMPLETED = "photo_setup_completed"
+private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 
 private fun driveRoot(): File = File(Environment.getExternalStorageDirectory(), "Drive")
 
@@ -229,6 +231,7 @@ private fun LocalDriveApp() {
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
+    var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }
     val currentScreen by rememberUpdatedState(screen)
     var driveState by remember { mutableStateOf<DriveListState>(DriveListState.Idle) }
@@ -392,6 +395,8 @@ private fun LocalDriveApp() {
             when (screen) {
                 Screen.PhotoSetup -> PhotoSetup({ finishPhotoSetup(true) }, { finishPhotoSetup(false) })
                 Screen.Home -> Home(
+                    showPhotoBackdrop = homePhotoBackdrop,
+                    hasPhotoAccess = canReadPhotos(),
                     openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
                     openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
                     openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
@@ -438,6 +443,11 @@ private fun LocalDriveApp() {
                     metadataStore = photoMetadata,
                     photoPermission = photoPermission(),
                     hasDriveAccess = hasAllFilesAccess(),
+                    showPhotoBackdrop = homePhotoBackdrop,
+                    setShowPhotoBackdrop = { enabled ->
+                        homePhotoBackdrop = enabled
+                        preferences.edit().putBoolean(HOME_PHOTO_BACKDROP, enabled).apply()
+                    },
                     managePhotos = {
                         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                     },
@@ -471,6 +481,8 @@ private sealed interface PhotoFilter {
 
 @Composable
 private fun Home(
+    showPhotoBackdrop: Boolean,
+    hasPhotoAccess: Boolean,
     openPhotos: () -> Unit,
     openScreenshots: () -> Unit,
     openDocuments: () -> Unit,
@@ -497,7 +509,7 @@ private fun Home(
         item {
             HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomePrimaryCard("Photos", R.drawable.ic_gallery, openPhotos, Modifier.weight(1f))
+                    HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Screenshots", R.drawable.ic_gallery, openScreenshots)
                         HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
@@ -525,13 +537,28 @@ private fun Home(
     modifier = Modifier.fillMaxWidth(),
 ) { Box(Modifier.padding(10.dp)) { content() } }
 
-@Composable private fun HomePrimaryCard(label: String, icon: Int, click: () -> Unit, modifier: Modifier = Modifier) = Surface(
-    shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-    modifier = modifier.height(156.dp).clickable(onClick = click),
-) { Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-    Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(38.dp))
-    Text(label, style = MaterialTheme.typography.titleLarge)
-} }
+@Composable
+private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAccess: Boolean, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val photo by produceState<Bitmap?>(initialValue = null, showBackdrop, hasPhotoAccess) {
+        value = if (showBackdrop && hasPhotoAccess) withContext(Dispatchers.IO) { randomGalleryThumbnail(context) } else null
+    }
+    val hasBackdrop = photo != null
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        modifier = modifier.height(156.dp).clickable(onClick = click),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            photo?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+            if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
+            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                if (!hasBackdrop) Icon(painterResource(R.drawable.ic_gallery), contentDescription = "Photos", modifier = Modifier.size(38.dp))
+                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    }
+}
 
 @Composable private fun HomeCompactCard(label: String, icon: Int, click: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
@@ -612,6 +639,8 @@ private fun SettingsTab(
     metadataStore: PhotoMetadataStore,
     photoPermission: String,
     hasDriveAccess: Boolean,
+    showPhotoBackdrop: Boolean,
+    setShowPhotoBackdrop: (Boolean) -> Unit,
     managePhotos: () -> Unit,
     manageDrive: () -> Unit,
     openSync: () -> Unit,
@@ -641,6 +670,13 @@ private fun SettingsTab(
         }
         item {
             SettingsCard("Gallery") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Photo on Home", style = MaterialTheme.typography.titleMedium)
+                        Text("Show a random gallery thumbnail behind the Photos card.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = showPhotoBackdrop, onCheckedChange = setShowPhotoBackdrop)
+                }
                 Text("Search quality", style = MaterialTheme.typography.titleMedium)
                 SearchQualityOption("Fast", "Default · quick local labels", searchQuality == PhotoSearchQuality.Fast) {
                     searchQuality = PhotoSearchQuality.Fast
@@ -1769,6 +1805,8 @@ private fun PhotoTab(
     val timelineIcon = when (filter) {
         PhotoFilter.Favorites -> R.drawable.ic_favorite_border
         PhotoFilter.Documents -> R.drawable.ic_file
+        PhotoFilter.Screenshots -> R.drawable.ic_screenshot
+        PhotoFilter.Videos -> R.drawable.ic_video
         PhotoFilter.Review -> R.drawable.ic_tag
         PhotoFilter.Hidden -> R.drawable.ic_lock
         PhotoFilter.Map -> R.drawable.ic_map
@@ -1848,11 +1886,11 @@ private fun PhotoTab(
             shape = CircleShape,
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = 12.dp, top = 12.dp),
         ) {
-            IconButton(onClick = { Toast.makeText(context, "Ενεργή αναζήτηση", Toast.LENGTH_SHORT).show() }) {
+            IconButton(onClick = { searchQuery = "" }) {
                 Icon(
-                    painterResource(R.drawable.ic_search_active),
-                    contentDescription = "Active search",
-                    tint = Color(0xFF65D47E),
+                    painterResource(R.drawable.ic_cancel),
+                    contentDescription = "Clear search",
+                    tint = Color(0xFFFF9D42),
                 )
             }
         }
@@ -2271,8 +2309,8 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
             if (!showPeople || !showDocuments) Box(Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Screenshots", entries.count(Entry::isScreenshot), R.drawable.ic_gallery, { open(PhotoFilter.Screenshots) }, Modifier.weight(1f))
-            SystemCollectionButton("Videos", entries.count(Entry::isVideo), R.drawable.ic_gallery, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
+            SystemCollectionButton("Screenshots", entries.count(Entry::isScreenshot), R.drawable.ic_screenshot, { open(PhotoFilter.Screenshots) }, Modifier.weight(1f))
+            SystemCollectionButton("Videos", entries.count(Entry::isVideo), R.drawable.ic_video, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemCollectionButton("Hidden", hiddenCount, R.drawable.ic_lock, { open(PhotoFilter.Hidden) }, Modifier.weight(1f))
@@ -3393,6 +3431,13 @@ private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0
     DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm", Locale.getDefault())
         .format(Instant.ofEpochMilli(takenMillis).atZone(ZoneId.systemDefault()))
 } else "Date unavailable"
+
+private fun randomGalleryThumbnail(context: Context): Bitmap? = runCatching {
+    listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        .randomOrNull()
+        ?.contentUri
+        ?.let { context.contentResolver.loadThumbnail(it, android.util.Size(720, 720), null) }
+}.getOrNull()
 
 private fun listPhotos(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +

@@ -102,7 +102,7 @@ private fun codeResult(value: String, url: String?): CodeResult = PaymentCodes.f
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @androidx.annotation.OptIn(markerClass = [ExperimentalGetImage::class])
-internal fun CodeScannerTab(back: () -> Unit) {
+internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -156,6 +156,7 @@ internal fun CodeScannerTab(back: () -> Unit) {
                             val code = found.firstOrNull { !it.rawValue.isNullOrBlank() } ?: return@addOnSuccessListener
                             val value = code.rawValue!!
                             if (!scanning || (value == ignoredValue && SystemClock.elapsedRealtime() < ignoredUntil)) return@addOnSuccessListener
+                            if (onCode?.invoke(value) == true) return@addOnSuccessListener // e.g. Sync's pairing QR
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             result = codeResult(value, code.url?.url?.takeIf { code.valueType == Barcode.TYPE_URL })
                         }

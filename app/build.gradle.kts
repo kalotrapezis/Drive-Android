@@ -47,6 +47,7 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android stubs it)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

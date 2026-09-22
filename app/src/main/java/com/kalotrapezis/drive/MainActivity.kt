@@ -177,6 +177,10 @@ import androidx.camera.view.PreviewView
 import androidx.camera.view.transform.CoordinateTransform
 import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -544,7 +548,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     externalMissing = { externalSingle = true },
                     closeExternal = if (external != null) ::closeExternal else null,
                 )
-                Screen.Sync -> SyncTab(back = { screen = Screen.Home }, openSettings = { screen = Screen.Settings })
+                Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
                 Screen.Scanner -> CameraScanTab(
                     back = ::leaveScanner,
@@ -654,7 +658,11 @@ private fun Home(
                 ),
             )
         }
-        item { HomeWideCard("Local Sync", "No trusted device connected", R.drawable.ic_sync, openSync) }
+        item {
+            val context = LocalContext.current
+            val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
+            HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
+        }
         item {
             HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -767,42 +775,126 @@ private fun PdfToolCard(label: String, icon: Int, modifier: Modifier = Modifier,
 } }
 
 @Composable
-private fun SyncTab(back: () -> Unit, openSettings: () -> Unit) {
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            Modifier.fillMaxSize().padding(start = 16.dp, top = 160.dp, end = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+private fun SyncTab(back: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = remember(context) { SyncStore(context.applicationContext) }
+    val client = remember(context) { SyncClient(context.applicationContext, store) }
+    var pairing by remember { mutableStateOf(store.pairing()) }
+    var scanning by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf<BackupProgress?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var received by remember { mutableStateOf(0) }
+    var lastBackup by remember { mutableStateOf(0L) }
+    LaunchedEffect(job) { withContext(Dispatchers.IO) { received = store.receiptCount(); lastBackup = store.lastBackup() } }
+    // A long backup must not be cut off by the screen turning off.
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(job) { view.keepScreenOn = job != null; onDispose { view.keepScreenOn = false } }
+
+    if (scanning) {
+        CodeScannerTab(back = { scanning = false }, onCode = { value ->
+            val qr = SyncRules.parseQr(value) ?: return@CodeScannerTab false
+            scanning = false
+            busy = "Pairing with ${qr.name}…"
+            scope.launch {
+                message = runCatching { withContext(Dispatchers.IO) { client.pair(qr) } }
+                    .fold({ pairing = it; "Paired with ${it.name}. You can back up now." }, { it.message ?: "Pairing failed." })
+                busy = null
+            }
+            true
+        })
+        return
+    }
+    fun backUp() {
+        message = null
+        job = scope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { client.backUp(listPhotos(context)) { p -> scope.launch { progress = p } } } }
+            message = result.fold(
+                { r -> "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there" + if (r.failed.isEmpty()) "." else ". ${r.failed.size} failed, first: ${r.failed.first()}" },
+                { if (it is kotlinx.coroutines.CancellationException) "Stopped. Photos already sent are safe on the computer." else it.message ?: "Backup failed." },
+            )
+            progress = null
+            job = null
+        }
+    }
+
+    val p = pairing
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 32.dp),
+    ) {
+        item { FilesPageHeader("Sync", R.drawable.ic_sync, back) }
         item {
-            SettingsCard("Connection") {
-                Text("Not connected", style = MaterialTheme.typography.titleMedium)
-                Text("Discovery and pairing are not enabled yet. This screen never claims that a device is online.", style = MaterialTheme.typography.bodyMedium)
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = CircleShape, color = if (p != null) driveNavigationSelectedColor() else islandColor(), contentColor = if (p != null) driveNavigationSelectedContentColor() else islandContentColor()) {
+                            Icon(painterResource(R.drawable.ic_sync), contentDescription = null, modifier = Modifier.padding(14.dp).size(28.dp))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(p?.name ?: "No computer yet", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                busy ?: when {
+                                    job != null -> "Backing up…"
+                                    p != null -> "Paired · ${p.hosts.firstOrNull().orEmpty()}"
+                                    else -> "Pair once, then back up whenever you like"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                    progress?.let { pr ->
+                        LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, modifier = Modifier.fillMaxWidth())
+                        Text("${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    when {
+                        p == null -> Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Pair with computer")
+                        }
+                        job == null -> Button(onClick = ::backUp, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                            Icon(painterResource(R.drawable.ic_sync), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Back up now")
+                        }
+                        else -> OutlinedButton(onClick = { job?.cancel() }, modifier = Modifier.fillMaxWidth()) { Text("Stop") }
+                    }
+                }
             }
         }
-        item {
-            SettingsCard("Paired devices") {
-                Text("No paired devices", style = MaterialTheme.typography.titleMedium)
-                Text("When pairing is implemented, each card will show a device name, key fingerprint, capabilities and Last seen status.", style = MaterialTheme.typography.bodyMedium)
+        if (p != null) item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SyncStat("On the computer", "$received", Modifier.weight(1f))
+                SyncStat("Last backup", if (lastBackup == 0L) "Never" else DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(lastBackup)), Modifier.weight(1f))
             }
         }
-        item {
-            SettingsCard("Fixed sync map") {
-                Text("Files  ·  $DRIVE_PATH", style = MaterialTheme.typography.bodyMedium)
-                Text("Camera  ·  DCIM/Camera", style = MaterialTheme.typography.bodyMedium)
-                Text("Screenshots  ·  Pictures/Screenshots", style = MaterialTheme.typography.bodyMedium)
-                Text("Desktop targets are LocalDrive/Drive and LocalDrive/Photos after a trusted device is added.", style = MaterialTheme.typography.bodySmall)
+        message?.let { m -> item {
+            Surface(shape = MaterialTheme.shapes.large, color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
             }
-        }
+        } }
         item {
-            SettingsCard("Transfer activity") {
-                Text("No sync actions yet", style = MaterialTheme.typography.titleMedium)
-                Text("Pairing, previews and verified transfers are the next sync slice. Nothing is copied or deleted from this page.", style = MaterialTheme.typography.bodyMedium)
-            }
+            Text(
+                if (p == null) "On the computer open Local Drive › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
+                else "Backup copies each photo and video the computer does not have yet, into the same folders. The computer checks every file by SHA-256 before keeping it. Nothing on this phone is changed or deleted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
         }
-        item { Button(onClick = openSettings, modifier = Modifier.fillMaxWidth()) { Text("Open settings") } }
-            item { Box(Modifier.heightIn(min = 32.dp)) }
+        if (p != null) item {
+            TextButton(onClick = { store.forgetPairing(); pairing = null; message = null }, enabled = job == null) { Text("Forget ${p.name}") }
         }
-        ModuleHeader("Sync", back, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+@Composable
+private fun SyncStat(label: String, value: String, modifier: Modifier = Modifier) = Surface(
+    shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = modifier,
+) {
+    Column(Modifier.padding(16.dp)) {
+        Text(value, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -1740,6 +1832,10 @@ private fun PhotoTab(
     val pendingReview = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.nextReview() else null }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
+    var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
+    val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
+        collections.filter { it.uuid in hiddenAlbums }.flatMapTo(mutableSetOf()) { metadataStore.collectionKeys(it.id) }
+    }
     var hidePeopleFromCollections by remember { mutableStateOf(metadataStore.hidesPeopleFromCollections()) }
     var hideDocumentsFromCollections by remember { mutableStateOf(metadataStore.hidesDocumentsFromCollections()) }
     val activeCollection = (filter as? PhotoFilter.Collection)?.let { chosen -> collections.firstOrNull { it.id == chosen.id } }
@@ -1747,7 +1843,7 @@ private fun PhotoTab(
         (filter as? PhotoFilter.Collection)?.let { metadataStore.collectionKeys(it.id) }.orEmpty()
     }
     val entries = if (filter == PhotoFilter.Hidden) vaultEntries else allEntries.filter { entry -> when (filter) {
-        PhotoFilter.Timeline -> PhotoMetadataRules.visibleInGallery(entry.isScreenshot(), entry.photoKey in documentKeys, hideScreenshots, hideDocuments)
+        PhotoFilter.Timeline -> PhotoMetadataRules.visibleInGallery(entry.isScreenshot(), entry.photoKey in documentKeys, hideScreenshots, hideDocuments, entry.photoKey in hiddenAlbumKeys)
         PhotoFilter.Favorites -> metadata[entry.photoKey].orDefault().favorite
         PhotoFilter.People -> entry.photoKey in peopleKeys
         PhotoFilter.Documents -> entry.photoKey in documentKeys
@@ -2182,6 +2278,9 @@ private fun PhotoTab(
         hideDocuments = hideDocuments,
         setHideScreenshots = { hide -> metadataStore.setHidesScreenshotsFromGallery(hide); hideScreenshots = hide },
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromGallery(hide); hideDocuments = hide },
+        albums = collections,
+        hiddenAlbums = hiddenAlbums,
+        setAlbumHidden = { album, hide -> album.uuid?.let { metadataStore.setAlbumHiddenFromGallery(it, hide) }; hiddenAlbums = metadataStore.albumsHiddenFromGallery() },
         dismiss = { toolsOpen = false },
     )
     if (collectionToolsOpen) CollectionsToolsSheet(
@@ -2352,13 +2451,13 @@ private fun FaceReviewCrop(label: String, entry: Entry?, bounds: Rect, modifier:
 private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, back: () -> Unit) {
     if (groups.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            FilesPageHeader("People", R.drawable.ic_collections, back)
+            FilesPageHeader("People", R.drawable.ic_people, back)
             Text("No people found yet.")
         }
         return
     }
     LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_collections, back) }
+        item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_people, back) }
         items(groups, key = { it.id }) { group ->
             FaceGroupCard(group, entries[group.photoKey]) { open(group) }
         }
@@ -2507,7 +2606,7 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
         if (analysisRunning) item { AnalysisProgress(analysisDone, analysisTotal, analysisPaused, toggleAnalysisPause) }
         item { Text("System collections", style = MaterialTheme.typography.labelLarge) }
         if (showPeople || showDocuments) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (showPeople) SystemCollectionButton("People", peopleCount, R.drawable.ic_collections, { open(PhotoFilter.People) }, Modifier.weight(1f))
+            if (showPeople) SystemCollectionButton("People", peopleCount, R.drawable.ic_people, { open(PhotoFilter.People) }, Modifier.weight(1f))
             if (showDocuments) SystemCollectionButton("Documents", entries.count { it.photoKey in documentKeys }, R.drawable.ic_file, { open(PhotoFilter.Documents) }, Modifier.weight(1f))
             if (!showPeople || !showDocuments) Box(Modifier.weight(1f))
         } }
@@ -2674,10 +2773,13 @@ private fun GalleryToolsSheet(
     hideDocuments: Boolean,
     setHideScreenshots: (Boolean) -> Unit,
     setHideDocuments: (Boolean) -> Unit,
+    albums: List<PhotoCollection>,
+    hiddenAlbums: Set<String>,
+    setAlbumHidden: (PhotoCollection, Boolean) -> Unit,
     dismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
-        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Gallery tools", style = MaterialTheme.typography.titleLarge)
             Text(permission, style = MaterialTheme.typography.bodyMedium)
             if (permission != "Full photo and video access" && permission != "Photo and video access granted") {
@@ -2685,6 +2787,8 @@ private fun GalleryToolsSheet(
             }
             DriveWideAction(R.drawable.ic_refresh, "Refresh") { refresh(); dismiss() }
             Text("Hide from Gallery", style = MaterialTheme.typography.titleMedium)
+            Text("Hidden albums stay in Collections and on the phone; only the Gallery view skips them.", style = MaterialTheme.typography.bodySmall)
+            Text("System albums", style = MaterialTheme.typography.labelLarge)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideScreenshots(!hideScreenshots) }) {
                 Checkbox(checked = hideScreenshots, onCheckedChange = setHideScreenshots, colors = neutralCheckboxColors())
                 Text("Screenshots")
@@ -2692,6 +2796,16 @@ private fun GalleryToolsSheet(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideDocuments(!hideDocuments) }) {
                 Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
                 Text("Documents")
+            }
+            Text("My albums", style = MaterialTheme.typography.labelLarge)
+            if (albums.isEmpty()) Text("No albums yet. Create one in Collections with +.", style = MaterialTheme.typography.bodySmall)
+            albums.forEach { album ->
+                val hidden = album.uuid in hiddenAlbums
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setAlbumHidden(album, !hidden) }) {
+                    Checkbox(checked = hidden, onCheckedChange = { setAlbumHidden(album, it) }, colors = neutralCheckboxColors())
+                    Text(album.name, modifier = Modifier.weight(1f))
+                    Text("${album.storedCount}", style = MaterialTheme.typography.bodySmall)
+                }
             }
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

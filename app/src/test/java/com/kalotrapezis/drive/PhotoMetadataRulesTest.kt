@@ -21,6 +21,7 @@ class PhotoMetadataRulesTest {
         assertEquals(false, PhotoMetadataRules.visibleInGallery(isScreenshot = true, isDocument = false, hideScreenshots = true, hideDocuments = false))
         assertEquals(false, PhotoMetadataRules.visibleInGallery(isScreenshot = false, isDocument = true, hideScreenshots = false, hideDocuments = true))
         assertEquals(true, PhotoMetadataRules.visibleInGallery(isScreenshot = false, isDocument = false, hideScreenshots = true, hideDocuments = true))
+        assertEquals(false, PhotoMetadataRules.visibleInGallery(isScreenshot = false, isDocument = false, hideScreenshots = false, hideDocuments = false, inHiddenAlbum = true))
     }
 
     @Test fun `only paper labels reach document OCR`() {

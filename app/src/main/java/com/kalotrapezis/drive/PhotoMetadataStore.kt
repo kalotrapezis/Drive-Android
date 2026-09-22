@@ -20,7 +20,7 @@ internal data class PhotoLocation(
 )
 internal enum class PhotoSearchQuality { Fast, Advanced }
 
-internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int)
+internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int, val uuid: String? = null)
 internal data class FaceSample(val photoKey: String, val bounds: android.graphics.Rect)
 internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null)
 internal data class PendingReview(
@@ -130,9 +130,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     fun collections(): List<PhotoCollection> = readableDatabase.rawQuery(
-        "SELECT c.id, c.name, COUNT(m.photo_key) FROM collections c LEFT JOIN collection_membership m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE",
+        "SELECT c.id, c.name, COUNT(m.photo_key), c.uuid FROM collections c LEFT JOIN collection_membership m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE",
         null,
-    ).use { cursor -> buildList { while (cursor.moveToNext()) add(PhotoCollection(cursor.getLong(0), cursor.getString(1), cursor.getInt(2))) } }
+    ).use { cursor -> buildList { while (cursor.moveToNext()) add(PhotoCollection(cursor.getLong(0), cursor.getString(1), cursor.getInt(2), cursor.getString(3))) } }
 
     fun collectionKeys(collectionId: Long): Set<String> = readableDatabase.query(
         "collection_membership", arrayOf("photo_key"), "collection_id = ?", arrayOf(collectionId.toString()), null, null, null,
@@ -381,6 +381,14 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun hidesScreenshotsFromGallery(): Boolean = galleryPreferences.getBoolean("hide_screenshots", false)
 
+    /** My albums whose photos stay out of the Gallery view (by album UUID, so renames and sync keep it). */
+    fun albumsHiddenFromGallery(): Set<String> = galleryPreferences.getStringSet("hidden_albums", emptySet()).orEmpty()
+
+    fun setAlbumHiddenFromGallery(uuid: String, hide: Boolean) {
+        val updated = albumsHiddenFromGallery().toMutableSet().apply { if (hide) add(uuid) else remove(uuid) }
+        galleryPreferences.edit().putStringSet("hidden_albums", updated).apply()
+    }
+
     fun hidesDocumentsFromGallery(): Boolean = galleryPreferences.getBoolean("hide_documents", false)
 
     fun hidesPeopleFromCollections(): Boolean = galleryPreferences.getBoolean("hide_people_collection", false)
@@ -505,6 +513,6 @@ internal object PhotoMetadataRules {
         require(it.none(Char::isISOControl)) { "Collection name contains unsupported characters." }
     }
 
-    fun visibleInGallery(isScreenshot: Boolean, isDocument: Boolean, hideScreenshots: Boolean, hideDocuments: Boolean): Boolean =
-        !(hideScreenshots && isScreenshot) && !(hideDocuments && isDocument)
+    fun visibleInGallery(isScreenshot: Boolean, isDocument: Boolean, hideScreenshots: Boolean, hideDocuments: Boolean, inHiddenAlbum: Boolean = false): Boolean =
+        !(hideScreenshots && isScreenshot) && !(hideDocuments && isDocument) && !inHiddenAlbum
 }

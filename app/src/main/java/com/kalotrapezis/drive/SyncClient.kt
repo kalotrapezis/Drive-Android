@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -102,6 +103,9 @@ internal class SyncException(message: String) : Exception(message)
 /** Talks only to the paired computer: HTTPS whose certificate must match the QR's SHA-256 fingerprint. */
 internal class SyncClient(private val context: Context, private val store: SyncStore) {
     private val metadataStore by lazy { PhotoMetadataStore(context) }
+    private val driveMetadata by lazy { DriveMetadata(context) }
+    private val driveRecents by lazy { DriveRecents(context) }
+    private val driveManifest by lazy { DriveManifest(context) }
 
     private fun open(host: String, port: Int, fingerprint: String, path: String, method: String, token: String?): HttpsURLConnection {
         val pinned = object : X509TrustManager {
@@ -208,6 +212,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             if (result.isFailure) { delay(1_000); result = runCatching { uploadOne(host, p, sha, e) } }
             result.onSuccess { sent++ }.onFailure { failed += "${e.name}: ${it.message}" }
         }
+        // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
+        runCatching { backUpFiles(host, p, progress) }.onFailure { failed += "Drive files: ${it.message}" }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         runCatching { syncMetadata(host, p, entries) } // best-effort: a blob backup that succeeded should not be reported as failed over this
@@ -248,6 +254,12 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 JSONObject().put("uuid", r.uuid).put("name", r.name).put("updatedAt", r.updatedAt)
             }))
             .put("faces", JSONArray(metadataStore.faceRecords().mapNotNull { r -> faceJson(r, sha(r.photoKey), sizes[r.photoKey]) }))
+            // Files (tags, favorites, folder colours) are keyed by their Drive-relative path, not by content.
+            .put("files", JSONArray(driveMetadata.records().map { r ->
+                JSONObject().put("path", r.path).put("favorite", r.favorite).put("color", r.color ?: JSONObject.NULL)
+                    .put("tags", JSONArray(r.tags.toList())).put("updatedAt", r.updatedAt)
+            }))
+            .put("fileRecents", JSONArray(driveRecents.all().map { JSONObject().put("path", it.relativePath).put("openedAt", it.openedAt) }))
         postJson(host, p, "/metadata", body)
 
         val since = store.lastMetadataSync()
@@ -264,7 +276,50 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         } }
         pulled.each("people") { d -> metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt")) }
         pulled.each("faces") { d -> metadataStore.applyIncomingFace(d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt")) }
+        pulled.each("files") { d ->
+            val tags = d.optJSONArray("tags") ?: JSONArray()
+            driveMetadata.applyIncoming(DriveMetaRecord(
+                d.getString("path"), d.optBoolean("favorite"), d.optString("color").ifEmpty { null },
+                (0 until tags.length()).map(tags::getString).toSet(), d.getLong("updatedAt"),
+            ))
+        }
+        pulled.optJSONArray("fileRecents")?.let { array ->
+            driveRecents.merge((0 until array.length()).mapNotNull { i ->
+                array.optJSONObject(i)?.let { DriveRecent(it.optString("path"), it.optLong("openedAt")) }
+            }.filter { it.openedAt > 0 })
+        }
         store.setLastMetadataSync(System.currentTimeMillis())
+    }
+
+    /**
+     * The Files module (SYNC_PLAN.md phase 6e): the phone offers every file under Drive with its SHA-256, the
+     * computer moves its own copy of anything that only changed place — a rename, or a move into Drive/Trash/ —
+     * and asks for the rest. Nothing on the phone is changed, and nothing is ever deleted on either side.
+     */
+    private fun backUpFiles(host: String, p: Pairing, progress: (BackupProgress) -> Unit) {
+        val root = File(android.os.Environment.getExternalStorageDirectory(), "Drive")
+        if (!root.isDirectory) return
+        val entries = driveManifest.entries(root)
+        val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes) })
+        val answer = postJson(host, p, "/files/manifest", JSONObject().put("files", manifest))
+        val want = answer.optJSONArray("want") ?: JSONArray()
+        val byPath = entries.associateBy { it.relativePath }
+        for (i in 0 until want.length()) {
+            val entry = byPath[want.getString(i)] ?: continue
+            progress(BackupProgress("Sending files", i, want.length()))
+            uploadFile(host, p, entry, File(root, entry.relativePath))
+        }
+    }
+
+    private fun uploadFile(host: String, p: Pairing, entry: DriveFileEntry, file: File) {
+        val path = "/file/${entry.sha256}?path=${URLEncoder.encode(entry.relativePath, "UTF-8")}&modified=${entry.modified}"
+        val c = open(host, p.port, p.fingerprint, path, "PUT", p.token)
+        c.doOutput = true
+        c.setFixedLengthStreamingMode(entry.sizeBytes)
+        c.setRequestProperty("Content-Type", "application/octet-stream")
+        c.outputStream.use { out -> file.inputStream().use { it.copyTo(out, 256 * 1024) } }
+        val receipt = c.jsonResult().also { c.disconnect() }
+        if (!receipt.optBoolean("verified")) throw SyncException("No verified receipt for ${entry.relativePath}.")
     }
 
     /** Boxes travel as fractions of the upright photo, so the two apps' different decode sizes cancel out. */

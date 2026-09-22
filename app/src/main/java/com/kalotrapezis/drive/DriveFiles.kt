@@ -8,6 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.Locale
 
 private const val RECENTS_PREFS = "drive_recents"
@@ -188,12 +189,38 @@ class DriveRecents(context: Context) {
         save(DriveRecentsRules.record(read(root), relativePath, openedAt))
     }
 
+    /**
+     * Stored recents, without pruning to what is on this device: a file opened on the computer is still a recent
+     * file, and each side drops the entries it cannot see when it reads them (`read`).
+     */
+    fun all(): List<DriveRecent> {
+        val stored = runCatching { JSONArray(preferences.getString(RECENTS_KEY, "[]")) }.getOrElse { JSONArray() }
+        return buildList {
+            for (index in 0 until stored.length()) {
+                val item = stored.optJSONObject(index) ?: continue
+                val openedAt = item.optLong("openedAt")
+                if (openedAt > 0) add(DriveRecent(item.optString("path"), openedAt))
+            }
+        }
+    }
+
+    /** The most recent open of each file wins, whichever device it happened on. */
+    fun merge(incoming: List<DriveRecent>) {
+        if (incoming.isEmpty()) return
+        save((all() + incoming.filter { it.relativePath.isSafeDriveRelativePath() })
+            .groupBy { it.relativePath }.map { (path, opens) -> DriveRecent(path, opens.maxOf { it.openedAt }) }
+            .sortedByDescending { it.openedAt }.take(RECENTS_LIMIT))
+    }
+
     private fun save(items: List<DriveRecent>) {
         val array = JSONArray()
         items.forEach { array.put(JSONObject().put("path", it.relativePath).put("openedAt", it.openedAt)) }
         preferences.edit().putString(RECENTS_KEY, array.toString()).apply()
     }
 }
+
+/** One file's or folder's user metadata, as it travels between the phone and the computer. */
+data class DriveMetaRecord(val path: String, val favorite: Boolean, val color: String?, val tags: Set<String>, val updatedAt: Long)
 
 class DriveMetadata(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("drive_metadata", Context.MODE_PRIVATE)
@@ -205,6 +232,7 @@ class DriveMetadata(context: Context) {
         val updated = favorites()
         if (favorite) updated.add(relativePath) else updated.remove(relativePath)
         preferences.edit().putStringSet("favorites", updated).apply()
+        touch(relativePath)
     }
 
     fun color(relativePath: String): DriveFolderColor? = colors()[relativePath]?.let { runCatching { DriveFolderColor.valueOf(it) }.getOrNull() }
@@ -214,6 +242,7 @@ class DriveMetadata(context: Context) {
         val updated = colors()
         if (color == null) updated.remove(relativePath) else updated[relativePath] = color.name
         saveColors(updated)
+        touch(relativePath)
     }
 
     fun tags(relativePath: String): Set<String> = tagsByPath()[relativePath].orEmpty()
@@ -231,6 +260,7 @@ class DriveMetadata(context: Context) {
         if (cleaned.isEmpty()) updated.remove(relativePath) else updated[relativePath] = cleaned
         saveTags(updated)
         preferences.edit().putStringSet("known_tags", knownTags() + cleaned).apply()
+        touch(relativePath)
     }
 
     fun allTags(root: File): List<String> = (knownTags() + tagsByPath().filterKeys { path ->
@@ -251,6 +281,50 @@ class DriveMetadata(context: Context) {
         preferences.edit().putStringSet("favorites", favorites().map { DriveStoredPathRules.rewrite(it, from, to) }.toSet()).apply()
         saveColors(colors().mapKeys { DriveStoredPathRules.rewrite(it.key, from, to) })
         saveTags(tagsByPath().mapKeys { DriveStoredPathRules.rewrite(it.key, from, to) })
+        saveTimes(times().mapKeys { DriveStoredPathRules.rewrite(it.key, from, to) })
+        touch(to)
+    }
+
+    // --- Sync (SYNC_PLAN.md phase 6d). Files are keyed by their Drive-relative path on both devices, so what a
+    // record needs beyond its values is only a time: the newest edit of a path wins, and a tag that the newer
+    // side's set no longer holds has been removed. Moving to Drive/Trash/ is a path change like any other.
+
+    /** Everything the user set on a file or folder, one record per path. */
+    fun records(): List<DriveMetaRecord> {
+        val favorites = favorites()
+        val colors = colors()
+        val tags = tagsByPath()
+        val times = times()
+        return (favorites + colors.keys + tags.keys + times.keys).distinct().map { path ->
+            DriveMetaRecord(path, path in favorites, colors[path], tags[path].orEmpty(), times[path] ?: 0L)
+        }
+    }
+
+    /** From the computer. Applied only where its edit is newer than this phone's (last-write-wins per path). */
+    fun applyIncoming(record: DriveMetaRecord) {
+        if (!record.path.isSafeDriveRelativePath() || record.updatedAt <= (times()[record.path] ?: -1L)) return
+        val favorites = favorites()
+        if (record.favorite) favorites.add(record.path) else favorites.remove(record.path)
+        val colors = colors()
+        if (record.color == null) colors.remove(record.path) else colors[record.path] = record.color
+        val tags = tagsByPath().toMutableMap()
+        val cleaned = runCatching { DriveTagRules.names(record.tags) }.getOrDefault(emptySet())
+        if (cleaned.isEmpty()) tags.remove(record.path) else tags[record.path] = cleaned
+        preferences.edit().putStringSet("favorites", favorites).putStringSet("known_tags", knownTags() + cleaned).apply()
+        saveColors(colors)
+        saveTags(tags)
+        saveTimes(times() + (record.path to record.updatedAt))
+    }
+
+    private fun touch(relativePath: String) = saveTimes(times() + (relativePath to System.currentTimeMillis()))
+
+    private fun times(): Map<String, Long> = runCatching { JSONObject(preferences.getString("updated_at", "{}") ?: "{}") }
+        .getOrElse { JSONObject() }.let { json -> buildMap { json.keys().forEach { put(it, json.optLong(it)) } } }
+
+    private fun saveTimes(times: Map<String, Long>) {
+        val json = JSONObject()
+        times.forEach { (path, at) -> json.put(path, at) }
+        preferences.edit().putString("updated_at", json.toString()).apply()
     }
 
     private fun favorites(): MutableSet<String> = preferences.getStringSet("favorites", emptySet()).orEmpty().toMutableSet()
@@ -279,6 +353,38 @@ class DriveMetadata(context: Context) {
         val json = JSONObject()
         tags.forEach { (path, names) -> json.put(path, JSONArray(names.toList())) }
         preferences.edit().putString("tags", json.toString()).apply()
+    }
+}
+
+/** A file of the Files module as it is offered to the computer (SYNC_PLAN.md phase 6e). */
+data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val modified: Long, val sha256: String)
+
+/**
+ * Every file under Drive, hashed once and remembered against its size and modified time. Content is the
+ * identity, so the computer can tell a moved or renamed file from a new one and move its own copy to match —
+ * which is also how a move into Drive/Trash/ reaches the other device.
+ */
+class DriveManifest(context: Context) {
+    private val preferences = context.applicationContext.getSharedPreferences("drive_hashes", Context.MODE_PRIVATE)
+
+    fun entries(root: File): List<DriveFileEntry> = walk(root, root).map { file ->
+        val relative = DriveRules.relative(root, file)
+        DriveFileEntry(relative, file.length(), file.lastModified(), hash(relative, file))
+    }
+
+    private fun walk(root: File, folder: File): List<File> = folder.listFiles().orEmpty()
+        .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
+        .flatMap { if (it.isDirectory) walk(root, it) else listOf(it) }
+
+    private fun hash(relativePath: String, file: File): String {
+        val stamp = "${file.length()}:${file.lastModified()}"
+        preferences.getString(relativePath, null)?.split('|')?.takeIf { it.size == 2 && it[0] == stamp }?.let { return it[1] }
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(256 * 1024)
+            while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+        }
+        return SyncRules.hex(digest.digest()).also { preferences.edit().putString(relativePath, "$stamp|$it").apply() }
     }
 }
 

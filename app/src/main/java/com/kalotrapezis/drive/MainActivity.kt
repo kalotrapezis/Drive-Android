@@ -277,6 +277,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
+    // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context) } }
     LaunchedEffect(screen) { if (screen == Screen.Settings) pairedDevice = syncStore.pairing() }
     var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }
@@ -431,6 +433,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 scanSaving = false
                 result.fold(
                     onSuccess = {
+                        SyncService.syncInBackground(context, gap = 0) // a new scan is worth sending straight away
                         clearScanPages()
                         unlockScannerOrientation()
                         screen = Screen.Drive

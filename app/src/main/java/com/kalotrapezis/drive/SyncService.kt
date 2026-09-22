@@ -4,10 +4,14 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,6 +33,7 @@ internal data class BackupState(val progress: BackupProgress?, val result: Backu
 internal class SyncService : Service() {
     companion object {
         private const val CHANNEL_ID = "sync"
+        private const val AUTO_SYNC_GAP_MS = 15 * 60_000L
         private const val NOTIFICATION_ID = 1
         const val ACTION_START = "start"
         const val ACTION_STOP = "stop"
@@ -40,6 +45,26 @@ internal class SyncService : Service() {
         /** Set from the app, the notification and the Dynamic Island alike; the running service watches it. */
         internal val paused = MutableStateFlow(false)
         fun togglePause() { paused.value = !paused.value }
+
+        /**
+         * Sync without being asked — when the app opens, and after the scanner saves a PDF. It is deliberately
+         * easy to talk out of: no paired computer, a backup already running, a metered connection or a sync a
+         * few minutes ago and it simply does not happen. `gap` is 0 for "something just changed, send it now".
+         */
+        fun syncInBackground(context: Context, gap: Long = AUTO_SYNC_GAP_MS) {
+            if (isRunning) return
+            val app = context.applicationContext
+            val store = SyncStore(app)
+            if (store.pairing() == null) return
+            if (System.currentTimeMillis() - store.lastBackup() < gap) return
+            val networks = app.getSystemService(ConnectivityManager::class.java) ?: return
+            val capabilities = networks.getNetworkCapabilities(networks.activeNetwork) ?: return
+            // Wi-Fi only: a backup is the user's whole camera roll, never something to put on mobile data by itself.
+            if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) return
+            runCatching {
+                ContextCompat.startForegroundService(app, Intent(app, SyncService::class.java).setAction(ACTION_START))
+            }
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

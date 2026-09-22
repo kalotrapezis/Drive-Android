@@ -45,5 +45,8 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+        <receiver android:name=".SyncActionReceiver" android:exported="false">
+            <intent-filter><action android:name="com.kalotrapezis.drive.PAUSE" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

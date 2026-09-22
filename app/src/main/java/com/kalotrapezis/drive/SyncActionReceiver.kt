@@ -1,0 +1,16 @@
+package com.kalotrapezis.drive
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+
+/**
+ * Pause and Resume, wherever they are tapped from — the notification, or the Dynamic Island, which fires the
+ * button's intent from the system UI's process. A broadcast is the one delivery that is never turned down for
+ * being started from outside the app, and it only flips a flag the running service is already watching.
+ */
+internal class SyncActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == SyncService.ACTION_PAUSE && SyncService.isRunning) SyncService.togglePause()
+    }
+}

@@ -837,8 +837,14 @@ private fun SyncTab(back: () -> Unit) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     ConnectionCard(paired = p != null, deviceName = p?.name, reachable = backup?.error?.contains("reach the computer") != true)
                     backup?.progress?.let { pr ->
-                        LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, trackColor = Color.Black, modifier = Modifier.fillMaxWidth())
-                        Text("${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
+                        val isPaused = backup?.paused == true
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, trackColor = Color.Black, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { pauseSync(context) }) {
+                                Icon(painterResource(if (isPaused) R.drawable.ic_sync else R.drawable.ic_pause), contentDescription = if (isPaused) "Resume" else "Pause")
+                            }
+                        }
+                        Text(if (isPaused) "Paused · ${pr.done} of ${pr.total}" else "${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
                     }
                     when {
                         p == null -> Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
@@ -891,6 +897,10 @@ private fun SyncTab(back: () -> Unit) {
 private fun startSync(context: android.content.Context) {
     val intent = android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)
     androidx.core.content.ContextCompat.startForegroundService(context, intent)
+}
+
+private fun pauseSync(context: android.content.Context) {
+    SyncService.togglePause()
 }
 
 private fun stopSync(context: android.content.Context) {

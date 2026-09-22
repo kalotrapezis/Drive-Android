@@ -181,13 +181,14 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * Copy: every gallery photo and video the computer does not have yet, each verified by its SHA-256 there.
      * Nothing on the phone is changed or deleted.
      */
-    suspend fun backUp(entries: List<Entry>, progress: (BackupProgress) -> Unit): BackupResult {
+    suspend fun backUp(entries: List<Entry>, checkpoint: suspend () -> Unit = {}, progress: (BackupProgress) -> Unit): BackupResult {
         val p = store.pairing() ?: throw SyncException("Pair with a computer first.")
         val host = anyHost(p.hosts) { h -> postJson(h, p, "/have", JSONObject().put("hashes", JSONArray())); h }
         val failed = mutableListOf<String>()
         val bySha = linkedMapOf<String, Entry>()
         entries.forEachIndexed { i, e ->
             coroutineContext.ensureActive()
+            checkpoint() // Pause waits here, between files, so a half-sent photo is never left behind
             if (i % 10 == 0) progress(BackupProgress("Checking photos", i, entries.size))
             runCatching { bySha.putIfAbsent(sha256(e), e) }.onFailure { failed += "${e.name}: ${it.message}" }
         }
@@ -198,6 +199,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         var sent = 0
         missing.forEachIndexed { i, sha ->
             coroutineContext.ensureActive()
+            checkpoint()
             progress(BackupProgress("Sending", i, missing.size))
             val e = bySha.getValue(sha)
             // One retry: a single dropped connection (e.g. the phone hopping Wi-Fi networks) shouldn't

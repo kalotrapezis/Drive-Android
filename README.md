@@ -1,6 +1,6 @@
-# Local Drive for Android
+# Tetra for Android
 
-A local-first "super app" for Android: a **Gallery**, a **Files** manager, a
+Formerly "Local Drive". A local-first "super app" for Android: a **Gallery**, a **Files** manager, a
 **Document Scanner** and a **Codes** scanner (QR/barcode, text, RF payment
 codes). Nothing is uploaded; all analysis runs on the phone.
 

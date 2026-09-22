@@ -31,15 +31,21 @@ internal data class PendingReview(
     val faceSample: FaceSample? = null,
 )
 internal data class FaceGroup(val id: Long, val name: String, val count: Int, val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
+internal data class FavoriteRecord(val photoKey: String, val favorite: Boolean, val updatedAt: Long)
+internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long)
+internal data class CollectionItemRecord(val collectionUuid: String, val photoKey: String, val deleted: Boolean, val updatedAt: Long)
+internal data class PersonRecord(val uuid: String, val name: String, val updatedAt: Long)
+internal data class FaceRecord(val uuid: String, val photoKey: String, val bounds: android.graphics.Rect, val embedding: ByteArray, val quality: Float, val personUuid: String?, val updatedAt: Long)
+internal data class DocumentRecord(val photoKey: String, val type: String?, val confidence: Float, val userVerified: Boolean, val updatedAt: Long)
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 13) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 15) {
     private val galleryPreferences = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE)")
-        db.execSQL("CREATE TABLE collection_membership (collection_id INTEGER NOT NULL, photo_key TEXT NOT NULL, PRIMARY KEY(collection_id, photo_key), FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE)")
+        db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE TABLE collection_membership (collection_id INTEGER NOT NULL, photo_key TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(collection_id, photo_key), FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE)")
         createAiTables(db)
         createFaceGroupingTables(db)
         createLabelTables(db)
@@ -92,6 +98,22 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             db.execSQL("ALTER TABLE photo_location ADD COLUMN place_resolved INTEGER NOT NULL DEFAULT 0")
         }
         if (oldVersion < 13) addSyncIds(db)
+        // ponytail: sync (SYNC_PLAN.md phase 6a) needs updated_at for last-write-wins; only
+        // photo_ai_record does for now — faces/people get the same treatment in phase 6c.
+        if (oldVersion < 14) db.inTransaction {
+            execSQL("ALTER TABLE photo_ai_record ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+            execSQL("UPDATE photo_ai_record SET updated_at = ${System.currentTimeMillis()} WHERE updated_at = 0")
+        }
+        // Phase 6b/6c: favorites, collections and people/faces sync the same way documents did — last-write-wins
+        // by updated_at, removals as tombstones so they can travel instead of silently reappearing.
+        if (oldVersion < 15) db.inTransaction {
+            val now = System.currentTimeMillis()
+            for (table in listOf("photo_state", "collections", "collection_membership", "face_groups", "face_samples")) {
+                execSQL("ALTER TABLE $table ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+                execSQL("UPDATE $table SET updated_at = $now")
+            }
+            for (table in listOf("collections", "collection_membership")) execSQL("ALTER TABLE $table ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     /**
@@ -130,37 +152,48 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     fun collections(): List<PhotoCollection> = readableDatabase.rawQuery(
-        "SELECT c.id, c.name, COUNT(m.photo_key), c.uuid FROM collections c LEFT JOIN collection_membership m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE",
+        "SELECT c.id, c.name, COUNT(m.photo_key), c.uuid FROM collections c LEFT JOIN collection_membership m ON m.collection_id = c.id AND m.deleted = 0 WHERE c.deleted = 0 GROUP BY c.id ORDER BY c.name COLLATE NOCASE",
         null,
     ).use { cursor -> buildList { while (cursor.moveToNext()) add(PhotoCollection(cursor.getLong(0), cursor.getString(1), cursor.getInt(2), cursor.getString(3))) } }
 
     fun collectionKeys(collectionId: Long): Set<String> = readableDatabase.query(
-        "collection_membership", arrayOf("photo_key"), "collection_id = ?", arrayOf(collectionId.toString()), null, null, null,
+        "collection_membership", arrayOf("photo_key"), "collection_id = ? AND deleted = 0", arrayOf(collectionId.toString()), null, null, null,
     ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
 
-    fun createCollection(rawName: String): PhotoCollection {
+    fun createCollection(rawName: String): PhotoCollection = writableDatabase.inTransaction {
         val name = PhotoMetadataRules.collectionName(rawName)
-        val id = writableDatabase.insertOrThrow("collections", null, ContentValues().apply { put("name", name); put("uuid", UUID.randomUUID().toString()) })
-        return PhotoCollection(id, name, 0)
+        val now = System.currentTimeMillis()
+        val buried = rawQuery("SELECT id, uuid FROM collections WHERE name = ? COLLATE NOCASE AND deleted = 1", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) to it.getString(1) else null }
+        if (buried != null) { // the name was never freed by the tombstone, so reuse the row (and its UUID, so other devices see one collection)
+            update("collections", ContentValues().apply { put("deleted", 0); put("updated_at", now) }, "id = ?", arrayOf(buried.first.toString()))
+            return@inTransaction PhotoCollection(buried.first, name, 0, buried.second)
+        }
+        val uuid = UUID.randomUUID().toString()
+        val id = insertOrThrow("collections", null, ContentValues().apply { put("name", name); put("uuid", uuid); put("updated_at", now) })
+        PhotoCollection(id, name, 0, uuid)
     }
 
-    fun addToCollection(collectionId: Long, keys: Collection<String>) = writableDatabase.inTransaction {
+    fun addToCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = true)
+
+    fun removeFromCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = false)
+
+    /** A tombstone, not a delete: the removal has to reach the computer, and photos stay in the library. */
+    fun deleteCollection(collectionId: Long) = writableDatabase.inTransaction {
+        val now = System.currentTimeMillis()
+        update("collections", ContentValues().apply { put("deleted", 1); put("updated_at", now) }, "id = ?", arrayOf(collectionId.toString()))
+        update("collection_membership", ContentValues().apply { put("deleted", 1); put("updated_at", now) }, "collection_id = ? AND deleted = 0", arrayOf(collectionId.toString()))
+    }
+
+    private fun setMembership(collectionId: Long, keys: Collection<String>, member: Boolean) = writableDatabase.inTransaction {
+        val now = System.currentTimeMillis()
         keys.distinct().forEach { key ->
             insertWithOnConflict("collection_membership", null, ContentValues().apply {
                 put("collection_id", collectionId)
                 put("photo_key", key)
-            }, SQLiteDatabase.CONFLICT_IGNORE)
+                put("deleted", if (member) 0 else 1)
+                put("updated_at", now)
+            }, SQLiteDatabase.CONFLICT_REPLACE)
         }
-    }
-
-    fun removeFromCollection(collectionId: Long, keys: Collection<String>) = writableDatabase.inTransaction {
-        keys.distinct().forEach { key ->
-            delete("collection_membership", "collection_id = ? AND photo_key = ?", arrayOf(collectionId.toString(), key))
-        }
-    }
-
-    fun deleteCollection(collectionId: Long) {
-        writableDatabase.delete("collections", "id = ?", arrayOf(collectionId.toString()))
     }
 
     fun setFavorite(keys: Collection<String>, favorite: Boolean) = setState(keys, "favorite", favorite)
@@ -238,6 +271,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("type", if (accepted) "document" else null as String?)
             put("user_verified", 1)
             put("review_state", "none")
+            put("updated_at", System.currentTimeMillis())
         }, "photo_key = ?", arrayOf(review.photoKey)) else {
             if (accepted) update("face_samples", ContentValues().apply { put("group_id", review.candidateGroupId) }, "id = ?", arrayOf(review.faceSampleId.toString()))
             update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id = ?", arrayOf(review.faceSampleId.toString()))
@@ -273,7 +307,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun renameFaceGroup(groupId: Long, name: String) {
         val cleaned = PhotoMetadataRules.collectionName(name)
-        writableDatabase.update("face_groups", ContentValues().apply { put("name", cleaned) }, "id = ?", arrayOf(groupId.toString()))
+        writableDatabase.update("face_groups", ContentValues().apply { put("name", cleaned); put("updated_at", System.currentTimeMillis()) }, "id = ?", arrayOf(groupId.toString()))
     }
 
     /** Keeps the open group and moves every face from the selected duplicate into it. */
@@ -290,7 +324,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val sourceUuid = rawQuery("SELECT uuid FROM face_groups WHERE id = ?", arrayOf(sourceGroupId.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
             update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id IN (SELECT id FROM face_samples WHERE group_id = ?)", arrayOf(sourceGroupId.toString()))
             update("face_reviews", ContentValues().apply { put("candidate_group_id", targetGroupId) }, "candidate_group_id = ?", arrayOf(sourceGroupId.toString()))
-            update("face_samples", ContentValues().apply { put("group_id", targetGroupId) }, "group_id = ?", arrayOf(sourceGroupId.toString()))
+            update("face_samples", ContentValues().apply { put("group_id", targetGroupId); put("updated_at", System.currentTimeMillis()) }, "group_id = ?", arrayOf(sourceGroupId.toString()))
             delete("face_groups", "id = ?", arrayOf(sourceGroupId.toString()))
             FaceMergeUndo(sourceName, sampleIds, sourceUuid)
         }
@@ -302,8 +336,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         val restoredGroupId = insertOrThrow("face_groups", null, ContentValues().apply {
             put("name", undo.sourceName)
             put("uuid", undo.sourceUuid ?: UUID.randomUUID().toString())
+            put("updated_at", System.currentTimeMillis())
         })
-        update("face_samples", ContentValues().apply { put("group_id", restoredGroupId) }, "id IN (${undo.sampleIds.joinToString { "?" }})", undo.sampleIds.map(Long::toString).toTypedArray())
+        update("face_samples", ContentValues().apply { put("group_id", restoredGroupId); put("updated_at", System.currentTimeMillis()) }, "id IN (${undo.sampleIds.joinToString { "?" }})", undo.sampleIds.map(Long::toString).toTypedArray())
     }
 
     fun needsAnalysis(photoKey: String): Boolean = readableDatabase.rawQuery(
@@ -325,6 +360,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("model_version", modelVersion)
             put("user_verified", if (verifiedDocument.first) 1 else 0)
             put("review_state", if (!verifiedDocument.first && review) "pending" else "none")
+            put("updated_at", System.currentTimeMillis())
         }, SQLiteDatabase.CONFLICT_REPLACE)
         delete("photo_ai_label", "photo_key = ?", arrayOf(photoKey))
         (if (faces.isNotEmpty()) labels + "Portrait" else labels).distinct().forEach { label ->
@@ -355,6 +391,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("group_id", groupId)
                 put("quality", face.quality)
                 put("uuid", UUID.randomUUID().toString())
+                put("updated_at", System.currentTimeMillis())
             }, SQLiteDatabase.CONFLICT_IGNORE)
             if (sampleId != -1L && reliable && similarity in 0.66f..<0.74f) insertWithOnConflict("face_reviews", null, ContentValues().apply {
                 put("photo_key", photoKey)
@@ -364,6 +401,121 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             }, SQLiteDatabase.CONFLICT_IGNORE)
         }
     }
+
+    /** Every classified photo, for the sync push (SYNC_PLAN.md phase 6a). */
+    fun documentRecords(): List<DocumentRecord> = readableDatabase.rawQuery(
+        "SELECT photo_key, type, confidence, user_verified, updated_at FROM photo_ai_record WHERE type IS NOT NULL",
+        null,
+    ).use { c -> buildList { while (c.moveToNext()) add(DocumentRecord(c.getString(0), c.getString(1), c.getFloat(2), c.getInt(3) != 0, c.getLong(4))) } }
+
+    /** From the sync pull: applied only if newer than what's stored locally (last-write-wins). */
+    fun applyIncomingDocument(photoKey: String, type: String?, confidence: Float, userVerified: Boolean, updatedAt: Long) = writableDatabase.inTransaction {
+        val localUpdatedAt = rawQuery("SELECT updated_at FROM photo_ai_record WHERE photo_key = ?", arrayOf(photoKey)).use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
+        if (updatedAt <= localUpdatedAt) return@inTransaction
+        insertWithOnConflict("photo_ai_record", null, ContentValues().apply {
+            put("photo_key", photoKey)
+            put("source_fingerprint", photoKey)
+            put("type", type)
+            put("confidence", confidence)
+            put("user_verified", if (userVerified) 1 else 0)
+            put("review_state", "none")
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    // --- Phase 6b/6c sync: everything else the user made (favorites, collections, labels, people, faces).
+    // Exports carry the local photo_key and collection/person UUIDs; SyncClient maps photo_key → SHA-256.
+
+    /** Every favorite. Unfavoriting is a value change, not a row removal, so it travels too. */
+    fun favoriteRecords(): List<FavoriteRecord> = readableDatabase.rawQuery(
+        "SELECT photo_key, favorite, updated_at FROM photo_state", null,
+    ).use { c -> buildList { while (c.moveToNext()) add(FavoriteRecord(c.getString(0), c.getInt(1) != 0, c.getLong(2))) } }
+
+    fun collectionRecords(): List<CollectionRecord> = readableDatabase.rawQuery(
+        "SELECT uuid, name, deleted, updated_at FROM collections WHERE uuid IS NOT NULL", null,
+    ).use { c -> buildList { while (c.moveToNext()) add(CollectionRecord(c.getString(0), c.getString(1), c.getInt(2) != 0, c.getLong(3))) } }
+
+    fun collectionItemRecords(): List<CollectionItemRecord> = readableDatabase.rawQuery(
+        "SELECT c.uuid, m.photo_key, m.deleted, m.updated_at FROM collection_membership m JOIN collections c ON c.id = m.collection_id WHERE c.uuid IS NOT NULL",
+        null,
+    ).use { c -> buildList { while (c.moveToNext()) add(CollectionItemRecord(c.getString(0), c.getString(1), c.getInt(2) != 0, c.getLong(3))) } }
+
+    /** Only groups that still hold a face: a merged-away person needs no tombstone, it simply has none left. */
+    fun personRecords(): List<PersonRecord> = readableDatabase.rawQuery(
+        "SELECT g.uuid, g.name, MAX(g.updated_at, IFNULL(MAX(s.updated_at), 0)) FROM face_groups g JOIN face_samples s ON s.group_id = g.id WHERE g.uuid IS NOT NULL GROUP BY g.id",
+        null,
+    ).use { c -> buildList { while (c.moveToNext()) add(PersonRecord(c.getString(0), c.getString(1), c.getLong(2))) } }
+
+    // ponytail: the whole set goes over on every sync — last-write-wins makes that safe and self-healing, and
+    // 387 faces are ~260 KB of base64. Switch to an updated_at cursor if a library ever outgrows one request.
+    fun faceRecords(): List<FaceRecord> = readableDatabase.rawQuery(
+        "SELECT s.uuid, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.embedding, s.quality, g.uuid, s.updated_at FROM face_samples s LEFT JOIN face_groups g ON g.id = s.group_id WHERE s.uuid IS NOT NULL",
+        null,
+    ).use { c -> buildList { while (c.moveToNext()) add(FaceRecord(
+        c.getString(0), c.getString(1), android.graphics.Rect(c.getInt(2), c.getInt(3), c.getInt(4), c.getInt(5)),
+        c.getBlob(6), c.getFloat(7), if (c.isNull(8)) null else c.getString(8), c.getLong(9),
+    )) } }
+
+    /** Labels are the search tags Photos shows. They are derived, never hand-deleted, so they only ever merge. */
+    fun allLabels(): Map<String, List<String>> = readableDatabase.rawQuery("SELECT photo_key, label FROM photo_ai_label", null)
+        .use { c -> buildMap<String, MutableList<String>> { while (c.moveToNext()) getOrPut(c.getString(0)) { mutableListOf() } += c.getString(1) } }
+
+    fun applyIncomingFavorite(photoKey: String, favorite: Boolean, updatedAt: Long) = writableDatabase.inTransaction {
+        if (updatedAt <= localUpdatedAt("photo_state", "photo_key", photoKey)) return@inTransaction
+        insertWithOnConflict("photo_state", null, ContentValues().apply {
+            put("photo_key", photoKey); put("favorite", if (favorite) 1 else 0); put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun applyIncomingCollection(uuid: String, name: String, deleted: Boolean, updatedAt: Long) = writableDatabase.inTransaction {
+        val local = rawQuery("SELECT id, updated_at FROM collections WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
+        if (local != null) {
+            if (updatedAt <= local.second) return@inTransaction
+            update("collections", ContentValues().apply { put("name", name); put("deleted", if (deleted) 1 else 0); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+            return@inTransaction
+        }
+        if (deleted) return@inTransaction // nothing here to bury
+        // The name column is UNIQUE: a collection of the same name made on both devices is the same collection.
+        val sameName = rawQuery("SELECT id FROM collections WHERE name = ? COLLATE NOCASE", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) else null }
+        if (sameName != null) update("collections", ContentValues().apply { put("uuid", uuid); put("deleted", 0); put("updated_at", updatedAt) }, "id = ?", arrayOf(sameName.toString()))
+        else insertWithOnConflict("collections", null, ContentValues().apply {
+            put("name", name); put("uuid", uuid); put("deleted", if (deleted) 1 else 0); put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    fun applyIncomingCollectionItem(collectionUuid: String, photoKey: String, deleted: Boolean, updatedAt: Long) = writableDatabase.inTransaction {
+        val collectionId = rawQuery("SELECT id FROM collections WHERE uuid = ?", arrayOf(collectionUuid)).use { if (it.moveToFirst()) it.getLong(0) else null } ?: return@inTransaction
+        val local = rawQuery("SELECT updated_at FROM collection_membership WHERE collection_id = ? AND photo_key = ?", arrayOf(collectionId.toString(), photoKey)).use { if (it.moveToFirst()) it.getLong(0) else -1L }
+        if (updatedAt <= local) return@inTransaction
+        insertWithOnConflict("collection_membership", null, ContentValues().apply {
+            put("collection_id", collectionId); put("photo_key", photoKey); put("deleted", if (deleted) 1 else 0); put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    /** A name given on the computer. Unknown people are not created here: the phone owns its own grouping. */
+    fun applyIncomingPerson(uuid: String, name: String, updatedAt: Long) = writableDatabase.inTransaction {
+        val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
+        if (updatedAt <= local.second) return@inTransaction
+        update("face_groups", ContentValues().apply { put("name", name); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+    }
+
+    /**
+     * A face the phone already knows, moved to another person on the computer. Faces the computer found on its
+     * own are not inserted: their box is in the desktop's coordinates and the phone re-detects them itself.
+     */
+    fun applyIncomingFace(uuid: String, personUuid: String?, updatedAt: Long) = writableDatabase.inTransaction {
+        val local = rawQuery("SELECT id, updated_at FROM face_samples WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
+        if (updatedAt <= local.second) return@inTransaction
+        val groupId = personUuid?.let { p -> rawQuery("SELECT id FROM face_groups WHERE uuid = ?", arrayOf(p)).use { if (it.moveToFirst()) it.getLong(0) else null } } ?: return@inTransaction
+        update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+    }
+
+    fun applyIncomingLabels(photoKey: String, labels: List<String>) = writableDatabase.inTransaction {
+        labels.forEach { label -> insertWithOnConflict("photo_ai_label", null, ContentValues().apply { put("photo_key", photoKey); put("label", label) }, SQLiteDatabase.CONFLICT_IGNORE) }
+    }
+
+    private fun SQLiteDatabase.localUpdatedAt(table: String, keyColumn: String, key: String): Long =
+        rawQuery("SELECT updated_at FROM $table WHERE $keyColumn = ?", arrayOf(key)).use { if (it.moveToFirst()) it.getLong(0) else -1L }
 
     fun peopleAnalysisEnabled(): Boolean = galleryPreferences.getBoolean("people_analysis_enabled", false)
 
@@ -423,11 +575,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     private fun setState(keys: Collection<String>, column: String, value: Boolean) = writableDatabase.inTransaction {
         keys.distinct().forEach { key ->
+            val now = System.currentTimeMillis()
             insertWithOnConflict("photo_state", null, ContentValues().apply {
                 put("photo_key", key)
                 put(column, if (value) 1 else 0)
+                put("updated_at", now)
             }, SQLiteDatabase.CONFLICT_IGNORE)
-            update("photo_state", ContentValues().apply { put(column, if (value) 1 else 0) }, "photo_key = ?", arrayOf(key))
+            update("photo_state", ContentValues().apply { put(column, if (value) 1 else 0); put("updated_at", now) }, "photo_key = ?", arrayOf(key))
         }
     }
 
@@ -437,16 +591,16 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     private fun createAiTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS photo_ai_record (photo_key TEXT PRIMARY KEY, source_fingerprint TEXT NOT NULL, type TEXT, subtype TEXT, confidence REAL, model_version TEXT, policy_version INTEGER, user_verified INTEGER NOT NULL DEFAULT 0, review_state TEXT NOT NULL DEFAULT 'none')")
+        db.execSQL("CREATE TABLE IF NOT EXISTS photo_ai_record (photo_key TEXT PRIMARY KEY, source_fingerprint TEXT NOT NULL, type TEXT, subtype TEXT, confidence REAL, model_version TEXT, policy_version INTEGER, user_verified INTEGER NOT NULL DEFAULT 0, review_state TEXT NOT NULL DEFAULT 'none', updated_at INTEGER NOT NULL DEFAULT 0)")
         createFaceTables(db)
     }
 
     private fun createFaceTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
     }
 
     private fun createFaceGroupingTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE IF NOT EXISTS face_reviews (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, face_sample_id INTEGER NOT NULL, candidate_group_id INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', UNIQUE(face_sample_id, candidate_group_id))")
     }
 
@@ -455,6 +609,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     private fun SQLiteDatabase.createFaceGroup(): Long = insertOrThrow("face_groups", null, ContentValues().apply {
+        put("updated_at", System.currentTimeMillis())
         put("uuid", UUID.randomUUID().toString())
         put("name", "Person ${rawQuery("SELECT COUNT(*) FROM face_groups", null).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) + 1 }}")
     })

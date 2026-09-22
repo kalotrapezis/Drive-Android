@@ -62,6 +62,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -181,6 +182,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -245,6 +248,9 @@ internal data class Entry(
     val sizeBytes: Long = 0,
     val photoKey: String = "",
     val isVideo: Boolean = false,
+    // Pixel size of the upright photo. Sync turns face boxes into fractions with it.
+    val width: Int = 0,
+    val height: Int = 0,
 )
 private sealed interface ListState {
     data object Idle : ListState
@@ -269,6 +275,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
+    val syncStore = remember(context) { SyncStore(context.applicationContext) }
+    var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
+    LaunchedEffect(screen) { if (screen == Screen.Settings) pairedDevice = syncStore.pairing() }
     var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }
     val currentScreen by rememberUpdatedState(screen)
@@ -605,6 +614,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                     },
                     openSync = { screen = Screen.Sync },
+                    pairedDevice = pairedDevice,
+                    forgetPairedDevice = { syncStore.forgetPairing(); pairedDevice = null },
                 )
             }
         }
@@ -652,7 +663,7 @@ private fun Home(
     ) {
         item {
             Text(
-                "Local Drive",
+                "Tetra",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
                 ),
@@ -783,15 +794,17 @@ private fun SyncTab(back: () -> Unit) {
     var pairing by remember { mutableStateOf(store.pairing()) }
     var scanning by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf<String?>(null) }
-    var progress by remember { mutableStateOf<BackupProgress?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var pairMessage by remember { mutableStateOf<String?>(null) }
+    val requestNotifications = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var received by remember { mutableStateOf(0) }
     var lastBackup by remember { mutableStateOf(0L) }
-    LaunchedEffect(job) { withContext(Dispatchers.IO) { received = store.receiptCount(); lastBackup = store.lastBackup() } }
-    // A long backup must not be cut off by the screen turning off.
+    val backup by SyncService.state.collectAsState()
+    val running = SyncService.isRunning
+    LaunchedEffect(backup) { withContext(Dispatchers.IO) { received = store.receiptCount(); lastBackup = store.lastBackup() } }
+    // A long backup must not be cut off by the screen turning off; the foreground service itself
+    // keeps running once the app is backgrounded or closed.
     val view = androidx.compose.ui.platform.LocalView.current
-    DisposableEffect(job) { view.keepScreenOn = job != null; onDispose { view.keepScreenOn = false } }
+    DisposableEffect(running) { view.keepScreenOn = running; onDispose { view.keepScreenOn = false } }
 
     if (scanning) {
         CodeScannerTab(back = { scanning = false }, onCode = { value ->
@@ -800,7 +813,7 @@ private fun SyncTab(back: () -> Unit) {
             scanning = false
             busy = "Pairing with ${qr.name}…"
             scope.launch {
-                message = runCatching { withContext(Dispatchers.IO) { client.pair(qr) } }
+                pairMessage = runCatching { withContext(Dispatchers.IO) { client.pair(qr) } }
                     .fold({ pairing = it; "Paired with ${it.name}. You can back up now." }, { it.message ?: "Pairing failed." })
                 busy = null
             }
@@ -808,20 +821,11 @@ private fun SyncTab(back: () -> Unit) {
         })
         return
     }
-    fun backUp() {
-        message = null
-        job = scope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { client.backUp(listPhotos(context)) { p -> scope.launch { progress = p } } } }
-            message = result.fold(
-                { r -> "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there" + if (r.failed.isEmpty()) "." else ". ${r.failed.size} failed, first: ${r.failed.first()}" },
-                { if (it is kotlinx.coroutines.CancellationException) "Stopped. Photos already sent are safe on the computer." else it.message ?: "Backup failed." },
-            )
-            progress = null
-            job = null
-        }
-    }
 
     val p = pairing
+    val result = backup?.result
+    val summary = result?.let { r -> "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there." }
+    val message = backup?.error ?: summary ?: pairMessage
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -831,34 +835,31 @@ private fun SyncTab(back: () -> Unit) {
         item {
             Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = if (p != null) driveNavigationSelectedColor() else islandColor(), contentColor = if (p != null) driveNavigationSelectedContentColor() else islandContentColor()) {
-                            Icon(painterResource(R.drawable.ic_sync), contentDescription = null, modifier = Modifier.padding(14.dp).size(28.dp))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(p?.name ?: "No computer yet", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                busy ?: when {
-                                    job != null -> "Backing up…"
-                                    p != null -> "Paired · ${p.hosts.firstOrNull().orEmpty()}"
-                                    else -> "Pair once, then back up whenever you like"
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
-                    progress?.let { pr ->
-                        LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, modifier = Modifier.fillMaxWidth())
+                    ConnectionCard(paired = p != null, deviceName = p?.name, reachable = backup?.error?.contains("reach the computer") != true)
+                    backup?.progress?.let { pr ->
+                        LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, trackColor = Color.Black, modifier = Modifier.fillMaxWidth())
                         Text("${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
                     }
                     when {
                         p == null -> Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                             Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Pair with computer")
                         }
-                        job == null -> Button(onClick = ::backUp, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        !running -> Button(onClick = {
+                            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                requestNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            startSync(context)
+                        }, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                             Icon(painterResource(R.drawable.ic_sync), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Back up now")
                         }
-                        else -> OutlinedButton(onClick = { job?.cancel() }, modifier = Modifier.fillMaxWidth()) { Text("Stop") }
+                        else -> Button(
+                            onClick = { stopSync(context) },
+                            shape = RoundedCornerShape(percent = 50),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(painterResource(R.drawable.ic_cancel), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Stop")
+                        }
                     }
                 }
             }
@@ -874,17 +875,63 @@ private fun SyncTab(back: () -> Unit) {
                 Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
             }
         } }
+        result?.failed?.let { failures -> items(failures) { f -> SyncFailureCard(f) } }
         item {
             Text(
-                if (p == null) "On the computer open Local Drive › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
+                if (p == null) "On the computer open Tetra › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
                 else "Backup copies each photo and video the computer does not have yet, into the same folders. The computer checks every file by SHA-256 before keeping it. Nothing on this phone is changed or deleted.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
-        if (p != null) item {
-            TextButton(onClick = { store.forgetPairing(); pairing = null; message = null }, enabled = job == null) { Text("Forget ${p.name}") }
+    }
+}
+
+private fun startSync(context: android.content.Context) {
+    val intent = android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)
+    androidx.core.content.ContextCompat.startForegroundService(context, intent)
+}
+
+private fun stopSync(context: android.content.Context) {
+    context.startService(android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_STOP))
+}
+
+/** This phone → paired computer, the one connection the phone ever has (see SYNC_PLAN.md for the multi-device note). */
+@Composable
+private fun ConnectionCard(paired: Boolean, deviceName: String?, reachable: Boolean) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = CircleShape, color = islandColor(), contentColor = islandContentColor()) {
+            Icon(painterResource(R.drawable.ic_phone), contentDescription = "This phone", modifier = Modifier.padding(12.dp).size(22.dp))
+        }
+        Icon(painterResource(R.drawable.ic_sync), contentDescription = null, modifier = Modifier.size(16.dp).alpha(if (paired) 1f else 0.4f))
+        Surface(shape = CircleShape, color = if (paired) driveNavigationSelectedColor() else islandColor(), contentColor = if (paired) driveNavigationSelectedContentColor() else islandContentColor()) {
+            Icon(painterResource(R.drawable.ic_computer), contentDescription = deviceName ?: "No computer", modifier = Modifier.padding(12.dp).size(22.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(deviceName ?: "No computer yet", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                when {
+                    !paired -> "Pair once, then back up whenever you like"
+                    !reachable -> "Not reachable right now"
+                    else -> "Paired"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncFailureCard(failure: String) {
+    val (name, reason) = failure.split(": ", limit = 2).let { it.getOrElse(0) { failure } to it.getOrNull(1).orEmpty() }
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_cancel), contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+            Column {
+                Text(name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (reason.isNotEmpty()) Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
         }
     }
 }
@@ -910,6 +957,8 @@ private fun SettingsTab(
     managePhotos: () -> Unit,
     manageDrive: () -> Unit,
     openSync: () -> Unit,
+    pairedDevice: Pairing?,
+    forgetPairedDevice: () -> Unit,
 ) {
     var searchQuality by remember { mutableStateOf(metadataStore.searchQuality()) }
     Box(Modifier.fillMaxSize()) {
@@ -956,16 +1005,24 @@ private fun SettingsTab(
             }
         }
         item {
-            SettingsCard("Connections and devices") {
-                Text("No device is paired yet.", style = MaterialTheme.typography.bodyMedium)
-                Text("A future trusted device uses a device ID and public-key fingerprint. IP and port are discovered again after a network change; a MAC address is not used as identity.", style = MaterialTheme.typography.bodySmall)
-                Button(onClick = openSync) { Text("Open Sync") }
+            SettingsCard("Sync") {
+                if (pairedDevice == null) {
+                    Text("No computer is paired yet.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text(pairedDevice.name, style = MaterialTheme.typography.titleMedium)
+                    Text(pairedDevice.hosts.firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
+                }
+                Text("A trusted device is identified by a public-key fingerprint, not IP or MAC address, so it's found again after a network change.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = openSync) { Text("Open Sync") }
+                    if (pairedDevice != null) TextButton(onClick = forgetPairedDevice) { Text("Forget ${pairedDevice.name}") }
+                }
             }
         }
         item {
             SettingsCard("Appearance") {
                 Text("Follow system", style = MaterialTheme.typography.titleMedium)
-                Text("Local Drive follows the Android light/dark theme and dynamic colour where Android provides it.", style = MaterialTheme.typography.bodyMedium)
+                Text("Tetra follows the Android light/dark theme and dynamic colour where Android provides it.", style = MaterialTheme.typography.bodyMedium)
             }
         }
             item { Box(Modifier.heightIn(min = 32.dp)) }
@@ -1018,7 +1075,7 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
 private fun PhotoSetup(allow: () -> Unit, skip: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Gallery setup", style = MaterialTheme.typography.headlineMedium)
-        Text("Local Drive needs permission to show your real Camera and Screenshots photos and videos.")
+        Text("Tetra needs permission to show your real Camera and Screenshots photos and videos.")
         Text("Photos stay where they are. The app does not choose a folder or copy them into LocalDrive.", style = MaterialTheme.typography.bodyMedium)
         Text("You can change this later from the Gallery pull-up tools.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text("Yes, allow photos") }
@@ -2358,7 +2415,7 @@ private fun PhotoTab(
     if (hideWarningOpen) AlertDialog(
         onDismissRequest = { hideWarningOpen = false },
         title = { Text("Before using Hidden") },
-        text = { Text("Hidden photos and videos are stored only inside Local Drive's private storage. Uninstalling the app deletes them. Restore everything from Hidden before uninstalling. The public original is removed only after a verified private copy and Android confirmation.") },
+        text = { Text("Hidden photos and videos are stored only inside Tetra's private storage. Uninstalling the app deletes them. Restore everything from Hidden before uninstalling. The public original is removed only after a verified private copy and Android confirmation.") },
         confirmButton = { Button(onClick = {
             vault.acceptWarning()
             hideWarningOpen = false
@@ -3795,7 +3852,7 @@ private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>):
         ?.let { context.contentResolver.loadThumbnail(it, android.util.Size(720, 720), null) }
 }.getOrNull()
 
-private fun listPhotos(context: Context): List<Entry> = (
+internal fun listPhotos(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
 ).sortedByDescending { it.takenMillis }
@@ -3808,6 +3865,9 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
         MediaStore.Images.Media.SIZE,
         MediaStore.Images.Media.DATE_TAKEN,
         MediaStore.Images.Media.DATE_MODIFIED,
+        MediaStore.Images.Media.WIDTH,
+        MediaStore.Images.Media.HEIGHT,
+        MediaStore.MediaColumns.ORIENTATION,
     )
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
     return context.contentResolver.query(collection, projection, selection,
@@ -3817,6 +3877,7 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
             val sizeBytes = cursor.long(3)
             val uri = android.content.ContentUris.withAppendedId(collection, cursor.long(0))
             val takenMillis = cursor.long(4).takeIf { it > 0 } ?: cursor.long(5) * 1000
+            val upright = cursor.long(8) % 180L == 0L
             add(Entry(
                 name = cursor.string(1),
                 detail = "$path · $sizeBytes bytes",
@@ -3826,6 +3887,10 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
                 sizeBytes = sizeBytes,
                 photoKey = PhotoMetadataRules.stableKey(uri.toString(), path, cursor.string(1), sizeBytes),
                 isVideo = isVideo,
+                // MediaStore reports the size as the file stores it; a quarter-turn in EXIF means the photo every
+                // other part of the app sees (and every face box) is the other way round.
+                width = if (upright) cursor.long(6).toInt() else cursor.long(7).toInt(),
+                height = if (upright) cursor.long(7).toInt() else cursor.long(6).toInt(),
             ))
         } }
     } ?: error("MediaStore query failed")

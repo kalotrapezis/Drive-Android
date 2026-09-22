@@ -90,7 +90,7 @@ private sealed interface CodeResult {
     data class Payment(val code: String) : CodeResult
     data class Code(val value: String, val url: String?) : CodeResult
     data class Text(val text: String, val payment: String?) : CodeResult
-    /** Local Drive's own pairing QR from the computer: pairs right away. */
+    /** Tetra's own pairing QR from the computer: pairs right away. */
     data class Pairing(val raw: String, val computer: String) : CodeResult
 }
 
@@ -169,7 +169,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                     }
                     barcodes.process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
                         .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { found ->
-                            // Several codes can be in view (a QR on the screen, a barcode on a can): Local Drive's own
+                            // Several codes can be in view (a QR on the screen, a barcode on a can): Tetra's own
                             // pairing code wins over everything else.
                             val codes = found.filter { !it.rawValue.isNullOrBlank() }
                             val pairing = codes.firstNotNullOfOrNull { c -> SyncRules.parseQr(c.rawValue!!)?.let { c.rawValue!! to it } }
@@ -281,7 +281,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                         DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, current.value) }
                     }
                     is CodeResult.Pairing -> {
-                        Text("Local Drive computer", style = MaterialTheme.typography.titleLarge)
+                        Text("Tetra computer", style = MaterialTheme.typography.titleLarge)
                         Text(current.computer, style = MaterialTheme.typography.titleMedium)
                         Text(pairStatus.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                         if (pairStatus == "Pairing…") CircularProgressIndicator()

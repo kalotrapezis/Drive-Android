@@ -1,4 +1,4 @@
-# Local Drive: implemented features
+# Tetra: implemented features
 
 Updated: 2026-09-22. This is the authoritative guide to what is implemented
 now. It is based on the current code, not on older roadmap wording. Physical
@@ -184,7 +184,7 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   Trash browsing, map marker clustering, cloud AI/backup, automatic
   destructive organisation, and live location tracking.
 - The Xiaomi camera's own thumbnail may still open the MIUI Gallery even when
-  Local Drive is the default gallery; that is hard-wired by MIUI.
+  Tetra is the default gallery; that is hard-wired by MIUI.
 
 ## Document Scanner — complete
 

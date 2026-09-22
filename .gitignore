@@ -5,3 +5,5 @@ app/build/
 local.properties
 *.iml
 .idea/
+Assets/Icons/New/*.psd
+Assets/Icons/New/*.ico

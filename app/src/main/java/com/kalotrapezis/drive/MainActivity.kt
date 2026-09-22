@@ -796,6 +796,7 @@ private fun SyncTab(back: () -> Unit) {
     if (scanning) {
         CodeScannerTab(back = { scanning = false }, onCode = { value ->
             val qr = SyncRules.parseQr(value) ?: return@CodeScannerTab false
+            if (!scanning || busy != null) return@CodeScannerTab true // the next camera frames see the same code: send it once
             scanning = false
             busy = "Pairing with ${qr.name}…"
             scope.launch {

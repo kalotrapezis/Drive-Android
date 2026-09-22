@@ -86,7 +86,8 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   with the same date and copied EXIF date/camera/location. **Save** replaces
   the original after Android's own modify-consent prompt; the edit is fully
   rendered and encoded before the original is opened, so a failure leaves it
-  intact. Both save at full resolution (up to 8192 px, `largeHeap`).
+  intact. Its favorite, collections and location stay with it (faces and
+  labels are re-analysed, since a crop or rotation moves them). Both save at full resolution (up to 8192 px, `largeHeap`).
 
 ### Gallery and search
 

@@ -125,6 +125,21 @@ private fun savePhotoCopy(context: Context, entry: Entry, edit: PhotoEdit): Uri 
 }
 
 /**
+ * The key the gallery will list for [uri] once MediaStore has caught up with the new size (it includes the size).
+ * Waits briefly for MediaStore; null if it never settles, which leaves the metadata where it was.
+ */
+private fun settledPhotoKey(context: Context, uri: Uri): String? {
+    val bytes = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: return null
+    repeat(20) {
+        context.contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && c.getLong(2) == bytes) return PhotoMetadataRules.stableKey(uri.toString(), c.getString(1) ?: "Unnamed", c.getString(0) ?: "Unnamed", bytes)
+        }
+        Thread.sleep(100)
+    }
+    return null
+}
+
+/**
  * Replaces the original photo's pixels (after Android's own modify consent). Everything is rendered and encoded
  * first; the original is only opened for writing once the complete new file exists.
  */
@@ -175,7 +190,7 @@ private fun writeExif(context: Context, target: Uri, tags: Map<String, String>) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (Uri) -> Unit) {
+internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri, newPhotoKey: String?) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val source by produceState<Bitmap?>(null, entry.contentUri) {
@@ -213,8 +228,10 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (Uri) -> 
         saving = true
         error = null
         scope.launch {
-            runCatching { withContext(Dispatchers.IO) { if (replace) replacePhoto(context, entry, edit) else savePhotoCopy(context, entry, edit) } }
-                .onSuccess(saved)
+            runCatching { withContext(Dispatchers.IO) {
+                if (replace) replacePhoto(context, entry, edit).let { it to settledPhotoKey(context, it) } else savePhotoCopy(context, entry, edit) to null
+            } }
+                .onSuccess { (uri, newKey) -> saved(uri, newKey) }
                 .onFailure { error = it.message ?: "Could not save the edited photo." }
             saving = false
         }

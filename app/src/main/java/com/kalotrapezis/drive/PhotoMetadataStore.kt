@@ -9,6 +9,7 @@ import java.nio.ByteOrder
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.Locale
+import java.util.UUID
 
 internal data class PhotoState(val favorite: Boolean = false)
 internal data class PhotoLocation(
@@ -21,7 +22,7 @@ internal enum class PhotoSearchQuality { Fast, Advanced }
 
 internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int)
 internal data class FaceSample(val photoKey: String, val bounds: android.graphics.Rect)
-internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>)
+internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null)
 internal data class PendingReview(
     val photoKey: String,
     val question: String,
@@ -33,7 +34,7 @@ internal data class FaceGroup(val id: Long, val name: String, val count: Int, va
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 12) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 13) {
     private val galleryPreferences = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0)")
@@ -43,6 +44,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         createFaceGroupingTables(db)
         createLabelTables(db)
         createLocationTable(db)
+        addSyncIds(db)
     }
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -89,6 +91,34 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             db.execSQL("ALTER TABLE photo_location ADD COLUMN place_name TEXT")
             db.execSQL("ALTER TABLE photo_location ADD COLUMN place_resolved INTEGER NOT NULL DEFAULT 0")
         }
+        if (oldVersion < 13) addSyncIds(db)
+    }
+
+    /**
+     * Permanent ids for sync (SYNC_PLAN.md): people, collections and faces keep their local integer ids and get a
+     * UUID that is the same on every device. Existing rows are only extended, never rewritten.
+     */
+    private fun addSyncIds(db: SQLiteDatabase) = db.inTransaction {
+        for (table in listOf("face_groups", "collections", "face_samples")) {
+            execSQL("ALTER TABLE $table ADD COLUMN uuid TEXT")
+            val ids = rawQuery("SELECT id FROM $table", null).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+            ids.forEach { id -> update(table, ContentValues().apply { put("uuid", UUID.randomUUID().toString()) }, "id = ?", arrayOf(id.toString())) }
+            execSQL("CREATE UNIQUE INDEX ${table}_uuid ON $table(uuid)")
+        }
+    }
+
+    /**
+     * After "Save" replaces a photo, its size and so its key change. Favorite, collections and location follow the
+     * photo; faces and labels are left to re-analysis because crop or rotation moved them.
+     */
+    fun rekeyPhoto(oldKey: String, newKey: String) {
+        if (oldKey == newKey) return
+        writableDatabase.inTransaction {
+            for (table in listOf("photo_state", "collection_membership", "photo_location")) {
+                execSQL("UPDATE OR IGNORE $table SET photo_key = ? WHERE photo_key = ?", arrayOf(newKey, oldKey))
+                delete(table, "photo_key = ?", arrayOf(oldKey)) // only rows that already existed for the new key are left
+            }
+        }
     }
 
     fun states(keys: Collection<String>): Map<String, PhotoState> {
@@ -110,7 +140,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun createCollection(rawName: String): PhotoCollection {
         val name = PhotoMetadataRules.collectionName(rawName)
-        val id = writableDatabase.insertOrThrow("collections", null, ContentValues().apply { put("name", name) })
+        val id = writableDatabase.insertOrThrow("collections", null, ContentValues().apply { put("name", name); put("uuid", UUID.randomUUID().toString()) })
         return PhotoCollection(id, name, 0)
     }
 
@@ -257,17 +287,22 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val sampleIds = rawQuery("SELECT id FROM face_samples WHERE group_id = ?", arrayOf(sourceGroupId.toString())).use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
             }
+            val sourceUuid = rawQuery("SELECT uuid FROM face_groups WHERE id = ?", arrayOf(sourceGroupId.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
             update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id IN (SELECT id FROM face_samples WHERE group_id = ?)", arrayOf(sourceGroupId.toString()))
             update("face_reviews", ContentValues().apply { put("candidate_group_id", targetGroupId) }, "candidate_group_id = ?", arrayOf(sourceGroupId.toString()))
             update("face_samples", ContentValues().apply { put("group_id", targetGroupId) }, "group_id = ?", arrayOf(sourceGroupId.toString()))
             delete("face_groups", "id = ?", arrayOf(sourceGroupId.toString()))
-            FaceMergeUndo(sourceName, sampleIds)
+            FaceMergeUndo(sourceName, sampleIds, sourceUuid)
         }
     }
 
     fun undoFaceMerge(undo: FaceMergeUndo) = writableDatabase.inTransaction {
         if (undo.sampleIds.isEmpty()) return@inTransaction
-        val restoredGroupId = insertOrThrow("face_groups", null, ContentValues().apply { put("name", undo.sourceName) })
+        // The same UUID comes back, so other devices see one continuous person rather than a new one.
+        val restoredGroupId = insertOrThrow("face_groups", null, ContentValues().apply {
+            put("name", undo.sourceName)
+            put("uuid", undo.sourceUuid ?: UUID.randomUUID().toString())
+        })
         update("face_samples", ContentValues().apply { put("group_id", restoredGroupId) }, "id IN (${undo.sampleIds.joinToString { "?" }})", undo.sampleIds.map(Long::toString).toTypedArray())
     }
 
@@ -319,6 +354,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("embedding", face.embedding.toBytes())
                 put("group_id", groupId)
                 put("quality", face.quality)
+                put("uuid", UUID.randomUUID().toString())
             }, SQLiteDatabase.CONFLICT_IGNORE)
             if (sampleId != -1L && reliable && similarity in 0.66f..<0.74f) insertWithOnConflict("face_reviews", null, ContentValues().apply {
                 put("photo_key", photoKey)
@@ -411,6 +447,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     private fun SQLiteDatabase.createFaceGroup(): Long = insertOrThrow("face_groups", null, ContentValues().apply {
+        put("uuid", UUID.randomUUID().toString())
         put("name", "Person ${rawQuery("SELECT COUNT(*) FROM face_groups", null).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) + 1 }}")
     })
 

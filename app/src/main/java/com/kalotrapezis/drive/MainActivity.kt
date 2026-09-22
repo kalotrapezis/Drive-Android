@@ -1925,7 +1925,9 @@ private fun PhotoTab(
         return
     }
     editingEntry?.let { entry ->
-        PhotoEditorScreen(entry, close = { editingEntry = null }, saved = { uri ->
+        PhotoEditorScreen(entry, close = { editingEntry = null }, saved = { uri, newPhotoKey ->
+            // "Save" changed the photo's size and key: its favorite, collections and location follow it.
+            if (newPhotoKey != null) metadataStore.rekeyPhoto(entry.photoKey, newPhotoKey)
             editingEntry = null
             pendingViewerId = uri.lastPathSegment
             refresh()

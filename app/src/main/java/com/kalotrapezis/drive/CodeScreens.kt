@@ -79,6 +79,10 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.Executors
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
 
 private enum class CodeMode { Codes, Text }
 
@@ -86,6 +90,8 @@ private sealed interface CodeResult {
     data class Payment(val code: String) : CodeResult
     data class Code(val value: String, val url: String?) : CodeResult
     data class Text(val text: String, val payment: String?) : CodeResult
+    /** Local Drive's own pairing QR from the computer: pairs right away. */
+    data class Pairing(val raw: String, val computer: String) : CodeResult
 }
 
 /** An RF payment code takes priority; otherwise a link gets an Open action. Only http(s) links are opened. */
@@ -119,6 +125,16 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
     val previewView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val barcodes = remember { BarcodeScanning.getClient() }
+    val scope = rememberCoroutineScope()
+    var pairStatus by remember { mutableStateOf<String?>(null) }
+    fun pair(raw: String, qr: PairingQr) {
+        result = CodeResult.Pairing(raw, qr.name)
+        pairStatus = "Pairing…"
+        scope.launch {
+            pairStatus = runCatching { withContext(Dispatchers.IO) { SyncStore(context.applicationContext).let { SyncClient(context.applicationContext, it).pair(qr) } } }
+                .fold({ "Paired with ${it.name}. Open Local Sync on the Home screen to back up your photos." }, { it.message ?: "Pairing failed." })
+        }
+    }
     val texts = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
     val requestCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCamera = granted
@@ -153,11 +169,19 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                     }
                     barcodes.process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
                         .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { found ->
-                            val code = found.firstOrNull { !it.rawValue.isNullOrBlank() } ?: return@addOnSuccessListener
-                            val value = code.rawValue!!
+                            // Several codes can be in view (a QR on the screen, a barcode on a can): Local Drive's own
+                            // pairing code wins over everything else.
+                            val codes = found.filter { !it.rawValue.isNullOrBlank() }
+                            val pairing = codes.firstNotNullOfOrNull { c -> SyncRules.parseQr(c.rawValue!!)?.let { c.rawValue!! to it } }
+                            if (onCode != null) { // Sync's pairing mode: every other code is ignored
+                                if (scanning && pairing != null && onCode(pairing.first)) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                return@addOnSuccessListener
+                            }
+                            val code = codes.firstOrNull() ?: return@addOnSuccessListener
+                            val value = pairing?.first ?: code.rawValue!!
                             if (!scanning || (value == ignoredValue && SystemClock.elapsedRealtime() < ignoredUntil)) return@addOnSuccessListener
-                            if (onCode?.invoke(value) == true) return@addOnSuccessListener // e.g. Sync's pairing QR
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (pairing != null) { pair(pairing.first, pairing.second); return@addOnSuccessListener }
                             result = codeResult(value, code.url?.url?.takeIf { code.valueType == Barcode.TYPE_URL })
                         }
                         .addOnCompleteListener { frame.close() }
@@ -196,6 +220,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
     fun dismiss() {
         (result as? CodeResult.Code)?.value?.let { ignoredValue = it }
         (result as? CodeResult.Payment)?.code?.let { ignoredValue = it }
+        (result as? CodeResult.Pairing)?.raw?.let { ignoredValue = it }
         ignoredUntil = SystemClock.elapsedRealtime() + 3_000
         result = null
     }
@@ -215,7 +240,11 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 Text(
-                    if (mode == CodeMode.Codes) "Point at a QR code or barcode" else "Frame the text, then tap the shutter",
+                    when {
+                        onCode != null -> "Point at the pairing code on the computer"
+                        mode == CodeMode.Codes -> "Point at a QR code or barcode"
+                        else -> "Frame the text, then tap the shutter"
+                    },
                     style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                 )
             }
@@ -250,6 +279,12 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                         current.url?.let { url -> DriveWideAction(R.drawable.ic_open_in_browser, "Open in browser") { openLink(context, url); dismiss() } }
                         DriveWideAction(R.drawable.ic_copy, "Copy") { copyText(context, current.value); dismiss() }
                         DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, current.value) }
+                    }
+                    is CodeResult.Pairing -> {
+                        Text("Local Drive computer", style = MaterialTheme.typography.titleLarge)
+                        Text(current.computer, style = MaterialTheme.typography.titleMedium)
+                        Text(pairStatus.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                        if (pairStatus == "Pairing…") CircularProgressIndicator()
                     }
                     is CodeResult.Text -> {
                         current.payment?.let { PaymentCodeBlock(context, it, large = false) }

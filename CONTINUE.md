@@ -1,7 +1,32 @@
 # Continue Drive Android
 
-Updated: 2026-09-20. Read `ROADMAP.md`, `Plan.md`, and
-`DOCUMENT_SCANNER_PDF_MANAGER.md` first.
+Updated: 2026-09-22. Start with `README.md`, then `FEATURES.md` (what exists
+now). Everything below the first checkpoint is history.
+
+## Checkpoint — 2026-09-22 (branch `alpha`)
+
+Development moved to the `alpha` branch. Done and accepted on Xiaomi 15
+(`208c8192`) this session:
+
+- **Document Scanner** finished: live-outline crop, auto fix with edge gap
+  fill (per-page toggle), gallery-style document viewer, retake, adjust,
+  filters incl. Match pages, manual painting, drag-to-reorder pages,
+  multi-page PDF. See `DOCUMENT_SCANNER.md`.
+- **Codes** replaced the PDF Manager: QR/barcode, text recognition, RF
+  payment codes.
+- **Gallery**: registers as the default photos/gallery app; photo editor
+  (crop & straighten, rotate, markup) with Save / Save as copy / Discard.
+- **Files**: Share in the item sheet; Properties moved to a wide button.
+- **Home**: Photos backdrop skips screenshots/documents; neutral grey accent
+  replaces the wallpaper cyan app-wide.
+
+Build: `ANDROID_HOME=~/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+./gradlew testDebugUnitTest assembleDebug` (Gradle 8.14 rejects the default
+JDK 25).
+
+Open questions for next time: map pins became grey with the neutral accent
+(give them their own colour?); PDF size at 300 dpi vs 200 dpi; Greek OCR
+would need Tesseract (~20 MB).
 
 ## Current Photos guide
 

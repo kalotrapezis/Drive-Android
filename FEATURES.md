@@ -1,6 +1,6 @@
-# Local Drive: completed Files and Photos features
+# Local Drive: implemented features
 
-Updated: 2026-09-20. This is the authoritative guide to what is implemented
+Updated: 2026-09-22. This is the authoritative guide to what is implemented
 now. It is based on the current code, not on older roadmap wording. Physical
 device acceptance steps remain in `MANUAL_CHECKLIST.md`.
 
@@ -16,6 +16,15 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   originals or files in `Drive/`.
 - Hidden media is the exception described below: it is copied into encrypted
   app-private storage before Android is asked to remove the public original.
+
+## Home
+
+- Cards: **Local Sync** (status only), a **Photos** group (Photos with a random
+  real-photo backdrop that skips screenshots and AI-classified documents,
+  Screenshots, Documents), a **Files** group (Files, Favorites, Recent), a red
+  tools group (**Scanner**, **Codes**) and **Settings**.
+- Buttons, spinners and selected states use a neutral white/grey accent to
+  match the translucent islands (the wallpaper's dynamic colour is overridden).
 
 ## Files — complete
 
@@ -38,9 +47,10 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
 - Tap a folder to enter it; tap a file to open it with Android's resolver.
   **Open with** lets the user choose a different installed app; that preference
   is remembered only for the same Drive-relative file path.
-- The three-dot item sheet provides **Copy**, **Move**, **Rename**,
-  **Properties**, **Favorite**, **Tags**, and **Move to Trash**. Folders also
-  provide **Change folder color**.
+- The three-dot item sheet has round **Copy**, **Move**, **Rename** and
+  **Share** (files only) buttons, then **Open with**, **Favorite**, **Tags**,
+  **Properties** and **Move to Trash**. Folders also provide **Change folder
+  color**.
 - Copy and Move destination choices are restricted to folders inside Drive.
   Existing names are never overwritten, a folder cannot be copied/moved into
   itself, and canonical-path checks reject traversal outside Drive.
@@ -58,7 +68,25 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   create files/folders, or permanently delete except through confirmed
   **Empty Trash**.
 
-## Photos — complete, except editing
+## Photos — complete
+
+### Default gallery and editing
+
+- The app registers as a gallery (`APP_GALLERY`) and for `VIEW` / camera
+  `REVIEW` of `image/*` and `video/*`, so it can be chosen as the default
+  photos app. A Gallery (MediaStore) item opens in the full viewer with its
+  filmstrip; Back returns to the calling app. Anything else (for example a
+  chat attachment) opens in a single-item viewer with Share.
+- The viewer's **Edit** (photos only, not videos or Hidden items) reuses the
+  scanner tools: **Crop & straighten** (corner editor with magnifier),
+  rotate left/right, and **Markup** (colours, custom colour, brush size, Undo).
+  The editor's bottom island holds the tools and a Save icon (disabled until
+  something changes) that opens a bottom sheet with **Save**, **Save as copy**
+  and **Discard changes**. **Save copy** writes `<name>_edited.jpg` beside the original
+  with the same date and copied EXIF date/camera/location. **Save** replaces
+  the original after Android's own modify-consent prompt; the edit is fully
+  rendered and encoded before the original is opened, so a failure leaves it
+  intact. Both save at full resolution (up to 8192 px, `largeHeap`).
 
 ### Gallery and search
 
@@ -124,7 +152,7 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   media within the active Gallery or collection filter; tap/drag the bottom
   filmstrip to jump quickly between media.
 - The viewer action island contains Share, Details, Favorite, Add/Remove from
-  collection, and Restore for Hidden media. Its handle collapses/expands the
+  collection, Restore for Hidden media, and Edit (photos only). Its handle collapses/expands the
   actions.
 - Swipe a photo upward for **Details**. Details shows name, MediaStore path,
   date/time, size, local English AI labels, and named people.
@@ -138,8 +166,8 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   videos only after the dedicated media-location permission is granted. It
   never requests live phone location.
 - It caches a nearby main place name locally for Details and photo search.
-  Details contains place, coordinates, an accent-pin map preview, and **Show
-  on map**.
+  Details contains place, coordinates, a static map preview (no pan/zoom; a
+  tap opens the Map collection at that pin), and **Show on map**.
 - Map pins use the app accent colour. Tapping a pin opens the photo card;
   **Map app** passes the coordinate to an installed external maps app.
 - The Map screen intentionally hides Gallery/Search controls. Returning to
@@ -149,13 +177,53 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
 - Map tiles and reverse place lookup require internet, but coordinates and
   cached place names remain local.
 
-### Photos limits and deferred editing
+### Photos limits
 
-- The visible **Edit** viewer button is a placeholder: it does not alter the
-  image, video, date, or file. Photo editing is deliberately deferred to a
-  later stage.
-- Also deferred: custom-collection rename, edit-date, metadata export/sync,
-  Android Trash browsing, map marker clustering, cloud AI/backup, automatic
+- Deferred: custom-collection rename, edit-date, metadata export/sync, Android
+  Trash browsing, map marker clustering, cloud AI/backup, automatic
   destructive organisation, and live location tracking.
-- Document Scanner and PDF Manager are the next planned module; see
-  `DOCUMENT_SCANNER_PDF_MANAGER.md`. No scanner implementation exists yet.
+- The Xiaomi camera's own thumbnail may still open the MIUI Gallery even when
+  Local Drive is the default gallery; that is hard-wired by MIUI.
+
+## Document Scanner — complete
+
+Home → red tools group → **Scanner**. Details and design notes:
+`DOCUMENT_SCANNER.md`.
+
+- **Camera**: CameraX preview with live page detection (OpenCV, on-device).
+  White corner dots show the detected outline; optional **Auto capture** fires
+  2.5 s after the outline is stable. Flash toggle. The camera stays open for
+  page after page; the page-count thumbnail opens the document.
+- **Auto fix** (per page, on by default): the outline shown at capture time is
+  the crop; the page is perspective-straightened with a 4% margin and any table
+  visible at the edges is painted with the neighbouring paper colour. The
+  header's wand toggles it per page.
+- **Document viewer** (gallery-style): page pager, numbered filmstrip with
+  **+** to add a page, and an actions island:
+  - **Retake** replaces that page in place.
+  - **Adjust**: Crop & straighten (drag corners, gridded magnifier in the
+    opposite corner), rotate left/right, Reset.
+  - **Filters**: Original, Fix lighting, Blue ink, Black ink, Blue + black,
+    B&W, Blue B&W, **Match pages** (one shared paper tone for all pages) and
+    Apply to all. All but Original flatten uneven lighting first.
+  - **Pages**: numbered grid; long-press and drag to reorder.
+  - **Save**: one multi-page A4-width PDF in
+    `Files › Documents › Scanned Documents`, never overwriting (`name (2).pdf`).
+  - Pull the island handle up for **manual painting**: swatches sampled from
+    the page's paper (lit, typical, light shadow, shadow), white, black, a
+    custom colour, brush size and Undo.
+- Leaving the document asks before discarding unsaved pages.
+
+## Codes — complete
+
+Home → red tools group → **Codes** (implementation: `CodeScreens.kt`,
+`PaymentCodes.kt`).
+
+- **Codes** mode scans QR codes and barcodes continuously (ML Kit, bundled,
+  offline) and opens a bottom sheet: **Open in browser** (http/https only),
+  **Copy**, **Share**. A dismissed code is ignored for 3 s.
+- **Text** mode recognises text on shutter into selectable text with **Copy
+  all** / **Share**. ML Kit has no Greek model: Latin text and numbers only.
+- **RF payment codes** (ISO 11649, checksum-validated) found in a code or in
+  recognised text get a dedicated sheet with **Copy payment code** / **Share**;
+  the copied code has no spaces.

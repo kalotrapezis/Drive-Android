@@ -28,3 +28,15 @@ attribution in the map UI.
 
 MapLibre license: https://github.com/maplibre/maplibre-native/blob/main/LICENSE.md
 OpenFreeMap: https://openfreemap.org/
+
+## OpenCV
+
+Document page detection uses OpenCV 4.12.0 for Android (`org.opencv:opencv`),
+licensed under Apache License 2.0: https://github.com/opencv/opencv/blob/4.x/LICENSE
+
+## Google ML Kit and CameraX
+
+Barcode scanning (`com.google.mlkit:barcode-scanning`), text recognition,
+face detection and image labelling run on-device through Google ML Kit, used
+under the ML Kit Terms of Service: https://developers.google.com/ml-kit/terms
+Camera capture uses AndroidX CameraX, licensed under Apache License 2.0.

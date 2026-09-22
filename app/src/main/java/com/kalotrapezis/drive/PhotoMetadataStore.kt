@@ -32,7 +32,7 @@ internal data class PendingReview(
 )
 internal data class FaceGroup(val id: Long, val name: String, val count: Int, val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
 internal data class FavoriteRecord(val photoKey: String, val favorite: Boolean, val updatedAt: Long)
-internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long)
+internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long, val hiddenFromGallery: Boolean = false)
 internal data class CollectionItemRecord(val collectionUuid: String, val photoKey: String, val deleted: Boolean, val updatedAt: Long)
 internal data class PersonRecord(val uuid: String, val name: String, val updatedAt: Long)
 internal data class FaceRecord(val uuid: String, val photoKey: String, val bounds: android.graphics.Rect, val embedding: ByteArray, val quality: Float, val personUuid: String?, val updatedAt: Long)
@@ -40,11 +40,12 @@ internal data class DocumentRecord(val photoKey: String, val type: String?, val 
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 15) {
-    private val galleryPreferences = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 16) {
+    private val context = context.applicationContext
+    private val galleryPreferences = this.context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE collection_membership (collection_id INTEGER NOT NULL, photo_key TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(collection_id, photo_key), FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE)")
         createAiTables(db)
         createFaceGroupingTables(db)
@@ -113,6 +114,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 execSQL("UPDATE $table SET updated_at = $now")
             }
             for (table in listOf("collections", "collection_membership")) execSQL("ALTER TABLE $table ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+        }
+        // "Hide this album from Gallery" belongs to the album, not to this phone, so it moves out of preferences
+        // and onto the collection, where it travels with it (SYNC_PLAN.md "Which settings sync").
+        if (oldVersion < 16) db.inTransaction {
+            execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+            val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
+            hidden.forEach { uuid -> update("collections", ContentValues().apply { put("hidden", 1) }, "uuid = ?", arrayOf(uuid)) }
         }
     }
 
@@ -432,8 +440,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     ).use { c -> buildList { while (c.moveToNext()) add(FavoriteRecord(c.getString(0), c.getInt(1) != 0, c.getLong(2))) } }
 
     fun collectionRecords(): List<CollectionRecord> = readableDatabase.rawQuery(
-        "SELECT uuid, name, deleted, updated_at FROM collections WHERE uuid IS NOT NULL", null,
-    ).use { c -> buildList { while (c.moveToNext()) add(CollectionRecord(c.getString(0), c.getString(1), c.getInt(2) != 0, c.getLong(3))) } }
+        "SELECT uuid, name, deleted, updated_at, hidden FROM collections WHERE uuid IS NOT NULL", null,
+    ).use { c -> buildList { while (c.moveToNext()) add(CollectionRecord(c.getString(0), c.getString(1), c.getInt(2) != 0, c.getLong(3), c.getInt(4) != 0)) } }
 
     fun collectionItemRecords(): List<CollectionItemRecord> = readableDatabase.rawQuery(
         "SELECT c.uuid, m.photo_key, m.deleted, m.updated_at FROM collection_membership m JOIN collections c ON c.id = m.collection_id WHERE c.uuid IS NOT NULL",
@@ -467,11 +475,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         }, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    fun applyIncomingCollection(uuid: String, name: String, deleted: Boolean, updatedAt: Long) = writableDatabase.inTransaction {
+    fun applyIncomingCollection(uuid: String, name: String, deleted: Boolean, updatedAt: Long, hiddenFromGallery: Boolean = false) = writableDatabase.inTransaction {
         val local = rawQuery("SELECT id, updated_at FROM collections WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
         if (local != null) {
             if (updatedAt <= local.second) return@inTransaction
-            update("collections", ContentValues().apply { put("name", name); put("deleted", if (deleted) 1 else 0); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+            update("collections", ContentValues().apply {
+                put("name", name); put("deleted", if (deleted) 1 else 0); put("hidden", if (hiddenFromGallery) 1 else 0); put("updated_at", updatedAt)
+            }, "id = ?", arrayOf(local.first.toString()))
             return@inTransaction
         }
         if (deleted) return@inTransaction // nothing here to bury
@@ -479,7 +489,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         val sameName = rawQuery("SELECT id FROM collections WHERE name = ? COLLATE NOCASE", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) else null }
         if (sameName != null) update("collections", ContentValues().apply { put("uuid", uuid); put("deleted", 0); put("updated_at", updatedAt) }, "id = ?", arrayOf(sameName.toString()))
         else insertWithOnConflict("collections", null, ContentValues().apply {
-            put("name", name); put("uuid", uuid); put("deleted", if (deleted) 1 else 0); put("updated_at", updatedAt)
+            put("name", name); put("uuid", uuid); put("deleted", if (deleted) 1 else 0)
+            put("hidden", if (hiddenFromGallery) 1 else 0); put("updated_at", updatedAt)
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
@@ -534,11 +545,12 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun hidesScreenshotsFromGallery(): Boolean = galleryPreferences.getBoolean("hide_screenshots", false)
 
     /** My albums whose photos stay out of the Gallery view (by album UUID, so renames and sync keep it). */
-    fun albumsHiddenFromGallery(): Set<String> = galleryPreferences.getStringSet("hidden_albums", emptySet()).orEmpty()
+    fun albumsHiddenFromGallery(): Set<String> = keysFor("SELECT uuid FROM collections WHERE hidden = 1 AND uuid IS NOT NULL", emptyArray())
 
     fun setAlbumHiddenFromGallery(uuid: String, hide: Boolean) {
-        val updated = albumsHiddenFromGallery().toMutableSet().apply { if (hide) add(uuid) else remove(uuid) }
-        galleryPreferences.edit().putStringSet("hidden_albums", updated).apply()
+        writableDatabase.update("collections", ContentValues().apply {
+            put("hidden", if (hide) 1 else 0); put("updated_at", System.currentTimeMillis())
+        }, "uuid = ?", arrayOf(uuid))
     }
 
     fun hidesDocumentsFromGallery(): Boolean = galleryPreferences.getBoolean("hide_documents", false)
@@ -547,9 +559,24 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun hidesDocumentsFromCollections(): Boolean = galleryPreferences.getBoolean("hide_documents_collection", false)
 
-    fun setHidesScreenshotsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_screenshots", hide).apply() }
+    fun setHidesScreenshotsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_screenshots", hide).apply(); touchViewSettings() }
 
-    fun setHidesDocumentsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_documents", hide).apply() }
+    fun setHidesDocumentsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_documents", hide).apply(); touchViewSettings() }
+
+    /**
+     * The two "hide these from Photos" answers describe the library, not this phone, so they cross to the
+     * computer. What a device should *do* — run face or document analysis, which model to use — stays local:
+     * syncing that would start hours of work on a device that never asked for it.
+     */
+    fun viewSettingsUpdatedAt(): Long = galleryPreferences.getLong("view_settings_updated_at", 0)
+
+    fun applyIncomingViewSettings(hideScreenshots: Boolean, hideDocuments: Boolean, updatedAt: Long) {
+        if (updatedAt <= viewSettingsUpdatedAt()) return
+        galleryPreferences.edit().putBoolean("hide_screenshots", hideScreenshots).putBoolean("hide_documents", hideDocuments)
+            .putLong("view_settings_updated_at", updatedAt).apply()
+    }
+
+    private fun touchViewSettings() { galleryPreferences.edit().putLong("view_settings_updated_at", System.currentTimeMillis()).apply() }
 
     fun setHidesPeopleFromCollections(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_people_collection", hide).apply() }
 

@@ -242,7 +242,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 JSONObject().put("sha256", it).put("favorite", r.favorite).put("updatedAt", r.updatedAt)
             } }))
             .put("collections", JSONArray(metadataStore.collectionRecords().map { r ->
-                JSONObject().put("uuid", r.uuid).put("name", r.name).put("deleted", r.deleted).put("updatedAt", r.updatedAt)
+                JSONObject().put("uuid", r.uuid).put("name", r.name).put("deleted", r.deleted)
+                    .put("hidden", r.hiddenFromGallery).put("updatedAt", r.updatedAt)
             }))
             .put("collectionItems", JSONArray(metadataStore.collectionItemRecords().mapNotNull { r -> sha(r.photoKey)?.let {
                 JSONObject().put("collection", r.collectionUuid).put("sha256", it).put("deleted", r.deleted).put("updatedAt", r.updatedAt)
@@ -260,6 +261,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                     .put("tags", JSONArray(r.tags.toList())).put("updatedAt", r.updatedAt)
             }))
             .put("fileRecents", JSONArray(driveRecents.all().map { JSONObject().put("path", it.relativePath).put("openedAt", it.openedAt) }))
+            .put("viewSettings", JSONObject()
+                .put("hideScreenshots", metadataStore.hidesScreenshotsFromGallery())
+                .put("hideDocuments", metadataStore.hidesDocumentsFromGallery())
+                .put("updatedAt", metadataStore.viewSettingsUpdatedAt()))
         postJson(host, p, "/metadata", body)
 
         val since = store.lastMetadataSync()
@@ -268,7 +273,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             keyFor(d)?.let { metadataStore.applyIncomingDocument(it, d.optString("type", null), d.optDouble("confidence", 0.0).toFloat(), d.optBoolean("userVerified"), d.getLong("updatedAt")) }
         }
         pulled.each("favorites") { d -> keyFor(d)?.let { metadataStore.applyIncomingFavorite(it, d.optBoolean("favorite"), d.getLong("updatedAt")) } }
-        pulled.each("collections") { d -> metadataStore.applyIncomingCollection(d.getString("uuid"), d.getString("name"), d.optBoolean("deleted"), d.getLong("updatedAt")) }
+        pulled.each("collections") { d -> metadataStore.applyIncomingCollection(d.getString("uuid"), d.getString("name"), d.optBoolean("deleted"), d.getLong("updatedAt"), d.optBoolean("hidden")) }
         pulled.each("collectionItems") { d -> keyFor(d)?.let { metadataStore.applyIncomingCollectionItem(d.getString("collection"), it, d.optBoolean("deleted"), d.getLong("updatedAt")) } }
         pulled.each("labels") { d -> keyFor(d)?.let { key ->
             val list = d.optJSONArray("labels") ?: JSONArray()
@@ -282,6 +287,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 d.getString("path"), d.optBoolean("favorite"), d.optString("color").ifEmpty { null },
                 (0 until tags.length()).map(tags::getString).toSet(), d.getLong("updatedAt"),
             ))
+        }
+        pulled.optJSONObject("viewSettings")?.let { v ->
+            metadataStore.applyIncomingViewSettings(v.optBoolean("hideScreenshots"), v.optBoolean("hideDocuments"), v.optLong("updatedAt"))
         }
         pulled.optJSONArray("fileRecents")?.let { array ->
             driveRecents.merge((0 until array.length()).mapNotNull { i ->

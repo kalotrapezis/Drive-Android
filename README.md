@@ -16,7 +16,7 @@ Kotlin + Jetpack Compose, min SDK 30 (Android 11), target SDK 36. Package
 | **Scanner** | Multi-page document scanning to PDF with auto crop, filters, retake, reorder and manual painting. |
 | **Codes** | QR/barcode scanner, text recognition, RF payment-code copy/share. |
 
-Planned: Notes, desktop Sync (see `ROADMAP.md`).
+Planned: Notes, desktop app and Sync (see `SYNC_PLAN.md`).
 
 ## Build
 
@@ -44,6 +44,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | `AI_COLLECTIONS_ARCHITECTURE.md` | Local People/Documents analysis design |
 | `ROADMAP.md`, `Plan.md` | Product direction and the original wishlist |
 | `MANUAL_CHECKLIST.md` | On-device acceptance steps |
+| `SYNC_PLAN.md` | Desktop app + phone ↔ desktop sync plan (shared with `../Drive/`) |
 | `CONTINUE.md` | Handoff notes between work sessions |
 | `THIRD_PARTY_NOTICES.md` | Bundled models and library licences |
 

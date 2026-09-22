@@ -26,6 +26,7 @@ android {
 }
 
 dependencies {
+    val cameraX = "1.6.2"
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
@@ -35,6 +36,12 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("androidx.camera:camera-camera2:$cameraX")
+    implementation("androidx.camera:camera-lifecycle:$cameraX")
+    implementation("androidx.camera:camera-view:$cameraX")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation("org.opencv:opencv:4.12.0")
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")

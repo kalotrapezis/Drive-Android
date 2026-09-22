@@ -1,16 +1,20 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.foundation.layout.Spacer
 import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.ClipData
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.ImageDecoder
+import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
@@ -20,6 +24,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.CancellationSignal
 import android.provider.MediaStore
 import android.provider.Settings
@@ -29,6 +34,7 @@ import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
 import android.media.MediaMetadataRetriever
+import android.view.Surface
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -130,6 +136,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
@@ -152,9 +159,24 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Camera
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.camera.view.transform.CoordinateTransform
+import androidx.camera.view.transform.ImageProxyTransformFactory
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -162,10 +184,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
+import java.util.UUID
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
@@ -178,9 +203,14 @@ private fun driveRoot(): File = File(Environment.getExternalStorageDirectory(), 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { LocalDriveApp() }
+        val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
+        setContent { LocalDriveApp(external) }
     }
 }
+
+/** A photo or video another app asked us to show. */
+internal data class ExternalMedia(val uri: Uri, val mimeType: String?)
+private val EXTERNAL_VIEW_ACTIONS = setOf(Intent.ACTION_VIEW, "android.provider.action.REVIEW", "com.android.camera.action.REVIEW")
 
 private fun authenticateVault(activity: Activity, success: () -> Unit, failure: (String) -> Unit) {
     val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -226,8 +256,12 @@ private sealed interface DriveListState {
 }
 
 @Composable
-private fun LocalDriveApp() {
+private fun LocalDriveApp(external: ExternalMedia? = null) {
     val context = LocalContext.current
+    // A MediaStore item opens in the full Gallery viewer; anything else (another app's file) in a single-item viewer.
+    val externalMediaId = external?.uri?.takeIf { it.authority == MediaStore.AUTHORITY }?.lastPathSegment
+    var externalSingle by remember { mutableStateOf(false) }
+    fun closeExternal() { (context as? Activity)?.finish() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
@@ -245,8 +279,26 @@ private fun LocalDriveApp() {
     var photoFilter by remember { mutableStateOf<PhotoFilter>(PhotoFilter.Timeline) }
     val photoMetadata = remember(context) { PhotoMetadataStore(context.applicationContext) }
     var metadataVersion by remember { mutableStateOf(0) }
+    var scanPages by remember { mutableStateOf<List<CapturedPage>>(emptyList()) }
+    var scanSelected by remember { mutableStateOf(0) }
+    var scanRetake by remember { mutableStateOf<Int?>(null) }
+    var scannerError by remember { mutableStateOf<String?>(null) }
+    var scanSaving by remember { mutableStateOf(false) }
+
+    fun lockScannerPortrait() { (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+    fun unlockScannerOrientation() { (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
 
     fun hasAllFilesAccess() = Environment.isExternalStorageManager()
+    fun quarantineScanFiles(page: CapturedPage) {
+        val trash = File(context.cacheDir, "scans-trash").also { it.mkdirs() }
+        if (page.file.exists()) runCatching { Files.move(page.file.toPath(), File(trash, "${UUID.randomUUID()}-${page.file.name}").toPath()) }
+    }
+    fun clearScanPages() {
+        scanPages.forEach(::quarantineScanFiles)
+        scanPages = emptyList()
+        scanSelected = 0
+        scanRetake = null
+    }
     fun loadDrive(folder: String = driveFolder) {
         if (!hasAllFilesAccess()) {
             driveState = DriveListState.Error("All files access is required to use $DRIVE_PATH.")
@@ -353,9 +405,50 @@ private fun LocalDriveApp() {
         driveRecents.record(driveRoot(), relative, System.currentTimeMillis())
         recentsVersion++
     }.fold(onSuccess = { null }, onFailure = { it.message ?: "Could not open this file. Install an app that supports it." })
-    BackHandler(enabled = screen != Screen.Home && screen != Screen.PhotoSetup) {
+    fun saveScan(name: String) {
+        if (scanSaving) return
+        scanSaving = true
+        scannerError = null
+        val pages = scanPages
+        Thread {
+            val result = runCatching {
+                ScanFiles.savePdf(driveRoot(), name, pages.size) { index -> checkNotNull(renderScanPage(pages[index], 1)) { "Could not read page ${index + 1}." } }
+            }
+            (context as MainActivity).runOnUiThread {
+                scanSaving = false
+                result.fold(
+                    onSuccess = {
+                        clearScanPages()
+                        unlockScannerOrientation()
+                        screen = Screen.Drive
+                        drivePane = DrivePane.Files
+                        driveFolder = "Documents/Scanned Documents"
+                        loadDrive("Documents/Scanned Documents")
+                    },
+                    onFailure = { scannerError = it.message ?: "Could not save the scan." },
+                )
+            }
+        }.start()
+    }
+    // Back from the camera returns to the document while it has pages; only an empty scan leaves the scanner.
+    fun leaveScanner() {
+        scanRetake = null
+        if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
+        else { unlockScannerOrientation(); screen = Screen.Home }
+    }
+    LaunchedEffect(external) {
+        if (external == null) return@LaunchedEffect
+        if (externalMediaId != null && canReadPhotos()) {
+            screen = Screen.Photos
+            photosPane = PhotosPane.Timeline
+            photoFilter = PhotoFilter.Timeline
+            loadPhotos()
+        } else externalSingle = true
+    }
+    BackHandler(enabled = screen != Screen.Home && screen != Screen.ScanDocument && screen != Screen.PhotoSetup) {
         when (screen) {
             Screen.Photos -> screen = Screen.Home
+            Screen.Scanner -> leaveScanner()
             Screen.Drive -> when {
                 drivePane == DrivePane.Files && driveFolder.isNotEmpty() -> {
                     driveFolder = DriveRules.parent(driveFolder)
@@ -376,6 +469,9 @@ private fun LocalDriveApp() {
                 Screen.Home -> Unit
                 Screen.Sync -> Unit
                 Screen.Settings -> Unit
+                Screen.Scanner -> Unit
+                Screen.ScanDocument -> Unit
+                Screen.Codes -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -388,15 +484,21 @@ private fun LocalDriveApp() {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
         darkTheme -> darkColorScheme()
         else -> lightColorScheme()
+    }.let { scheme ->
+        // Neutral accents to match the islands: white/grey buttons instead of the wallpaper's cyan.
+        if (darkTheme) scheme.copy(primary = Color(0xFFE6E6E6), onPrimary = Color.Black, primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White)
+        else scheme.copy(primary = Color(0xFF2B2B2B), onPrimary = Color.White, primaryContainer = Color(0xFFE2E2E2), onPrimaryContainer = Color.Black)
     }
     MaterialTheme(colorScheme = colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
-            when (screen) {
+            if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
+            else when (screen) {
                 Screen.PhotoSetup -> PhotoSetup({ finishPhotoSetup(true) }, { finishPhotoSetup(false) })
                 Screen.Home -> Home(
                     showPhotoBackdrop = homePhotoBackdrop,
                     hasPhotoAccess = canReadPhotos(),
+                    photoMetadata = photoMetadata,
                     openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
                     openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
                     openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
@@ -405,6 +507,8 @@ private fun LocalDriveApp() {
                     openRecent = { screen = Screen.Drive; drivePane = DrivePane.Home; driveFolder = "" },
                     openSync = { screen = Screen.Sync },
                     openSettings = { screen = Screen.Settings },
+                    openScanner = { lockScannerPortrait(); clearScanPages(); scannerError = null; screen = Screen.Scanner },
+                    openCodes = { screen = Screen.Codes },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -436,8 +540,50 @@ private fun LocalDriveApp() {
                     { collectionId, uris -> metadataAction { photoMetadata.removeFromCollection(collectionId, selectedEntries(uris).map { it.photoKey }) } },
                     { name -> runCatching { photoMetadata.createCollection(name) }.onSuccess { metadataVersion++ } },
                     { collectionId -> metadataAction { photoMetadata.deleteCollection(collectionId) } },
+                    externalMediaId = externalMediaId,
+                    externalMissing = { externalSingle = true },
+                    closeExternal = if (external != null) ::closeExternal else null,
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home }, openSettings = { screen = Screen.Settings })
+                Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
+                Screen.Scanner -> CameraScanTab(
+                    back = ::leaveScanner,
+                    error = scannerError,
+                    pages = scanPages,
+                    openPages = { scanRetake = null; screen = Screen.ScanDocument },
+                    captured = { page ->
+                        val retakeIndex = scanRetake?.takeIf { it in scanPages.indices }
+                        if (retakeIndex != null) {
+                            val replaced = scanPages[retakeIndex]
+                            quarantineScanFiles(replaced)
+                            scanPages = scanPages.toMutableList().also { it[retakeIndex] = page.copy(filter = replaced.filter) }
+                            scanSelected = retakeIndex
+                        } else {
+                            scanPages = scanPages + page
+                            scanSelected = scanPages.lastIndex
+                        }
+                        scannerError = null
+                        // A retake returns to its page; normal captures stay in the camera for the next page.
+                        if (retakeIndex != null) screen = Screen.ScanDocument
+                        scanRetake = null
+                    },
+                )
+                Screen.ScanDocument -> ScanDocumentTab(
+                    pages = scanPages,
+                    selected = scanSelected,
+                    select = { scanSelected = it },
+                    update = { index, page -> scanPages = scanPages.toMutableList().also { it[index] = page } },
+                    move = { from, to ->
+                        scanPages = scanPages.toMutableList().also { it.add(to, it.removeAt(from)) }
+                        if (scanSelected == from) scanSelected = to
+                    },
+                    retake = { index -> scanRetake = index; screen = Screen.Scanner },
+                    addPage = { scanRetake = null; screen = Screen.Scanner },
+                    discard = { clearScanPages(); unlockScannerOrientation(); screen = Screen.Home },
+                    saving = scanSaving,
+                    error = scannerError,
+                    save = ::saveScan,
+                )
                 Screen.Settings -> SettingsTab(
                     back = { screen = Screen.Home },
                     metadataStore = photoMetadata,
@@ -462,7 +608,7 @@ private fun LocalDriveApp() {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -483,6 +629,7 @@ private sealed interface PhotoFilter {
 private fun Home(
     showPhotoBackdrop: Boolean,
     hasPhotoAccess: Boolean,
+    photoMetadata: PhotoMetadataStore,
     openPhotos: () -> Unit,
     openScreenshots: () -> Unit,
     openDocuments: () -> Unit,
@@ -491,6 +638,8 @@ private fun Home(
     openRecent: () -> Unit,
     openSync: () -> Unit,
     openSettings: () -> Unit,
+    openScanner: () -> Unit,
+    openCodes: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -509,9 +658,9 @@ private fun Home(
         item {
             HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, Modifier.weight(1f))
+                    HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Screenshots", R.drawable.ic_gallery, openScreenshots)
+                        HomeCompactCard("Screenshots", R.drawable.ic_screenshot, openScreenshots)
                         HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
                     }
                 }
@@ -528,6 +677,7 @@ private fun Home(
                 }
             }
         }
+        item { HomePdfToolsCard(openScanner, openCodes) }
         item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
@@ -538,10 +688,12 @@ private fun Home(
 ) { Box(Modifier.padding(10.dp)) { content() } }
 
 @Composable
-private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAccess: Boolean, modifier: Modifier = Modifier) {
+private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAccess: Boolean, photoMetadata: PhotoMetadataStore, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val photo by produceState<Bitmap?>(initialValue = null, showBackdrop, hasPhotoAccess) {
-        value = if (showBackdrop && hasPhotoAccess) withContext(Dispatchers.IO) { randomGalleryThumbnail(context) } else null
+        value = if (showBackdrop && hasPhotoAccess) withContext(Dispatchers.IO) {
+            randomGalleryThumbnail(context, runCatching { photoMetadata.classifiedKeys("document") }.getOrDefault(emptySet()))
+        } else null
     }
     val hasBackdrop = photo != null
     Surface(
@@ -553,7 +705,9 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
             photo?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
             Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                if (!hasBackdrop) Icon(painterResource(R.drawable.ic_gallery), contentDescription = "Photos", modifier = Modifier.size(38.dp))
+                // Same slot either way, so the title always sits at the bottom like the Files card.
+                if (hasBackdrop) Spacer(Modifier.size(38.dp))
+                else Icon(painterResource(R.drawable.ic_gallery), contentDescription = "Photos", modifier = Modifier.size(38.dp))
                 Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
             }
         }
@@ -581,6 +735,25 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         Text("Files", style = MaterialTheme.typography.titleLarge)
     }
 } }
+
+@Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Color(0xFFD32F2F)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        PdfToolCard("Scanner", R.drawable.ic_document_scanner, Modifier.weight(1f), openScanner)
+        PdfToolCard("Codes", R.drawable.ic_qr_code, Modifier.weight(1f), openCodes)
+    }
+}
+
+@Composable
+private fun PdfToolCard(label: String, icon: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
+    shape = MaterialTheme.shapes.extraLarge,
+    color = Color(0xFF651B1B),
+    modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
+) {
+    Box(Modifier.fillMaxSize().padding(18.dp)) {
+        Icon(painterResource(icon), contentDescription = label, modifier = Modifier.align(Alignment.TopEnd).size(42.dp))
+        Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
+    }
+}
 
 @Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
@@ -724,7 +897,7 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 }
 
 @Composable
-private fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier) {
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1072,6 +1245,7 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
     var destination by remember(item.relativePath) { mutableStateOf(DriveRules.parent(item.relativePath)) }
     val destinations = remember(item.relativePath) { DriveRules.destinations(driveRoot()) }
     fun submit(action: DriveItemAction) { perform(item, action); dismiss() }
+    val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (panel != DriveItemSheetPanel.Menu) IconButton(onClick = { panel = DriveItemSheetPanel.Menu }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to item actions") }
@@ -1082,11 +1256,12 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                         DriveActionTile(R.drawable.ic_copy, "Copy") { panel = DriveItemSheetPanel.Copy }
                         DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
                         DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
-                        DriveActionTile(R.drawable.ic_info, "Properties") { panel = DriveItemSheetPanel.Properties }
+                        if (!item.isDirectory) DriveActionTile(R.drawable.ic_share, "Share") { dismiss(); shareDriveFile(context, item.file) }
                     }
                     if (!item.isDirectory) DriveWideAction(R.drawable.ic_open_with, "Open with…") { dismiss(); openWith() }
                     DriveWideAction(if (metadata.isFavorite(item.relativePath)) R.drawable.ic_remove_favorite else R.drawable.ic_favorite_border, if (metadata.isFavorite(item.relativePath)) "Remove from Favorites" else "Add to Favorites") { submit(DriveItemAction.Favorite(!metadata.isFavorite(item.relativePath))) }
                     DriveWideAction(R.drawable.ic_tag, "Tags") { panel = DriveItemSheetPanel.Tags }
+                    DriveWideAction(R.drawable.ic_info, "Properties") { panel = DriveItemSheetPanel.Properties }
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_palette, "Change folder color") { panel = DriveItemSheetPanel.Color }
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, "Sync now") { panel = DriveItemSheetPanel.Sync }
                     if (item.relativePath != "Trash" && !item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
@@ -1161,7 +1336,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     modifier = Modifier.weight(1f).height(64.dp),
 ) { IconButton(onClick = click, modifier = Modifier.fillMaxWidth().height(64.dp)) { Icon(painterResource(icon), contentDescription = description, modifier = Modifier.size(26.dp)) } }
 
-@Composable private fun DriveWideAction(icon: Int, description: String, click: () -> Unit) = Surface(
+@Composable internal fun DriveWideAction(icon: Int, description: String, click: () -> Unit) = Surface(
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
     modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(onClick = click),
 ) { Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -1386,8 +1561,8 @@ private fun driveSpaceColor(type: String): Color = when (type) {
     }
 }
 
-@Composable private fun driveNavigationSelectedColor(): Color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.72f)
-@Composable private fun driveNavigationSelectedContentColor(): Color = if (isSystemInDarkTheme()) Color.Black else Color.White
+@Composable internal fun driveNavigationSelectedColor(): Color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.72f)
+@Composable internal fun driveNavigationSelectedContentColor(): Color = if (isSystemInDarkTheme()) Color.Black else Color.White
 
 private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
@@ -1434,6 +1609,9 @@ private fun PhotoTab(
     removeFromCollection: (Long, Set<Uri>) -> String?,
     createCollection: (String) -> Result<PhotoCollection>,
     deleteCollection: (Long) -> String?,
+    externalMediaId: String? = null,
+    externalMissing: () -> Unit = {},
+    closeExternal: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1450,6 +1628,11 @@ private fun PhotoTab(
     var collectionToolsOpen by remember { mutableStateOf(false) }
     var scale by remember { mutableStateOf(TimelineScale.Month) }
     var viewerUri by remember { mutableStateOf<Uri?>(null) }
+    // A MediaStore id to open in the viewer once it is loaded: a photo opened from another app, or a just-saved edit.
+    var pendingViewerId by remember { mutableStateOf(externalMediaId) }
+    var editingEntry by remember { mutableStateOf<Entry?>(null) }
+    // Opened from another app: closing the viewer returns there instead of to the Gallery.
+    fun closeViewer() { if (closeExternal != null) closeExternal() else viewerUri = null }
     var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var returnToCollections by remember { mutableStateOf(false) }
@@ -1578,6 +1761,14 @@ private fun PhotoTab(
         searchQuery.isBlank() || entry.name.contains(searchQuery, ignoreCase = true) || entry.relativePath.orEmpty().contains(searchQuery, ignoreCase = true) ||
             PhotoSearchRules.matches(searchQuery, labelsByPhoto[entry.photoKey].orEmpty() + peopleNamesByPhoto[entry.photoKey].orEmpty() + listOfNotNull(locationsByPhoto[entry.photoKey]?.placeName))
     }
+    LaunchedEffect(state, pendingViewerId, entries.size) {
+        val id = pendingViewerId ?: return@LaunchedEffect
+        if (state !is ListState.Items) return@LaunchedEffect
+        val match = entries.firstOrNull { it.contentUri?.lastPathSegment == id }
+        pendingViewerId = null
+        if (match != null) viewerUri = match.contentUri
+        else if (id == externalMediaId) externalMissing()
+    }
     val suggestedTags = remember(entries, labelsByPhoto, recentTags) {
         (recentTags + PhotoSearchRules.frequentTags(entries.flatMap { labelsByPhoto[it.photoKey].orEmpty() })).distinct().take(5)
     }
@@ -1698,7 +1889,7 @@ private fun PhotoTab(
         when {
             selectedCollection != null -> selectedCollection = null
             viewingFaceGroup != null -> viewingFaceGroup = null
-            viewerUri != null -> viewerUri = null
+            viewerUri != null -> closeViewer()
             selectedUris.isNotEmpty() -> selectedUris = emptySet()
             searchOpen -> searchOpen = false
             toolsOpen -> toolsOpen = false
@@ -1733,12 +1924,20 @@ private fun PhotoTab(
         )
         return
     }
+    editingEntry?.let { entry ->
+        PhotoEditorScreen(entry, close = { editingEntry = null }, saved = { uri ->
+            editingEntry = null
+            pendingViewerId = uri.lastPathSegment
+            refresh()
+        })
+        return
+    }
     val openViewerUri = viewerUri
     if (openViewerUri != null) {
         PhotoViewer(entries, openViewerUri, { uri ->
             viewerUri = uri
             allEntries.firstOrNull { it.contentUri == uri }?.let { recentTags = labelsByPhoto[it.photoKey].orEmpty() }
-        }, { viewerUri = null },
+        }, ::closeViewer,
             { entriesForAction, favorite -> setFavorite(entriesForAction.mapNotNullTo(mutableSetOf()) { it.contentUri }, favorite) },
             if (activeCollection == null) { uris -> collectionSheetFor = uris } else null,
             if (filter == PhotoFilter.Hidden) { entry ->
@@ -1767,6 +1966,8 @@ private fun PhotoTab(
                 returnToCollections = true
                 setPane(PhotosPane.Timeline)
             },
+            // Hidden items live in the private vault; an edited copy would publish them, so no editing there.
+            if (filter == PhotoFilter.Hidden) null else { entry -> editingEntry = entry },
         )
         collectionSheetFor?.let { targets -> CollectionPickerSheet(
             collections = collections,
@@ -3067,6 +3268,7 @@ private fun PhotoViewer(
     metadata: Map<String, PhotoState>, labelsByPhoto: Map<String, List<String>>, peopleNamesByPhoto: Map<String, List<String>>,
     metadataStore: PhotoMetadataStore, hasLocationAccess: Boolean, requestLocationAccess: () -> Unit,
     locationsUpdated: () -> Unit, openMap: (Entry) -> Unit,
+    editPhoto: ((Entry) -> Unit)?,
 ) {
     val context = LocalContext.current
     val filmstripState = rememberLazyListState()
@@ -3157,7 +3359,7 @@ private fun PhotoViewer(
             add = addToCollection?.let { action -> { selected.contentUri?.let { action(setOf(it)) } } },
             restore = restore?.let { action -> { action(selected) } },
             removeFromCollection = removeFromCollection?.let { action -> { action(selected) } },
-            edit = { Toast.makeText(context, "Η επεξεργασία θα προστεθεί αργότερα", Toast.LENGTH_SHORT).show() },
+            edit = editPhoto?.takeIf { !selected.isVideo }?.let { open -> { open(selected) } },
             toggleFullscreen = { manualFullscreen = !manualFullscreen },
             modifier = modifier,
         )
@@ -3193,7 +3395,7 @@ private fun PhotoViewer(
             if (!hasLocationAccess) Button(onClick = requestLocationAccess) { Text("Allow photo locations") }
             else location?.let { photoLocation ->
                 Text("Place: ${photoLocation.placeName ?: "Not named"}")
-                PhotoLocationPreview(photoLocation)
+                PhotoLocationPreview(photoLocation) { openMap(selected) }
                 Text("Coordinates: ${"%.5f".format(photoLocation.latitude)}, ${"%.5f".format(photoLocation.longitude)}")
                 Button(onClick = { openMap(selected) }) { Text("Show on map") }
             } ?: Text("No embedded location in this photo.")
@@ -3254,7 +3456,7 @@ private fun ViewerPager(
 private fun ViewerActionsIsland(
     favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
     share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
-    restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: () -> Unit,
+    restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: (() -> Unit)?,
     toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(true) }
@@ -3275,7 +3477,7 @@ private fun ViewerActionsIsland(
                     removeFromCollection?.let { action -> IconButton(onClick = action) {
                         Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
                     } }
-                    IconButton(onClick = edit) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
+                    edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {
                         Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen")
                     }
@@ -3311,7 +3513,7 @@ private fun ViewerImage(
                 (zoomState.offset.y + pan.y).coerceIn(-maxY, maxY),
             )
         }
-        val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri, targetWidth, targetHeight) {
+        val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri, entry.sizeBytes, targetWidth, targetHeight) {
             value = entry.contentUri?.let { uri ->
                 withContext(Dispatchers.IO) {
                     runCatching {
@@ -3393,7 +3595,8 @@ private fun ViewerVideo(entry: Entry, modifier: Modifier = Modifier, playback: V
 @Composable
 private fun FilmstripThumbnail(entry: Entry, selected: Boolean, choose: () -> Unit) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri) {
+    // Keyed on size too: a photo replaced by the editor keeps its URI.
+    val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri, entry.sizeBytes) {
         value = entry.contentUri?.let { uri ->
             withContext(Dispatchers.IO) { runCatching { context.contentResolver.loadThumbnail(uri, android.util.Size(120, 120), null) }.getOrNull() }
         }
@@ -3416,6 +3619,40 @@ private fun FilmstripThumbnail(entry: Entry, selected: Boolean, choose: () -> Un
     }
 }
 
+private fun shareDriveFile(context: Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase(Locale.ROOT)) ?: "application/octet-stream"
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type = mime
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri(file.name, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Share ${file.name}"))
+}
+
+/** Shows one photo or video handed over by another app that is not in the Gallery (e.g. a chat attachment). */
+@Composable
+private fun ExternalMediaViewer(media: ExternalMedia, close: () -> Unit) {
+    val context = LocalContext.current
+    val entry = remember(media) {
+        Entry(name = media.uri.lastPathSegment ?: "Photo", detail = "", contentUri = media.uri, photoKey = media.uri.toString(), isVideo = media.mimeType?.startsWith("video/") == true)
+    }
+    val playback = remember { VideoPlaybackState() }
+    BackHandler(onBack = close)
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        if (entry.isVideo) ViewerVideo(entry, Modifier.fillMaxSize(), playback)
+        else ViewerImage(entry, Modifier.fillMaxSize(), background = Color.Black)
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+            }
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                IconButton(onClick = { sharePhotos(context, listOf(entry)) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+            }
+        }
+    }
+}
+
 private fun sharePhotos(context: Context, entries: List<Entry>) {
     val uris = entries.mapNotNull { it.contentUri }
     if (uris.isEmpty()) return
@@ -3432,8 +3669,10 @@ private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0
         .format(Instant.ofEpochMilli(takenMillis).atZone(ZoneId.systemDefault()))
 } else "Date unavailable"
 
-private fun randomGalleryThumbnail(context: Context): Bitmap? = runCatching {
+/** A random real photo for the Home card: never a screenshot or a photo the local analysis filed as a document. */
+private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>): Bitmap? = runCatching {
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        .filter { !it.isScreenshot() && it.photoKey !in documentKeys }
         .randomOrNull()
         ?.contentUri
         ?.let { context.contentResolver.loadThumbnail(it, android.util.Size(720, 720), null) }

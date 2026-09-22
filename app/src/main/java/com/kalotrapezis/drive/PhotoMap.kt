@@ -246,7 +246,8 @@ private fun MapBackButton(back: () -> Unit, modifier: Modifier = Modifier) = Sur
 }
 
 @Composable
-internal fun PhotoLocationPreview(location: PhotoLocation) {
+/** A static map preview: no pan or zoom; a tap opens the Map collection at this photo's pin. */
+internal fun PhotoLocationPreview(location: PhotoLocation, open: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember(location.latitude, location.longitude) {
@@ -274,13 +275,18 @@ internal fun PhotoLocationPreview(location: PhotoLocation) {
     }
     LaunchedEffect(mapView, location) {
         mapView.getMapAsync { map ->
+            map.uiSettings.setAllGesturesEnabled(false)
             map.setStyle(OPEN_FREE_MAP_STYLE) {
                 map.addMarker(MarkerOptions().position(LatLng(location.latitude, location.longitude)).icon(pinIcon).title(location.placeName))
                 map.cameraPosition = CameraPosition.Builder().target(LatLng(location.latitude, location.longitude)).zoom(11.5).build()
             }
         }
     }
-    AndroidView(factory = { mapView }, modifier = Modifier.fillMaxWidth().height(176.dp).clip(MaterialTheme.shapes.large))
+    Box(Modifier.fillMaxWidth().height(176.dp).clip(MaterialTheme.shapes.large)) {
+        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        // Catches every touch above the map view, so scrolling the Details sheet never drags the map.
+        Box(Modifier.fillMaxSize().clickable(onClickLabel = "Show on map", onClick = open))
+    }
 }
 
 private fun mapPinIcon(context: Context, color: Int): org.maplibre.android.annotations.Icon {

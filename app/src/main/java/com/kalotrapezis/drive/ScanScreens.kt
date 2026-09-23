@@ -267,7 +267,14 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
     var captureInProgress by remember { mutableStateOf(false) }
     var waitingForNextPage by remember { mutableStateOf(false) }
     var torchEnabled by remember { mutableStateOf(false) }
-    val previewView = remember { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
+    // FIT_CENTER with a 4:3 box below means the preview is the sensor's frame, whole: what you line the page up
+    // against is exactly what is captured, and the ViewPort taken from this view stops cutting the sides off.
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FIT_CENTER
+        }
+    }
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val requestCamera = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCamera = granted
@@ -411,12 +418,13 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-        if (SHOW_SCANNER_DETECTION_GUIDE) pageOutline?.let { PageOutline(it) }
+    // The controls sit on black above and below the picture rather than on top of it. A viewfinder that runs
+    // under the buttons looks better in a screenshot and is worse to aim with: half of what the camera can see is
+    // behind something, and the page has to be lined up in the part that is left.
+    Column(Modifier.fillMaxSize().background(Color.Black)) {
         Surface(
-            color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White,
-            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+            color = Color.Black, contentColor = Color.White,
+            modifier = Modifier.fillMaxWidth(),
         ) { Column(Modifier.statusBarsPadding().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
@@ -424,9 +432,16 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
             }
             Text("Keep the page inside the frame, then capture it to edit.", style = MaterialTheme.typography.bodyMedium)
         } }
+        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+            // 3:4 upright is the sensor's own shape; anything else would be the preview throwing pixels away.
+            Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+                AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+                if (SHOW_SCANNER_DETECTION_GUIDE) pageOutline?.let { PageOutline(it) }
+            }
+        }
         Surface(
-            shape = MaterialTheme.shapes.extraLarge, color = Color.Black.copy(alpha = 0.65f), contentColor = Color.White,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(20.dp),
+            color = Color.Black, contentColor = Color.White,
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
         ) { Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (!hasCamera) Button(onClick = { requestCamera.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
             else {

@@ -361,10 +361,11 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // What the computer has and this phone does not, before the metadata pass, so a photo that has just
         // arrived already has its favourites, its people and its collections when that pass runs.
         var received = 0
-        if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys, failed, progress) }
-            .onFailure { failed += "Photos from the computer: ${it.message}" }
+        if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys, failed, checkpoint, progress) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Photos from the computer: ${it.message}" }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
-        runCatching { received += syncFiles(host, p, files, failed, progress) }.onFailure { failed += "Drive files: ${it.message}" }
+        runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
@@ -384,7 +385,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * against the new photo's key at once, so the metadata pass right after this one can already place its
      * favourites, its people and its collections.
      */
-    private fun pullPhotos(host: String, p: Pairing, known: Collection<String>, failed: MutableList<String>, progress: (BackupProgress) -> Unit): Int {
+    private suspend fun pullPhotos(host: String, p: Pairing, known: Collection<String>, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {
+        forgetHalfWrittenPhotos()
         val answer = postJson(host, p, "/library/manifest", JSONObject().put("hashes", JSONArray(known.toList())))
         val send = answer.optJSONArray("send") ?: return 0
         // Never bring back what this phone deleted. A receipt says "I gave the computer this photo"; if it is
@@ -393,6 +395,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val sentFromHere = store.receiptShas()
         var received = 0
         for (i in 0 until send.length()) {
+            coroutineContext.ensureActive() // Stop ends the sync here, between photos, never inside one
+            checkpoint()                    // and Pause waits here
             val item = send.getJSONObject(i)
             if (item.optString("sha256") in sentFromHere) continue
             progress(BackupProgress("Receiving photos", i, send.length()))
@@ -401,6 +405,30 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 .onFailure { failed += "${item.optString("name")}: ${it.message}" }
         }
         return received
+    }
+
+    /**
+     * A photo half received when the app was killed is a **pending** MediaStore item: invisible in the gallery,
+     * but ours and still taking up room. Android clears them itself after a week; a sync clears its own after an
+     * hour, which is long enough that a download running right now is never mistaken for wreckage.
+     */
+    private fun forgetHalfWrittenPhotos() {
+        val cutoff = (System.currentTimeMillis() - 60 * 60_000) / 1000
+        for (collection in listOf(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        )) runCatching {
+            val query = android.os.Bundle().apply {
+                putInt(android.provider.MediaStore.QUERY_ARG_MATCH_PENDING, android.provider.MediaStore.MATCH_INCLUDE)
+                putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
+                    "${android.provider.MediaStore.MediaColumns.IS_PENDING} = 1 AND ${android.provider.MediaStore.MediaColumns.DATE_ADDED} < $cutoff")
+            }
+            context.contentResolver.query(collection, arrayOf(android.provider.MediaStore.MediaColumns._ID), query, null)?.use { cursor ->
+                while (cursor.moveToNext()) runCatching {
+                    context.contentResolver.delete(android.content.ContentUris.withAppendedId(collection, cursor.getLong(0)), null, null)
+                }
+            }
+        }
     }
 
     private fun receivePhoto(host: String, p: Pairing, item: JSONObject) {
@@ -556,7 +584,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * computer moves its own copy of anything that only changed place — a rename, or a move into Drive/Trash/ —
      * and asks for the rest. Nothing on the phone is changed, and nothing is ever deleted on either side.
      */
-    private fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, progress: (BackupProgress) -> Unit): Int {
+    private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {
         val root = File(android.os.Environment.getExternalStorageDirectory(), "Drive")
         if (!root.isDirectory) return 0
         val entries = driveManifest.entries(root)
@@ -566,6 +594,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val want = answer.optJSONArray("want") ?: JSONArray()
             val byPath = entries.associateBy { it.relativePath }
             for (i in 0 until want.length()) {
+                coroutineContext.ensureActive()
+                checkpoint()
                 val entry = byPath[want.getString(i)] ?: continue
                 progress(BackupProgress("Sending files", i, want.length()))
                 uploadFile(host, p, entry, File(root, entry.relativePath))
@@ -582,6 +612,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val have = answer.optJSONArray("have") ?: JSONArray()
         var received = 0
         for (i in 0 until have.length()) {
+            coroutineContext.ensureActive()
+            checkpoint()
             val file = have.getJSONObject(i)
             progress(BackupProgress("Receiving files", i, have.length()))
             runCatching { receiveFile(host, p, root, file) }

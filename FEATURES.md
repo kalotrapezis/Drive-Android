@@ -205,26 +205,43 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
 Home → red tools group → **Scanner**. Details and design notes:
 `DOCUMENT_SCANNER.md`.
 
-- **Camera**: CameraX preview with live page detection (OpenCV, on-device).
-  White corner dots show the detected outline; optional **Auto capture** fires
-  2.5 s after the outline is stable. Flash toggle. The camera stays open for
-  page after page; the page-count thumbnail opens the document.
-- **Auto fix** (per page, on by default): the outline shown at capture time is
-  the crop; the page is perspective-straightened with a 4% margin and any table
-  visible at the edges is painted with the neighbouring paper colour. The
-  header's wand toggles it per page.
+- **Camera**: black chrome above and below a 3:4 viewfinder — the sensor's own
+  shape, fitted rather than cropped, so what you line the page up against is
+  what gets captured. Live page detection (OpenCV, on-device) with white corner
+  dots; a found outline is held through a bad frame instead of blinking out.
+  Optional **Auto capture** fires 2.5 s after the outline is stable, and never
+  on a held outline. Flash toggle. The camera stays open for page after page;
+  the page-count thumbnail opens the document.
+- **What counts as a page**: it has to cover the middle of the view (you point
+  the camera at what you want), be convex with four honest corners, stay inside
+  the frame, and be brighter inside than just beyond its own edge. Torn and
+  crumpled edges are cut where the straight edge ran, because each side is
+  fitted to the outline along it rather than taken from two corners.
+- **Auto fix** (per page, on by default): the page is straightened to the
+  outline, then the **letters decide each edge** — nothing written near it and
+  the cut steps 1.5% into the paper, letters close to it and the cut goes
+  outside instead, leaving them room. Any band of table the outline still kept
+  is trimmed off, the resampling is sharpened back, and only a genuine gap is
+  painted, flat, in the paper's own colour. A page whose crop came out right is
+  left exactly as it was. The header's wand toggles it per page.
 - **Document viewer** (gallery-style): page pager, numbered filmstrip with
   **+** to add a page, and an actions island:
   - **Retake** replaces that page in place.
   - **Adjust**: Crop & straighten (drag corners, gridded magnifier in the
     opposite corner), rotate left/right, Reset.
-  - **Filters**: Original, Fix lighting, Blue ink, Black ink, Blue + black,
-    B&W, Blue B&W, **Match pages** (one shared paper tone for all pages) and
-    Apply to all. All but Original flatten uneven lighting first.
+  - **Filters**: Original, Fix lighting, Sharpen ink, B&W, **Match pages** (one
+    shared paper tone for all pages) and Apply to all. All but Original flatten
+    uneven lighting first, which is what takes crease shadows and lamp gradients
+    out. B&W finds its ink/paper line in the page's own brightness, so grey
+    thermal print and pencil survive it.
+  - **Pinch to zoom** on a page, up to 8×, to check the small print; panning
+    stops at the page's edges and the pager lets go while you are zoomed in.
   - **Pages**: numbered grid; long-press and drag to reorder.
   - **Save**: one multi-page A4-width PDF in
     `Files › Documents › Scanned Documents`, never overwriting (`name (2).pdf`).
-    A saved scan also asks Sync to catch up, a moment later.
+    Pages are written at **300 dpi**, or 200 for roughly half the file —
+    Settings › PDF scanner. A saved scan also asks Sync to catch up, a moment
+    later.
   - Pull the island handle up for **manual painting**: swatches sampled from
     the page's paper (lit, typical, light shadow, shadow), white, black, a
     custom colour, brush size and Undo.

@@ -332,15 +332,16 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             if (i % 10 == 0) progress(BackupProgress("Checking photos", i, entries.size))
             runCatching { bySha.putIfAbsent(sha256(e), e) }.onFailure { failed += "${e.name}: ${it.message}" }
         }
-        var missing = bySha.keys.chunked(500).flatMap { batch ->
-            val r = postJson(host, p, "/have", JSONObject().put("hashes", JSONArray(batch))).getJSONArray("missing")
-            (0 until r.length()).map(r::getString)
-        }
-        var sent = 0
         val rows = connections(host, p).associateBy { it.content }
         val photos = rows["photos"] ?: SyncConnection("photos", "both", "everything")
         val files = rows["files"] ?: SyncConnection("files", "both", "everything")
-        if (!photos.sends) missing = emptyList()
+        // Asking what the computer is missing is only worth the round trip if we are allowed to send it.
+        val missing = if (!photos.sends) emptyList() else bySha.keys.chunked(500).flatMap { batch ->
+            val r = postJson(host, p, "/have", JSONObject().put("hashes", JSONArray(batch))).getJSONArray("missing")
+            (0 until r.length()).map(r::getString)
+        }
+        val alreadyThere = if (photos.sends) bySha.size - missing.size else 0
+        var sent = 0
         missing.forEachIndexed { i, sha ->
             coroutineContext.ensureActive()
             checkpoint()
@@ -365,7 +366,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // a metadata sync that fails looks exactly like one that had nothing to say, and on 2026-09-23 that hid
         // a whole library's names failing to come back.
         runCatching { syncMetadata(host, p, entries) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
-        return BackupResult(bySha.size, sent, bySha.size - missing.size, failed, received)
+        return BackupResult(bySha.size, sent, alreadyThere, failed, received)
     }
 
     /**

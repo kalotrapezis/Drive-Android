@@ -2229,9 +2229,13 @@ private fun PhotoTab(
     val suggestedTags = remember(entries, labelsByPhoto, recentTags) {
         (recentTags + PhotoSearchRules.frequentTags(entries.flatMap { labelsByPhoto[it.photoKey].orEmpty() })).distinct().take(5)
     }
-    fun scanUnclassified() {
+    /**
+     * `everything` re-reads photos that were analysed before, which is what a rescan is for: the thresholds or
+     * the rules have changed and the old answers were reached under the old ones.
+     */
+    fun scanUnclassified(everything: Boolean = false, faces: Boolean = true) {
         if (analysisRunning) return
-        val pending = allEntries.filter { !it.isVideo && it.contentUri != null && metadataStore.needsAnalysis(it.photoKey) }
+        val pending = allEntries.filter { !it.isVideo && it.contentUri != null && (everything || metadataStore.needsAnalysis(it.photoKey)) }
         if (pending.isEmpty()) return
         analysisRunning = true
         analysisDone = 0
@@ -2246,7 +2250,7 @@ private fun PhotoTab(
                     pending.forEachIndexed { index, entry ->
                         while (pauseRequested.get()) Thread.sleep(100)
                         entry.contentUri?.let { uri -> runCatching {
-                            classifier.classify(uri, entry.takenMillis, analyzeFaces = !entry.isScreenshot() && entry.photoKey !in documentKeys).also { result ->
+                            classifier.classify(uri, entry.takenMillis, analyzeFaces = faces && !entry.isScreenshot() && entry.photoKey !in documentKeys).also { result ->
                                 metadataStore.recordClassification(entry.photoKey, result.documentConfidence, result.faces, result.labels, modelVersion)
                             }
                         }.onFailure { skipped++ } }
@@ -2662,6 +2666,17 @@ private fun PhotoTab(
         hideDocuments = hideDocumentsFromCollections,
         setHidePeople = { hide -> metadataStore.setHidesPeopleFromCollections(hide); hidePeopleFromCollections = hide },
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromCollections(hide); hideDocumentsFromCollections = hide },
+        busy = analysisRunning,
+        rescanFaces = {
+            collectionToolsOpen = false
+            metadataStore.forgetUnnamedFaces() // groups nobody named are guesses, and guesses are what a rescan redoes
+            analysisVersion++
+            scanUnclassified(everything = true, faces = true)
+        },
+        rescanDocuments = {
+            collectionToolsOpen = false
+            scanUnclassified(everything = true, faces = false)
+        },
         dismiss = { collectionToolsOpen = false },
     )
     if (emptyTrashConfirm) EmptyTrashSheet(
@@ -3275,6 +3290,9 @@ private fun CollectionsToolsSheet(
     hideDocuments: Boolean,
     setHidePeople: (Boolean) -> Unit,
     setHideDocuments: (Boolean) -> Unit,
+    busy: Boolean,
+    rescanFaces: () -> Unit,
+    rescanDocuments: () -> Unit,
     dismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
@@ -3289,8 +3307,23 @@ private fun CollectionsToolsSheet(
                 Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
                 Text("Documents")
             }
+            Text("Look again", style = MaterialTheme.typography.titleMedium)
+            Text("Reads every photo again with the rules as they are now. People you have named keep their faces; only the groups nobody named are worked out afresh.")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CollectionsToolButton(R.drawable.ic_collections, "Rescan faces", busy, Modifier.weight(1f), rescanFaces)
+                CollectionsToolButton(R.drawable.ic_collections, "Rescan documents", busy, Modifier.weight(1f), rescanDocuments)
+            }
         }
     }
+}
+
+@Composable
+private fun CollectionsToolButton(icon: Int, label: String, busy: Boolean, modifier: Modifier = Modifier, click: () -> Unit) = Button(
+    onClick = click, enabled = !busy, colors = neutralButtonColors(), modifier = modifier,
+) {
+    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+    Spacer(Modifier.width(8.dp))
+    Text(label)
 }
 
 @Composable

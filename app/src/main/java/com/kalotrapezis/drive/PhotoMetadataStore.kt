@@ -422,6 +422,21 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun restoreMerge(merge: FaceMerge) = undoFaceMerge(FaceMergeUndo(merge.sourceName, merge.sampleIds, merge.sourceUuid))
 
+    /**
+     * Throws away the groups nobody has named, and the faces in them, so a rescan can group them again — with
+     * whatever the thresholds are now. People you have named are left exactly as they are, together with their
+     * faces: a rescan is for redoing the guessing, never for undoing a decision.
+     *
+     * Faces the computer sent come back on the next sync, since it still holds them.
+     */
+    fun forgetUnnamedFaces() = writableDatabase.inTransaction {
+        execSQL("DELETE FROM face_reviews WHERE face_sample_id IN (SELECT s.id FROM face_samples s LEFT JOIN face_groups g ON g.id = s.group_id WHERE g.id IS NULL OR g.name GLOB 'Person [0-9]*')")
+        execSQL("DELETE FROM face_samples WHERE id IN (SELECT s.id FROM face_samples s LEFT JOIN face_groups g ON g.id = s.group_id WHERE g.id IS NULL OR g.name GLOB 'Person [0-9]*')")
+        execSQL("DELETE FROM face_groups WHERE id NOT IN (SELECT DISTINCT group_id FROM face_samples WHERE group_id IS NOT NULL)")
+        execSQL("DELETE FROM face_reviews WHERE candidate_group_id NOT IN (SELECT id FROM face_groups)")
+        execSQL("DELETE FROM face_merges WHERE target_id NOT IN (SELECT id FROM face_groups)")
+    }
+
     fun needsAnalysis(photoKey: String): Boolean = readableDatabase.rawQuery(
         "SELECT 1 FROM photo_ai_record WHERE photo_key = ? AND model_version = ? LIMIT 1",
         arrayOf(photoKey, analysisModelVersion()),

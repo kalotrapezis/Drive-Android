@@ -284,7 +284,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         runCatching { backUpFiles(host, p, progress) }.onFailure { failed += "Drive files: ${it.message}" }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
-        runCatching { syncMetadata(host, p, entries) } // best-effort: a blob backup that succeeded should not be reported as failed over this
+        // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
+        // a metadata sync that fails looks exactly like one that had nothing to say, and on 2026-09-23 that hid
+        // a whole library's names failing to come back.
+        runCatching { syncMetadata(host, p, entries) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
         return BackupResult(bySha.size, sent, bySha.size - missing.size, failed)
     }
 

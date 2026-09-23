@@ -566,6 +566,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         val local = rawQuery("SELECT id, updated_at FROM face_samples WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
         if (local != null) {
             if (updatedAt <= local.second || groupId == null) return@inTransaction
+            // A guess never overwrites a decision: "Person 41" is what the grouping called someone it had not
+            // been told about, a name is what a human typed. Newest-wins decides between two of the same kind,
+            // never between those two — otherwise a device that has just re-analysed from scratch can un-name a
+            // whole library, which is exactly what happened on 2026-09-23.
+            val incomingIsAGuess = isGeneratedPersonName(personName(groupId))
+            val hereItHasAName = groupName(local.first).let { it.isNotBlank() && !isGeneratedPersonName(it) }
+            if (incomingIsAGuess && hereItHasAName) return@inTransaction
             update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
             return@inTransaction
         }
@@ -584,6 +591,14 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("updated_at", updatedAt)
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
+
+    private fun SQLiteDatabase.personName(groupId: Long): String =
+        rawQuery("SELECT name FROM face_groups WHERE id = ?", arrayOf(groupId.toString())).use { if (it.moveToFirst()) it.getString(0) else "" }
+
+    /** The name of the group a face sits in now, or "" when it sits in none. */
+    private fun SQLiteDatabase.groupName(sampleId: Long): String = rawQuery(
+        "SELECT g.name FROM face_samples s JOIN face_groups g ON g.id = s.group_id WHERE s.id = ?", arrayOf(sampleId.toString()),
+    ).use { if (it.moveToFirst()) it.getString(0) else "" }
 
     /** Two boxes on one photo that overlap this much are the same face, whichever detector found it first. */
     private fun SQLiteDatabase.overlappingFace(photoKey: String, bounds: Rect): Long? = rawQuery(

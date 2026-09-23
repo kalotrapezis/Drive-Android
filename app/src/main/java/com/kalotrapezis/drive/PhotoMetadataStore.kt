@@ -624,6 +624,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun applyIncomingPerson(uuid: String, name: String, updatedAt: Long) = writableDatabase.inTransaction {
         val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
         if (updatedAt <= local.second) return@inTransaction
+        // The rule faces already had, and people did not: "Person 41" is what an algorithm called someone it had
+        // not been told about, and it never replaces what a human typed, however recently it was written.
+        if (isGeneratedPersonName(name) && !isGeneratedPersonName(personName(local.first))) return@inTransaction
         update("face_groups", ContentValues().apply { put("name", name); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
     }
 
@@ -663,20 +666,42 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
             return@inTransaction
         }
-        if (groupId == null || photoKey == null || bounds == null || embedding == null || bounds.isEmpty) return@inTransaction
+        if (photoKey == null || bounds == null || embedding == null || bounds.isEmpty) return@inTransaction
         if (overlappingFace(photoKey, bounds) != null) return@inTransaction // this phone found the same face itself
-        insertWithOnConflict("face_samples", null, ContentValues().apply {
+
+        // A face from a person this phone has never heard of. It used to be dropped, which threw away exactly
+        // what the computer is better at: it detects at a larger size and finds faces this phone's detector
+        // misses. But its *grouping* is not what we want either — the phone is where people are grouped and
+        // named — so the face is taken and put through this phone's own rules, against this phone's own people.
+        // A close enough match joins that person; anything else becomes a new one, and the uncertain band in
+        // between becomes a question for Help organize, exactly as a face found here would.
+        val vector = embedding.toFloatArray()
+        val match = if (groupId != null) null else faceCandidates().maxByOrNull { cosineSimilarity(vector, it.embedding) }
+        val similarity = match?.let { cosineSimilarity(vector, it.embedding) } ?: -1f
+        val home = groupId ?: when {
+            similarity >= SAME_PERSON -> match!!.groupId
+            else -> createFaceGroup()
+        }
+        val sampleId = insertWithOnConflict("face_samples", null, ContentValues().apply {
             put("photo_key", photoKey)
             put("left_edge", bounds.left)
             put("top_edge", bounds.top)
             put("right_edge", bounds.right)
             put("bottom_edge", bounds.bottom)
             put("embedding", embedding)
-            put("group_id", groupId)
+            put("group_id", home)
             put("quality", quality)
             put("uuid", uuid)
             put("updated_at", updatedAt)
         }, SQLiteDatabase.CONFLICT_IGNORE)
+        if (sampleId != -1L && groupId == null && match != null && similarity in REVIEW_FROM..<SAME_PERSON) {
+            insertWithOnConflict("face_reviews", null, ContentValues().apply {
+                put("photo_key", photoKey)
+                put("face_sample_id", sampleId)
+                put("candidate_group_id", match.groupId)
+                put("state", "pending")
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
 
     private fun SQLiteDatabase.personName(groupId: Long): String =

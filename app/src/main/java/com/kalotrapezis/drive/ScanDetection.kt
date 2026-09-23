@@ -96,6 +96,13 @@ object ScanDetection {
      * The step inwards is deliberately a real one. A tenth of a percent was a rounding error against an outline
      * that is routinely a few percent too generous; a percent and a half actually lands on paper.
      *
+     * **Only this page's letters get a say.** Words on a laptop lid, on the next document along, on anything
+     * else in the photograph, are not evidence about where this paper ends — and taken as such, one of them drags
+     * a side out across the whole frame, which is what stopped the crop happening at all. So text further out
+     * than [reach] of the page's own width is ignored, and no side may move outwards by more than that either.
+     * A tenth is chosen to be wider than the outline's own error — which runs to a few percent — and far
+     * narrower than the gap to anything else on the table.
+     *
      * Distances are fractions of the page across that side, so a margin means the same thing on a receipt as on
      * A4. [text] are the corners of whatever the reader found, in the quad's own normalized coordinates; with
      * nothing readable the crop is left exactly as the edges drew it.
@@ -105,13 +112,14 @@ object ScanDetection {
         text: List<ScanPoint>,
         inset: Float = 0.015f,
         safeMargin: Float = 0.015f,
+        reach: Float = 0.10f,
     ): DocumentQuad {
         if (text.isEmpty()) return quad
         val corners = quad.points
         val centre = ScanPoint(corners.sumOf { it.x.toDouble() }.toFloat() / 4f, corners.sumOf { it.y.toDouble() }.toFloat() / 4f)
         val height = (distance(quad.topLeft, quad.bottomLeft) + distance(quad.topRight, quad.bottomRight)) / 2f
         val width = (distance(quad.topLeft, quad.topRight) + distance(quad.bottomLeft, quad.bottomRight)) / 2f
-        val lines = List(4) { side ->
+        val sides = List(4) { side ->
             val from = corners[side]
             val to = corners[(side + 1) % 4]
             val length = kotlin.math.hypot(to.x - from.x, to.y - from.y)
@@ -122,11 +130,23 @@ object ScanDetection {
                 val towardsCentre = (centre.x - from.x) * candidate.x + (centre.y - from.y) * candidate.y
                 if (towardsCentre >= 0f) candidate else ScanPoint(-candidate.x, -candidate.y)
             }
+            Triple(from, direction, normal)
+        }
+        fun distanceTo(side: Int, point: ScanPoint): Float {
+            val (from, _, normal) = sides[side]
+            return (point.x - from.x) * normal.x + (point.y - from.y) * normal.y
+        }
+        // This page's letters only: anything further out than a hand's breadth belongs to something else.
+        val limit = reach * minOf(width, height)
+        val mine = text.filter { point -> (0 until 4).minOf { side -> distanceTo(side, point) } >= -limit }
+        if (mine.isEmpty()) return quad
+        val lines = List(4) { side ->
+            val (from, direction, normal) = sides[side]
             val span = if (side % 2 == 0) height else width // how far this side is from the one opposite
-            val nearestLetter = text.minOf { point -> (point.x - from.x) * normal.x + (point.y - from.y) * normal.y }
+            val nearestLetter = mine.minOf { point -> distanceTo(side, point) }
             val safe = safeMargin * span
             // Positive moves the cut outwards, off the paper; negative moves it in.
-            val push = if (nearestLetter >= safe) -(inset * span) else safe - nearestLetter
+            val push = (if (nearestLetter >= safe) -(inset * span) else safe - nearestLetter).coerceAtMost(limit)
             Line(ScanPoint(from.x - normal.x * push, from.y - normal.y * push), direction)
         }
         val moved = List(4) { corner -> intersect(lines[(corner + 3) % 4], lines[corner]) ?: corners[corner] }

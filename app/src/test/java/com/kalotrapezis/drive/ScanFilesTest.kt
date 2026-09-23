@@ -322,3 +322,29 @@ class ScanFillRestraintTest {
         assertTrue("and what replaces it is one flat colour, not a streak", pixels.all { it == paper })
     }
 }
+
+class ScanForeignTextTest {
+    private val page = DocumentQuad(
+        ScanPoint(0.35f, 0.35f), ScanPoint(0.65f, 0.35f), ScanPoint(0.65f, 0.65f), ScanPoint(0.35f, 0.65f),
+    )
+
+    @Test fun `words belonging to something else in the photo are ignored`() {
+        // A laptop lid at the top of the frame and another document at the bottom: neither is this page.
+        val elsewhere = listOf(
+            ScanPoint(0.1f, 0.05f), ScanPoint(0.4f, 0.05f), // the lid
+            ScanPoint(0.2f, 0.95f), ScanPoint(0.9f, 0.95f), // the next document along
+        )
+        val cut = ScanDetection.fitToLetters(page, elsewhere)
+        page.points.zip(cut.points).forEach { (before, after) ->
+            assertEquals("the crop is left where the edges put it", before.x, after.x, 0.001f)
+            assertEquals(before.y, after.y, 0.001f)
+        }
+    }
+
+    @Test fun `no side is ever dragged further than a hand's breadth`() {
+        val justOutside = listOf(ScanPoint(0.5f, 0.33f), ScanPoint(0.55f, 0.33f))
+        val cut = ScanDetection.fitToLetters(page, justOutside)
+        assertTrue("the top moves out to clear them", cut.topLeft.y < 0.35f)
+        assertTrue("but not by more than a tenth of the page", cut.topLeft.y > 0.35f - 0.10f * 0.3f - 0.001f)
+    }
+}

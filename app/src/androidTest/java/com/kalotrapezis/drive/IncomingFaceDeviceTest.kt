@@ -125,6 +125,29 @@ class IncomingFaceDeviceTest {
         assertTrue("definitely-her" in store.faceGroupKeys(anna))
     }
 
+    @Test fun aQuestionAnsweredOnTheComputerStopsBeingAskedHere() {
+        givenANamedPersonHere()
+        store.applyIncomingFace(
+            uuid = "face-in-question", personUuid = null, updatedAt = 2_000,
+            photoKey = "maybe-her", bounds = Rect(0, 0, 130, 130),
+            embedding = like(0.55f), quality = 0.9f,
+        )
+        val asked = store.nextReview()!!
+        val person = store.personRecords().single { it.name == "Άννα" }.uuid
+
+        // The same question, answered over there. Only the state travels; where the face went is the face's own
+        // record. Without this, "no" would leave no trace at all — it moves nothing — and this phone would ask
+        // about the same face for ever.
+        store.applyIncomingReview("face-in-question", person, "resolved", System.currentTimeMillis())
+        assertEquals("it is not asked here any more", null, store.nextReview())
+        assertEquals("and the answer is offered on, once", 1, store.reviewRecords().size)
+
+        // An older answer never overrules a newer one.
+        store.applyIncomingReview("face-in-question", person, "skipped", 1)
+        assertEquals("resolved", store.reviewRecords().single().state)
+        assertEquals("maybe-her", asked.photoKey)
+    }
+
     @Test fun aNumberFromAnotherDeviceNeverReplacesAName() {
         givenANamedPersonHere()
         val uuid = store.personRecords().single().uuid

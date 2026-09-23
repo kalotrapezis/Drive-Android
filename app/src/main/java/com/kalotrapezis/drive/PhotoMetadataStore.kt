@@ -39,12 +39,19 @@ internal data class FavoriteRecord(val photoKey: String, val favorite: Boolean, 
 internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long, val hiddenFromGallery: Boolean = false)
 internal data class CollectionItemRecord(val collectionUuid: String, val photoKey: String, val deleted: Boolean, val updatedAt: Long)
 internal data class PersonRecord(val uuid: String, val name: String, val updatedAt: Long)
+/**
+ * One answered question, as the other device can recognise it: the face and the person it was asked about, both
+ * by the uuids that already cross. A question nobody has answered stays here — it is this device's own
+ * uncertainty, worked out from what it holds — but an answer is a decision, and decisions travel.
+ */
+internal data class ReviewRecord(val faceUuid: String, val personUuid: String, val state: String, val updatedAt: Long)
+
 internal data class FaceRecord(val uuid: String, val photoKey: String, val bounds: android.graphics.Rect, val embedding: ByteArray, val quality: Float, val personUuid: String?, val updatedAt: Long)
 internal data class DocumentRecord(val photoKey: String, val type: String?, val confidence: Float, val userVerified: Boolean, val updatedAt: Long)
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 17) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 18) {
 
     private companion object {
         const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
@@ -128,6 +135,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // "Hide this album from Gallery" belongs to the album, not to this phone, so it moves out of preferences
         // and onto the collection, where it travels with it (SYNC_PLAN.md "Which settings sync").
         if (oldVersion < 17) db.execSQL(MERGE_HISTORY)
+        // An answer to Help organize is a decision, and decisions travel; a question is local. So a review needs
+        // a time, to be told apart from one answered on another device a minute later.
+        if (oldVersion < 18) db.execSQL("ALTER TABLE face_reviews ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -292,14 +302,20 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("review_state", "none")
             put("updated_at", System.currentTimeMillis())
         }, "photo_key = ?", arrayOf(review.photoKey)) else {
-            if (accepted) update("face_samples", ContentValues().apply { put("group_id", review.candidateGroupId) }, "id = ?", arrayOf(review.faceSampleId.toString()))
-            update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id = ?", arrayOf(review.faceSampleId.toString()))
+            if (accepted) update("face_samples", ContentValues().apply {
+                put("group_id", review.candidateGroupId); put("updated_at", System.currentTimeMillis())
+            }, "id = ?", arrayOf(review.faceSampleId.toString()))
+            update("face_reviews", ContentValues().apply {
+                put("state", "resolved"); put("updated_at", System.currentTimeMillis())
+            }, "face_sample_id = ?", arrayOf(review.faceSampleId.toString()))
         }
     }
 
     fun skipReview(review: PendingReview) = writableDatabase.inTransaction {
         if (review.candidateGroupId == null) update("photo_ai_record", ContentValues().apply { put("review_state", "none") }, "photo_key = ?", arrayOf(review.photoKey))
-        else update("face_reviews", ContentValues().apply { put("state", "skipped") }, "face_sample_id = ? AND candidate_group_id = ?", arrayOf(review.faceSampleId.toString(), review.candidateGroupId.toString()))
+        else update("face_reviews", ContentValues().apply {
+            put("state", "skipped"); put("updated_at", System.currentTimeMillis())
+        }, "face_sample_id = ? AND candidate_group_id = ?", arrayOf(review.faceSampleId.toString(), review.candidateGroupId.toString()))
     }
 
     fun peopleKeys(): Set<String> = keysFor("SELECT DISTINCT photo_key FROM face_samples", emptyArray())
@@ -582,6 +598,38 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     )) } }
 
     /** Labels are the search tags Photos shows. They are derived, never hand-deleted, so they only ever merge. */
+    /** Answered questions, for the sync push. Pending ones are not sent: they are local uncertainty, not news. */
+    fun reviewRecords(): List<ReviewRecord> = readableDatabase.rawQuery(
+        "SELECT s.uuid, g.uuid, r.state, r.updated_at FROM face_reviews r " +
+            "JOIN face_samples s ON s.id = r.face_sample_id JOIN face_groups g ON g.id = r.candidate_group_id " +
+            "WHERE r.state != 'pending' AND s.uuid IS NOT NULL AND g.uuid IS NOT NULL", null,
+    ).use { c -> buildList { while (c.moveToNext()) add(ReviewRecord(c.getString(0), c.getString(1), c.getString(2), c.getLong(3))) } }
+
+    /**
+     * A question answered on another device stops being asked here. The pair (face, person) is the question's
+     * name — both already cross — so nothing new had to be invented to identify one.
+     *
+     * Only the *state* travels. Where the face ended up is the face's own record, which arrives on its own and
+     * carries the same rule as everything else: a guess never overwrites a decision.
+     */
+    fun applyIncomingReview(faceUuid: String, personUuid: String, state: String, updatedAt: Long) = writableDatabase.inTransaction {
+        if (state !in setOf("resolved", "skipped")) return@inTransaction
+        val sample = rawQuery("SELECT id, photo_key FROM face_samples WHERE uuid = ?", arrayOf(faceUuid))
+            .use { if (it.moveToFirst()) it.getLong(0) to it.getString(1) else null } ?: return@inTransaction
+        val group = rawQuery("SELECT id FROM face_groups WHERE uuid = ?", arrayOf(personUuid))
+            .use { if (it.moveToFirst()) it.getLong(0) else null } ?: return@inTransaction
+        val mine = rawQuery("SELECT state, updated_at FROM face_reviews WHERE face_sample_id = ? AND candidate_group_id = ?",
+            arrayOf(sample.first.toString(), group.toString())).use { if (it.moveToFirst()) it.getString(0) to it.getLong(1) else null }
+        if (mine != null && (mine.first != "pending" && mine.second >= updatedAt)) return@inTransaction
+        insertWithOnConflict("face_reviews", null, ContentValues().apply {
+            put("photo_key", sample.second)
+            put("face_sample_id", sample.first)
+            put("candidate_group_id", group)
+            put("state", state)
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
     fun allLabels(): Map<String, List<String>> = readableDatabase.rawQuery("SELECT photo_key, label FROM photo_ai_label", null)
         .use { c -> buildMap<String, MutableList<String>> { while (c.moveToNext()) getOrPut(c.getString(0)) { mutableListOf() } += c.getString(1) } }
 
@@ -830,7 +878,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     private fun createFaceGroupingTables(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS face_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_reviews (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, face_sample_id INTEGER NOT NULL, candidate_group_id INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', UNIQUE(face_sample_id, candidate_group_id))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_reviews (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, face_sample_id INTEGER NOT NULL, candidate_group_id INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(face_sample_id, candidate_group_id))")
     }
 
     private fun createLabelTables(db: SQLiteDatabase) {

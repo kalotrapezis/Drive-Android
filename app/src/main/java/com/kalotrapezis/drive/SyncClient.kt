@@ -558,6 +558,12 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 JSONObject().put("uuid", r.uuid).put("name", r.name).put("updatedAt", r.updatedAt)
             }))
             .put("faces", JSONArray(metadataStore.faceRecords().mapNotNull { r -> faceJson(r, sha(r.photoKey), sizes[r.photoKey]) }))
+            // Answers to Help organize. A question answered here must stop being asked over there, or the same
+            // face is put to the user twice — and "no" is the answer that otherwise leaves no trace at all,
+            // because it changes nothing about where the face sits.
+            .put("reviews", JSONArray(metadataStore.reviewRecords().map { r ->
+                JSONObject().put("face", r.faceUuid).put("person", r.personUuid).put("state", r.state).put("updatedAt", r.updatedAt)
+            }))
             // Files (tags, favorites, folder colours) are keyed by their Drive-relative path, not by content.
             .put("files", JSONArray(driveMetadata.records().map { r ->
                 JSONObject().put("path", r.path).put("favorite", r.favorite).put("color", r.color ?: JSONObject.NULL)
@@ -602,6 +608,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt"),
                 photoKey = key, bounds = bounds, embedding = embedding, quality = d.optDouble("quality", 1.0).toFloat(),
             )
+        }
+        pulled.each("reviews") { d ->
+            metadataStore.applyIncomingReview(d.getString("face"), d.getString("person"), d.optString("state"), d.getLong("updatedAt"))
         }
         pulled.each("files") { d ->
             val tags = d.optJSONArray("tags") ?: JSONArray()

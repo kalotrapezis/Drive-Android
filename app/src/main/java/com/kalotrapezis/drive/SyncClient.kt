@@ -62,14 +62,46 @@ internal object SyncRules {
 }
 
 /** Separate from photo_metadata.db: content hashes (by the gallery's photo key) and receipts from the computer. */
-internal class SyncStore(private val context: Context) : SQLiteOpenHelper(context, "sync.db", null, 1) {
+internal class SyncStore(private val context: Context) : SQLiteOpenHelper(context, "sync.db", null, 2) {
     private val prefs = context.getSharedPreferences("sync_pairing", Context.MODE_PRIVATE)
+
+    private companion object {
+        const val PEERS = "CREATE TABLE IF NOT EXISTS peers (fp TEXT PRIMARY KEY, name TEXT NOT NULL, hosts TEXT NOT NULL, " +
+            "port INTEGER NOT NULL, token TEXT NOT NULL, their_token TEXT NOT NULL, paired_at INTEGER NOT NULL)"
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE identity (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL)")
         db.execSQL("CREATE TABLE receipts (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL, path TEXT NOT NULL, sent_at INTEGER NOT NULL)")
+        db.execSQL(PEERS)
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) db.execSQL(PEERS)
+    }
+
+    /**
+     * Every device this one is paired with, not just the computer: a phone and a tablet pair with each other and
+     * with the same computer, so one remembered pairing was never going to be enough. Identity is the pinned
+     * certificate fingerprint, which is why it is the key.
+     */
+    fun peers(): List<Peer> = readableDatabase.rawQuery(
+        "SELECT name, hosts, port, fp, token, their_token FROM peers ORDER BY paired_at", null,
+    ).use { c ->
+        buildList {
+            while (c.moveToNext()) add(Peer(c.getString(0), c.getString(1).split(',').filter(String::isNotBlank),
+                c.getInt(2), c.getString(3), c.getString(4), c.getString(5)))
+        }
+    }
+
+    fun savePeer(peer: Peer) {
+        writableDatabase.insertWithOnConflict("peers", null, ContentValues().apply {
+            put("fp", peer.fingerprint); put("name", peer.name); put("hosts", peer.hosts.joinToString(","))
+            put("port", peer.port); put("token", peer.token); put("their_token", peer.theirToken)
+            put("paired_at", System.currentTimeMillis())
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun forgetPeer(fingerprint: String) { writableDatabase.delete("peers", "fp = ?", arrayOf(fingerprint)) }
 
     // ponytail: one active pairing only (pairing a second device overwrites this one; receipts are global,
     // not per-device). See SYNC_PLAN.md "Not yet: multiple paired devices" for the upgrade path.
@@ -170,14 +202,29 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         throw SyncException("Could not reach the computer (${last?.message ?: "no address"}). Is Tetra open on it, on the same Wi-Fi?")
     }
 
+    /**
+     * Scanning hands over both halves at once: we prove we saw the code, and we say who we are — our own
+     * certificate fingerprint, the port we listen on and a token the other device sends when it calls us.
+     * Between two phones neither side is the client, so a pairing that only travelled one way would leave one
+     * of them unable to ever start a sync. A computer simply ignores the extra fields.
+     */
     fun pair(qr: PairingQr): Pairing = anyHost(qr.hosts) { host ->
+        val ourToken = SyncRules.hex(ByteArray(32).also(java.security.SecureRandom()::nextBytes))
+        val ourFingerprint = runCatching { SyncServer.fingerprint(SyncServer.identity().second) }.getOrNull()
         val body = open(host, qr.port, qr.fingerprint, "/pair", "POST", null).run {
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
-            outputStream.use { it.write(JSONObject().put("code", qr.code).put("name", "${Build.MANUFACTURER} ${Build.MODEL}").toString().toByteArray()) }
+            val request = JSONObject().put("code", qr.code).put("name", "${Build.MANUFACTURER} ${Build.MODEL}")
+                .put("port", SyncServer.PORT).put("hosts", JSONArray(SyncServer.lanAddresses()))
+                .put("token", ourToken)
+            ourFingerprint?.let { request.put("fp", it) }
+            outputStream.use { it.write(request.toString().toByteArray()) }
             jsonResult().also { disconnect() }
         }
-        Pairing(body.optString("name", qr.name), listOf(host) + (qr.hosts - host), qr.port, qr.fingerprint, body.getString("token")).also(store::savePairing)
+        val hosts = listOf(host) + (qr.hosts - host)
+        val name = body.optString("name", qr.name)
+        store.savePeer(Peer(name, hosts, qr.port, qr.fingerprint, body.getString("token"), ourToken))
+        Pairing(name, hosts, qr.port, qr.fingerprint, body.getString("token")).also(store::savePairing)
     }
 
     private fun sha256(entry: Entry): String {

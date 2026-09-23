@@ -105,6 +105,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -812,6 +813,7 @@ private fun SyncTab(back: () -> Unit) {
     val client = remember(context) { SyncClient(context.applicationContext, store) }
     var pairing by remember { mutableStateOf(store.pairing()) }
     var scanning by remember { mutableStateOf(false) }
+    var showing by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf<String?>(null) }
     var pairMessage by remember { mutableStateOf<String?>(null) }
     val requestNotifications = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -825,6 +827,10 @@ private fun SyncTab(back: () -> Unit) {
     val view = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(running) { view.keepScreenOn = running; onDispose { view.keepScreenOn = false } }
 
+    if (showing) {
+        PairingQrScreen(store, back = { showing = false; pairing = store.pairing() })
+        return
+    }
     if (scanning) {
         CodeScannerTab(back = { scanning = false }, onCode = { value ->
             val qr = SyncRules.parseQr(value) ?: return@CodeScannerTab false
@@ -865,10 +871,17 @@ private fun SyncTab(back: () -> Unit) {
                         }
                         Text(if (isPaused) "Paused · ${pr.done} of ${pr.total}" else "${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
                     }
-                    when {
-                        p == null -> Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
-                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Pair with computer")
+                    // Pairing goes both ways now: this device can scan another, or be scanned by it.
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) {
+                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Scan")
                         }
+                        Button(onClick = { showing = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) {
+                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Show code")
+                        }
+                    }
+                    when {
+                        p == null -> Unit // the two buttons above are the whole offer until something is paired
                         !running -> Button(onClick = {
                             if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                 requestNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -927,6 +940,78 @@ private fun stopSync(context: android.content.Context) {
 }
 
 /** This phone → paired computer, the one connection the phone ever has (see SYNC_PLAN.md for the multi-device note). */
+/**
+ * This device's own pairing code (SYNC_PLAN.md 6l). Two phones have no computer between them, so each one has
+ * to be able to be *found*, not only to look: while this screen is open a server answers on Wi-Fi, and whoever
+ * scans the code pins this device's certificate. Closing the screen stops it — something listening all day is
+ * a decision to make out loud, not by leaving a screen behind.
+ */
+@Composable
+private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
+    val context = LocalContext.current
+    var qr by remember { mutableStateOf<String?>(null) }
+    var failure by remember { mutableStateOf<String?>(null) }
+    var pairedWith by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(Unit) {
+        val server = SyncServer(context.applicationContext, store)
+        runCatching {
+            server.onPaired = { peer -> pairedWith = peer.name }
+            server.start()
+            qr = server.pairingQr(server.startPairing())
+        }.onFailure { failure = it.message ?: "This device cannot show a code right now." }
+        onDispose { server.stop() }
+    }
+    val bitmap = remember(qr) { qr?.let { runCatching { qrBitmap(it) }.getOrNull() } }
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        FilesPageHeader("Pair this device", R.drawable.ic_qr_code, back)
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                when {
+                    failure != null -> Text(failure!!, style = MaterialTheme.typography.bodyMedium)
+                    bitmap != null -> Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Pairing code for this device",
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                        modifier = Modifier.fillMaxWidth(0.8f).aspectRatio(1f).background(Color.White).padding(12.dp),
+                    )
+                    else -> CircularProgressIndicator()
+                }
+                Text(
+                    pairedWith?.let { "Paired with $it." } ?: "Open Sync on the other device, tap Pair, and point it here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("The code works once, and only while this screen is open.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        val peers = remember(pairedWith) { runCatching { store.peers() }.getOrDefault(emptyList()) }
+        if (peers.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Paired devices", style = MaterialTheme.typography.titleMedium)
+                peers.forEach { peer ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_phone), contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text(peer.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text(peer.hosts.firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** ML Kit reads codes but cannot draw one, so ZXing does — black and white, no colour to misread. */
+private fun qrBitmap(text: String, size: Int = 640): android.graphics.Bitmap {
+    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+    return android.graphics.Bitmap.createBitmap(matrix.width, matrix.height, android.graphics.Bitmap.Config.ARGB_8888).apply {
+        for (x in 0 until matrix.width) for (y in 0 until matrix.height) {
+            setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+        }
+    }
+}
+
 @Composable
 private fun ConnectionCard(paired: Boolean, deviceName: String?, reachable: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

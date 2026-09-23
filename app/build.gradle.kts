@@ -41,6 +41,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraX")
     implementation("androidx.camera:camera-view:$cameraX")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation("com.google.zxing:core:3.5.3") // drawing a QR code; ML Kit only reads them
     implementation("org.opencv:opencv:4.12.0")
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")

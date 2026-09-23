@@ -5,8 +5,16 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.Build
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -190,6 +198,9 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
 internal class SyncException(message: String) : Exception(message)
 
 /** Talks only to the paired computer: HTTPS whose certificate must match the QR's SHA-256 fingerprint. */
+/** How many files cross at once. Four keeps the link busy; more turns a phone's Wi-Fi into stalled sockets. */
+private const val AT_ONCE = 4
+
 internal class SyncClient(private val context: Context, private val store: SyncStore) {
     private val metadataStore by lazy { PhotoMetadataStore(context) }
     private val driveMetadata by lazy { DriveMetadata(context) }
@@ -297,6 +308,54 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }.ifEmpty { SyncConnection.defaults }
     }.getOrDefault(SyncConnection.defaults).also(store::saveConnections)
 
+    /**
+     * Move a list of things, a few at a time, and report each one as it finishes.
+     *
+     * One file at a time left the link idle between files — most of a small file's time is the round trip, not
+     * the bytes — and on a real library that is thousands of round trips spent waiting. Four at once is enough
+     * to keep the link busy without turning a phone's Wi-Fi into a queue of stalled sockets.
+     *
+     * Each item is tried **twice**: a single dropped connection (a phone hopping access points) is not a file
+     * that failed, it is the same request a second later. Whatever still fails is named, one line per file, and
+     * nothing partial is kept, so the next sync simply asks again.
+     *
+     * Stop and Pause are checked before each item is picked up, so they land between files, never inside one.
+     */
+    private suspend fun <T> eachInParallel(
+        items: List<T>,
+        stage: String,
+        checkpoint: suspend () -> Unit,
+        progress: (BackupProgress) -> Unit,
+        failed: MutableList<String>,
+        name: (T) -> String,
+        work: (T) -> Unit,
+    ): Int = coroutineScope {
+        if (items.isEmpty()) return@coroutineScope 0
+        val limit = Semaphore(AT_ONCE)
+        val done = AtomicInteger(0)
+        val succeeded = AtomicInteger(0)
+        items.map { item ->
+            async(Dispatchers.IO) {
+                limit.withPermit {
+                    coroutineContext.ensureActive()
+                    checkpoint()
+                    var result = runCatching { work(item) }
+                    if (result.isFailure && result.exceptionOrNull() !is kotlinx.coroutines.CancellationException) {
+                        delay(1_000)
+                        result = runCatching { work(item) }
+                    }
+                    result.onSuccess { succeeded.incrementAndGet() }
+                    progress(BackupProgress(stage, done.incrementAndGet(), items.size))
+                    result.exceptionOrNull()?.let { failure ->
+                        if (failure is kotlinx.coroutines.CancellationException) throw failure
+                        synchronized(failed) { failed += "${name(item)}: ${failure.message}" }
+                    }
+                }
+            }
+        }.awaitAll()
+        succeeded.get()
+    }
+
     private fun sha256(entry: Entry): String {
         store.cachedHash(entry.photoKey)?.let { return it }
         val digest = MessageDigest.getInstance("SHA-256")
@@ -346,17 +405,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             (0 until r.length()).map(r::getString)
         }
         val alreadyThere = if (photos.sends) bySha.size - missing.size else 0
-        var sent = 0
-        missing.forEachIndexed { i, sha ->
-            coroutineContext.ensureActive()
-            checkpoint()
-            progress(BackupProgress("Sending", i, missing.size))
-            val e = bySha.getValue(sha)
-            // One retry: a single dropped connection (e.g. the phone hopping Wi-Fi networks) shouldn't
-            // count a file as failed when the same request would succeed a second later.
-            var result = runCatching { uploadOne(host, p, sha, e) }
-            if (result.isFailure) { delay(1_000); result = runCatching { uploadOne(host, p, sha, e) } }
-            result.onSuccess { sent++ }.onFailure { failed += "${e.name}: ${it.message}" }
+        val sent = eachInParallel(missing, "Sending", checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
+            uploadOne(host, p, sha, bySha.getValue(sha))
         }
         // What the computer has and this phone does not, before the metadata pass, so a photo that has just
         // arrived already has its favourites, its people and its collections when that pass runs.
@@ -393,18 +443,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // not here any more, it was removed here on purpose, and a sync that undid that would be worse than one
         // that never ran. Resurrection is the same sin as deletion, read backwards.
         val sentFromHere = store.receiptShas()
-        var received = 0
-        for (i in 0 until send.length()) {
-            coroutineContext.ensureActive() // Stop ends the sync here, between photos, never inside one
-            checkpoint()                    // and Pause waits here
-            val item = send.getJSONObject(i)
-            if (item.optString("sha256") in sentFromHere) continue
-            progress(BackupProgress("Receiving photos", i, send.length()))
-            runCatching { receivePhoto(host, p, item) }
-                .onSuccess { received++ }
-                .onFailure { failed += "${item.optString("name")}: ${it.message}" }
+        val wanted = (0 until send.length()).map(send::getJSONObject).filter { it.optString("sha256") !in sentFromHere }
+        return eachInParallel(wanted, "Receiving photos", checkpoint, progress, failed, { it.optString("name") }) { item ->
+            receivePhoto(host, p, item)
         }
-        return received
     }
 
     /**
@@ -593,11 +635,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         if (connection.sends) {
             val want = answer.optJSONArray("want") ?: JSONArray()
             val byPath = entries.associateBy { it.relativePath }
-            for (i in 0 until want.length()) {
-                coroutineContext.ensureActive()
-                checkpoint()
-                val entry = byPath[want.getString(i)] ?: continue
-                progress(BackupProgress("Sending files", i, want.length()))
+            val mine = (0 until want.length()).mapNotNull { byPath[want.getString(it)] }
+            eachInParallel(mine, "Sending files", checkpoint, progress, failed, { it.relativePath }) { entry ->
                 uploadFile(host, p, entry, File(root, entry.relativePath))
             }
         }
@@ -610,17 +649,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }.onFailure { failed += "Moving a file: ${it.message}" }
 
         val have = answer.optJSONArray("have") ?: JSONArray()
-        var received = 0
-        for (i in 0 until have.length()) {
-            coroutineContext.ensureActive()
-            checkpoint()
-            val file = have.getJSONObject(i)
-            progress(BackupProgress("Receiving files", i, have.length()))
-            runCatching { receiveFile(host, p, root, file) }
-                .onSuccess { received++ }
-                .onFailure { failed += "${file.optString("path")}: ${it.message}" }
+        val incoming = (0 until have.length()).map(have::getJSONObject)
+        return eachInParallel(incoming, "Receiving files", checkpoint, progress, failed, { it.optString("path") }) { file ->
+            receiveFile(host, p, root, file)
         }
-        return received
     }
 
     /** The same rules as a file arriving on the computer: verified into a .part, and nothing is ever replaced. */

@@ -34,6 +34,26 @@ internal class SyncService : Service() {
     companion object {
         private const val CHANNEL_ID = "sync"
         private const val AUTO_SYNC_GAP_MS = 15 * 60_000L
+
+        /**
+         * A VPN answers for the connection it hides, and an ad-blocking VPN answers "no idea": its network has
+         * no metering to report and names no network underneath it. Asking it alone turned every automatic sync
+         * off for anyone running one, so when a VPN is in the way this asks the real networks instead.
+         */
+        private fun onUnmeteredNetwork(networks: ConnectivityManager): Boolean {
+            val active = networks.getNetworkCapabilities(networks.activeNetwork) ?: return false
+            if (!active.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                return active.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            }
+            @Suppress("DEPRECATION") // allNetworks is how you see past a VPN; there is no replacement that does
+            return networks.allNetworks.any { network ->
+                networks.getNetworkCapabilities(network)?.let {
+                    !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                        it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        it.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                } == true
+            }
+        }
         private const val NOTIFICATION_ID = 1
         const val ACTION_START = "start"
         const val ACTION_STOP = "stop"
@@ -58,9 +78,8 @@ internal class SyncService : Service() {
             if (store.pairing() == null) return
             if (System.currentTimeMillis() - store.lastBackup() < gap) return
             val networks = app.getSystemService(ConnectivityManager::class.java) ?: return
-            val capabilities = networks.getNetworkCapabilities(networks.activeNetwork) ?: return
             // Wi-Fi only: a backup is the user's whole camera roll, never something to put on mobile data by itself.
-            if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) return
+            if (!onUnmeteredNetwork(networks)) return
             runCatching {
                 ContextCompat.startForegroundService(app, Intent(app, SyncService::class.java).setAction(ACTION_START))
             }

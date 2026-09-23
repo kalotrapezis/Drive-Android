@@ -385,6 +385,17 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             .onSuccess { requestTrash.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
             .onFailure { photosState = ListState.Error("Cannot move photos to trash: ${it.message ?: "request failed"}") }
     }
+    // A finished sync has brought photos, files and other devices' edits in. Show them without being asked:
+    // nothing is more confusing than a sync that says it is done over a page that still shows the old contents.
+    val appScope = rememberCoroutineScope()
+    val syncState by SyncService.state.collectAsState()
+    LaunchedEffect(syncState?.result) {
+        if (syncState?.result == null) return@LaunchedEffect
+        metadataVersion++
+        recentsVersion++
+        loadPhotos()
+        loadDrive()
+    }
     fun selectedEntries(uris: Set<Uri>) = (photosState as? ListState.Items)?.entries.orEmpty().filter { it.contentUri in uris }
     fun metadataAction(action: () -> Unit): String? = runCatching(action).fold(
         onSuccess = { metadataVersion++; null },
@@ -433,7 +444,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 scanSaving = false
                 result.fold(
                     onSuccess = {
-                        SyncService.syncInBackground(context, gap = 0) // a new scan is worth sending straight away
+                        // A new scan is worth sending straight away, once the page has settled and the file is
+                        // on disk — off the UI thread, because it reads preferences and asks about the network.
+                        appScope.launch { delay(1_500); withContext(Dispatchers.IO) { SyncService.syncInBackground(context, gap = 0) } }
                         clearScanPages()
                         unlockScannerOrientation()
                         screen = Screen.Drive
@@ -639,6 +652,7 @@ private sealed interface PhotoFilter {
     data object Videos : PhotoFilter
     data object Review : PhotoFilter
     data object Hidden : PhotoFilter
+    data object Trash : PhotoFilter
     data object Map : PhotoFilter
     data class Collection(val id: Long) : PhotoFilter
 }
@@ -1363,14 +1377,15 @@ internal fun FilesPageHeader(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (emptyTrash != null) Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = CircleShape) {
-            IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Empty Trash") }
-        }
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
         }
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
         Text(title, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The one destructive action on the page sits where the page's actions are, and is the only red thing.
+        if (emptyTrash != null) Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = CircleShape) {
+            IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Empty Trash") }
+        }
         trailing?.invoke()
     }
 }
@@ -1427,7 +1442,9 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                     DriveWideAction(R.drawable.ic_info, "Properties") { panel = DriveItemSheetPanel.Properties }
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_palette, "Change folder color") { panel = DriveItemSheetPanel.Color }
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, "Sync now") { panel = DriveItemSheetPanel.Sync }
-                    if (item.relativePath != "Trash" && !item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
+                    // Already in Trash: the useful action is the opposite one — put it back where Drive keeps things.
+                    if (item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_restore, "Restore from Trash") { submit(DriveItemAction.Move("")) }
+                    else if (item.relativePath != "Trash") DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
                 }
                 DriveItemSheetPanel.Rename -> {
                     Text("Rename this ${if (item.isDirectory) "folder" else "file"}.")
@@ -1815,6 +1832,25 @@ private fun PhotoTab(
     var analysisVersion by remember { mutableStateOf(0) }
     var analysisError by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var emptyTrashConfirm by remember { mutableStateOf(false) }
+    // Android owns its trash: restoring and deleting for good are both its own requests, with its own dialog.
+    val trashRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+        selectedUris = emptySet()
+        analysisVersion++
+    }
+    fun restoreFromTrash(uris: Set<Uri>) {
+        if (uris.isEmpty()) return
+        runCatching { MediaStore.createTrashRequest(context.contentResolver, uris.toList(), false) }
+            .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+            .onFailure { actionError = "Cannot restore: ${it.message ?: "request failed"}" }
+    }
+    fun emptyPhotoTrash(all: List<Entry>) {
+        val uris = all.mapNotNull(Entry::contentUri)
+        if (uris.isEmpty()) return
+        runCatching { MediaStore.createDeleteRequest(context.contentResolver, uris) }
+            .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+            .onFailure { actionError = "Cannot empty Trash: ${it.message ?: "request failed"}" }
+    }
     val deleteHiddenOriginals = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val staged = stagedHide
         stagedHide = null
@@ -1913,7 +1949,9 @@ private fun PhotoTab(
     val collectionKeys = remember(filter, metadataRevision) {
         (filter as? PhotoFilter.Collection)?.let { metadataStore.collectionKeys(it.id) }.orEmpty()
     }
-    val entries = if (filter == PhotoFilter.Hidden) vaultEntries else allEntries.filter { entry -> when (filter) {
+    // Trash and Hidden are their own lists: neither is in the ordinary MediaStore listing the timeline reads.
+    val trashedEntries = remember(metadataRevision, filter) { if (filter == PhotoFilter.Trash) runCatching { listTrashedPhotos(context) }.getOrDefault(emptyList()) else emptyList() }
+    val entries = if (filter == PhotoFilter.Hidden) vaultEntries else if (filter == PhotoFilter.Trash) trashedEntries else allEntries.filter { entry -> when (filter) {
         PhotoFilter.Timeline -> PhotoMetadataRules.visibleInGallery(entry.isScreenshot(), entry.photoKey in documentKeys, hideScreenshots, hideDocuments, entry.photoKey in hiddenAlbumKeys)
         PhotoFilter.Favorites -> metadata[entry.photoKey].orDefault().favorite
         PhotoFilter.People -> entry.photoKey in peopleKeys
@@ -1922,7 +1960,7 @@ private fun PhotoTab(
         PhotoFilter.Videos -> entry.isVideo
         PhotoFilter.Review -> entry.photoKey in reviewKeys
         PhotoFilter.Map -> true
-        PhotoFilter.Hidden -> false
+        PhotoFilter.Hidden, PhotoFilter.Trash -> false
         is PhotoFilter.Collection -> entry.photoKey in collectionKeys
     } }.filter { entry ->
         searchQuery.isBlank() || entry.name.contains(searchQuery, ignoreCase = true) || entry.relativePath.orEmpty().contains(searchQuery, ignoreCase = true) ||
@@ -2169,6 +2207,7 @@ private fun PhotoTab(
         PhotoFilter.Videos -> "Videos"
         PhotoFilter.Review -> "Help organize"
         PhotoFilter.Hidden -> "Hidden"
+        PhotoFilter.Trash -> "Trash"
         PhotoFilter.Map -> "Map"
         is PhotoFilter.Collection -> collections.firstOrNull { it.id == filter.id }?.name
     }
@@ -2179,6 +2218,7 @@ private fun PhotoTab(
         PhotoFilter.Videos -> R.drawable.ic_video
         PhotoFilter.Review -> R.drawable.ic_tag
         PhotoFilter.Hidden -> R.drawable.ic_lock
+        PhotoFilter.Trash -> R.drawable.ic_delete
         PhotoFilter.Map -> R.drawable.ic_map
         is PhotoFilter.Collection, PhotoFilter.People -> R.drawable.ic_collections
         else -> R.drawable.ic_gallery
@@ -2215,11 +2255,14 @@ private fun PhotoTab(
                 icon = timelineIcon,
                 back = back,
                 showTimelineIsland = !searchOpen,
+                // With nothing selected the one action Trash offers belongs in the header, as it does in Files.
+                emptyTrash = if (filter == PhotoFilter.Trash && selectedUris.isEmpty()) ({ emptyTrashConfirm = true }) else null,
                 emptyMessage = when (filter) {
                     PhotoFilter.Documents -> "No local document classifications yet."
                     PhotoFilter.Videos -> "No videos found in this collection."
                     PhotoFilter.Review -> "Nothing needs your review."
                     PhotoFilter.Hidden -> "Hidden is empty. Select photos or videos and tap the lock button to add them."
+                    PhotoFilter.Trash -> "Trash is empty. Deleted photos wait here for 30 days."
                     else -> "No photos found in this collection."
                 },
             )
@@ -2268,6 +2311,12 @@ private fun PhotoTab(
             if (filter == PhotoFilter.Hidden) HiddenSelectionActions(
                 count = selectedUris.size,
                 restore = { restoreHidden() },
+                cancel = { selectedUris = emptySet() },
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).fillMaxWidth(),
+            ) else if (filter == PhotoFilter.Trash) TrashSelectionActions(
+                count = selectedUris.size,
+                restore = { restoreFromTrash(selectedUris) },
+                emptyTrash = { emptyTrashConfirm = true },
                 cancel = { selectedUris = emptySet() },
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).fillMaxWidth(),
             ) else SelectionActions(
@@ -2360,6 +2409,10 @@ private fun PhotoTab(
         setHidePeople = { hide -> metadataStore.setHidesPeopleFromCollections(hide); hidePeopleFromCollections = hide },
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromCollections(hide); hideDocumentsFromCollections = hide },
         dismiss = { collectionToolsOpen = false },
+    )
+    if (emptyTrashConfirm) EmptyTrashSheet(
+        dismiss = { emptyTrashConfirm = false },
+        emptyTrash = { emptyTrashConfirm = false; emptyPhotoTrash(trashedEntries) },
     )
     analysisConsentFor?.let { requested ->
         AlertDialog(
@@ -2692,6 +2745,11 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemCollectionButton("Help organize", entries.count { it.photoKey in reviewKeys }, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
             SystemCollectionButton("Favorites", entries.count { metadata[it.photoKey].orDefault().favorite }, R.drawable.ic_favorite_border, { open(PhotoFilter.Favorites) }, Modifier.weight(1f))
+        } }
+        // No count: Android holds the trash, and asking it for one on every Collections draw is a query per draw.
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SystemCollectionButton("Trash", null, R.drawable.ic_delete, { open(PhotoFilter.Trash) }, Modifier.weight(1f))
+            Box(Modifier.weight(1f))
         } }
         item { Text("My collections", style = MaterialTheme.typography.labelLarge) }
         if (custom.isEmpty()) item { Text("Tap + to create your first collection.", style = MaterialTheme.typography.bodyMedium) }
@@ -3055,6 +3113,31 @@ private fun SelectionActions(
     }
 }
 
+/** In Trash there are only two things worth offering: undoing the delete, and finishing it for everything. */
+@Composable
+private fun TrashSelectionActions(count: Int, restore: () -> Unit, emptyTrash: () -> Unit, cancel: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(onClick = restore, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
+                Text("Restore", modifier = Modifier.padding(start = 10.dp))
+            }
+            Button(
+                onClick = emptyTrash,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) {
+                Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
+                Text("Empty trash", modifier = Modifier.padding(start = 10.dp))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text("$count selected", style = MaterialTheme.typography.labelLarge)
+                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
 @Composable
 private fun HiddenSelectionActions(count: Int, restore: () -> Unit, cancel: () -> Unit, modifier: Modifier = Modifier) {
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -3087,6 +3170,7 @@ private fun PhotoTimeline(
     back: () -> Unit,
     showTimelineIsland: Boolean,
     emptyMessage: String,
+    emptyTrash: (() -> Unit)? = null,
 ) {
     PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
         when (state) {
@@ -3129,7 +3213,7 @@ private fun PhotoTimeline(
                         Box(Modifier.heightIn(min = 140.dp))
                     } else {
                         item(key = "timeline-page-header", span = { GridItemSpan(maxLineSpan) }) {
-                            FilesPageHeader(title, icon, back)
+                            FilesPageHeader(title, icon, back, emptyTrash = emptyTrash)
                         }
                         item(key = "timeline-title-gap", span = { GridItemSpan(maxLineSpan) }) {
                             Box(Modifier.height(64.dp))
@@ -3865,12 +3949,21 @@ private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>):
         ?.let { context.contentResolver.loadThumbnail(it, android.util.Size(720, 720), null) }
 }.getOrNull()
 
+/**
+ * What Android is holding in its trash for this app. Trashed media is deliberately absent from the ordinary
+ * MediaStore listing, so Trash is its own query rather than a filter over the timeline. Android keeps these for
+ * 30 days and deletes them itself; restoring and deleting early both go through its own confirmation.
+ */
+internal fun listTrashedPhotos(context: Context): List<Entry> =
+    listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, trashed = true) +
+        listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, trashed = true)
+
 internal fun listPhotos(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
 ).sortedByDescending { it.takenMillis }
 
-private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean): List<Entry> {
+private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean, trashed: Boolean = false): List<Entry> {
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
         MediaStore.Images.Media.DISPLAY_NAME,
@@ -3883,8 +3976,12 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
         MediaStore.MediaColumns.ORIENTATION,
     )
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-    return context.contentResolver.query(collection, projection, selection,
-        arrayOf("DCIM/%", "Pictures/Screenshots/%", "DCIM/Screenshots/%"), null)?.use { cursor ->
+    val arguments = android.os.Bundle().apply {
+        putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf("DCIM/%", "Pictures/Screenshots/%", "DCIM/Screenshots/%"))
+        if (trashed) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+    }
+    return context.contentResolver.query(collection, projection, arguments, null)?.use { cursor ->
         buildList { while (cursor.moveToNext()) {
             val path = cursor.string(2)
             val sizeBytes = cursor.long(3)

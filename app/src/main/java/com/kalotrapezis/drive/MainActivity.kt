@@ -2171,6 +2171,7 @@ private fun PhotoTab(
     // Opened from another app: closing the viewer returns there instead of to the Gallery.
     fun closeViewer() { if (closeExternal != null) closeExternal() else viewerUri = null }
     var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
+    var choosingCoverFor by remember { mutableStateOf<FaceGroup?>(null) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var returnToCollections by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -2437,6 +2438,19 @@ private fun PhotoTab(
         }
     }
     BackHandler(onBack = ::navigateBack)
+    choosingCoverFor?.let { group ->
+        ChooseCoverSheet(
+            group = group,
+            faces = remember(group.id, analysisVersion) { metadataStore.faceGroupFaces(group.id) },
+            entriesByKey = allEntries.associateBy(Entry::photoKey),
+            dismiss = { choosingCoverFor = null },
+            choose = { face ->
+                metadataStore.setFaceGroupCover(group.id, face?.uuid)
+                choosingCoverFor = null
+                analysisVersion++
+            },
+        )
+    }
     viewingFaceGroup?.let { group ->
         PersonGroupScreen(
             group = group,
@@ -2559,7 +2573,12 @@ private fun PhotoTab(
         val mapCollection = pane == PhotosPane.Timeline && filter == PhotoFilter.Map
         when (pane) {
             PhotosPane.Timeline -> when {
-                filter == PhotoFilter.People -> PeopleGroups(faceGroups, allEntries.associateBy(Entry::photoKey), { viewingFaceGroup = it }, back)
+                filter == PhotoFilter.People -> PeopleGroups(
+                    faceGroups, allEntries.associateBy(Entry::photoKey),
+                    open = { viewingFaceGroup = it },
+                    chooseFace = { choosingCoverFor = it },
+                    back = back,
+                )
                 filter == PhotoFilter.Map -> PhotoMapScreen(
                     entries = allEntries,
                     metadataStore = metadataStore,
@@ -2911,7 +2930,7 @@ private fun FaceReviewCrop(label: String, entry: Entry?, bounds: Rect, modifier:
 }
 
 @Composable
-private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, back: () -> Unit) {
+private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, chooseFace: (FaceGroup) -> Unit, back: () -> Unit) {
     if (groups.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FilesPageHeader("People", R.drawable.ic_people, back)
@@ -2922,16 +2941,17 @@ private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, o
     LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_people, back) }
         items(groups, key = { it.id }) { group ->
-            FaceGroupCard(group, entries[group.photoKey]) { open(group) }
+            FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }) { open(group) }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FaceGroupCard(group: FaceGroup, entry: Entry?, open: () -> Unit) = Surface(
+private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Unit, open: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.aspectRatio(1f).clickable(onClick = open),
+    modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = open, onLongClick = chooseFace),
 ) { Box(Modifier.fillMaxSize()) {
     FaceCrop(entry, group, Modifier.fillMaxSize())
     Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -3061,6 +3081,52 @@ private fun PersonGroupScreen(
  * the one action here that throws a grouping away, and the person it was wrong about cannot be reached
  * afterwards — so they are kept, and putting one back is one tap, not an eight-second window you had to catch.
  */
+/**
+ * Which face a person is shown by. The best one the scores can find is a guess, and the one you would have
+ * picked is often not it — a good photo of someone is not the sharpest crop of them. Holding a person opens
+ * this; everything they appear in is here, newest first, and the choice travels to the other devices.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChooseCoverSheet(
+    group: FaceGroup,
+    faces: List<FaceOfPerson>,
+    entriesByKey: Map<String, Entry>,
+    dismiss: () -> Unit,
+    choose: (FaceOfPerson?) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Show ${group.name} by", style = MaterialTheme.typography.titleLarge)
+            if (faces.isEmpty()) Text("No faces to choose from yet.")
+            else {
+                Text("Pick the face this person is shown by, here and on your other devices.")
+                LazyVerticalGrid(
+                    GridCells.Adaptive(88.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(faces, key = { it.uuid }) { face ->
+                        Surface(
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.aspectRatio(1f)
+                                .then(if (face.chosen) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium) else Modifier)
+                                .clickable { choose(face) },
+                        ) { FaceCrop(entriesByKey[face.photoKey], face.bounds, Modifier.fillMaxSize()) }
+                    }
+                }
+                if (faces.any { it.chosen }) Text(
+                    "Use the best one instead",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.clickable { choose(null) }.padding(vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MergeHistorySheet(merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit) {

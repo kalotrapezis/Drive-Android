@@ -613,6 +613,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             } }))
             .put("people", JSONArray(metadataStore.personRecords().map { r ->
                 JSONObject().put("uuid", r.uuid).put("name", r.name).put("updatedAt", r.updatedAt)
+                    .put("cover", r.coverUuid ?: JSONObject.NULL)
             }))
             .put("faces", JSONArray(metadataStore.faceRecords().mapNotNull { r -> faceJson(r, sha(r.photoKey), sizes[r.photoKey]) }))
             // Answers to Help organize. A question answered here must stop being asked over there, or the same
@@ -645,7 +646,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val list = d.optJSONArray("labels") ?: JSONArray()
             metadataStore.applyIncomingLabels(key, (0 until list.length()).map(list::getString))
         } }
-        pulled.each("people") { d -> metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt")) }
+        pulled.each("people") { d ->
+            metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt"), d.optString("cover").ifEmpty { null })
+        }
         // A face the computer found but this phone's detector missed arrives whole — box, embedding and all —
         // and is kept, so the photo still shows up under that person here (SYNC_PLAN.md 6m). The box comes as
         // fractions of the upright photo and goes back into the analyser's own pixels on the way in.

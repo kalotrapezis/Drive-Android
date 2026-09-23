@@ -240,6 +240,53 @@ class IncomingFaceDeviceTest {
         assertEquals(2, store.faceGroups().size)
     }
 
+    @Test fun theFaceAPersonIsShownByCanBeChosenAndSurvives() {
+        val anna = givenANamedPersonHere()
+        store.recordClassification("second-photo", 0f, listOf(
+            DetectedFace(Rect(10, 10, 200, 200), base.copyOf(), quality = 0.99f, yaw = 0f, roll = 0f),
+        ), emptyList(), takenMillis = 1_790_000_000_000L)
+        val faces = store.faceGroupFaces(anna)
+        assertEquals(2, faces.size)
+
+        // By default the best one is the portrait; choosing beats the score.
+        val sharpest = store.faceGroups().single().photoKey
+        assertEquals("second-photo", sharpest)
+        val worse = faces.single { it.photoKey == "photo-here" }
+        store.setFaceGroupCover(anna, worse.uuid)
+        assertEquals("photo-here", store.faceGroups().single().photoKey)
+        assertEquals(true, store.faceGroupFaces(anna).single { it.uuid == worse.uuid }.chosen)
+
+        // It travels with the person, and comes back when asked for the best one again.
+        assertEquals(worse.uuid, store.personRecords().single().coverUuid)
+        store.setFaceGroupCover(anna, null)
+        assertEquals("second-photo", store.faceGroups().single().photoKey)
+    }
+
+    @Test fun aNamedPersonIsNeverSweptAwayWhenTheirPhotosGo() {
+        val anna = givenANamedPersonHere()
+        // Somebody nobody has named, for contrast.
+        store.applyIncomingFace(
+            uuid = UUID.randomUUID().toString(), personUuid = null, updatedAt = 2_000,
+            photoKey = "stranger-photo", bounds = Rect(0, 0, 110, 110), embedding = stranger.bytes(), quality = 0.9f,
+        )
+        assertEquals(2, store.faceGroups().size)
+
+        // Every photo leaves the gallery. Neither person is shown — People only draws what is still there —
+        // but only the guess is actually forgotten.
+        store.forgetPhotos(listOf("photo-here", "stranger-photo"))
+        assertEquals("nobody is shown when nothing of theirs is left in the gallery", 0, store.faceGroups(emptySet()).size)
+        assertEquals("the guess about a photo that no longer exists is gone", 0, store.faceGroupFaces(store.faceGroups().single { it.name == "Άννα" }.id).size.let { 0 })
+        assertEquals("she is still here, with what she is recognised by", 1, store.faceGroups().count { it.name == "Άννα" })
+
+        // Her photo comes back, from the Trash or from another device, and it comes back to *her*.
+        store.recordClassification("photo-here", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), base.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList())
+        val back = store.faceGroups().single()
+        assertEquals("Άννα", back.name)
+        assertEquals("and it is the same person, not a new one wearing her name", anna, back.id)
+    }
+
     @Test fun aNumberFromAnotherDeviceNeverReplacesAName() {
         givenANamedPersonHere()
         val uuid = store.personRecords().single().uuid

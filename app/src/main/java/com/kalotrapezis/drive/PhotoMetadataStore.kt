@@ -678,7 +678,21 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     /** A name given on the computer. Unknown people are not created here: the phone owns its own grouping. */
     fun applyIncomingPerson(uuid: String, name: String, updatedAt: Long) = writableDatabase.inTransaction {
-        val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
+        val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
+            ?: return@inTransaction run {
+                // Somebody named on another device, who this phone has never seen. A name is a decision and
+                // decisions travel — including the person they are about, or the faces arriving behind this
+                // would land in a nameless group here and the naming would have to be done twice. A guess
+                // ("Person 41") is not a decision, so it creates nothing and its faces are grouped here by this
+                // phone's own rules instead. A person who ends up with no faces is never shown.
+                if (isGeneratedPersonName(name)) return@inTransaction
+                insertWithOnConflict("face_groups", null, ContentValues().apply {
+                    put("uuid", uuid)
+                    put("name", name)
+                    put("updated_at", updatedAt)
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+                Unit
+            }
         if (updatedAt <= local.second) return@inTransaction
         // The rule faces already had, and people did not: "Person 41" is what an algorithm called someone it had
         // not been told about, and it never replaces what a human typed, however recently it was written.

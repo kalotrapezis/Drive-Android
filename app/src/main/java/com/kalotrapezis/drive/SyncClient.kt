@@ -192,8 +192,20 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     fun cachedHash(photoKey: String): String? = readableDatabase.rawQuery("SELECT sha256 FROM identity WHERE photo_key = ?", arrayOf(photoKey)).use { if (it.moveToFirst()) it.getString(0) else null }
     fun photoKeyForSha(sha256: String): String? = readableDatabase.rawQuery("SELECT photo_key FROM identity WHERE sha256 = ? LIMIT 1", arrayOf(sha256)).use { if (it.moveToFirst()) it.getString(0) else null }
     fun saveHash(photoKey: String, sha256: String) { writableDatabase.insertWithOnConflict("identity", null, ContentValues().apply { put("photo_key", photoKey); put("sha256", sha256) }, SQLiteDatabase.CONFLICT_REPLACE) }
+    /**
+     * Everything is asked for again when the rules for accepting it change.
+     *
+     * `?since=` is an efficiency, and it quietly assumes that what we skipped before we would skip again. That
+     * stops being true the moment this app learns to accept something it used to drop — as it did when a person
+     * named on another device started being created here instead of ignored. Those people were named long ago,
+     * so they sit outside every future window and would never arrive at all.
+     *
+     * So the rules carry a number. When it moves, the next sync asks from the beginning, once.
+     */
+    fun metadataSince(): Long = if (prefs.getInt("metadata_epoch", 0) == METADATA_EPOCH) prefs.getLong("last_metadata_sync", 0) else 0
+
     fun lastMetadataSync(): Long = prefs.getLong("last_metadata_sync", 0)
-    fun setLastMetadataSync(at: Long) = prefs.edit().putLong("last_metadata_sync", at).apply()
+    fun setLastMetadataSync(at: Long) = prefs.edit().putLong("last_metadata_sync", at).putInt("metadata_epoch", METADATA_EPOCH).apply()
     fun saveReceipt(photoKey: String, sha256: String, path: String) { writableDatabase.insertWithOnConflict("receipts", null, ContentValues().apply {
         put("photo_key", photoKey); put("sha256", sha256); put("path", path); put("sent_at", System.currentTimeMillis())
     }, SQLiteDatabase.CONFLICT_REPLACE) }
@@ -223,6 +235,14 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
 internal class SyncException(message: String) : Exception(message)
 
 /** Talks only to the paired computer: HTTPS whose certificate must match the QR's SHA-256 fingerprint. */
+/**
+ * Which rules this app applies to metadata it receives. Raise it whenever it starts accepting something it used
+ * to ignore, and every device asks for everything once more — otherwise what was skipped stays skipped for ever.
+ *
+ * 2: a person named on another device is created here rather than dropped (SYNC_PLAN.md 6y).
+ */
+private const val METADATA_EPOCH = 2
+
 /** How many files cross at once. Four keeps the link busy; more turns a phone's Wi-Fi into stalled sockets. */
 private const val AT_ONCE = 4
 
@@ -613,7 +633,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 .put("updatedAt", metadataStore.viewSettingsUpdatedAt()))
         postJson(host, p, "/metadata", body)
 
-        val since = store.lastMetadataSync()
+        val since = store.metadataSince()
         val pulled = open(host, p.port, p.fingerprint, "/metadata?since=$since", "GET", p.token).jsonResult()
         pulled.each("documents") { d ->
             keyFor(d)?.let { metadataStore.applyIncomingDocument(it, d.optString("type", null), d.optDouble("confidence", 0.0).toFloat(), d.optBoolean("userVerified"), d.getLong("updatedAt")) }

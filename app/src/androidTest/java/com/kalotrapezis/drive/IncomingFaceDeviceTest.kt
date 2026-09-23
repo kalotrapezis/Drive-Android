@@ -219,6 +219,27 @@ class IncomingFaceDeviceTest {
         assertEquals(null, store.nextReview())
     }
 
+    @Test fun someoneNamedOnAnotherDeviceArrivesWithTheirName() {
+        givenANamedPersonHere()
+        val maria = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        // Named on the computer, never seen here. Nothing shows yet — a person with no faces is not a person.
+        store.applyIncomingPerson(maria, "Μαρία", now)
+        assertEquals(1, store.faceGroups().size)
+
+        // Her face arrives behind the name, and lands in her, not in a nameless group to be named again.
+        store.applyIncomingFace(
+            uuid = UUID.randomUUID().toString(), personUuid = maria, updatedAt = now,
+            photoKey = "her-photo", bounds = Rect(0, 0, 110, 110), embedding = like(0.05f), quality = 0.9f,
+        )
+        assertEquals(2, store.faceGroups().size)
+        assertEquals("Μαρία", store.faceGroups().single { it.photoKey == "her-photo" }.name)
+
+        // A guess from another device still creates nobody: it is not a decision, so its faces are grouped here.
+        store.applyIncomingPerson(UUID.randomUUID().toString(), "Person 41", now)
+        assertEquals(2, store.faceGroups().size)
+    }
+
     @Test fun aNumberFromAnotherDeviceNeverReplacesAName() {
         givenANamedPersonHere()
         val uuid = store.personRecords().single().uuid

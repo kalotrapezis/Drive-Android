@@ -28,12 +28,38 @@ class ScanFiltersTest {
         assertTrue(light(pixels[20 * 100 + 20]) < 80)
     }
 
-    @Test fun `blue black and white keeps blue ink blue and black ink black`() {
+    @Test fun `sharpen ink keeps blue ink blue and drives black ink darker`() {
         val pixels = page()
-        ScanFilters.apply(pixels, 100, 100, ScanFilter.BlueBlackWhite)
-        assertEquals(rgb(255, 255, 255), pixels[50 * 100 + 2])
-        assertEquals(rgb(0, 0, 0), pixels[20 * 100 + 20])
-        assertEquals(rgb(16, 56, 190), pixels[60 * 100 + 60])
+        ScanFilters.apply(pixels, 100, 100, ScanFilter.SharpInk)
+        assertTrue("paper stays paper", light(pixels[50 * 100 + 2]) >= 245)
+        assertTrue("black ink gets darker", light(pixels[20 * 100 + 20]) < 40)
+        val blue = pixels[60 * 100 + 60]
+        assertTrue("blue ink stays blue", (blue and 0xFF) - maxOf(blue shr 16 and 0xFF, blue shr 8 and 0xFF) > 18)
+    }
+
+    @Test fun `black and white finds the letters on a faintly printed page`() {
+        // Grey-on-white, like a thermal receipt or a tired toner cartridge: every letter sits above the old
+        // fixed line of 170, so the page used to come out blank.
+        val width = 100
+        val height = 100
+        val faint = 0xFFB4B4B4.toInt() // 180
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if (y in 20..80 && (x / 6) % 2 == 0 && x in 10..90) faint else 0xFFF2F2F2.toInt()
+        }
+        ScanFilters.apply(pixels, width, height, ScanFilter.BlackWhite)
+        assertEquals("the letters are there", rgb(0, 0, 0), pixels[50 * width + 12])
+        assertEquals("and the paper is paper", rgb(255, 255, 255), pixels[50 * width + 18])
+    }
+
+    @Test fun `an empty page is not turned into noise`() {
+        val width = 60
+        val height = 60
+        // Paper alone, with the slight unevenness any photo has: nothing here is ink.
+        val pixels = IntArray(width * height) { index -> val v = 244 - (index / width) / 20; rgb(v, v, v) }
+        ScanFilters.apply(pixels, width, height, ScanFilter.BlackWhite)
+        assertTrue("stays blank", pixels.all { it == rgb(255, 255, 255) })
     }
 
     @Test fun `original leaves pixels untouched`() {

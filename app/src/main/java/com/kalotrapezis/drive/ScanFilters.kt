@@ -4,14 +4,15 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
+/**
+ * Four ways to look at a page, which is as many as anyone chooses between. There were seven, and the extra
+ * three were shades of the same two ideas — keep the colours, or throw them away.
+ */
 enum class ScanFilter(val label: String) {
     Original("Original"),
     Lighting("Fix lighting"),
-    BlueInk("Blue ink"),
-    BlackInk("Black ink"),
-    BlueBlackInk("Blue + black"),
+    SharpInk("Sharpen ink"),
     BlackWhite("B&W"),
-    BlueBlackWhite("Blue B&W"),
     /** Set by "Match pages": lighting flattened, then every page tinted to one shared paper tone. */
     SamePaper("Matched paper"),
 }
@@ -21,6 +22,7 @@ object ScanFilters {
     fun apply(pixels: IntArray, width: Int, height: Int, filter: ScanFilter, paperTone: Int = WHITE) {
         if (filter == ScanFilter.Original || pixels.isEmpty()) return
         val background = paperBackground(pixels, width, height)
+        val threshold = if (filter == ScanFilter.BlackWhite) inkThreshold(pixels, background) else 0
         for (index in pixels.indices) {
             val pixel = pixels[index]
             val paper = background[index]
@@ -28,11 +30,11 @@ object ScanFilters {
             val r = flatten(pixel shr 16 and 0xFF, paper shr 16 and 0xFF)
             val g = flatten(pixel shr 8 and 0xFF, paper shr 8 and 0xFF)
             val b = flatten(pixel and 0xFF, paper and 0xFF)
-            pixels[index] = if (filter == ScanFilter.SamePaper) tint(levels(r), levels(g), levels(b), paperTone) else filterPixel(r, g, b, filter)
+            pixels[index] = if (filter == ScanFilter.SamePaper) tint(levels(r), levels(g), levels(b), paperTone) else filterPixel(r, g, b, filter, threshold)
         }
     }
 
-    internal fun filterPixel(red: Int, green: Int, blue: Int, filter: ScanFilter): Int {
+    internal fun filterPixel(red: Int, green: Int, blue: Int, filter: ScanFilter, threshold: Int = 170): Int {
         val r = levels(red)
         val g = levels(green)
         val b = levels(blue)
@@ -41,16 +43,57 @@ object ScanFilters {
         val blueInk = blueness > 18 && light < 220
         return when (filter) {
             ScanFilter.Original, ScanFilter.Lighting, ScanFilter.SamePaper -> rgb(r, g, b)
-            ScanFilter.BlueInk -> if (blueInk) saturate(r, g, b, light) else rgb(r, g, b)
-            ScanFilter.BlackInk -> if (blueInk) rgb(r, g, b) else darken(r, g, b)
-            ScanFilter.BlueBlackInk -> if (blueInk) saturate(r, g, b, light) else darken(r, g, b)
-            ScanFilter.BlackWhite -> if (light < 170) rgb(0, 0, 0) else rgb(255, 255, 255)
-            ScanFilter.BlueBlackWhite -> when {
-                light >= 170 -> rgb(255, 255, 255)
-                blueness > 12 -> rgb(16, 56, 190)
-                else -> rgb(0, 0, 0)
-            }
+            ScanFilter.SharpInk -> if (blueInk) saturate(r, g, b, light) else darken(r, g, b)
+            ScanFilter.BlackWhite -> if (light < threshold) rgb(0, 0, 0) else rgb(255, 255, 255)
         }
+    }
+
+    /**
+     * Where this page's ink ends and its paper begins, asked of the page itself.
+     *
+     * A fixed line at 170 assumed ink is dark, and a receipt printed in grey, a pencil note or a faded laser page
+     * is not: every letter sat above the line and the page came out blank. Otsu splits the page's own brightness
+     * into two groups and puts the line between them, so faint ink is still ink. The clamp keeps a page that is
+     * genuinely all paper from having its own noise promoted into letters.
+     */
+    internal fun inkThreshold(pixels: IntArray, background: IntArray): Int {
+        val histogram = IntArray(256)
+        val step = maxOf(1, pixels.size / 200_000)
+        var total = 0
+        for (index in pixels.indices step step) {
+            val pixel = pixels[index]
+            val paper = background[index]
+            val r = levels(flatten(pixel shr 16 and 0xFF, paper shr 16 and 0xFF))
+            val g = levels(flatten(pixel shr 8 and 0xFF, paper shr 8 and 0xFF))
+            val b = levels(flatten(pixel and 0xFF, paper and 0xFF))
+            histogram[(r * 299 + g * 587 + b * 114) / 1000]++
+            total++
+        }
+        // Otsu names the level the split sits on, and ink at exactly that level is still ink, so the line goes
+        // just above it.
+        return (otsu(histogram, total) + 1).coerceIn(60, 235)
+    }
+
+    /** The brightness that best splits a picture into two groups (Otsu 1979). */
+    internal fun otsu(histogram: IntArray, total: Int): Int {
+        if (total <= 0) return 170
+        val sum = histogram.indices.sumOf { (it * histogram[it]).toLong() }
+        var backgroundWeight = 0L
+        var backgroundSum = 0L
+        var best = 170
+        var bestVariance = -1.0
+        for (value in 0 until 256) {
+            backgroundWeight += histogram[value]
+            if (backgroundWeight == 0L) continue
+            val foregroundWeight = total - backgroundWeight
+            if (foregroundWeight <= 0L) break
+            backgroundSum += (value * histogram[value]).toLong()
+            val backgroundMean = backgroundSum.toDouble() / backgroundWeight
+            val foregroundMean = (sum - backgroundSum).toDouble() / foregroundWeight
+            val variance = backgroundWeight.toDouble() * foregroundWeight * (backgroundMean - foregroundMean) * (backgroundMean - foregroundMean)
+            if (variance > bestVariance) { bestVariance = variance; best = value }
+        }
+        return best
     }
 
     /**

@@ -67,6 +67,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
@@ -727,13 +728,47 @@ internal fun ScanDocumentTab(
                 }
             }
         }
-        HorizontalPager(pagerState, Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp), userScrollEnabled = panel != ScanPanel.Paint, key = { pages[it].key }) { index ->
+        // Pinching a page is how you check whether the small print survived the filter, so the pager gets out of
+        // the way once you are in: swiping sideways pans the page instead of turning it, until you zoom back out.
+        var zoom by remember { mutableStateOf(1f) }
+        var pan by remember { mutableStateOf(Offset.Zero) }
+        LaunchedEffect(current, panel) { zoom = 1f; pan = Offset.Zero }
+        HorizontalPager(
+            pagerState,
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
+            userScrollEnabled = panel != ScanPanel.Paint && zoom <= 1.01f,
+            key = { pages[it].key },
+        ) { index ->
             val item = pages[index]
             // Strokes are drawn as a live overlay, so painting never waits for a re-render.
             val bitmap = rememberScanRender(item.copy(strokes = emptyList()), 2, 2000f)
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            val zoomed = index == current && panel != ScanPanel.Paint
+            var viewSize by remember { mutableStateOf(IntSize.Zero) }
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)
+                    .onSizeChanged { viewSize = it }
+                    .then(if (!zoomed) Modifier else Modifier.pointerInput(index) {
+                        detectTransformGestures { _, movement, scale, _ ->
+                            zoom = (zoom * scale).coerceIn(1f, 8f)
+                            // Panning stops at the page's own edges, so it can never be pushed out of sight.
+                            val limitX = (viewSize.width * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            val limitY = (viewSize.height * (zoom - 1f) / 2f).coerceAtLeast(0f)
+                            pan = if (zoom <= 1f) Offset.Zero else Offset(
+                                (pan.x + movement.x).coerceIn(-limitX, limitX),
+                                (pan.y + movement.y).coerceIn(-limitY, limitY),
+                            )
+                        }
+                    }),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (bitmap == null) CircularProgressIndicator()
-                else {
+                else Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        if (!zoomed) return@graphicsLayer
+                        scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Image(bitmap.asImageBitmap(), contentDescription = "Page ${index + 1}", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     ScanStrokeLayer(bitmap.width, bitmap.height, item.strokes, panel == ScanPanel.Paint && index == current, paintColor, brushWidth) { stroke ->
                         update(index, item.copy(strokes = item.strokes + stroke))

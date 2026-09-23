@@ -150,6 +150,26 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         throw SyncException("Could not reach the computer (${last?.message ?: "no address"}). Is Tetra open on it, on the same Wi-Fi?")
     }
 
+    /**
+     * The address the computer answers on *now*. The ones pairing knew come first, and if none of them answer
+     * the beacon asks who out there holds the pinned certificate (SYNC_PLAN.md 6k) — a new IP after a router
+     * restart, or a different network entirely, stops being the end of the pairing. Whatever answers is
+     * remembered, so the next sync starts there.
+     */
+    private fun reach(p: Pairing): Pairing {
+        var last: Exception? = null
+        fun tryHost(candidate: Pairing): Pairing? = try {
+            postJson(candidate.hosts.first(), candidate, "/have", JSONObject().put("hashes", JSONArray()))
+            candidate
+        } catch (e: SyncException) { throw e } catch (e: Exception) { last = e; null }
+
+        for (host in p.hosts) tryHost(p.copy(hosts = listOf(host) + (p.hosts - host)))?.let { return it }
+        for ((host, port) in SyncDiscovery.find(p.fingerprint)) {
+            tryHost(p.copy(hosts = listOf(host) + (p.hosts - host), port = port))?.let { store.savePairing(it); return it }
+        }
+        throw SyncException("Could not reach the computer (${last?.message ?: "no address"}). Is Tetra open on it, on the same Wi-Fi?")
+    }
+
     fun pair(qr: PairingQr): Pairing = anyHost(qr.hosts) { host ->
         val body = open(host, qr.port, qr.fingerprint, "/pair", "POST", null).run {
             doOutput = true
@@ -186,8 +206,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * Nothing on the phone is changed or deleted.
      */
     suspend fun backUp(entries: List<Entry>, checkpoint: suspend () -> Unit = {}, progress: (BackupProgress) -> Unit): BackupResult {
-        val p = store.pairing() ?: throw SyncException("Pair with a computer first.")
-        val host = anyHost(p.hosts) { h -> postJson(h, p, "/have", JSONObject().put("hashes", JSONArray())); h }
+        val paired = store.pairing() ?: throw SyncException("Pair with a computer first.")
+        val p = reach(paired)
+        val host = p.hosts.first()
         val failed = mutableListOf<String>()
         val bySha = linkedMapOf<String, Entry>()
         entries.forEachIndexed { i, e ->

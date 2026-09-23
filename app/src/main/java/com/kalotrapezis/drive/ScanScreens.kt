@@ -199,6 +199,9 @@ import java.io.File
 import java.nio.file.Files
 
 private const val SCANNER_AUTO_CAPTURE = "scanner_auto_capture"
+internal const val SCANNER_DPI = "scanner_dpi"
+/** A4's long edge in pixels at a given resolution: 3508 at 300 dpi, 2339 at 200. */
+internal fun scanMaxEdge(dpi: Int): Float = if (dpi >= 300) 3508f else 2339f
 private const val SCAN_MAX_EDGE = 3508f
 private const val SHOW_SCANNER_DETECTION_GUIDE = true
 
@@ -603,13 +606,21 @@ private fun detectBitmapPage(source: Bitmap): DocumentQuad? {
 private fun pageQuad(source: Bitmap, liveQuad: DocumentQuad?): DocumentQuad? =
     liveQuad?.takeIf(DocumentQuad::isValidCrop) ?: detectBitmapPage(source)?.takeIf(DocumentQuad::isValidCrop)
 
-/** Straightens the page with a small outer margin so no paper is cut off, then paints the visible table gaps paper-coloured. */
+/**
+ * Straightens the page, sharpens what the resampling softened, then paints any visible table gaps paper-coloured.
+ *
+ * The outer margin used to be 4%, from when a corner could be several percent wrong and cutting into the page was
+ * the thing to fear. Now that each edge is fitted to the outline that runs along it, 4% is just a band of table
+ * around every scan for the gap fill to paint over — and what it cannot reach stays table. 1% is enough to
+ * forgive the error that is left.
+ */
 private fun autoFixScan(source: Bitmap, quad: DocumentQuad, maxEdge: Float = SCAN_MAX_EDGE, fillGaps: Boolean = true): Bitmap {
-    val page = cropScan(source, quad.withCropMargin(0.04f), maxEdge)
-    if (!fillGaps) return page
+    val page = cropScan(source, quad.withCropMargin(0.01f), maxEdge)
     val pixels = IntArray(page.width * page.height)
     page.getPixels(pixels, 0, page.width, 0, 0, page.width, page.height)
-    ScanDetection.fillPageGaps(pixels, page.width, page.height)
+    ScanFilters.sharpen(pixels, page.width, page.height)
+    // Sharpening first, so the flat colour the fill paints is never given an edge of its own to halo against.
+    if (fillGaps) ScanDetection.fillPageGaps(pixels, page.width, page.height)
     page.setPixels(pixels, 0, page.width, 0, 0, page.width, page.height)
     return page
 }

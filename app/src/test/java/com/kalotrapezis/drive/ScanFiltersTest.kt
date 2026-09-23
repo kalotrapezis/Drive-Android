@@ -85,3 +85,27 @@ class ScanFiltersTest {
         assertEquals(tone, second[50 * 100 + 50])
     }
 }
+
+class ScanSharpenTest {
+    private fun rgb(v: Int) = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+
+    @Test fun `an edge gets its bite back and flat paper is left alone`() {
+        val width = 9
+        val height = 9
+        // A soft edge, as perspective correction leaves it: dark on the left, light on the right, blurred between.
+        val pixels = IntArray(width * height) { index ->
+            rgb(when (index % width) { 0, 1, 2 -> 40; 3 -> 90; 4 -> 140; 5 -> 190; else -> 240 })
+        }
+        val before = pixels.copyOf()
+        ScanFilters.sharpen(pixels, width, height)
+        val at = { x: Int -> pixels[4 * width + x] and 0xFF }
+        val was = { x: Int -> before[4 * width + x] and 0xFF }
+        // A blur leaves the middle of a ramp alone; what it takes away is the bite at each end of it.
+        assertTrue("the foot of the edge goes darker", at(2) < was(2))
+        assertTrue("the shoulder goes lighter", at(6) > was(6))
+
+        val flat = IntArray(width * height) { rgb(212) }
+        ScanFilters.sharpen(flat, width, height)
+        assertTrue("paper with nothing on it is untouched", flat.all { (it and 0xFF) == 212 })
+    }
+}

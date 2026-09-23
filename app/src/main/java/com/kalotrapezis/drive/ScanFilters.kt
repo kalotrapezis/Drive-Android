@@ -97,6 +97,35 @@ object ScanFilters {
     }
 
     /**
+     * Restores the bite that straightening takes out. Correcting the perspective resamples every pixel from
+     * between four others, which softens small print — an unsharp mask puts back what that interpolation blurred
+     * and nothing more. Deliberately gentle: the page is a photograph, and a hard sharpen turns paper grain and
+     * JPEG noise into speckle that the ink then has to compete with.
+     *
+     * [pixels] are ARGB and are modified in place.
+     */
+    fun sharpen(pixels: IntArray, width: Int, height: Int, amount: Float = 0.6f) {
+        if (width < 3 || height < 3 || amount <= 0f) return
+        val source = pixels.copyOf()
+        fun channel(index: Int, shift: Int) = (source[index] shr shift) and 0xFF
+        for (y in 1 until height - 1) for (x in 1 until width - 1) {
+            val index = y * width + x
+            var out = 0xFF shl 24
+            for (shift in intArrayOf(16, 8, 0)) {
+                // 3x3 tent blur, then push the pixel away from it.
+                val blur = (
+                    channel(index - width - 1, shift) + 2 * channel(index - width, shift) + channel(index - width + 1, shift) +
+                        2 * channel(index - 1, shift) + 4 * channel(index, shift) + 2 * channel(index + 1, shift) +
+                        channel(index + width - 1, shift) + 2 * channel(index + width, shift) + channel(index + width + 1, shift)
+                    ) / 16
+                val own = channel(index, shift)
+                out = out or ((own + ((own - blur) * amount).toInt()).coerceIn(0, 255) shl shift)
+            }
+            pixels[index] = out
+        }
+    }
+
+    /**
      * Estimates the paper colour under each pixel: the brightest tenth of each grid cell, borrowed from a neighbour
      * when the cell is mostly ink, then bilinearly interpolated.
      */

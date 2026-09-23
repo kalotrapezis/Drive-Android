@@ -441,7 +441,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         val pages = scanPages
         Thread {
             val result = runCatching {
-                ScanFiles.savePdf(driveRoot(), name, pages.size) { index -> checkNotNull(renderScanPage(pages[index], 1)) { "Could not read page ${index + 1}." } }
+                val dpi = context.getSharedPreferences("scanner", Context.MODE_PRIVATE).getInt(SCANNER_DPI, 300)
+                ScanFiles.savePdf(driveRoot(), name, pages.size) { index ->
+                    checkNotNull(renderScanPage(pages[index], 1, scanMaxEdge(dpi))) { "Could not read page ${index + 1}." }
+                }
             }
             (context as MainActivity).runOnUiThread {
                 scanSaving = false
@@ -1130,6 +1133,31 @@ private fun SettingsTab(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = openSync) { Text("Open Sync") }
                     if (pairedDevice != null) TextButton(onClick = forgetPairedDevice) { Text("Forget ${pairedDevice.name}") }
+                }
+            }
+        }
+        item {
+            val settingsContext = LocalContext.current
+            val scannerPreferences = remember(settingsContext) { settingsContext.getSharedPreferences("scanner", Context.MODE_PRIVATE) }
+            var dpi by remember { mutableStateOf(scannerPreferences.getInt(SCANNER_DPI, 300)) }
+            SettingsCard("PDF scanner") {
+                Text("Resolution", style = MaterialTheme.typography.titleMedium)
+                Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(300 to "300 dpi", 200 to "200 dpi").forEach { (value, label) ->
+                        val chosen = dpi == value
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = if (chosen) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (chosen) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).clickable { dpi = value; scannerPreferences.edit().putInt(SCANNER_DPI, value).apply() },
+                        ) {
+                            Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                if (chosen) { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
+                                Text(label, style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
                 }
             }
         }

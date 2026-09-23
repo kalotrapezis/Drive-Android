@@ -3,6 +3,8 @@ package com.kalotrapezis.drive
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanFilesTest {
@@ -113,5 +115,66 @@ class ScanFilesTest {
     @Test fun `corner markers remain visible at the preview edge`() {
         assertEquals(10f, ScanPoint(-8f, 300f).clampToViewport(100f, 200f, 10f).x, 0f)
         assertEquals(190f, ScanPoint(80f, 300f).clampToViewport(100f, 200f, 10f).y, 0f)
+    }
+}
+
+/** The geometry the finder leans on: what counts as a page, and where a torn edge's straight line ran. */
+class ScanDetectionGeometryTest {
+    private fun quad(vararg xy: Float) = DocumentQuad(
+        ScanPoint(xy[0], xy[1]), ScanPoint(xy[2], xy[3]), ScanPoint(xy[4], xy[5]), ScanPoint(xy[6], xy[7]),
+    )
+
+    @Test fun `a page is convex with four honest corners`() {
+        assertTrue(ScanDetection.isPageShaped(quad(0.1f, 0.1f, 0.9f, 0.1f, 0.9f, 0.9f, 0.1f, 0.9f)))
+        // Seen at an angle a page is a trapezoid, and that has to stay acceptable.
+        assertTrue(ScanDetection.isPageShaped(quad(0.3f, 0.1f, 0.7f, 0.1f, 0.95f, 0.9f, 0.05f, 0.9f)))
+        // A sliver with a spike for a corner is a shadow or a tile edge, not paper.
+        assertFalse(ScanDetection.isPageShaped(quad(0.1f, 0.5f, 0.5f, 0.48f, 0.9f, 0.5f, 0.5f, 0.52f)))
+        // Bow-tie: the same four points, crossed over.
+        assertFalse(ScanDetection.isPageShaped(quad(0.1f, 0.1f, 0.9f, 0.9f, 0.9f, 0.1f, 0.1f, 0.9f)))
+    }
+
+    @Test fun `a torn edge is cut where the straight edge ran`() {
+        // A rectangle whose top edge has a flap torn upwards in the middle third.
+        val corners = listOf(ScanPoint(0.2f, 0.2f), ScanPoint(0.8f, 0.2f), ScanPoint(0.8f, 0.8f), ScanPoint(0.2f, 0.8f))
+        val outline = buildList {
+            add(ScanPoint(0.2f, 0.2f))
+            add(ScanPoint(0.4f, 0.2f))
+            add(ScanPoint(0.5f, 0.14f)) // the tear
+            add(ScanPoint(0.6f, 0.2f))
+            add(ScanPoint(0.8f, 0.2f))
+            for (y in listOf(0.4f, 0.6f)) add(ScanPoint(0.8f, y))
+            add(ScanPoint(0.8f, 0.8f))
+            for (x in listOf(0.6f, 0.4f)) add(ScanPoint(x, 0.8f))
+            add(ScanPoint(0.2f, 0.8f))
+            for (y in listOf(0.6f, 0.4f)) add(ScanPoint(0.2f, y))
+        }
+        val straightened = ScanDetection.straighten(outline, corners)!!
+        // The cut runs along the paper's own edge, not up over the flap, and not down into the page either.
+        straightened.take(2).forEach { corner -> assertEquals(0.2f, corner.y, 0.02f) }
+        assertEquals(0.2f, straightened[0].x, 0.02f)
+        assertEquals(0.8f, straightened[1].x, 0.02f)
+    }
+
+    @Test fun `otsu splits paper from table wherever the light puts them`() {
+        val histogram = IntArray(256)
+        repeat(3) { histogram[60 + it] = 1000 }   // the table
+        repeat(3) { histogram[200 + it] = 1000 }  // the paper
+        val threshold = ScanDetection.otsu(histogram, 6000)
+        assertTrue("splits between the two, was $threshold", threshold in 61..201)
+        // The same scene under a flash: everything brighter, and a fixed floor of 170 would keep nothing.
+        val lit = IntArray(256)
+        repeat(3) { lit[180 + it] = 1000 }
+        repeat(3) { lit[250 + it] = 1000 }
+        assertTrue(ScanDetection.otsu(lit, 6000) in 181..251)
+    }
+
+    @Test fun `the outline follows a real move at once and ignores a shiver`() {
+        val page = quad(0.2f, 0.2f, 0.8f, 0.2f, 0.8f, 0.8f, 0.2f, 0.8f)
+        val shivered = quad(0.21f, 0.2f, 0.8f, 0.21f, 0.8f, 0.8f, 0.2f, 0.79f)
+        val smoothed = ScanDetection.smooth(page, shivered)
+        assertEquals(0.2045f, smoothed.topLeft.x, 0.001f) // most of the way back to where it was
+        val moved = quad(0.5f, 0.5f, 0.95f, 0.5f, 0.95f, 0.95f, 0.5f, 0.95f)
+        assertEquals(0.5f, ScanDetection.smooth(page, moved).topLeft.x, 0.0001f)
     }
 }

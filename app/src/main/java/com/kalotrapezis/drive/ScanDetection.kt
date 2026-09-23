@@ -52,6 +52,111 @@ object ScanDetection {
         }
     }
 
+    /**
+     * Four corners that could be a page: convex, and no corner folded flat or bent double. A page seen at an
+     * angle is a trapezoid, so the test is deliberately generous — 45° to 135° covers any view you can actually
+     * read from — but a shape with a 20° spike is a shadow, a tile edge or a hand, and saying so out loud is
+     * cheaper than showing an outline that jumps away a frame later.
+     */
+    internal fun isPageShaped(quad: DocumentQuad): Boolean {
+        val points = quad.points
+        var sign = 0
+        for (index in 0 until 4) {
+            val previous = points[(index + 3) % 4]
+            val corner = points[index]
+            val next = points[(index + 1) % 4]
+            val ax = previous.x - corner.x; val ay = previous.y - corner.y
+            val bx = next.x - corner.x; val by = next.y - corner.y
+            val lengths = kotlin.math.hypot(ax, ay) * kotlin.math.hypot(bx, by)
+            if (lengths <= 0f) return false
+            val angle = Math.toDegrees(kotlin.math.acos(((ax * bx + ay * by) / lengths).coerceIn(-1f, 1f)).toDouble())
+            if (angle < 45.0 || angle > 135.0) return false
+            val cross = ax * by - ay * bx // every turn the same way, or it is not convex
+            val turn = if (cross > 0f) 1 else -1
+            if (sign == 0) sign = turn else if (sign != turn) return false
+        }
+        return true
+    }
+
+    /**
+     * A torn or crumpled edge is still a straight edge: the paper was cut straight once, and the tear is the
+     * part to ignore. Each side is fitted to the outline points along it rather than taken from two corners, so
+     * a bite out of one edge moves the line by the little it deserves instead of dragging a corner with it, and
+     * the corners come back as where those four lines cross.
+     *
+     * Points far from the first fit are dropped once and the line refitted, which is what keeps a torn flap
+     * sticking out of one edge from tilting the whole side.
+     */
+    internal fun straighten(outline: List<ScanPoint>, corners: List<ScanPoint>): List<ScanPoint>? {
+        if (corners.size != 4 || outline.size < 4) return null
+        val at = corners.map { corner -> outline.indices.minBy { distance(outline[it], corner) } }
+        val lines = List(4) { side ->
+            val from = at[side]
+            val to = at[(side + 1) % 4]
+            val along = buildList {
+                var index = from
+                add(outline[index])
+                while (index != to) { index = (index + 1) % outline.size; add(outline[index]) }
+            }
+            fitLine(along) ?: fitLine(listOf(corners[side], corners[(side + 1) % 4])) ?: return null
+        }
+        return List(4) { corner ->
+            intersect(lines[(corner + 3) % 4], lines[corner]) ?: corners[corner]
+        }
+    }
+
+    /** A line as a point on it and a unit direction, from the points' own principal axis. */
+    private fun fitLine(points: List<ScanPoint>): Line? {
+        if (points.size < 2) return null
+        fun fit(subset: List<ScanPoint>): Line? {
+            if (subset.size < 2) return null
+            val cx = subset.sumOf { it.x.toDouble() } / subset.size
+            val cy = subset.sumOf { it.y.toDouble() } / subset.size
+            var xx = 0.0; var yy = 0.0; var xy = 0.0
+            subset.forEach { point ->
+                val dx = point.x - cx; val dy = point.y - cy
+                xx += dx * dx; yy += dy * dy; xy += dx * dy
+            }
+            val theta = 0.5 * kotlin.math.atan2(2 * xy, xx - yy)
+            val dx = kotlin.math.cos(theta).toFloat(); val dy = kotlin.math.sin(theta).toFloat()
+            if (dx == 0f && dy == 0f) return null
+            return Line(ScanPoint(cx.toFloat(), cy.toFloat()), ScanPoint(dx, dy))
+        }
+        val first = fit(points) ?: return null
+        if (points.size < 5) return first
+        val distances = points.map { offset(first, it) }
+        val mean = distances.average().toFloat()
+        val kept = points.filterIndexed { index, _ -> distances[index] <= mean * 1.5f + 1e-6f }
+        return fit(kept) ?: first
+    }
+
+    private fun offset(line: Line, point: ScanPoint): Float =
+        abs((point.x - line.point.x) * line.direction.y - (point.y - line.point.y) * line.direction.x)
+
+    private fun intersect(first: Line, second: Line): ScanPoint? {
+        val denominator = first.direction.x * second.direction.y - first.direction.y * second.direction.x
+        if (abs(denominator) < 1e-6f) return null // two sides that never meet are not two sides
+        val dx = second.point.x - first.point.x
+        val dy = second.point.y - first.point.y
+        val t = (dx * second.direction.y - dy * second.direction.x) / denominator
+        return ScanPoint(first.point.x + first.direction.x * t, first.point.y + first.direction.y * t)
+    }
+
+    private data class Line(val point: ScanPoint, val direction: ScanPoint)
+
+    /**
+     * Moves the outline most of the way towards the new reading rather than jumping to it. Camera noise moves a
+     * corner by a pixel or two every frame; following that exactly is what made the page look like it was
+     * shivering, and a detection that shivers never looks settled enough to trust.
+     */
+    fun smooth(previous: DocumentQuad?, next: DocumentQuad, weight: Float = 0.45f): DocumentQuad {
+        if (previous == null || !isStable(previous, next)) return next // a real move is followed at once
+        val blended = previous.points.zip(next.points).map { (before, after) ->
+            ScanPoint(before.x + (after.x - before.x) * weight, before.y + (after.y - before.y) * weight)
+        }
+        return DocumentQuad(blended[0], blended[1], blended[2], blended[3])
+    }
+
     fun isStable(previous: DocumentQuad?, next: DocumentQuad): Boolean = previous != null &&
         previous.points.zip(next.points).all { (before, after) -> abs(before.x - after.x) <= 0.05f && abs(before.y - after.y) <= 0.05f }
 
@@ -80,7 +185,10 @@ object ScanDetection {
         val bytes = ByteArray((gray.total() * gray.channels()).toInt())
         gray.get(0, 0, bytes)
         bytes.forEach { histogram[it.toInt() and 0xFF]++ }
-        val threshold = max(170, percentile(histogram, bytes.size, 84))
+        // With the light on, paper and table are both bright and a fixed floor of 170 stops telling them apart.
+        // Otsu asks the picture where the two groups actually split; the percentile keeps it from splitting a
+        // frame that holds no paper at all.
+        val threshold = max(otsu(histogram, bytes.size), percentile(histogram, bytes.size, 70))
         val mask = Mat()
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
         return try {
@@ -109,6 +217,28 @@ object ScanDetection {
         }
     }
 
+    /** The brightness that best splits the picture into two groups — paper and everything else (Otsu 1979). */
+    internal fun otsu(histogram: IntArray, total: Int): Int {
+        if (total <= 0) return 0
+        val sum = histogram.indices.sumOf { (it * histogram[it]).toLong() }
+        var backgroundWeight = 0L
+        var backgroundSum = 0L
+        var best = 0
+        var bestVariance = -1.0
+        for (value in 0 until 256) {
+            backgroundWeight += histogram[value]
+            if (backgroundWeight == 0L) continue
+            val foregroundWeight = total - backgroundWeight
+            if (foregroundWeight <= 0L) break
+            backgroundSum += (value * histogram[value]).toLong()
+            val backgroundMean = backgroundSum.toDouble() / backgroundWeight
+            val foregroundMean = (sum - backgroundSum).toDouble() / foregroundWeight
+            val variance = backgroundWeight.toDouble() * foregroundWeight * (backgroundMean - foregroundMean) * (backgroundMean - foregroundMean)
+            if (variance > bestVariance) { bestVariance = variance; best = value }
+        }
+        return best
+    }
+
     private fun percentile(histogram: IntArray, total: Int, percentile: Int): Int {
         val target = total * percentile / 100
         var seen = 0
@@ -124,20 +254,25 @@ object ScanDetection {
         Imgproc.findContours(mask, contours, Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
         return contours.mapNotNull { contour ->
             try {
-                quadCorners(contour)?.let { candidate(it, mask.width(), mask.height()) }
+                quadCorners(contour)?.let { (corners, hull) -> candidate(corners, hull, mask.width(), mask.height()) }
             } finally {
                 contour.release()
             }
         }.maxByOrNull { it.score }?.quad
     }
 
-    /** Crumpled or wavy edges yield many vertices; simplify the convex hull until only the four page corners remain. */
-    private fun quadCorners(contour: MatOfPoint): Array<Point>? {
+    /**
+     * Crumpled or wavy edges yield many vertices; simplify the convex hull until only the four page corners
+     * remain. The hull itself comes back too, because the four corners alone cannot say where a straight edge
+     * ran — the points along each side can.
+     */
+    private fun quadCorners(contour: MatOfPoint): Pair<Array<Point>, Array<Point>>? {
         val points = contour.toArray()
         if (points.size < 4) return null
         val hullIndices = org.opencv.core.MatOfInt()
         Imgproc.convexHull(contour, hullIndices)
-        val hull = MatOfPoint2f(*hullIndices.toArray().map { points[it] }.toTypedArray())
+        val hullPoints = hullIndices.toArray().map { points[it] }.toTypedArray()
+        val hull = MatOfPoint2f(*hullPoints)
         hullIndices.release()
         return try {
             val perimeter = Imgproc.arcLength(hull, true)
@@ -146,7 +281,7 @@ object ScanDetection {
                 Imgproc.approxPolyDP(hull, approximation, perimeter * epsilon, true)
                 val corners = approximation.toArray()
                 approximation.release()
-                if (corners.size == 4) return corners
+                if (corners.size == 4) return corners to hullPoints
                 if (corners.size < 4) return null
             }
             null
@@ -155,13 +290,20 @@ object ScanDetection {
         }
     }
 
-    private fun candidate(points: Array<Point>, width: Int, height: Int): Candidate? {
+    private fun candidate(points: Array<Point>, hull: Array<Point>, width: Int, height: Int): Candidate? {
         val pointContour = MatOfPoint(*points)
         val area = try { kotlin.math.abs(Imgproc.contourArea(pointContour)).toFloat() } finally { pointContour.release() }
         val coverage = area / (width * height)
-        if (coverage !in 0.025f..0.9f) return null
-        val ordered = orderCorners(points.map { ScanPoint((it.x / width).toFloat(), (it.y / height).toFloat()) }) ?: return null
+        // A long receipt has to be held far enough away to fit, and then it is a thin ribbon in a wide frame:
+        // 2.5% of the view ruled that out before anything else could judge it.
+        if (coverage !in 0.008f..0.95f) return null
+        val normalize = { point: Point -> ScanPoint((point.x / width).toFloat(), (point.y / height).toFloat()) }
+        val corners = points.map(normalize)
+        val straightened = straighten(hull.map(normalize), corners) ?: corners
+        val ordered = orderCorners(straightened.map { ScanPoint(it.x.coerceIn(-0.05f, 1.05f), it.y.coerceIn(-0.05f, 1.05f)) })
+            ?: orderCorners(corners) ?: return null
         val quad = DocumentQuad(ordered[0], ordered[1], ordered[2], ordered[3])
+        if (!isPageShaped(quad)) return null
         val averageWidth = (distance(quad.topLeft, quad.topRight) + distance(quad.bottomLeft, quad.bottomRight)) / 2f
         val averageHeight = (distance(quad.topLeft, quad.bottomLeft) + distance(quad.topRight, quad.bottomRight)) / 2f
         val aspect = max(averageWidth, averageHeight) / min(averageWidth, averageHeight)

@@ -305,7 +305,10 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                                         pageFound = true
                                         stableFrames = if (ScanDetection.isStable(lastDetectedQuad, detected)) stableFrames + 1 else 1
                                         stableSinceMillis = if (stableFrames == 1) now else stableSinceMillis ?: now
-                                        lastDetectedQuad = detected
+                                        // Each frame nudges the outline rather than replacing it, so a corner
+                                        // that wobbles by a pixel stops dragging the whole page with it.
+                                        val settled = ScanDetection.smooth(lastDetectedQuad, detected)
+                                        lastDetectedQuad = settled
                                         pageStable = detectionIsSettled(stableSinceMillis, now)
                                         pageOutline = outline
                                         captureQuad = detectedInCapture
@@ -448,7 +451,10 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
 internal fun autoCaptureProgress(elapsedMillis: Long): Float = (elapsedMillis.coerceIn(0, 2_500).toFloat() / 2_500f)
 internal const val NEXT_PAGE_REARM_DELAY_MILLIS = 2_000L
 internal const val DETECTION_SETTLE_MILLIS = 650L
-private const val DETECTION_LOSS_GRACE_MILLIS = 350L
+// Paper does not disappear because one frame out of thirty went badly — a hand crossing, the light changing, a
+// reflection off the flash. Holding the last outline for a beat is what makes the finder feel decided rather
+// than twitchy; below about half a second it lets go while you are still lining the page up.
+private const val DETECTION_LOSS_GRACE_MILLIS = 900L
 internal fun detectionIsSettled(stableSinceMillis: Long?, nowMillis: Long): Boolean = stableSinceMillis != null && nowMillis - stableSinceMillis >= DETECTION_SETTLE_MILLIS
 private fun keepDetectionVisible(lastVisibleMillis: Long, nowMillis: Long): Boolean = nowMillis - lastVisibleMillis <= DETECTION_LOSS_GRACE_MILLIS
 

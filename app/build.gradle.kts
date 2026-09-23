@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+// The release key lives outside this repository, which is public: the file says where it is and how to open
+// it, and neither it nor the key is ever committed. Without it, `assembleRelease` still builds — unsigned — so
+// a fresh clone is not broken, it just cannot produce an installable APK.
+val signing = File(System.getProperty("user.home"), ".android/tetra-release.properties")
+    .takeIf { it.exists() }
+    ?.let { file -> Properties().apply { file.inputStream().use(::load) } }
 
 android {
     namespace = "com.kalotrapezis.drive"
@@ -14,15 +23,41 @@ android {
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.0-alpha.1"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        signing?.let { properties ->
+            create("release") {
+                storeFile = file(properties.getProperty("storeFile"))
+                storePassword = properties.getProperty("storePassword")
+                keyAlias = properties.getProperty("keyAlias")
+                keyPassword = properties.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signing?.let { signingConfig = signingConfigs.getByName("release") }
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
     buildFeatures { compose = true }
+    // One APK per processor. OpenCV, ML Kit, TensorFlow and MapLibre each ship a native library for four
+    // architectures, and together they were 346 MB of a 423 MB APK — two thirds of it for emulators nobody
+    // installs this on. Split, an arm64 phone downloads only its own.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
 }
 
 dependencies {

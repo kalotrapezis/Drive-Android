@@ -180,6 +180,9 @@ import androidx.camera.core.Camera
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -282,7 +285,20 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                     runCatching {
                         val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
                         val targetRotation = previewView.display?.rotation ?: Surface.ROTATION_0
-                        val imageCapture = ImageCapture.Builder().setTargetRotation(targetRotation).setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+                        // Ask for the whole sensor. Left to itself CameraX picks a middling size, and a page
+                        // filling that frame came out about 1500 px down its long edge — under 150 dpi on A4,
+                        // which no later setting can undo, because straightening never invents pixels it was not
+                        // given. The resolution choice in Settings only means something once this is the sensor's.
+                        val imageCapture = ImageCapture.Builder()
+                            .setTargetRotation(targetRotation)
+                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                            .setResolutionSelector(
+                                ResolutionSelector.Builder()
+                                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                                    .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                                    .build(),
+                            )
+                            .build()
                         val analysis = ImageAnalysis.Builder().setTargetRotation(targetRotation).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                         analysis.setAnalyzer(analysisExecutor) { frame ->
                             val detected = lumaFrame(frame)?.let(ScanDetection::detect)

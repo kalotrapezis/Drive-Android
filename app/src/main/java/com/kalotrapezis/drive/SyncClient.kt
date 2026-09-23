@@ -180,6 +180,11 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
         put("photo_key", photoKey); put("sha256", sha256); put("path", path); put("sent_at", System.currentTimeMillis())
     }, SQLiteDatabase.CONFLICT_REPLACE) }
     fun receiptCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM receipts", null).use { it.moveToFirst(); it.getInt(0) }
+
+    /** Every photo this phone has given the computer — the proof that a copy coming back would be one it deleted. */
+    fun receiptShas(): Set<String> = readableDatabase.rawQuery("SELECT DISTINCT sha256 FROM receipts", null).use { c ->
+        buildSet { while (c.moveToNext()) add(c.getString(0)) }
+    }
 }
 
 internal class SyncException(message: String) : Exception(message)
@@ -382,9 +387,14 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     private fun pullPhotos(host: String, p: Pairing, known: Collection<String>, failed: MutableList<String>, progress: (BackupProgress) -> Unit): Int {
         val answer = postJson(host, p, "/library/manifest", JSONObject().put("hashes", JSONArray(known.toList())))
         val send = answer.optJSONArray("send") ?: return 0
+        // Never bring back what this phone deleted. A receipt says "I gave the computer this photo"; if it is
+        // not here any more, it was removed here on purpose, and a sync that undid that would be worse than one
+        // that never ran. Resurrection is the same sin as deletion, read backwards.
+        val sentFromHere = store.receiptShas()
         var received = 0
         for (i in 0 until send.length()) {
             val item = send.getJSONObject(i)
+            if (item.optString("sha256") in sentFromHere) continue
             progress(BackupProgress("Receiving photos", i, send.length()))
             runCatching { receivePhoto(host, p, item) }
                 .onSuccess { received++ }

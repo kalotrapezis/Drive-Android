@@ -178,3 +178,12 @@ class ScanDetectionGeometryTest {
         assertEquals(0.5f, ScanDetection.smooth(page, moved).topLeft.x, 0.0001f)
     }
 }
+
+class ScanFrameTest {
+    @Test fun `a shape running off the edge is not the page you were asked to frame`() {
+        val inside = DocumentQuad(ScanPoint(0.1f, 0.1f), ScanPoint(0.9f, 0.1f), ScanPoint(0.9f, 0.9f), ScanPoint(0.1f, 0.9f))
+        assertTrue(ScanDetection.isInsideFrame(inside))
+        val acrossTheView = DocumentQuad(ScanPoint(0f, 0.4f), ScanPoint(1f, 0.4f), ScanPoint(1f, 0.6f), ScanPoint(0f, 0.6f))
+        assertFalse(ScanDetection.isInsideFrame(acrossTheView))
+    }
+}

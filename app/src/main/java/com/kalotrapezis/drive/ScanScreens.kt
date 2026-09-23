@@ -291,6 +291,9 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                                     val outline = detected?.let { mapToPreview(frame, it, previewView) }
                                     val now = SystemClock.elapsedRealtime()
                                     if (detected == null || outline == null) {
+                                        // The outline is held through a bad frame, but a held outline is a memory,
+                                        // not a page: auto capture waits for the camera to see it again.
+                                        pageStable = false
                                         if (!keepDetectionVisible(lastVisibleDetectionMillis, now)) {
                                             stableFrames = 0
                                             stableSinceMillis = null

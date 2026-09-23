@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import org.opencv.android.OpenCVLoader
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint
@@ -77,6 +78,10 @@ object ScanDetection {
         }
         return true
     }
+
+    /** A page the screen asked you to keep inside the frame. A shape running off the edge is not one. */
+    internal fun isInsideFrame(quad: DocumentQuad): Boolean =
+        quad.points.none { it.x < 0.02f || it.x > 0.98f || it.y < 0.02f || it.y > 0.98f }
 
     /**
      * A torn or crumpled edge is still a straight edge: the paper was cut straight once, and the tear is the
@@ -194,7 +199,7 @@ object ScanDetection {
         return try {
             Imgproc.threshold(gray, mask, threshold.toDouble(), 255.0, Imgproc.THRESH_BINARY)
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel)
-            bestQuad(mask)
+            bestQuad(mask, gray)
         } finally {
             kernel.release()
             mask.release()
@@ -209,7 +214,7 @@ object ScanDetection {
             Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
             Imgproc.Canny(blurred, edges, 50.0, 130.0)
             Imgproc.morphologyEx(edges, edges, Imgproc.MORPH_CLOSE, kernel)
-            bestQuad(edges)
+            bestQuad(edges, gray)
         } finally {
             kernel.release()
             edges.release()
@@ -249,16 +254,40 @@ object ScanDetection {
         return 255
     }
 
-    private fun bestQuad(mask: Mat): DocumentQuad? {
+    private fun bestQuad(mask: Mat, gray: Mat): DocumentQuad? {
         val contours = mutableListOf<MatOfPoint>()
         Imgproc.findContours(mask, contours, Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
+        val sceneMean = Core.mean(gray).`val`[0].toFloat()
         return contours.mapNotNull { contour ->
             try {
-                quadCorners(contour)?.let { (corners, hull) -> candidate(corners, hull, mask.width(), mask.height()) }
+                quadCorners(contour)?.let { (corners, hull) -> candidate(corners, hull, mask.width(), mask.height(), gray, sceneMean) }
             } finally {
                 contour.release()
             }
         }.maxByOrNull { it.score }?.quad
+    }
+
+    /** Average brightness well inside a quad, from a handful of samples — enough to tell paper from a table. */
+    private fun innerBrightness(quad: DocumentQuad, gray: Mat): Float {
+        var total = 0.0
+        var count = 0
+        val buffer = ByteArray(1)
+        for (u in listOf(0.3f, 0.5f, 0.7f)) for (v in listOf(0.3f, 0.5f, 0.7f)) {
+            val top = ScanPoint(
+                quad.topLeft.x + (quad.topRight.x - quad.topLeft.x) * u,
+                quad.topLeft.y + (quad.topRight.y - quad.topLeft.y) * u,
+            )
+            val bottom = ScanPoint(
+                quad.bottomLeft.x + (quad.bottomRight.x - quad.bottomLeft.x) * u,
+                quad.bottomLeft.y + (quad.bottomRight.y - quad.bottomLeft.y) * u,
+            )
+            val x = ((top.x + (bottom.x - top.x) * v) * gray.width()).toInt().coerceIn(0, gray.width() - 1)
+            val y = ((top.y + (bottom.y - top.y) * v) * gray.height()).toInt().coerceIn(0, gray.height() - 1)
+            gray.get(y, x, buffer)
+            total += buffer[0].toInt() and 0xFF
+            count++
+        }
+        return if (count == 0) 0f else (total / count).toFloat()
     }
 
     /**
@@ -290,7 +319,7 @@ object ScanDetection {
         }
     }
 
-    private fun candidate(points: Array<Point>, hull: Array<Point>, width: Int, height: Int): Candidate? {
+    private fun candidate(points: Array<Point>, hull: Array<Point>, width: Int, height: Int, gray: Mat, sceneMean: Float): Candidate? {
         val pointContour = MatOfPoint(*points)
         val area = try { kotlin.math.abs(Imgproc.contourArea(pointContour)).toFloat() } finally { pointContour.release() }
         val coverage = area / (width * height)
@@ -311,8 +340,16 @@ object ScanDetection {
         val centerX = quad.points.sumOf { it.x.toDouble() }.toFloat() / 4f
         val centerY = quad.points.sumOf { it.y.toDouble() }.toFloat() / 4f
         val centered = (1f - (abs(centerX - 0.5f) * 1.5f + abs(centerY - 0.5f) * 0.3f)).coerceAtLeast(0f)
-        val nearFrame = quad.points.any { it.x < 0.015f || it.x > 0.985f || it.y < 0.015f || it.y > 0.985f }
-        return Candidate(quad, coverage * centered * if (nearFrame) 0.35f else 1f)
+        // "Keep the page inside the frame" is what this screen asks for, so a shape running off the edge is the
+        // table, the wall or the whole view — not the page. Penalising that was not enough: a wrong shape big
+        // enough still won on size alone, and then the outline held on to it.
+        if (!isInsideFrame(quad)) return null
+        // Paper is brighter than what it is lying on. Without this, any large quadrilateral — a tile, a table
+        // edge, the border between wood and floor — is as good a page as the page.
+        val brightness = innerBrightness(quad, gray)
+        if (brightness < sceneMean + 12f) return null
+        val standsOut = ((brightness - sceneMean) / 60f).coerceIn(0f, 1f)
+        return Candidate(quad, coverage * centered * (0.35f + 0.65f * standsOut))
     }
 
     /**

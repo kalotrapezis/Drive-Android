@@ -201,7 +201,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 private const val DRIVE_PATH = "/sdcard/Drive/"
@@ -370,6 +369,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     onSuccess = { ListState.Items(it) },
                     onFailure = { ListState.Error("Cannot read photos: ${it.message ?: "permission lost"}") },
                 )
+                // Whatever is new here has never been read: do it now, not the next time People is opened.
+                if (result.isSuccess) PhotoAnalysisService.start(context)
             }
         }.start()
     }
@@ -2103,13 +2104,15 @@ private fun PhotoTab(
     var selectedCollection by remember { mutableStateOf<PhotoCollection?>(null) }
     var collectionPendingDelete by remember { mutableStateOf<PhotoCollection?>(null) }
     var analysisConsentFor by remember { mutableStateOf<PhotoFilter?>(null) }
-    var analysisRunning by remember { mutableStateOf(false) }
-    var analysisPaused by remember { mutableStateOf(false) }
-    val pauseRequested = remember { AtomicBoolean(false) }
-    var analysisDone by remember { mutableStateOf(0) }
-    var analysisTotal by remember { mutableStateOf(0) }
+    val analysis by PhotoAnalysisService.state.collectAsState()
+    val analysisRunning = analysis != null
+    val analysisPaused = analysis?.paused == true
+    val analysisDone = analysis?.done ?: 0
+    val analysisTotal = analysis?.total ?: 0
     var analysisVersion by remember { mutableStateOf(0) }
-    var analysisError by remember { mutableStateOf<String?>(null) }
+    val analysisError by PhotoAnalysisService.lastError.collectAsState()
+    // The reading happens in a service now, so what it found is only on screen once it has stopped.
+    LaunchedEffect(analysisRunning) { if (!analysisRunning) analysisVersion++ }
     var actionError by remember { mutableStateOf<String?>(null) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
     // Android owns its trash: restoring and deleting for good are both its own requests, with its own dialog.
@@ -2261,43 +2264,8 @@ private fun PhotoTab(
      * `everything` re-reads photos that were analysed before, which is what a rescan is for: the thresholds or
      * the rules have changed and the old answers were reached under the old ones.
      */
-    fun scanUnclassified(everything: Boolean = false, faces: Boolean = true) {
-        if (analysisRunning) return
-        val pending = allEntries.filter { !it.isVideo && it.contentUri != null && (everything || metadataStore.needsAnalysis(it.photoKey)) }
-        if (pending.isEmpty()) return
-        analysisRunning = true
-        analysisDone = 0
-        analysisTotal = pending.size
-        analysisError = null
-        Thread {
-            val result = runCatching {
-                val quality = metadataStore.searchQuality()
-                val modelVersion = "local-v7-${quality.name.lowercase(Locale.ROOT)}"
-                PhotoClassifier(context, advancedSceneTags = quality == PhotoSearchQuality.Advanced).use { classifier ->
-                    var skipped = 0
-                    pending.forEachIndexed { index, entry ->
-                        while (pauseRequested.get()) Thread.sleep(100)
-                        entry.contentUri?.let { uri -> runCatching {
-                            classifier.classify(uri, entry.takenMillis, analyzeFaces = faces && !entry.isScreenshot() && entry.photoKey !in documentKeys).also { result ->
-                                metadataStore.recordClassification(entry.photoKey, result.documentConfidence, result.faces, result.labels, modelVersion)
-                            }
-                        }.onFailure { skipped++ } }
-                        Handler(Looper.getMainLooper()).post { analysisDone = index + 1 }
-                    }
-                    skipped
-                }
-            }
-            Handler(Looper.getMainLooper()).post {
-                analysisRunning = false
-                analysisPaused = false
-                pauseRequested.set(false)
-                result.onSuccess { skipped ->
-                    analysisVersion++
-                    if (skipped > 0) analysisError = "Skipped $skipped photos that could not be read."
-                }.onFailure { analysisError = it.message ?: "Could not analyze this gallery." }
-            }
-        }.start()
-    }
+    fun scanUnclassified(everything: Boolean = false, faces: Boolean = true) =
+        PhotoAnalysisService.start(context, everything, faces)
     fun performHide(targets: Set<Uri>) {
         val selected = entries.filter { it.contentUri in targets && it.contentUri != null }
         if (selected.isEmpty()) return
@@ -2412,6 +2380,7 @@ private fun PhotoTab(
             undoMerge = { undo -> metadataStore.undoFaceMerge(undo); analysisVersion++ },
             history = { metadataStore.mergeHistory(group.id) },
             restore = { merge -> metadataStore.restoreMerge(merge); analysisVersion++ },
+            detach = { keys -> metadataStore.detachPhotosFromGroup(group.id, keys).also { if (it) analysisVersion++ } },
         )
         return
     }
@@ -2558,11 +2527,7 @@ private fun PhotoTab(
                     Collections(
                         allEntries, metadata, collections, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, vaultItems.size,
                         !hidePeopleFromCollections, !hideDocumentsFromCollections, analysisRunning, analysisPaused,
-                        analysisDone, analysisTotal, {
-                            val paused = !analysisPaused
-                            analysisPaused = paused
-                            pauseRequested.set(paused)
-                        }, back, { newCollectionOpen = true }, ::openCollection,
+                        analysisDone, analysisTotal, PhotoAnalysisService::togglePause, back, { newCollectionOpen = true }, ::openCollection,
                         selectedCollection?.id,
                         { collection -> selectedCollection = if (selectedCollection?.id == collection.id) null else collection },
                     )
@@ -2928,19 +2893,23 @@ private fun PersonGroupScreen(
     group: FaceGroup, entries: List<Entry>, allGroups: List<FaceGroup>, entriesByKey: Map<String, Entry>,
     back: () -> Unit, openPhoto: (Entry) -> Unit, rename: (String) -> Unit,
     merge: (FaceGroup) -> FaceMergeUndo, undoMerge: (FaceMergeUndo) -> Unit,
-    history: () -> List<FaceMerge>, restore: (FaceMerge) -> Unit,
+    history: () -> List<FaceMerge>, restore: (FaceMerge) -> Unit, detach: (Set<String>) -> Boolean,
 ) {
+    var picked by remember(group.id) { mutableStateOf(emptySet<String>()) }
+    var detachFailed by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var combining by remember { mutableStateOf(false) }
     var mergeTargets by remember { mutableStateOf<List<FaceGroup>?>(null) }
     var recentMerges by remember { mutableStateOf(emptyList<FaceMergeUndo>()) }
     var name by remember(group.id, group.name) { mutableStateOf(group.name) }
+    var historyOpen by remember { mutableStateOf(false) }
     LaunchedEffect(recentMerges) {
         if (recentMerges.isNotEmpty()) {
             delay(8_000)
             recentMerges = emptyList()
         }
     }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FilesPageHeader(group.name, R.drawable.ic_collections, back)
         if (editing) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2953,21 +2922,46 @@ private fun PersonGroupScreen(
                 Text("Undo", modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
             }
         } }
-        LazyVerticalGrid(GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(entries, key = { it.photoKey }) { entry -> PhotoThumbnail(entry, false) { openPhoto(entry) } }
-        }
-    }
-    // Everything you can do to a person, in one island where the navigation one sits elsewhere in the app.
-    var historyOpen by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 12.dp), contentAlignment = Alignment.BottomCenter) {
-        Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
-            Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                PersonIslandAction(R.drawable.ic_collections, "Combine") { combining = true }
-                PersonIslandAction(R.drawable.ic_edit, "Rename") { editing = true }
-                PersonIslandAction(R.drawable.ic_restore, "History") { historyOpen = true }
+        LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            items(entries, key = { it.photoKey }) { entry ->
+                PhotoThumbnail(entry, entry.photoKey in picked, longPress = { picked = picked + entry.photoKey }) {
+                    if (picked.isEmpty()) openPhoto(entry)
+                    else picked = if (entry.photoKey in picked) picked - entry.photoKey else picked + entry.photoKey
+                }
             }
         }
     }
+    // Everything you can do to a person, in one island. It must be laid over the page, not placed after it: the
+    // whole app sits in one Column, so a second full-height sibling is pushed off the bottom of the screen.
+    Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
+        Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+            if (picked.isEmpty()) Row(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { combining = true }) { Icon(painterResource(R.drawable.ic_collections), contentDescription = "Combine this person with another") }
+                IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Rename this person") }
+                IconButton(onClick = { historyOpen = true }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "What was combined into this person") }
+            } else Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(
+                    onClick = { detachFailed = !detach(picked); if (!detachFailed) picked = emptySet() },
+                    colors = neutralButtonColors(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = null)
+                    Text("Not this person", modifier = Modifier.padding(start = 10.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${picked.size} selected", style = MaterialTheme.typography.labelLarge)
+                    Text("Cancel", modifier = Modifier.clickable { picked = emptySet() }.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
+    }
+    if (detachFailed) AlertDialog(
+        onDismissRequest = { detachFailed = false },
+        title = { Text("Keep at least one photo") },
+        text = { Text("Taking every photo out would leave ${group.name} with nobody in it. Leave one behind, or combine this person into another.") },
+        confirmButton = { Button(onClick = { detachFailed = false }, colors = neutralButtonColors()) { Text("OK") } },
+    )
     if (historyOpen) MergeHistorySheet(
         merges = remember(historyOpen, group.id) { history() },
         entriesByKey = entriesByKey,
@@ -2984,15 +2978,6 @@ private fun PersonGroupScreen(
     ) }
 }
 
-@Composable
-private fun PersonIslandAction(icon: Int, label: String, click: () -> Unit) = Row(
-    Modifier.clip(CircleShape).clickable(onClick = click).padding(horizontal = 14.dp, vertical = 10.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-    verticalAlignment = Alignment.CenterVertically,
-) {
-    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
-    Text(label, style = MaterialTheme.typography.labelLarge)
-}
 
 /**
  * Every group that was combined into this person, with the head and the number it had at the time. Combining is
@@ -3233,7 +3218,7 @@ private fun CollectionPickerSheet(
 }
 
 private fun PhotoState?.orDefault() = this ?: PhotoState()
-private fun Entry.isScreenshot() = relativePath?.startsWith("Pictures/Screenshots/") == true || relativePath?.startsWith("DCIM/Screenshots/") == true
+internal fun Entry.isScreenshot() = relativePath?.startsWith("Pictures/Screenshots/") == true || relativePath?.startsWith("DCIM/Screenshots/") == true
 
 @Composable
 private fun PhotoBottomBar(
@@ -3795,8 +3780,9 @@ private fun Modifier.timelinePinch(scale: TimelineScale, setScale: (TimelineScal
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier = Modifier, open: () -> Unit) {
+internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier = Modifier, longPress: (() -> Unit)? = null, open: () -> Unit) {
     val context = LocalContext.current
     val halfPixel = with(LocalDensity.current) { (0.5f / density).dp }
     val bitmap by produceState<Bitmap?>(initialValue = null, entry.contentUri) {
@@ -3823,7 +3809,7 @@ internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier 
             .aspectRatio(1f)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary) else Modifier)
-            .clickable(onClick = open)
+            .then(if (longPress == null) Modifier.clickable(onClick = open) else Modifier.combinedClickable(onClick = open, onLongClick = longPress))
             .semantics {
                 contentDescription = "${if (entry.isVideo) "Video" else "Photo"} ${entry.name}"
                 this.selected = selected

@@ -127,6 +127,8 @@ internal class SyncService : Service() {
             )
             job = null
             stopForeground(STOP_FOREGROUND_REMOVE)
+            // A sync is the other moment photos appear here without anyone taking them.
+            PhotoAnalysisService.start(applicationContext)
             stopSelf()
         }
     }

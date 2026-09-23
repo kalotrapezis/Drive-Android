@@ -20,7 +20,9 @@ import org.json.JSONObject
 internal object HyperIsland {
     private const val EXTRA = "miui.focus.param"
 
-    private const val BUSINESS = "tetra_sync"
+    /** One id per kind of island, so a backup and a read of the gallery are two islands, not one fighting itself. */
+    const val SYNC = "tetra_sync"
+    const val ANALYSIS = "tetra_analysis"
     private const val ACCENT = "#4C8DF6"
     private const val EXPANDED_MS = 2500 // how long the big card stays before it shrinks back to the pill
 
@@ -33,14 +35,14 @@ internal object HyperIsland {
      * progress: Pause and Stop stay in the app and in the notification, where they are the platform's own
      * controls rather than MIUI-styled buttons that match nothing else in Tetra.
      */
-    fun decorate(builder: NotificationCompat.Builder, title: String, text: String, done: Int, total: Int, announce: Boolean = false) {
-        runCatching { builder.addExtras(Bundle().apply { putString(EXTRA, param(title, text, done, total, announce)) }) }
+    fun decorate(builder: NotificationCompat.Builder, title: String, text: String, done: Int, total: Int, announce: Boolean = false, business: String = SYNC) {
+        runCatching { builder.addExtras(Bundle().apply { putString(EXTRA, param(title, text, done, total, announce, business)) }) }
     }
 
-    private fun param(title: String, text: String, done: Int, total: Int, announce: Boolean): String {
+    private fun param(title: String, text: String, done: Int, total: Int, announce: Boolean, business: String): String {
         val paramV2 = JSONObject()
             .put("protocol", 3) // the version param_v2 is read as; anything else is parsed to nothing
-            .put("business", BUSINESS)
+            .put("business", business)
             .put("updatable", true) // one island that changes, not a new one per progress step
             .put("ticker", title)
             // Only the first post opens the big card; after that the island is a pill that quietly counts up,

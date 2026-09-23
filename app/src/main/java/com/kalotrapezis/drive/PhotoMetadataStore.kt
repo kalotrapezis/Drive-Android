@@ -423,6 +423,35 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun restoreMerge(merge: FaceMerge) = undoFaceMerge(FaceMergeUndo(merge.sourceName, merge.sampleIds, merge.sourceUuid))
 
     /**
+     * Take these photos' faces out of this person and give them a person of their own.
+     *
+     * The classifier's own joins are not combines and leave no history, so this is the only way back out of one.
+     * The faces are not thrown away — they become a new "Person N" standing beside the others, which is exactly
+     * what Combine puts back if the removal itself was wrong.
+     */
+    fun detachPhotosFromGroup(groupId: Long, photoKeys: Collection<String>): Boolean = writableDatabase.inTransaction {
+        if (photoKeys.isEmpty()) return@inTransaction false
+        val marks = photoKeys.joinToString { "?" }
+        val args = (listOf(groupId.toString()) + photoKeys).toTypedArray()
+        val sampleIds = rawQuery("SELECT id FROM face_samples WHERE group_id = ? AND photo_key IN ($marks)", args).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
+        }
+        if (sampleIds.isEmpty()) return@inTransaction false
+        // Everything this group still holds must not be emptied: a person with no faces at all is not a person.
+        val remaining = rawQuery("SELECT COUNT(*) FROM face_samples WHERE group_id = ? AND id NOT IN (${sampleIds.joinToString { "?" }})",
+            (listOf(groupId.toString()) + sampleIds.map(Long::toString)).toTypedArray()).use { it.moveToFirst(); it.getInt(0) }
+        if (remaining == 0) return@inTransaction false
+        val ids = sampleIds.joinToString { "?" }
+        val idArgs = sampleIds.map(Long::toString).toTypedArray()
+        delete("face_reviews", "face_sample_id IN ($ids)", idArgs)
+        update("face_samples", ContentValues().apply {
+            put("group_id", createFaceGroup())
+            put("updated_at", System.currentTimeMillis())
+        }, "id IN ($ids)", idArgs)
+        true
+    }
+
+    /**
      * Throws away the groups nobody has named, and the faces in them, so a rescan can group them again — with
      * whatever the thresholds are now. People you have named are left exactly as they are, together with their
      * faces: a rescan is for redoing the guessing, never for undoing a decision.
@@ -437,10 +466,10 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         execSQL("DELETE FROM face_merges WHERE target_id NOT IN (SELECT id FROM face_groups)")
     }
 
-    fun needsAnalysis(photoKey: String): Boolean = readableDatabase.rawQuery(
-        "SELECT 1 FROM photo_ai_record WHERE photo_key = ? AND model_version = ? LIMIT 1",
-        arrayOf(photoKey, analysisModelVersion()),
-    ).use { !it.moveToFirst() }
+    /** Every photo already read by the model as it stands — one query, rather than one per photo in the gallery. */
+    fun analyzedKeys(): Set<String> = keysFor(
+        "SELECT photo_key FROM photo_ai_record WHERE model_version = ?", arrayOf(analysisModelVersion()),
+    )
 
     fun recordClassification(photoKey: String, documentConfidence: Float, faces: List<DetectedFace>, labels: List<String>, modelVersion: String = analysisModelVersion()) = writableDatabase.inTransaction {
         val document = documentConfidence >= 0.70f
@@ -472,7 +501,6 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val reliable = isReliableFace(face.quality, face.yaw, face.roll)
             val groupId = when {
                 similarity >= SAME_PERSON -> match!!.groupId
-                !reliable && similarity >= UNRELIABLE_JOIN -> match!!.groupId
                 !reliable -> null
                 else -> createFaceGroup()
             }

@@ -11,6 +11,9 @@ import android.content.Intent
  */
 internal class SyncActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == SyncService.ACTION_PAUSE && SyncService.isRunning) SyncService.togglePause()
+        when (intent.action) {
+            SyncService.ACTION_PAUSE -> if (SyncService.isRunning) SyncService.togglePause()
+            PhotoAnalysisService.ACTION_PAUSE -> if (PhotoAnalysisService.isRunning) PhotoAnalysisService.togglePause()
+        }
     }
 }

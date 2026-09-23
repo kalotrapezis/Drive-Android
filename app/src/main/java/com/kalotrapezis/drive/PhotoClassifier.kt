@@ -218,14 +218,18 @@ internal fun faceOverlap(first: android.graphics.Rect, second: android.graphics.
  *   0.60            36.7%                        0.22%
  *   0.50            59.4%                        1.73%
  *
- * 0.60 joins three times as much while different people still essentially never meet: the highest similarity
- * between two different people anywhere in this library is 0.73, and that is a single pair. Review moves down
- * to 0.45–0.60, where the answer is genuinely uncertain, instead of sitting above the line where it is not.
- * Retune from the same measurement if the model or the crop ever changes.
+ * 0.60 was tried and it made visible mistakes on a real library: a toddler in sunglasses, a black-and-white
+ * frame and a stranger's face all landed on the same child. A join the classifier makes on its own cannot be
+ * undone from History — nothing recorded it — so the rule is that the irreversible line stays strict and the
+ * uncertain band goes to review, which is reversible by construction. 0.68 sits below the 0.73 where the two
+ * closest different people in this library meet, and above where the model's mistakes were coming from.
+ *
+ * The same rule killed the loose join for unreliable faces (tiny, blurred, or turned away): they used to join
+ * at 0.45, with no review and no way back. An unreliable face now joins only if it clears the same line as
+ * everyone else. Retune from the same measurement if the model or the crop ever changes.
  */
-internal const val SAME_PERSON = 0.60f
+internal const val SAME_PERSON = 0.68f
 internal const val REVIEW_FROM = 0.45f
-internal const val UNRELIABLE_JOIN = 0.45f
 
 internal fun cosineSimilarity(first: FloatArray, second: FloatArray): Float =
     first.indices.sumOf { index -> (first[index] * second[index]).toDouble() }.toFloat()

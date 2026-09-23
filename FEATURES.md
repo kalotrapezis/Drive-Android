@@ -1,6 +1,6 @@
 # Tetra: implemented features
 
-Updated: 2026-09-22. This is the authoritative guide to what is implemented
+Updated: 2026-09-23. This is the authoritative guide to what is implemented
 now. It is based on the current code, not on older roadmap wording. Physical
 device acceptance steps remain in `MANUAL_CHECKLIST.md`.
 
@@ -41,6 +41,15 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   filter. Folder colours are private display metadata.
 - Home lists up to 50 files that were successfully opened. Favorites is a
   separate local list of file or folder paths.
+- Long-press an item to start a **multi-selection**; tapping then adds and
+  removes. The navigation island is replaced by an actions island offering
+  Share (while a real file is among them), Copy, Move, Tags, Add to Favorites,
+  and Move to Trash — or Restore when the folder is Trash. Copy, Move and Tags
+  open the same pickers a single item gets, applied to everything selected;
+  chosen tags replace the item's tags rather than adding to them.
+- **Trash** is not listed as a folder: it is reached from Files tools, and
+  inside it the header carries a red Empty Trash. A single item already in
+  Trash offers Restore rather than Move to Trash.
 
 ### Open and manage an item
 
@@ -110,8 +119,12 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   run as a background service or upload media.
 - People groups can be renamed and manually combined; a recent combine can be
   undone briefly. **Help organize** shows items needing a review.
-- **Screenshots**, **Videos**, **Favorites**, **Hidden**, and **Map** are real
-  filters. The Collections tools can hide People and Documents cards from the
+- **Screenshots**, **Videos**, **Favorites**, **Hidden**, **Map** and
+  **Trash** are real filters. Trash is Android's own trash, queried separately
+  because trashed media is deliberately absent from the ordinary listing; it
+  holds deleted photos for 30 days. With nothing selected the header carries a
+  red Empty trash; with a selection the island offers only Restore and Empty
+  trash, and emptying asks first. Android confirms both itself as well. The Collections tools can hide People and Documents cards from the
   Collections screen without deleting their data.
 - Tap `+` to create **My collections**. Empty and duplicate names are rejected.
   A collection cover is its first available member; an empty one shows the
@@ -138,7 +151,8 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   add items. Holding near the top/bottom edge keeps selecting while the grid
   auto-scrolls.
 - The selection island offers Share, Favorite/unfavorite, Add to collection
-  (or Remove in a collection), Move to Trash, and Move to Hidden.
+  (or Remove in a collection), Move to Trash, and Move to Hidden. In Trash it
+  offers Restore and Empty trash instead.
 - Photo Trash uses Android's media confirmation. It is not a silent or
   permanent deletion action.
 - Pinch out for broader date groups/smaller thumbnails and pinch in for finer
@@ -210,10 +224,50 @@ Home → red tools group → **Scanner**. Details and design notes:
   - **Pages**: numbered grid; long-press and drag to reorder.
   - **Save**: one multi-page A4-width PDF in
     `Files › Documents › Scanned Documents`, never overwriting (`name (2).pdf`).
+    A saved scan also asks Sync to catch up, a moment later.
   - Pull the island handle up for **manual painting**: swatches sampled from
     the page's paper (lit, typical, light shadow, shadow), white, black, a
     custom colour, brush size and Undo.
 - Leaving the document asks before discarding unsaved pages.
+
+## Sync — complete for Photos and Files
+
+The protocol, its reasoning and what it deliberately leaves out are in
+[SYNC_PLAN.md](SYNC_PLAN.md); this is what the phone offers.
+
+- **Pair once** by scanning the computer's QR code in Sync. The connection is
+  checked against that code's certificate fingerprint every time.
+- **Back up now** sends every photo and video the computer does not have, each
+  verified there by SHA-256 before it is kept. Nothing on this phone is
+  changed or deleted.
+- The same run carries **everything the user made**: document answers,
+  favorites, collections and their membership, search labels, people's names
+  and the face → person grouping, and the Files module's tags, favorites,
+  folder colours and recents. Newest edit wins per record, both ways.
+- **Files themselves** travel too, by path. A file whose bytes the computer
+  already holds under a path the phone has since left is followed as a move —
+  which is how a move into `Drive/Trash/` arrives as a move into Trash rather
+  than a second copy.
+- **Pause** beside the progress bar or in the notification; it suspends
+  between files, so a half-sent photo is never left behind.
+- On a Xiaomi with focus notifications the backup also shows in the **Dynamic
+  Island** — a pill counting up, a card with the progress bar. Everywhere else
+  the extra is ignored and the ordinary notification is unchanged.
+- **Syncing happens on its own** when the app opens and after a scan is saved.
+  It is easy to talk out of: no paired computer, a backup already running, a
+  metered connection, or a sync less than fifteen minutes ago and it does not
+  happen. A VPN is looked past to the network underneath it.
+- A finished sync refreshes the pages it changed.
+- **Settings that describe the library** cross (hide Screenshots, hide
+  Documents, hide an album). Settings that decide what a device should *do* —
+  running analysis, search quality — stay local on purpose.
+
+### Sync limits
+
+- The phone is the client: a file or photo created on the computer waits for
+  the phone to ask, and opening the desktop app cannot start a sync.
+- One paired computer at a time.
+- Hidden is not synced yet.
 
 ## Codes — complete
 

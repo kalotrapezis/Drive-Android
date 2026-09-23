@@ -143,7 +143,7 @@ internal class PhotoAnalysisService : Service() {
                 paused.first { !it }
                 entry.contentUri?.let { uri -> runCatching {
                     classifier.classify(uri, entry.takenMillis, analyzeFaces = analyzeFaces && !entry.isScreenshot() && entry.photoKey !in documentKeys).also { read ->
-                        store.recordClassification(entry.photoKey, read.documentConfidence, read.faces, read.labels, modelVersion)
+                        store.recordClassification(entry.photoKey, read.documentConfidence, read.faces, read.labels, modelVersion, entry.takenMillis)
                     }
                 }.onFailure { skipped++ } }
                 onProgress(index + 1, pending.size)

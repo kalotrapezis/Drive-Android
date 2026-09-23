@@ -40,15 +40,26 @@ class IncomingFaceDeviceTest {
     /** A unit vector with a chosen cosine to `base`, so a similarity can be asked for rather than hoped for. */
     private val base = FloatArray(192) { if (it % 2 == 0) 1f else 0f }.normalized()
     private val away = FloatArray(192) { if (it % 2 == 0) 0f else 1f }.normalized()
+    private val elsewhere = FloatArray(192) { if (it % 2 == 0) 0f else if (it % 4 == 1) 1f else -1f }.normalized()
+    /** Orthogonal to base and to both directions the probes lean in: somebody else entirely. */
+    private val stranger = FloatArray(192) { if (it % 2 != 0) 0f else if (it % 4 == 0) 1f else -1f }.normalized()
 
     private fun FloatArray.normalized(): FloatArray {
         val length = kotlin.math.sqrt(sumOf { (it * it).toDouble() }).toFloat()
         return FloatArray(size) { this[it] / length }
     }
 
-    private fun like(cosine: Float): ByteArray {
+    /** A vector at a chosen cosine to `base`. `which` picks the direction it leans away in, so two faces can be
+     *  the same distance from a person without being copies of each other. */
+    private fun like(cosine: Float, which: Int = 0): ByteArray {
         val other = kotlin.math.sqrt(1f - cosine * cosine)
-        return FloatArray(192) { cosine * base[it] + other * away[it] }.bytes()
+        val direction = if (which == 0) away else elsewhere
+        return FloatArray(192) { cosine * base[it] + other * direction[it] }.bytes()
+    }
+
+    private fun ByteArray.toFloats(): FloatArray {
+        val buffer = ByteBuffer.wrap(this).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        return FloatArray(buffer.remaining()).also(buffer::get)
     }
 
     private fun FloatArray.bytes(): ByteArray = ByteBuffer.allocate(size * 4).order(ByteOrder.nativeOrder())
@@ -146,6 +157,30 @@ class IncomingFaceDeviceTest {
         store.applyIncomingReview("face-in-question", person, "skipped", 1)
         assertEquals("resolved", store.reviewRecords().single().state)
         assertEquals("maybe-her", asked.photoKey)
+    }
+
+    @Test fun twoPhotosOfOneMomentAreReadAsOneMoment() {
+        val noon = 1_790_000_000_000L
+        store.recordClassification("morning", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), base.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList(), takenMillis = noon)
+        // Just under the line on the pixels alone; the same moment is what carries it over.
+        store.recordClassification("seconds-later", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), like(0.72f).toFloats(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList(), takenMillis = noon + 8_000)
+        assertEquals("eight seconds apart, and recognised as the same person", 1, store.faceGroups().size)
+
+        // The same likeness a week later earns nothing.
+        store.recordClassification("next-week", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), like(0.72f, which = 1).toFloats(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList(), takenMillis = noon + 7 * 86_400_000L)
+        assertEquals("another day is not the same evidence", 2, store.faceGroups().size)
+
+        // And the nudge cannot join two people who look nothing alike, however close in time.
+        store.recordClassification("same-day-stranger", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), stranger.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList(), takenMillis = noon + 60_000)
+        assertEquals("a stranger on the same day is still a stranger", 3, store.faceGroups().size)
     }
 
     @Test fun twoDevicesThatDisagreeAskInsteadOfTakingTurns() {

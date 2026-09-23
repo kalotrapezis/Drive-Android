@@ -51,7 +51,7 @@ internal data class DocumentRecord(val photoKey: String, val type: String?, val 
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 18) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 19) {
 
     private companion object {
         const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
@@ -138,6 +138,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // An answer to Help organize is a decision, and decisions travel; a question is local. So a review needs
         // a time, to be told apart from one answered on another device a minute later.
         if (oldVersion < 18) db.execSQL("ALTER TABLE face_reviews ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+        // When a face's photo was taken: evidence about who is in it that the pixels do not carry (SAME_DAY_BONUS).
+        // Faces recorded before this have 0, which is a day of its own and shares itself with nothing.
+        if (oldVersion < 19) db.execSQL("ALTER TABLE face_samples ADD COLUMN taken_at INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -487,7 +490,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         "SELECT photo_key FROM photo_ai_record WHERE model_version = ?", arrayOf(analysisModelVersion()),
     )
 
-    fun recordClassification(photoKey: String, documentConfidence: Float, faces: List<DetectedFace>, labels: List<String>, modelVersion: String = analysisModelVersion()) = writableDatabase.inTransaction {
+    fun recordClassification(photoKey: String, documentConfidence: Float, faces: List<DetectedFace>, labels: List<String>, modelVersion: String = analysisModelVersion(), takenMillis: Long = 0) = writableDatabase.inTransaction {
         val document = documentConfidence >= 0.70f
         val review = documentConfidence in 0.40f..<0.70f
         val verifiedDocument = rawQuery("SELECT user_verified, type FROM photo_ai_record WHERE photo_key = ?", arrayOf(photoKey)).use { cursor ->
@@ -511,9 +514,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             })
         }
         val candidates = faceCandidates()
+        val day = dayOf(takenMillis)
         faces.forEach { face ->
-            val match = candidates.maxByOrNull { cosineSimilarity(face.embedding, it.embedding) }
-            val similarity = match?.let { cosineSimilarity(face.embedding, it.embedding) } ?: -1f
+            // The day is evidence, not proof: a face seen on the same day as someone already known starts a
+            // little closer to them, which is what catches the same person across two photos of one moment.
+            fun scoreOf(c: FaceCandidate) = cosineSimilarity(face.embedding, c.embedding) + if (c.day == day) SAME_DAY_BONUS else 0f
+            val match = candidates.maxByOrNull(::scoreOf)
+            val similarity = match?.let(::scoreOf) ?: -1f
             val reliable = isReliableFace(face.quality, face.yaw, face.roll)
             val groupId = when {
                 similarity >= SAME_PERSON -> match!!.groupId
@@ -533,6 +540,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("quality", face.quality)
                 put("uuid", UUID.randomUUID().toString())
                 put("updated_at", System.currentTimeMillis())
+                put("taken_at", takenMillis)
             }, SQLiteDatabase.CONFLICT_IGNORE)
             if (sampleId != -1L && reliable && similarity in REVIEW_FROM..<SAME_PERSON) insertWithOnConflict("face_reviews", null, ContentValues().apply {
                 put("photo_key", photoKey)
@@ -733,8 +741,12 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // A close enough match joins that person; anything else becomes a new one, and the uncertain band in
         // between becomes a question for Help organize, exactly as a face found here would.
         val vector = embedding.toFloatArray()
-        val match = if (groupId != null) null else faceCandidates().maxByOrNull { cosineSimilarity(vector, it.embedding) }
-        val similarity = match?.let { cosineSimilarity(vector, it.embedding) } ?: -1f
+        // The same day counts here too, when this phone knows when the photo was taken — it does whenever it
+        // has read that photo itself, which is the usual case for one the computer found an extra face in.
+        val day = dayOf(takenAtOf(photoKey))
+        fun scoreOf(c: FaceCandidate) = cosineSimilarity(vector, c.embedding) + if (c.day == day) SAME_DAY_BONUS else 0f
+        val match = if (groupId != null) null else faceCandidates().maxByOrNull(::scoreOf)
+        val similarity = match?.let(::scoreOf) ?: -1f
         val home = groupId ?: when {
             similarity >= SAME_PERSON -> match!!.groupId
             else -> createFaceGroup()
@@ -747,6 +759,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("bottom_edge", bounds.bottom)
             put("embedding", embedding)
             put("group_id", home)
+            put("taken_at", takenAtOf(photoKey))
             put("quality", quality)
             put("uuid", uuid)
             put("updated_at", updatedAt)
@@ -783,6 +796,11 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("updated_at", updatedAt)
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
+
+    /** When this photo was taken, as some other face on it already recorded. 0 when nothing here knows. */
+    private fun SQLiteDatabase.takenAtOf(photoKey: String): Long = rawQuery(
+        "SELECT MAX(taken_at) FROM face_samples WHERE photo_key = ?", arrayOf(photoKey),
+    ).use { if (it.moveToFirst()) it.getLong(0) else 0 }
 
     private fun SQLiteDatabase.groupOf(sampleId: Long): Long? = rawQuery(
         "SELECT group_id FROM face_samples WHERE id = ?", arrayOf(sampleId.toString()),
@@ -913,7 +931,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     private fun createFaceTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, updated_at INTEGER NOT NULL DEFAULT 0, taken_at INTEGER NOT NULL DEFAULT 0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
     }
 
     private fun createFaceGroupingTables(db: SQLiteDatabase) {
@@ -932,10 +950,14 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     })
 
     private fun SQLiteDatabase.faceCandidates(): List<FaceCandidate> = rawQuery(
-        "SELECT group_id, embedding FROM face_samples WHERE group_id IS NOT NULL AND quality >= 0.68", null,
-    ).use { cursor -> buildList { while (cursor.moveToNext()) add(FaceCandidate(cursor.getLong(0), cursor.getBlob(1).toFloatArray())) } }
+        "SELECT group_id, embedding, taken_at FROM face_samples WHERE group_id IS NOT NULL AND quality >= 0.68", null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) add(FaceCandidate(cursor.getLong(0), cursor.getBlob(1).toFloatArray(), dayOf(cursor.getLong(2))))
+        }
+    }
 
-    private data class FaceCandidate(val groupId: Long, val embedding: FloatArray)
+    private data class FaceCandidate(val groupId: Long, val embedding: FloatArray, val day: Long)
 }
 
 internal object PhotoSearchRules {

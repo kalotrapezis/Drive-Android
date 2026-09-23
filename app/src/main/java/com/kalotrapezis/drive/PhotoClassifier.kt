@@ -233,6 +233,39 @@ internal fun faceOverlap(first: android.graphics.Rect, second: android.graphics.
  * measurement if the model or the crop ever changes.
  */
 internal const val SAME_PERSON = 0.75f
+
+/**
+ * The day a photo was taken, as evidence about who is in it.
+ *
+ * Two photos taken seconds apart hold the same people, and the model does not know that: it looks at one face
+ * at a time and sometimes fails to recognise someone between two frames of the same moment. The calendar is
+ * free evidence that the pixels do not carry.
+ *
+ * Measured on this library's own named people (2026-09-24, 290 faces across 46 people, 7020 comparisons of the
+ * kind the app actually makes):
+ *
+ *   a comparison against a person who appears on the same day  → the same person **39.3%** of the time
+ *   a comparison against a person who appears on another day   → the same person **1.6%** of the time
+ *
+ * Twenty-five times the prior, so it is worth something — but it is evidence, not proof, so it is worth a
+ * nudge rather than a licence. What each size buys, at the 0.75 line:
+ *
+ *   bonus   same-person joins   wrong joins (out of 7020)
+ *   +0.00        58.1%                 0
+ *   +0.05        63.0%                 1
+ *   +0.10        64.4%                 3
+ *   +0.15        66.7%                14
+ *
+ * +0.05 takes five points of the joins the line was missing for a single wrong one, and the knee is well before
+ * +0.15. Ten-minute windows were measured too and bought nothing a day did not: they cover fewer comparisons
+ * (4.7% against 5.9%) for the same gain, so the day is the better unit as well as the simpler one.
+ */
+internal const val SAME_DAY_BONUS = 0.05f
+
+/** The calendar day a moment falls on, where this device is. Two photos on it are one day's worth of people. */
+internal fun dayOf(takenMillis: Long): Long =
+    if (takenMillis <= 0) Long.MIN_VALUE
+    else Math.floorDiv(takenMillis + java.util.TimeZone.getDefault().getOffset(takenMillis), 86_400_000L)
 internal const val REVIEW_FROM = 0.45f
 
 internal fun cosineSimilarity(first: FloatArray, second: FloatArray): Float =

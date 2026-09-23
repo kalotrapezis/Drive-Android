@@ -187,3 +187,39 @@ class ScanFrameTest {
         assertFalse(ScanDetection.isInsideFrame(acrossTheView))
     }
 }
+
+class ScanGapFillTest {
+    /** A crop that left a deep bite of table along one edge — deeper than the band the fill works in. */
+    @Test fun `the colour comes from the paper, never from what the crop left behind`() {
+        val width = 120
+        val height = 120
+        val table = 0xFF7A5230.toInt()
+        val paper = 0xFFEFF3F6.toInt()
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if (y < 20 && x in 30..90) table else paper // a bite 20 deep, band is 7
+        }
+        ScanDetection.fillPageGaps(pixels, width, height)
+        // The fill reaches as far as its band, and what it paints there is the paper — before, it sampled its
+        // colour from inside the bite and so painted the table back over itself, changing nothing.
+        for (x in 30..90) for (y in 0 until 7) {
+            assertEquals("row $y column $x kept the table", paper, pixels[y * width + x])
+        }
+    }
+
+    @Test fun `ink in the middle never becomes the colour of the page`() {
+        val width = 100
+        val height = 100
+        val paper = 0xFFF0F0F0.toInt()
+        val ink = 0xFF101010.toInt()
+        // A wide band of ink across the middle: the paper colour must still be the paper, not a grey average of
+        // the two. It stops short of the edges, because ink that runs off the page cannot be told from a gap.
+        val pixels = IntArray(width * height) { index ->
+            if ((index / width) in 40..60 && (index % width) in 20..80) ink else paper
+        }
+        val before = pixels.copyOf()
+        ScanDetection.fillPageGaps(pixels, width, height)
+        assertEquals(before.toList(), pixels.toList())
+    }
+}

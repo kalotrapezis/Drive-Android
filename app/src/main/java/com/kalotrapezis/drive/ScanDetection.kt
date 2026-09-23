@@ -403,11 +403,39 @@ object ScanDetection {
             else -> pixels[position * width + width - 1 - depth]
         }
         val window = maxOf(7, band / 2) or 1
+        // The colour to paint with comes from inside the page, never from the edge: where the crop left a gap,
+        // the pixels just inside that edge *are* the table, and sampling them painted the table back in. This is
+        // the paper's own colour, taken from the middle where nothing else can be, with the darkest quarter
+        // dropped so ink does not darken it.
+        val paper = run {
+            val samples = Array(3) { mutableListOf<Int>() }
+            val lumas = mutableListOf<Pair<Int, Int>>() // luma, index into samples
+            var index = 0
+            for (y in height / 4 until height * 3 / 4 step maxOf(1, height / 64)) {
+                for (x in width / 4 until width * 3 / 4 step maxOf(1, width / 64)) {
+                    val pixel = pixels[y * width + x]
+                    val r = (pixel shr 16) and 0xFF; val g = (pixel shr 8) and 0xFF; val b = pixel and 0xFF
+                    samples[0].add(r); samples[1].add(g); samples[2].add(b)
+                    lumas.add((r * 299 + g * 587 + b * 114) / 1000 to index++)
+                }
+            }
+            if (lumas.isEmpty()) return
+            val keep = lumas.sortedBy { it.first }.drop(lumas.size / 4).map { it.second }
+            val median = samples.map { channel -> keep.map { channel[it] }.sorted().let { it[it.size / 2] } }
+            (0xFF shl 24) or (median[0] shl 16) or (median[1] shl 8) or median[2]
+        }
+        // Deep enough inside that a gap cannot reach it, and anything that still does not look like paper is
+        // replaced by the paper colour rather than trusted.
+        val inside = minOf(band * 2, minOf(width, height) / 3 - 4).coerceAtLeast(band)
         val references = Array(4) { side ->
             val length = if (side < 2) width else height
             val raw = Array(3) { IntArray(length) }
-            for (position in 0 until length) for ((channel, shift) in intArrayOf(16, 8, 0).withIndex()) {
-                raw[channel][position] = (band until band + 4).sumOf { (at(side, position, it) shr shift) and 0xFF } / 4
+            for (position in 0 until length) {
+                val sample = (inside until inside + 4).map { at(side, position, it) }
+                val looksLikePaper = sample.all { pixel -> !differsFrom(pixel, paper, tolerance) }
+                for ((channel, shift) in intArrayOf(16, 8, 0).withIndex()) {
+                    raw[channel][position] = if (looksLikePaper) sample.sumOf { (it shr shift) and 0xFF } / 4 else (paper shr shift) and 0xFF
+                }
             }
             // Corners: sample only beside the page, never inside the neighbouring side's gap.
             IntArray(length) { index ->
@@ -424,7 +452,7 @@ object ScanDetection {
             x -> references[2][y]
             else -> references[3][y]
         }
-        fun differs(pixel: Int, paper: Int) = intArrayOf(16, 8, 0).any { shift -> abs(((pixel shr shift) and 0xFF) - ((paper shr shift) and 0xFF)) > tolerance }
+        fun differs(pixel: Int, reference: Int) = differsFrom(pixel, reference, tolerance)
         fun inBand(x: Int, y: Int) = x < band || y < band || x >= width - band || y >= height - band
 
         val filled = BooleanArray(width * height)
@@ -455,6 +483,9 @@ object ScanDetection {
         }
         for (index in filled.indices) if (filled[index]) pixels[index] = reference(index % width, index / width)
     }
+
+    private fun differsFrom(pixel: Int, reference: Int, tolerance: Int) =
+        intArrayOf(16, 8, 0).any { shift -> abs(((pixel shr shift) and 0xFF) - ((reference shr shift) and 0xFF)) > tolerance }
 
     private fun distance(first: ScanPoint, second: ScanPoint): Float = kotlin.math.hypot(first.x - second.x, first.y - second.y)
 

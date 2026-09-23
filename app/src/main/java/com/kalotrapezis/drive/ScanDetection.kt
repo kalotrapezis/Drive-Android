@@ -85,13 +85,16 @@ object ScanDetection {
      * a sliver of table comes along — a shadow line, a grout seam, the dark fringe where paper meets wood. Cut
      * inside it to be safe and a page printed close to its own edge loses a line of text.
      *
-     * Text is not a guess: where there are letters, there is page. So each side is placed by how far the nearest
-     * letter is from it:
+     * Text is not a guess: where there are letters, there is page. So each side asks one question — is there
+     * anything written near this edge? — and answers it in the only two ways that make sense:
      *
-     *  - **letters comfortably inside** — the cut moves a touch *into* the paper, so no background can survive at
-     *    that edge at all;
-     *  - **letters close to the edge, or past it** — the cut moves *outside* the paper, far enough to leave the
-     *    text the margin it deserves, and the gap fill paints the new strip in the paper's own colour.
+     *  - **nothing near this edge** — cut a clear step *into* the paper. Nothing is there to lose, and a cut
+     *    inside the paper cannot possibly bring the table with it;
+     *  - **letters close to the edge, or past it** — go carefully: the cut moves *outside* the paper instead,
+     *    far enough to leave the text room, and the gap fill paints that strip in the paper's own colour.
+     *
+     * The step inwards is deliberately a real one. A tenth of a percent was a rounding error against an outline
+     * that is routinely a few percent too generous; a percent and a half actually lands on paper.
      *
      * Distances are fractions of the page across that side, so a margin means the same thing on a receipt as on
      * A4. [text] are the corners of whatever the reader found, in the quad's own normalized coordinates; with
@@ -100,7 +103,7 @@ object ScanDetection {
     internal fun fitToLetters(
         quad: DocumentQuad,
         text: List<ScanPoint>,
-        inset: Float = 0.001f,
+        inset: Float = 0.015f,
         safeMargin: Float = 0.015f,
     ): DocumentQuad {
         if (text.isEmpty()) return quad

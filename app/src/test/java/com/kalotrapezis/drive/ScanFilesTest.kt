@@ -102,16 +102,6 @@ class ScanFilesTest {
         assert(detectionIsSettled(1_000L, 1_650L))
     }
 
-    @Test fun `crop margin protects a small border around detected paper`() {
-        val quad = DocumentQuad(ScanPoint(.2f, .2f), ScanPoint(.8f, .2f), ScanPoint(.8f, .8f), ScanPoint(.2f, .8f))
-        val expanded = quad.withCropMargin()
-
-        assert(expanded.topLeft.x < quad.topLeft.x)
-        assert(expanded.topLeft.y < quad.topLeft.y)
-        assert(expanded.bottomRight.x > quad.bottomRight.x)
-        assert(expanded.bottomRight.y > quad.bottomRight.y)
-    }
-
     @Test fun `corner markers remain visible at the preview edge`() {
         assertEquals(10f, ScanPoint(-8f, 300f).clampToViewport(100f, 200f, 10f).x, 0f)
         assertEquals(190f, ScanPoint(80f, 300f).clampToViewport(100f, 200f, 10f).y, 0f)
@@ -233,7 +223,8 @@ class ScanTextCropTest {
         val text = listOf(ScanPoint(0.3f, 0.3f), ScanPoint(0.7f, 0.3f), ScanPoint(0.7f, 0.7f), ScanPoint(0.3f, 0.7f))
         val cut = ScanDetection.fitToLetters(page, text)
         assertTrue("the top steps inside the paper", cut.topLeft.y > 0.2f)
-        assertTrue("but only just", cut.topLeft.y < 0.202f)
+        // 1.5% of a 0.6-tall page is 0.009 — a step that actually lands on paper, not a rounding error.
+        assertEquals(0.209f, cut.topLeft.y, 0.002f)
         assertTrue("and every side does the same", cut.bottomLeft.y < 0.8f && cut.topLeft.x > 0.2f && cut.topRight.x < 0.8f)
     }
 

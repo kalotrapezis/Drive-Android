@@ -52,6 +52,7 @@ internal data class SyncConnection(val content: String, val direction: String, v
     /** The sentence the phone shows for this row: the computer configures, the phone says what it was told. */
     fun sentence(computer: String): String {
         val what = if (content == "files") "Files" else "Photos"
+        if (direction == "off") return "$what · not synced"
         val arrow = when (direction) {
             "send" -> "→ $computer"
             "receive" -> "← $computer"
@@ -111,10 +112,17 @@ internal object SyncRules {
 }
 
 /** Separate from photo_metadata.db: content hashes (by the gallery's photo key) and receipts from the computer. */
-internal class SyncStore(private val context: Context) : SQLiteOpenHelper(context, "sync.db", null, 2) {
+internal class SyncStore(private val context: Context) : SQLiteOpenHelper(context, "sync.db", null, 3) {
     private val prefs = context.getSharedPreferences("sync_pairing", Context.MODE_PRIVATE)
 
     private companion object {
+        /**
+         * Photos a Move has finished with: sent, and confirmed by the computer's own reading of the bytes. A
+         * sync never removes anything itself — it cannot, and should not: taking a photo off a phone is
+         * Android's own request with Android's own confirmation, and that needs a screen. So they wait here
+         * until someone says yes, and until then the photo is exactly where it was.
+         */
+        const val MOVE_QUEUE = "CREATE TABLE IF NOT EXISTS to_remove (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL, queued_at INTEGER NOT NULL)"
         const val PEERS = "CREATE TABLE IF NOT EXISTS peers (fp TEXT PRIMARY KEY, name TEXT NOT NULL, hosts TEXT NOT NULL, " +
             "port INTEGER NOT NULL, token TEXT NOT NULL, their_token TEXT NOT NULL, paired_at INTEGER NOT NULL)"
     }
@@ -123,9 +131,11 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
         db.execSQL("CREATE TABLE identity (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL)")
         db.execSQL("CREATE TABLE receipts (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL, path TEXT NOT NULL, sent_at INTEGER NOT NULL)")
         db.execSQL(PEERS)
+        db.execSQL(MOVE_QUEUE)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL(PEERS)
+        if (oldVersion < 3) db.execSQL(MOVE_QUEUE)
     }
 
     /**
@@ -187,6 +197,21 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     fun saveReceipt(photoKey: String, sha256: String, path: String) { writableDatabase.insertWithOnConflict("receipts", null, ContentValues().apply {
         put("photo_key", photoKey); put("sha256", sha256); put("path", path); put("sent_at", System.currentTimeMillis())
     }, SQLiteDatabase.CONFLICT_REPLACE) }
+    /** Verified on the computer, and this connection says Keep Nothing: waiting for someone to say yes. */
+    fun queueForRemoval(photoKey: String, sha256: String) {
+        writableDatabase.insertWithOnConflict("to_remove", null, ContentValues().apply {
+            put("photo_key", photoKey); put("sha256", sha256); put("queued_at", System.currentTimeMillis())
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun queuedForRemoval(): Set<String> = readableDatabase.rawQuery("SELECT photo_key FROM to_remove", null)
+        .use { c -> buildSet { while (c.moveToNext()) add(c.getString(0)) } }
+
+    fun forgetQueued(photoKeys: Collection<String>) {
+        if (photoKeys.isEmpty()) return
+        writableDatabase.delete("to_remove", "photo_key IN (${photoKeys.joinToString { "?" }})", photoKeys.toTypedArray())
+    }
+
     fun receiptCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM receipts", null).use { it.moveToFirst(); it.getInt(0) }
 
     /** Every photo this phone has given the computer — the proof that a copy coming back would be one it deleted. */
@@ -407,6 +432,18 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val alreadyThere = if (photos.sends) bySha.size - missing.size else 0
         val sent = eachInParallel(missing, "Sending", checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
             uploadOne(host, p, sha, bySha.getValue(sha))
+        }
+        // Keep Nothing — a Move. Nothing is removed here and now: a photo leaves this phone through Android's
+        // own request, with Android's own confirmation, which needs a screen this service does not have. What a
+        // verified receipt buys is the right to *offer* it, so the ones that are provably on the computer are
+        // queued and the Sync page asks. A photo with no receipt is never queued, whatever the card says.
+        if (photos.sends && photos.keep == "nothing") {
+            val receipted = store.receiptShas()
+            bySha.forEach { (sha, entry) -> if (sha in receipted) store.queueForRemoval(entry.photoKey, sha) }
+        } else {
+            // The card says Copy again. An offer to move photos off this phone must not outlive the rule that
+            // made it, or a setting changed on the computer leaves a question here that nothing can answer.
+            store.forgetQueued(store.queuedForRemoval())
         }
         // What the computer has and this phone does not, before the metadata pass, so a photo that has just
         // arrived already has its favourites, its people and its collections when that pass runs.

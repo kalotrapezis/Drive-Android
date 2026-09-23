@@ -831,10 +831,22 @@ private fun SyncTab(back: () -> Unit) {
     var received by remember { mutableStateOf(0) }
     var lastBackup by remember { mutableStateOf(0L) }
     var connections by remember { mutableStateOf(SyncConnection.defaults) }
+    var waitingToMove by remember { mutableStateOf(emptySet<String>()) }
+    var moveError by remember { mutableStateOf<String?>(null) }
+    // Android's own request, with Android's own confirmation and its own 30-day Trash. A sync never takes a
+    // photo off this phone; a verified receipt only earns the right to ask.
+    val removeRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val moved = waitingToMove
+            waitingToMove = emptySet()
+            scope.launch { withContext(Dispatchers.IO) { store.forgetQueued(moved) } }
+        }
+    }
     val backup by SyncService.state.collectAsState()
     val running = SyncService.isRunning
     LaunchedEffect(backup) { withContext(Dispatchers.IO) {
         received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections()
+        waitingToMove = store.queuedForRemoval()
     } }
     // A long backup must not be cut off by the screen turning off; the foreground service itself
     // keeps running once the app is backgrounded or closed.
@@ -919,6 +931,36 @@ private fun SyncTab(back: () -> Unit) {
                 }
             }
         }
+        // A Move that has been earned but not yet agreed to. It says what will happen and where they go, because
+        // "moved off this phone" is the one sentence in this app that has to be impossible to misread.
+        if (p != null && waitingToMove.isNotEmpty()) item {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${waitingToMove.size} ${if (waitingToMove.size == 1) "photo is" else "photos are"} on ${p.name}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "This connection is set to Move, so these can leave this phone. Each one was read back and " +
+                            "checked on ${p.name} before it counted. They go to Android's Trash, which holds them for 30 days.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = {
+                        // Finding the gallery uris means reading the gallery, which is not work for the thread
+                        // that draws the button.
+                        scope.launch {
+                            val uris = withContext(Dispatchers.IO) { allPhotoUris(context, waitingToMove) }
+                            if (uris.isEmpty()) { withContext(Dispatchers.IO) { store.forgetQueued(waitingToMove) }; waitingToMove = emptySet() }
+                            else runCatching { MediaStore.createTrashRequest(context.contentResolver, uris, true) }
+                                .onSuccess { removeRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+                                .onFailure { moveError = it.message ?: "Android would not take the request." }
+                        }
+                    }, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Move them off this phone")
+                    }
+                    moveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
         // What this sync will do, in the computer's words: it owns the rules, this phone reads and obeys them.
         if (p != null) item {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
@@ -953,6 +995,14 @@ private fun SyncTab(back: () -> Unit) {
         }
     }
 }
+
+/**
+ * The gallery uris behind a set of photo keys. A key is this app's own name for a photo — it survives the app
+ * being reinstalled, where a MediaStore id does not — so the way back to Android's own id is to look for it.
+ * A photo already gone (deleted by hand, or on another device) simply has no uri, and is quietly forgotten.
+ */
+private fun allPhotoUris(context: android.content.Context, keys: Set<String>): List<Uri> =
+    listPhotos(context).filter { it.photoKey in keys }.mapNotNull { it.contentUri }
 
 private fun startSync(context: android.content.Context) {
     val intent = android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)

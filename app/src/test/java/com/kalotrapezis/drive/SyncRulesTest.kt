@@ -126,3 +126,13 @@ class IncomingPhotoFolderTest {
         assertEquals("Movies/Tetra", SyncRules.incomingFolder("Documents/clips", video = true))
     }
 }
+
+class SyncConnectionOffTest {
+    @Test
+    fun `off means neither way, and says so`() {
+        val off = SyncConnection("photos", "off", "everything")
+        assertFalse(off.sends)
+        assertFalse(off.receives)
+        assertEquals("Photos · not synced", off.sentence("Desk"))
+    }
+}

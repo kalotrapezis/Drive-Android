@@ -871,14 +871,14 @@ private fun SyncTab(back: () -> Unit) {
                         }
                         Text(if (isPaused) "Paused · ${pr.done} of ${pr.total}" else "${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
                     }
-                    // Pairing goes both ways now: this device can scan another, or be scanned by it.
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) {
-                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Scan")
-                        }
-                        Button(onClick = { showing = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) {
-                            Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Show code")
-                        }
+                    // Pairing goes both ways now: this device can scan another, or be scanned by it. The two
+                    // read as one choice stacked, and carry different symbols — scanning is a camera pointed at
+                    // a code, showing one is this device's own identity card.
+                    Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Scan a code")
+                    }
+                    Button(onClick = { showing = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.ic_id_card), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Show this device")
                     }
                     when {
                         p == null -> Unit // the two buttons above are the whole offer until something is paired
@@ -966,7 +966,7 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        FilesPageHeader("Pair this device", R.drawable.ic_qr_code, back)
+        FilesPageHeader("Pair this device", R.drawable.ic_id_card, back)
         Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when {

@@ -257,3 +257,44 @@ class ScanTextCropTest {
         assertEquals(page, ScanDetection.fitToLetters(page, emptyList()))
     }
 }
+
+class ScanAimAndTrimTest {
+    @Test fun `only a shape you are pointing at counts as the page`() {
+        val aimed = DocumentQuad(ScanPoint(0.2f, 0.2f), ScanPoint(0.8f, 0.2f), ScanPoint(0.8f, 0.8f), ScanPoint(0.2f, 0.8f))
+        assertTrue(ScanDetection.coversCentre(aimed))
+        // A laptop lid off to one side, page-shaped and bright, but not what the camera is aimed at.
+        val besideIt = DocumentQuad(ScanPoint(0.05f, 0.1f), ScanPoint(0.4f, 0.1f), ScanPoint(0.4f, 0.9f), ScanPoint(0.05f, 0.9f))
+        assertFalse(ScanDetection.coversCentre(besideIt))
+    }
+
+    @Test fun `the crop is cut back to where the paper starts, and never through the text`() {
+        val width = 200
+        val height = 200
+        val table = 0xFF6A4A28.toInt()
+        val paper = 0xFFF1F1EE.toInt()
+        val ink = 0xFF141414.toInt()
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            when {
+                y < 9 || x < 6 -> table                                    // a band the outline kept
+                y in 30..34 && x in 20..180 -> ink                         // a line of text
+                else -> paper
+            }
+        }
+        val trim = ScanDetection.trimToPaper(pixels, width, height)
+        assertEquals("the band on the left goes", 6, trim[0])
+        assertEquals("and the one along the top", 9, trim[1])
+        assertEquals("nothing is taken from a side that was already paper", 0, trim[2])
+        assertEquals(0, trim[3])
+    }
+
+    @Test fun `a page with no band around it is left exactly as it is`() {
+        val width = 120
+        val height = 120
+        val pixels = IntArray(width * height) { index ->
+            if ((index / width) in 40..44) 0xFF111111.toInt() else 0xFFEFEFEF.toInt()
+        }
+        assertEquals(listOf(0, 0, 0, 0), ScanDetection.trimToPaper(pixels, width, height).toList())
+    }
+}

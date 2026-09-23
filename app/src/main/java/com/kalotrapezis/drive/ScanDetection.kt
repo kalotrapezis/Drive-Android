@@ -4,7 +4,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import org.opencv.android.OpenCVLoader
-import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint
@@ -130,6 +129,26 @@ object ScanDetection {
         val moved = List(4) { corner -> intersect(lines[(corner + 3) % 4], lines[corner]) ?: corners[corner] }
         val ordered = orderCorners(moved.map { ScanPoint(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) }) ?: return quad
         return DocumentQuad(ordered[0], ordered[1], ordered[2], ordered[3])
+    }
+
+    /**
+     * Is the middle of the view inside this shape? You point a camera at what you want, so the page is where you
+     * are aiming — and a laptop lid beside it, a tile two along, the seam running past the corner are not, no
+     * matter how page-shaped they look. Refusing everything that does not cover the centre throws away most of
+     * what there is to be distracted by, before any of it can be scored.
+     */
+    internal fun coversCentre(quad: DocumentQuad, x: Float = 0.5f, y: Float = 0.5f): Boolean {
+        val points = quad.points
+        var sign = 0
+        for (index in 0 until 4) {
+            val from = points[index]
+            val to = points[(index + 1) % 4]
+            val cross = (to.x - from.x) * (y - from.y) - (to.y - from.y) * (x - from.x)
+            if (cross == 0f) continue
+            val turn = if (cross > 0f) 1 else -1
+            if (sign == 0) sign = turn else if (sign != turn) return false
+        }
+        return true
     }
 
     /** A page the screen asked you to keep inside the frame. A shape running off the edge is not one. */
@@ -310,14 +329,42 @@ object ScanDetection {
     private fun bestQuad(mask: Mat, gray: Mat): DocumentQuad? {
         val contours = mutableListOf<MatOfPoint>()
         Imgproc.findContours(mask, contours, Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
-        val sceneMean = Core.mean(gray).`val`[0].toFloat()
         return contours.mapNotNull { contour ->
             try {
-                quadCorners(contour)?.let { (corners, hull) -> candidate(corners, hull, mask.width(), mask.height(), gray, sceneMean) }
+                quadCorners(contour)?.let { (corners, hull) -> candidate(corners, hull, mask.width(), mask.height(), gray) }
             } finally {
                 contour.release()
             }
         }.maxByOrNull { it.score }?.quad
+    }
+
+    /** Average brightness just beyond each edge: what the page is lying on, sampled where it meets the page. */
+    private fun outerBrightness(quad: DocumentQuad, gray: Mat): Float {
+        val centre = ScanPoint(
+            quad.points.sumOf { it.x.toDouble() }.toFloat() / 4f,
+            quad.points.sumOf { it.y.toDouble() }.toFloat() / 4f,
+        )
+        var total = 0.0
+        var count = 0
+        val buffer = ByteArray(1)
+        for (index in 0 until 4) {
+            val from = quad.points[index]
+            val to = quad.points[(index + 1) % 4]
+            for (along in listOf(0.25f, 0.5f, 0.75f)) {
+                val on = ScanPoint(from.x + (to.x - from.x) * along, from.y + (to.y - from.y) * along)
+                // A step outwards, away from the middle of the page.
+                val outward = ScanPoint(on.x - centre.x, on.y - centre.y)
+                val length = kotlin.math.hypot(outward.x, outward.y)
+                if (length <= 0f) continue
+                val x = ((on.x + outward.x / length * 0.03f) * gray.width()).toInt()
+                val y = ((on.y + outward.y / length * 0.03f) * gray.height()).toInt()
+                if (x !in 0 until gray.width() || y !in 0 until gray.height()) continue
+                gray.get(y, x, buffer)
+                total += buffer[0].toInt() and 0xFF
+                count++
+            }
+        }
+        return if (count == 0) 0f else (total / count).toFloat()
     }
 
     /** Average brightness well inside a quad, from a handful of samples — enough to tell paper from a table. */
@@ -372,7 +419,7 @@ object ScanDetection {
         }
     }
 
-    private fun candidate(points: Array<Point>, hull: Array<Point>, width: Int, height: Int, gray: Mat, sceneMean: Float): Candidate? {
+    private fun candidate(points: Array<Point>, hull: Array<Point>, width: Int, height: Int, gray: Mat): Candidate? {
         val pointContour = MatOfPoint(*points)
         val area = try { kotlin.math.abs(Imgproc.contourArea(pointContour)).toFloat() } finally { pointContour.release() }
         val coverage = area / (width * height)
@@ -397,12 +444,16 @@ object ScanDetection {
         // table, the wall or the whole view — not the page. Penalising that was not enough: a wrong shape big
         // enough still won on size alone, and then the outline held on to it.
         if (!isInsideFrame(quad)) return null
-        // Paper is brighter than what it is lying on. Without this, any large quadrilateral — a tile, a table
-        // edge, the border between wood and floor — is as good a page as the page.
-        val brightness = innerBrightness(quad, gray)
-        if (brightness < sceneMean + 12f) return null
-        val standsOut = ((brightness - sceneMean) / 60f).coerceIn(0f, 1f)
-        return Candidate(quad, coverage * centered * (0.35f + 0.65f * standsOut))
+        if (!coversCentre(quad)) return null // you are pointing the camera at the page; it is in the middle
+        // Paper is brighter *than what it is lying on* — not than the room. Comparing with the whole scene was
+        // right on a dark table and wrong everywhere else: turn a light on, or put the page on a laptop lid, and
+        // the surroundings are as bright as the paper, so the test passed for the lid as readily as the page.
+        // Across the page's own edge there is always a step; across the middle of a laptop lid there is none.
+        val inside = innerBrightness(quad, gray)
+        val outside = outerBrightness(quad, gray)
+        if (inside < outside + 8f) return null
+        val standsOut = ((inside - outside) / 50f).coerceIn(0f, 1f)
+        return Candidate(quad, coverage * centered * (0.3f + 0.7f * standsOut))
     }
 
     /**
@@ -439,6 +490,73 @@ object ScanDetection {
     }
 
     /**
+     * How far each side of a straightened page can be cut in before it stops being table and starts being paper.
+     *
+     * The outline is a guess and it is often a little large, so the crop keeps a band of whatever the page was
+     * lying on — the grey edge down an envelope, the laptop lid under a form. Here the page is already square to
+     * the frame, so the question is simple: walk in from each side while the line in front of you is not paper.
+     *
+     * A line of text is mostly paper with some ink in it, so it never qualifies — only a line that is *almost
+     * entirely* unlike the paper does, which is what a band of background looks like. Returns how many pixels to
+     * take off the left, top, right and bottom.
+     */
+    internal fun trimToPaper(
+        pixels: IntArray,
+        width: Int,
+        height: Int,
+        maxFraction: Float = 0.06f,
+        tolerance: Int = 48,
+        notPaperShare: Float = 0.7f,
+    ): IntArray {
+        if (width < 16 || height < 16) return IntArray(4)
+        val paper = paperColour(pixels, width, height) ?: return IntArray(4)
+        fun lineIsBackground(side: Int, depth: Int): Boolean {
+            val length = if (side % 2 == 0) height else width
+            val step = maxOf(1, length / 64)
+            var differing = 0
+            var counted = 0
+            var position = 0
+            while (position < length) {
+                val pixel = when (side) {
+                    0 -> pixels[position * width + depth]                       // left
+                    1 -> pixels[depth * width + position]                       // top
+                    2 -> pixels[position * width + (width - 1 - depth)]         // right
+                    else -> pixels[(height - 1 - depth) * width + position]     // bottom
+                }
+                if (differsFrom(pixel, paper, tolerance)) differing++
+                counted++
+                position += step
+            }
+            return counted > 0 && differing.toFloat() / counted >= notPaperShare
+        }
+        return IntArray(4) { side ->
+            val limit = (maxFraction * if (side % 2 == 0) width else height).toInt()
+            var depth = 0
+            while (depth < limit && lineIsBackground(side, depth)) depth++
+            depth
+        }
+    }
+
+    /** The page's own colour: the middle of the picture, with the darkest quarter dropped so ink cannot darken it. */
+    internal fun paperColour(pixels: IntArray, width: Int, height: Int): Int? {
+        val channels = Array(3) { mutableListOf<Int>() }
+        val lumas = mutableListOf<Pair<Int, Int>>()
+        var index = 0
+        for (y in height / 4 until height * 3 / 4 step maxOf(1, height / 64)) {
+            for (x in width / 4 until width * 3 / 4 step maxOf(1, width / 64)) {
+                val pixel = pixels[y * width + x]
+                val r = (pixel shr 16) and 0xFF; val g = (pixel shr 8) and 0xFF; val b = pixel and 0xFF
+                channels[0].add(r); channels[1].add(g); channels[2].add(b)
+                lumas.add((r * 299 + g * 587 + b * 114) / 1000 to index++)
+            }
+        }
+        if (lumas.isEmpty()) return null
+        val keep = lumas.sortedBy { it.first }.drop(lumas.size / 4).map { it.second }
+        val median = channels.map { channel -> keep.map { channel[it] }.sorted().let { it[it.size / 2] } }
+        return (0xFF shl 24) or (median[0] shl 16) or (median[1] shl 8) or median[2]
+    }
+
+    /**
      * Paints background visible near the edges of a perspective-corrected page with the paper colour beside it.
      * Each side gets a reference colour sampled just inside the edge band and median-smoothed along the edge, so
      * shading continues without streaks. Only pixels that clearly differ from that local paper and connect to the
@@ -460,23 +578,7 @@ object ScanDetection {
         // the pixels just inside that edge *are* the table, and sampling them painted the table back in. This is
         // the paper's own colour, taken from the middle where nothing else can be, with the darkest quarter
         // dropped so ink does not darken it.
-        val paper = run {
-            val samples = Array(3) { mutableListOf<Int>() }
-            val lumas = mutableListOf<Pair<Int, Int>>() // luma, index into samples
-            var index = 0
-            for (y in height / 4 until height * 3 / 4 step maxOf(1, height / 64)) {
-                for (x in width / 4 until width * 3 / 4 step maxOf(1, width / 64)) {
-                    val pixel = pixels[y * width + x]
-                    val r = (pixel shr 16) and 0xFF; val g = (pixel shr 8) and 0xFF; val b = pixel and 0xFF
-                    samples[0].add(r); samples[1].add(g); samples[2].add(b)
-                    lumas.add((r * 299 + g * 587 + b * 114) / 1000 to index++)
-                }
-            }
-            if (lumas.isEmpty()) return
-            val keep = lumas.sortedBy { it.first }.drop(lumas.size / 4).map { it.second }
-            val median = samples.map { channel -> keep.map { channel[it] }.sorted().let { it[it.size / 2] } }
-            (0xFF shl 24) or (median[0] shl 16) or (median[1] shl 8) or median[2]
-        }
+        val paper = paperColour(pixels, width, height) ?: return
         // Deep enough inside that a gap cannot reach it, and anything that still does not look like paper is
         // replaced by the paper colour rather than trusted.
         val inside = minOf(band * 2, minOf(width, height) / 3 - 4).coerceAtLeast(band)

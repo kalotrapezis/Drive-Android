@@ -673,7 +673,15 @@ private fun pageQuad(source: Bitmap, liveQuad: DocumentQuad?): DocumentQuad? =
  * forgive the error that is left.
  */
 private fun autoFixScan(source: Bitmap, quad: DocumentQuad, maxEdge: Float = SCAN_MAX_EDGE, fillGaps: Boolean = true): Bitmap {
-    val page = cropScan(source, quad.withCropMargin(0.01f), maxEdge)
+    val straightened = cropScan(source, quad.withCropMargin(0.01f), maxEdge)
+    // Square to the frame now, so any band of table the outline kept can simply be cut off: walk in from each
+    // side while what is in front is not paper. A line of text is mostly paper, so text is never mistaken for it.
+    val page = ScanDetection.trimToPaper(straightened.pixels(), straightened.width, straightened.height).let { trim ->
+        val width = straightened.width - trim[0] - trim[2]
+        val height = straightened.height - trim[1] - trim[3]
+        if (trim.all { it == 0 } || width < straightened.width / 2 || height < straightened.height / 2) straightened
+        else Bitmap.createBitmap(straightened, trim[0], trim[1], width, height)
+    }
     val pixels = IntArray(page.width * page.height)
     page.getPixels(pixels, 0, page.width, 0, 0, page.width, page.height)
     ScanFilters.sharpen(pixels, page.width, page.height)
@@ -682,6 +690,8 @@ private fun autoFixScan(source: Bitmap, quad: DocumentQuad, maxEdge: Float = SCA
     page.setPixels(pixels, 0, page.width, 0, 0, page.width, page.height)
     return page
 }
+
+private fun Bitmap.pixels(): IntArray = IntArray(width * height).also { getPixels(it, 0, width, 0, 0, width, height) }
 
 internal fun DocumentQuad.withCropMargin(margin: Float = 0.02f): DocumentQuad {
     val center = ScanPoint(points.sumOf { it.x.toDouble() }.toFloat() / 4f, points.sumOf { it.y.toDouble() }.toFloat() / 4f)

@@ -53,11 +53,13 @@ internal class SyncServer(private val context: Context, private val store: SyncS
          * One listener, however many parts of the app want it: the Sync screen showing a code and the app
          * itself being open are two reasons for the same socket, and two of them cannot hold one port.
          */
-        @Synchronized fun acquire(context: Context, store: SyncStore): SyncServer =
-            (shared ?: SyncServer(context.applicationContext, store).also { shared = it }).also {
-                users++
-                it.start()
-            }
+        @Synchronized fun acquire(context: Context, store: SyncStore): SyncServer {
+            val server = shared ?: SyncServer(context.applicationContext, store)
+            server.start() // throws before anything is counted if the port is already taken
+            shared = server
+            users++
+            return server
+        }
 
         @Synchronized fun release() {
             if (--users > 0) return
@@ -192,7 +194,9 @@ internal class SyncServer(private val context: Context, private val store: SyncS
         if (method == "POST" && path == "/sync") {
             val known = bearer != null && store.peers().any { it.theirToken == bearer }
             if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
-            SyncService.syncInBackground(context, gap = 0)
+            // A minute's grace: the computer scans what this phone has just sent it and says "something new"
+            // about our own upload, and that round trip is worth skipping. Anything genuinely new still lands.
+            SyncService.syncInBackground(context, gap = 60_000)
             return reply(output, 200, JSONObject().put("ok", true))
         }
         if (method != "POST" || path != "/pair" || length !in 1..8192) return reply(output, 404, JSONObject().put("error", "Unknown request."))

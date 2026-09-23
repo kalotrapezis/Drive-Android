@@ -2378,6 +2378,8 @@ private fun PhotoTab(
             },
             merge = { source -> metadataStore.mergeFaceGroups(source.id, group.id).also { analysisVersion++ } },
             undoMerge = { undo -> metadataStore.undoFaceMerge(undo); analysisVersion++ },
+            history = { metadataStore.mergeHistory(group.id) },
+            restore = { merge -> metadataStore.restoreMerge(merge); analysisVersion++ },
         )
         return
     }
@@ -2879,7 +2881,12 @@ private fun FaceCrop(entry: Entry?, bounds: Rect, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun PersonGroupScreen(group: FaceGroup, entries: List<Entry>, allGroups: List<FaceGroup>, entriesByKey: Map<String, Entry>, back: () -> Unit, openPhoto: (Entry) -> Unit, rename: (String) -> Unit, merge: (FaceGroup) -> FaceMergeUndo, undoMerge: (FaceMergeUndo) -> Unit) {
+private fun PersonGroupScreen(
+    group: FaceGroup, entries: List<Entry>, allGroups: List<FaceGroup>, entriesByKey: Map<String, Entry>,
+    back: () -> Unit, openPhoto: (Entry) -> Unit, rename: (String) -> Unit,
+    merge: (FaceGroup) -> FaceMergeUndo, undoMerge: (FaceMergeUndo) -> Unit,
+    history: () -> List<FaceMerge>, restore: (FaceMerge) -> Unit,
+) {
     var editing by remember { mutableStateOf(false) }
     var combining by remember { mutableStateOf(false) }
     var mergeTargets by remember { mutableStateOf<List<FaceGroup>?>(null) }
@@ -2892,12 +2899,7 @@ private fun PersonGroupScreen(group: FaceGroup, entries: List<Entry>, allGroups:
         }
     }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilesPageHeader(group.name, R.drawable.ic_collections, back, trailing = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.medium, modifier = Modifier.clickable { combining = true }) { Text("Combine", modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) }
-                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) { IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Rename") } }
-            }
-        })
+        FilesPageHeader(group.name, R.drawable.ic_collections, back)
         if (editing) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(name, { name = it }, modifier = Modifier.weight(1f), singleLine = true)
             Button(onClick = { rename(name); editing = false }) { Text("Save") }
@@ -2912,6 +2914,23 @@ private fun PersonGroupScreen(group: FaceGroup, entries: List<Entry>, allGroups:
             items(entries, key = { it.photoKey }) { entry -> PhotoThumbnail(entry, false) { openPhoto(entry) } }
         }
     }
+    // Everything you can do to a person, in one island where the navigation one sits elsewhere in the app.
+    var historyOpen by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 12.dp), contentAlignment = Alignment.BottomCenter) {
+        Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+            Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                PersonIslandAction(R.drawable.ic_collections, "Combine") { combining = true }
+                PersonIslandAction(R.drawable.ic_edit, "Rename") { editing = true }
+                PersonIslandAction(R.drawable.ic_restore, "History") { historyOpen = true }
+            }
+        }
+    }
+    if (historyOpen) MergeHistorySheet(
+        merges = remember(historyOpen, group.id) { history() },
+        entriesByKey = entriesByKey,
+        dismiss = { historyOpen = false },
+        restore = { merge -> restore(merge); historyOpen = false },
+    )
     if (combining) CombineFaceGroupsSheet(group, allGroups.filter { it.id != group.id }, entriesByKey, dismiss = { combining = false }, combine = { mergeTargets = it })
     mergeTargets?.let { sources -> AlertDialog(
         onDismissRequest = { mergeTargets = null },
@@ -2920,6 +2939,52 @@ private fun PersonGroupScreen(group: FaceGroup, entries: List<Entry>, allGroups:
         confirmButton = { Button(onClick = { recentMerges = sources.map(merge); mergeTargets = null; combining = false }, colors = neutralButtonColors()) { Text("Combine") } },
         dismissButton = { Button(onClick = { mergeTargets = null }, colors = neutralButtonColors()) { Text("Cancel") } },
     ) }
+}
+
+@Composable
+private fun PersonIslandAction(icon: Int, label: String, click: () -> Unit) = Row(
+    Modifier.clip(CircleShape).clickable(onClick = click).padding(horizontal = 14.dp, vertical = 10.dp),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+    Text(label, style = MaterialTheme.typography.labelLarge)
+}
+
+/**
+ * Every group that was combined into this person, with the head and the number it had at the time. Combining is
+ * the one action here that throws a grouping away, and the person it was wrong about cannot be reached
+ * afterwards — so they are kept, and putting one back is one tap, not an eight-second window you had to catch.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MergeHistorySheet(merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit) {
+    val when_ = remember { java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()) }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Combined into this person", style = MaterialTheme.typography.titleLarge)
+            if (merges.isEmpty()) Text("Nothing has been combined into this person yet.")
+            else {
+                Text("Restore puts a group back the way it was, with the same faces.")
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(merges, key = { it.id }) { merge ->
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                merge.head?.let { head ->
+                                    FaceCrop(entriesByKey[head.photoKey], Rect(head.left, head.top, head.right, head.bottom), Modifier.size(72.dp).clip(MaterialTheme.shapes.medium))
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(merge.sourceName, style = MaterialTheme.typography.titleMedium)
+                                    Text("${merge.sampleIds.size} face${if (merge.sampleIds.size == 1) "" else "s"} · ${when_.format(merge.mergedAt)}", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Button(onClick = { restore(merge) }, colors = neutralButtonColors()) { Text("Restore") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

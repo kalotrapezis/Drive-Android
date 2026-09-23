@@ -204,5 +204,28 @@ internal fun faceOverlap(
 internal fun faceOverlap(first: android.graphics.Rect, second: android.graphics.Rect): Float =
     faceOverlap(first.left, first.top, first.right, first.bottom, second.left, second.top, second.right, second.bottom)
 
+/**
+ * Where two faces count as one person.
+ *
+ * Measured on this library's own named people (2026-09-23, 277 phone faces across 34 people, and 69 on the
+ * computer across 13): at the old 0.74 only **10.7%** of pairs that really are the same person ever reached the
+ * line, while **no** pair of different people did. The grouping was so cautious that one person became a dozen
+ * groups, and Help organize — which asks about the band just under the line — was asking about certainties.
+ * That is why nine answers in ten were "yes, obviously".
+ *
+ *   line    same-person pairs joined    different people wrongly joined
+ *   0.74            10.7%                        0.00%
+ *   0.60            36.7%                        0.22%
+ *   0.50            59.4%                        1.73%
+ *
+ * 0.60 joins three times as much while different people still essentially never meet: the highest similarity
+ * between two different people anywhere in this library is 0.73, and that is a single pair. Review moves down
+ * to 0.45–0.60, where the answer is genuinely uncertain, instead of sitting above the line where it is not.
+ * Retune from the same measurement if the model or the crop ever changes.
+ */
+internal const val SAME_PERSON = 0.60f
+internal const val REVIEW_FROM = 0.45f
+internal const val UNRELIABLE_JOIN = 0.45f
+
 internal fun cosineSimilarity(first: FloatArray, second: FloatArray): Float =
     first.indices.sumOf { index -> (first[index] * second[index]).toDouble() }.toFloat()

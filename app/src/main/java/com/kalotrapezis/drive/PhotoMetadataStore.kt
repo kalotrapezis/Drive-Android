@@ -24,6 +24,9 @@ internal enum class PhotoSearchQuality { Fast, Advanced }
 internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int, val uuid: String? = null)
 internal data class FaceSample(val photoKey: String, val bounds: android.graphics.Rect)
 internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null)
+/** The head a combined group was shown by, so History can draw it after the group itself is gone. */
+internal data class FaceHead(val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
+internal data class FaceMerge(val id: Long, val sourceName: String, val sourceUuid: String?, val sampleIds: List<Long>, val mergedAt: Long, val head: FaceHead?)
 internal data class PendingReview(
     val photoKey: String,
     val question: String,
@@ -41,10 +44,16 @@ internal data class DocumentRecord(val photoKey: String, val type: String?, val 
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 16) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 17) {
+
+    private companion object {
+        const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "target_id INTEGER NOT NULL, source_name TEXT NOT NULL, source_uuid TEXT, sample_ids TEXT NOT NULL, merged_at INTEGER NOT NULL)"
+    }
     private val context = context.applicationContext
     private val galleryPreferences = this.context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
     override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL(MERGE_HISTORY)
         db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE collection_membership (collection_id INTEGER NOT NULL, photo_key TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(collection_id, photo_key), FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE)")
@@ -118,6 +127,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         }
         // "Hide this album from Gallery" belongs to the album, not to this phone, so it moves out of preferences
         // and onto the collection, where it travels with it (SYNC_PLAN.md "Which settings sync").
+        if (oldVersion < 17) db.execSQL(MERGE_HISTORY)
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -363,6 +373,15 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             update("face_reviews", ContentValues().apply { put("candidate_group_id", targetGroupId) }, "candidate_group_id = ?", arrayOf(sourceGroupId.toString()))
             update("face_samples", ContentValues().apply { put("group_id", targetGroupId); put("updated_at", System.currentTimeMillis()) }, "group_id = ?", arrayOf(sourceGroupId.toString()))
             delete("face_groups", "id = ?", arrayOf(sourceGroupId.toString()))
+            // Kept, not just offered for eight seconds: combining is the one action here that quietly destroys a
+            // grouping, and the person it was wrong about is unreachable afterwards unless we remember them.
+            insertWithOnConflict("face_merges", null, ContentValues().apply {
+                put("source_name", sourceName)
+                put("source_uuid", sourceUuid)
+                put("target_id", targetGroupId)
+                put("sample_ids", sampleIds.joinToString(","))
+                put("merged_at", System.currentTimeMillis())
+            }, SQLiteDatabase.CONFLICT_REPLACE)
             FaceMergeUndo(sourceName, sampleIds, sourceUuid)
         }
     }
@@ -376,7 +395,32 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("updated_at", System.currentTimeMillis())
         })
         update("face_samples", ContentValues().apply { put("group_id", restoredGroupId); put("updated_at", System.currentTimeMillis()) }, "id IN (${undo.sampleIds.joinToString { "?" }})", undo.sampleIds.map(Long::toString).toTypedArray())
+        delete("face_merges", "sample_ids = ?", arrayOf(undo.sampleIds.joinToString(",")))
     }
+
+    /**
+     * Every group that was combined into this person, newest first, each still showing the head and the name it
+     * had — usually a bare "Person 41" — so a combine that was wrong can be taken back long after the moment it
+     * was made. The faces are still in the library; only which person they belong to changed.
+     */
+    fun mergeHistory(groupId: Long): List<FaceMerge> = readableDatabase.rawQuery(
+        "SELECT id, source_name, source_uuid, sample_ids, merged_at FROM face_merges WHERE target_id = ? ORDER BY merged_at DESC",
+        arrayOf(groupId.toString()),
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) {
+                val ids = cursor.getString(3).split(',').mapNotNull(String::toLongOrNull)
+                if (ids.isEmpty()) continue
+                val head = readableDatabase.rawQuery(
+                    "SELECT photo_key, left_edge, top_edge, right_edge, bottom_edge FROM face_samples WHERE id IN (${ids.joinToString { "?" }}) ORDER BY quality DESC LIMIT 1",
+                    ids.map(Long::toString).toTypedArray(),
+                ).use { h -> if (h.moveToFirst()) FaceHead(h.getString(0), h.getInt(1), h.getInt(2), h.getInt(3), h.getInt(4)) else null }
+                add(FaceMerge(cursor.getLong(0), cursor.getString(1), cursor.getString(2), ids, cursor.getLong(4), head))
+            }
+        }
+    }
+
+    fun restoreMerge(merge: FaceMerge) = undoFaceMerge(FaceMergeUndo(merge.sourceName, merge.sampleIds, merge.sourceUuid))
 
     fun needsAnalysis(photoKey: String): Boolean = readableDatabase.rawQuery(
         "SELECT 1 FROM photo_ai_record WHERE photo_key = ? AND model_version = ? LIMIT 1",
@@ -412,8 +456,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val similarity = match?.let { cosineSimilarity(face.embedding, it.embedding) } ?: -1f
             val reliable = isReliableFace(face.quality, face.yaw, face.roll)
             val groupId = when {
-                similarity >= 0.74f -> match!!.groupId
-                !reliable && similarity >= 0.55f -> match!!.groupId
+                similarity >= SAME_PERSON -> match!!.groupId
+                !reliable && similarity >= UNRELIABLE_JOIN -> match!!.groupId
                 !reliable -> null
                 else -> createFaceGroup()
             }
@@ -431,7 +475,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("uuid", UUID.randomUUID().toString())
                 put("updated_at", System.currentTimeMillis())
             }, SQLiteDatabase.CONFLICT_IGNORE)
-            if (sampleId != -1L && reliable && similarity in 0.66f..<0.74f) insertWithOnConflict("face_reviews", null, ContentValues().apply {
+            if (sampleId != -1L && reliable && similarity in REVIEW_FROM..<SAME_PERSON) insertWithOnConflict("face_reviews", null, ContentValues().apply {
                 put("photo_key", photoKey)
                 put("face_sample_id", sampleId)
                 put("candidate_group_id", match!!.groupId)

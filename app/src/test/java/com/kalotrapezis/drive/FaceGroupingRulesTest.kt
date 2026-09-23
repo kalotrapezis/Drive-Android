@@ -29,4 +29,12 @@ class FaceGroupingRulesTest {
         assertEquals(true, isGeneratedPersonName("Person 104"))
         assertEquals(false, isGeneratedPersonName("Maria"))
     }
+
+    @Test fun `two detectors that found the same face agree, and two faces do not`() {
+        // The same face, found a few pixels apart by ML Kit and by the computer's detector.
+        assertEquals(true, faceOverlap(100, 100, 200, 200, 104, 96, 196, 204) >= SAME_FACE_OVERLAP)
+        // Two people standing side by side, boxes just touching.
+        assertEquals(false, faceOverlap(100, 100, 200, 200, 195, 100, 295, 200) >= SAME_FACE_OVERLAP)
+        assertEquals(0f, faceOverlap(0, 0, 0, 0, 0, 0, 0, 0), 0.0001f)
+    }
 }

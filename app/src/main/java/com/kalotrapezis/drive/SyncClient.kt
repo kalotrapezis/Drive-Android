@@ -348,7 +348,26 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             metadataStore.applyIncomingLabels(key, (0 until list.length()).map(list::getString))
         } }
         pulled.each("people") { d -> metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt")) }
-        pulled.each("faces") { d -> metadataStore.applyIncomingFace(d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt")) }
+        // A face the computer found but this phone's detector missed arrives whole — box, embedding and all —
+        // and is kept, so the photo still shows up under that person here (SYNC_PLAN.md 6m). The box comes as
+        // fractions of the upright photo and goes back into the analyser's own pixels on the way in.
+        val keysBySha = entries.mapNotNull { e -> store.cachedHash(e.photoKey)?.let { it to e.photoKey } }.toMap()
+        pulled.each("faces") { d ->
+            val key = keysBySha[d.optString("sha256")]
+            val size = key?.let { sizes[it] }?.let { SyncRules.analysisSize(it.first, it.second) }
+            val box = d.optJSONArray("box")?.takeIf { it.length() == 4 }
+            val bounds = if (size != null && box != null) android.graphics.Rect(
+                (box.getDouble(0) * size.first).toInt(), (box.getDouble(1) * size.second).toInt(),
+                (box.getDouble(2) * size.first).toInt(), (box.getDouble(3) * size.second).toInt(),
+            ) else null
+            val embedding = d.optString("embedding").takeIf { it.isNotBlank() }
+                ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
+                ?.takeIf { d.optString("model") == FACE_EMBEDDING_MODEL } // another model's vector means nothing here
+            metadataStore.applyIncomingFace(
+                d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt"),
+                photoKey = key, bounds = bounds, embedding = embedding, quality = d.optDouble("quality", 1.0).toFloat(),
+            )
+        }
         pulled.each("files") { d ->
             val tags = d.optJSONArray("tags") ?: JSONArray()
             driveMetadata.applyIncoming(DriveMetaRecord(

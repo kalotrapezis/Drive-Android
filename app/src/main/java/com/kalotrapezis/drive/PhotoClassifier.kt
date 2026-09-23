@@ -183,5 +183,26 @@ internal fun FloatArray.l2Normalized(): FloatArray {
     return FloatArray(size) { this[it] / magnitude }
 }
 
+/**
+ * Two boxes on one photo that overlap this much are the same face, whichever detector found it — the computer
+ * uses the same number (faces.js SAME_FACE_OVERLAP), which is what lets the two devices recognise each other's
+ * faces without comparing a single vector.
+ */
+internal const val SAME_FACE_OVERLAP = 0.4f
+
+internal fun faceOverlap(
+    left: Int, top: Int, right: Int, bottom: Int,
+    otherLeft: Int, otherTop: Int, otherRight: Int, otherBottom: Int,
+): Float {
+    val width = (minOf(right, otherRight) - maxOf(left, otherLeft)).coerceAtLeast(0)
+    val height = (minOf(bottom, otherBottom) - maxOf(top, otherTop)).coerceAtLeast(0)
+    val intersection = width.toLong() * height
+    val union = (right - left).toLong() * (bottom - top) + (otherRight - otherLeft).toLong() * (otherBottom - otherTop) - intersection
+    return if (union > 0) intersection.toFloat() / union else 0f
+}
+
+internal fun faceOverlap(first: android.graphics.Rect, second: android.graphics.Rect): Float =
+    faceOverlap(first.left, first.top, first.right, first.bottom, second.left, second.top, second.right, second.bottom)
+
 internal fun cosineSimilarity(first: FloatArray, second: FloatArray): Float =
     first.indices.sumOf { index -> (first[index] * second[index]).toDouble() }.toFloat()

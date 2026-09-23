@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.graphics.Rect
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -389,6 +390,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 else -> createFaceGroup()
             }
             if (groupId == null) return@forEach
+            if (overlappingFace(photoKey, face.bounds) != null) return@forEach // the computer already sent this face
             val sampleId = insertWithOnConflict("face_samples", null, ContentValues().apply {
                 put("photo_key", photoKey)
                 put("left_edge", face.bounds.left)
@@ -514,11 +516,56 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
      * A face the phone already knows, moved to another person on the computer. Faces the computer found on its
      * own are not inserted: their box is in the desktop's coordinates and the phone re-detects them itself.
      */
-    fun applyIncomingFace(uuid: String, personUuid: String?, updatedAt: Long) = writableDatabase.inTransaction {
-        val local = rawQuery("SELECT id, updated_at FROM face_samples WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
-        if (updatedAt <= local.second) return@inTransaction
-        val groupId = personUuid?.let { p -> rawQuery("SELECT id FROM face_groups WHERE uuid = ?", arrayOf(p)).use { if (it.moveToFirst()) it.getLong(0) else null } } ?: return@inTransaction
-        update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+    /**
+     * A face from the computer. One it already knew is only re-pointed at a person; one this phone has never
+     * seen is inserted whole, because the computer's detector finds faces ML Kit misses and dropping them would
+     * mean that photo never appears under that person here (SYNC_PLAN.md 6m).
+     *
+     * `bounds` arrive as fractions of the upright photo and are given here in the pixels of the bitmap the
+     * analyser works in, which is the only coordinate system the rest of this store knows. A face whose person
+     * has not arrived yet is skipped, not guessed at: the next sync brings it.
+     */
+    fun applyIncomingFace(
+        uuid: String,
+        personUuid: String?,
+        updatedAt: Long,
+        photoKey: String? = null,
+        bounds: Rect? = null,
+        embedding: ByteArray? = null,
+        quality: Float = 1f,
+    ) = writableDatabase.inTransaction {
+        val groupId = personUuid?.let { p -> rawQuery("SELECT id FROM face_groups WHERE uuid = ?", arrayOf(p)).use { if (it.moveToFirst()) it.getLong(0) else null } }
+        val local = rawQuery("SELECT id, updated_at FROM face_samples WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
+        if (local != null) {
+            if (updatedAt <= local.second || groupId == null) return@inTransaction
+            update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+            return@inTransaction
+        }
+        if (groupId == null || photoKey == null || bounds == null || embedding == null || bounds.isEmpty) return@inTransaction
+        if (overlappingFace(photoKey, bounds) != null) return@inTransaction // this phone found the same face itself
+        insertWithOnConflict("face_samples", null, ContentValues().apply {
+            put("photo_key", photoKey)
+            put("left_edge", bounds.left)
+            put("top_edge", bounds.top)
+            put("right_edge", bounds.right)
+            put("bottom_edge", bounds.bottom)
+            put("embedding", embedding)
+            put("group_id", groupId)
+            put("quality", quality)
+            put("uuid", uuid)
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    /** Two boxes on one photo that overlap this much are the same face, whichever detector found it first. */
+    private fun SQLiteDatabase.overlappingFace(photoKey: String, bounds: Rect): Long? = rawQuery(
+        "SELECT id, left_edge, top_edge, right_edge, bottom_edge FROM face_samples WHERE photo_key = ?", arrayOf(photoKey),
+    ).use { cursor ->
+        while (cursor.moveToNext()) {
+            val other = Rect(cursor.getInt(1), cursor.getInt(2), cursor.getInt(3), cursor.getInt(4))
+            if (faceOverlap(bounds, other) >= SAME_FACE_OVERLAP) return cursor.getLong(0)
+        }
+        null
     }
 
     fun applyIncomingLabels(photoKey: String, labels: List<String>) = writableDatabase.inTransaction {

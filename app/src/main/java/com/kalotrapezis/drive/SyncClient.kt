@@ -13,6 +13,7 @@ import java.io.File
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.util.Locale
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import javax.net.ssl.HostnameVerifier
@@ -28,7 +29,33 @@ internal const val FACE_EMBEDDING_MODEL = "mobilefacenet-192-eyes38x44-74x44"
 internal data class PairingQr(val name: String, val hosts: List<String>, val port: Int, val fingerprint: String, val code: String)
 internal data class Pairing(val name: String, val hosts: List<String>, val port: Int, val fingerprint: String, val token: String)
 internal data class BackupProgress(val stage: String, val done: Int, val total: Int)
-internal data class BackupResult(val checked: Int, val sent: Int, val alreadyThere: Int, val failed: List<String>)
+internal data class BackupResult(val checked: Int, val sent: Int, val alreadyThere: Int, val failed: List<String>, val received: Int = 0)
+
+/**
+ * What this device may do with one kind of content, as the computer holds it (SYNC_PLAN.md 6j). Direction is
+ * written from this device's point of view, because this device is the one that reads it and obeys: **send** is
+ * phone → computer, **receive** is computer → phone, **both** is both. Keep says what the source does with its
+ * copy afterwards, and only "everything" — a Copy — is implemented; two-way forces it anyway.
+ */
+internal data class SyncConnection(val content: String, val direction: String, val keep: String) {
+    val sends: Boolean get() = direction == "send" || direction == "both"
+    val receives: Boolean get() = direction == "receive" || direction == "both"
+
+    /** The sentence the phone shows for this row: the computer configures, the phone says what it was told. */
+    fun sentence(computer: String): String {
+        val what = if (content == "files") "Files" else "Photos"
+        val arrow = when (direction) {
+            "send" -> "→ $computer"
+            "receive" -> "← $computer"
+            else -> "⇄ $computer"
+        }
+        return "$what $arrow · ${if (keep == "nothing") "Move" else "Copy"}"
+    }
+
+    companion object {
+        val defaults = listOf(SyncConnection("photos", "both", "everything"), SyncConnection("files", "both", "everything"))
+    }
+}
 
 internal object SyncRules {
     private val hex64 = Regex("^[0-9a-f]{64}$")
@@ -48,6 +75,20 @@ internal object SyncRules {
     }
 
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+
+    /**
+     * Where a photo the computer sends is allowed to land.
+     *
+     * Android does not let an app file an image just anywhere: the first folder of a MediaStore path has to be
+     * one of the few it considers a place for pictures, and anything else is refused outright. So the computer's
+     * own layout is kept when it starts somewhere this phone can write to — a photo that left DCIM/Camera goes
+     * back to DCIM/Camera — and everything else lands under Pictures/Tetra rather than failing.
+     */
+    fun incomingFolder(path: String, video: Boolean): String {
+        val clean = path.trim('/').takeIf { it.isNotEmpty() && it.split('/').all { part -> part.isNotBlank() && part != "." && part != ".." } }
+        val allowed = if (video) setOf("DCIM", "Movies", "Pictures") else setOf("DCIM", "Pictures")
+        return clean?.takeIf { it.substringBefore('/') in allowed } ?: if (video) "Movies/Tetra" else "Pictures/Tetra"
+    }
 
     /**
      * Face boxes are stored in the pixels of the bitmap PhotoClassifier analysed (longest side capped at 1280),
@@ -113,6 +154,17 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     fun savePairing(p: Pairing) = prefs.edit().putString("name", p.name).putString("hosts", p.hosts.joinToString(","))
         .putInt("port", p.port).putString("fp", p.fingerprint).putString("token", p.token).apply()
     fun forgetPairing() = prefs.edit().clear().apply()
+    /**
+     * The rules the computer last told us, kept only so the Sync page can say what a sync will do before one
+     * runs. They are never the authority — the computer's answer at sync time is.
+     */
+    fun connections(): List<SyncConnection> = prefs.getString("connections", null)
+        ?.split(';')?.mapNotNull { row -> row.split(',').takeIf { it.size == 3 }?.let { SyncConnection(it[0], it[1], it[2]) } }
+        ?.takeIf { it.isNotEmpty() } ?: SyncConnection.defaults
+
+    fun saveConnections(rows: List<SyncConnection>) =
+        prefs.edit().putString("connections", rows.joinToString(";") { "${it.content},${it.direction},${it.keep}" }).apply()
+
     fun lastBackup(): Long = prefs.getLong("last_backup", 0)
     fun setLastBackup(at: Long) = prefs.edit().putLong("last_backup", at).apply()
 
@@ -227,6 +279,19 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         Pairing(name, hosts, qr.port, qr.fingerprint, body.getString("token")).also(store::savePairing)
     }
 
+    /**
+     * The rows this device is to obey. The computer owns them; if it is too old to answer, Send & receive is
+     * assumed, which is what every pairing before this change did.
+     */
+    private fun connections(host: String, p: Pairing): List<SyncConnection> = runCatching {
+        val body = open(host, p.port, p.fingerprint, "/connections", "GET", p.token).jsonResult()
+        val array = body.optJSONArray("connections") ?: return@runCatching SyncConnection.defaults
+        (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            SyncConnection(o.getString("content"), o.optString("direction", "both"), o.optString("keep", "everything"))
+        }.ifEmpty { SyncConnection.defaults }
+    }.getOrDefault(SyncConnection.defaults).also(store::saveConnections)
+
     private fun sha256(entry: Entry): String {
         store.cachedHash(entry.photoKey)?.let { return it }
         val digest = MessageDigest.getInstance("SHA-256")
@@ -249,8 +314,11 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     }
 
     /**
-     * Copy: every gallery photo and video the computer does not have yet, each verified by its SHA-256 there.
-     * Nothing on the phone is changed or deleted.
+     * One sync, in whichever directions the computer's connection rows allow (SYNC_PLAN.md 6i and 6j).
+     *
+     * Sending is what it always was: every gallery photo and video the computer does not have, each verified by
+     * its SHA-256 there. Receiving is the same idea read backwards — what the computer holds and this phone does
+     * not. Nothing is deleted on either side by either half; a Copy adds, and that is all it does.
      */
     suspend fun backUp(entries: List<Entry>, checkpoint: suspend () -> Unit = {}, progress: (BackupProgress) -> Unit): BackupResult {
         val paired = store.pairing() ?: throw SyncException("Pair with a computer first.")
@@ -264,11 +332,15 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             if (i % 10 == 0) progress(BackupProgress("Checking photos", i, entries.size))
             runCatching { bySha.putIfAbsent(sha256(e), e) }.onFailure { failed += "${e.name}: ${it.message}" }
         }
-        val missing = bySha.keys.chunked(500).flatMap { batch ->
+        var missing = bySha.keys.chunked(500).flatMap { batch ->
             val r = postJson(host, p, "/have", JSONObject().put("hashes", JSONArray(batch))).getJSONArray("missing")
             (0 until r.length()).map(r::getString)
         }
         var sent = 0
+        val rows = connections(host, p).associateBy { it.content }
+        val photos = rows["photos"] ?: SyncConnection("photos", "both", "everything")
+        val files = rows["files"] ?: SyncConnection("files", "both", "everything")
+        if (!photos.sends) missing = emptyList()
         missing.forEachIndexed { i, sha ->
             coroutineContext.ensureActive()
             checkpoint()
@@ -280,15 +352,94 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             if (result.isFailure) { delay(1_000); result = runCatching { uploadOne(host, p, sha, e) } }
             result.onSuccess { sent++ }.onFailure { failed += "${e.name}: ${it.message}" }
         }
+        // What the computer has and this phone does not, before the metadata pass, so a photo that has just
+        // arrived already has its favourites, its people and its collections when that pass runs.
+        var received = 0
+        if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys, failed, progress) }
+            .onFailure { failed += "Photos from the computer: ${it.message}" }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
-        runCatching { backUpFiles(host, p, progress) }.onFailure { failed += "Drive files: ${it.message}" }
+        runCatching { received += syncFiles(host, p, files, failed, progress) }.onFailure { failed += "Drive files: ${it.message}" }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
         // a metadata sync that fails looks exactly like one that had nothing to say, and on 2026-09-23 that hid
         // a whole library's names failing to come back.
         runCatching { syncMetadata(host, p, entries) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
-        return BackupResult(bySha.size, sent, bySha.size - missing.size, failed)
+        return BackupResult(bySha.size, sent, bySha.size - missing.size, failed, received)
+    }
+
+    /**
+     * Photos the computer holds and this phone does not (SYNC_PLAN.md 6i). The phone says what it has — the
+     * mirror image of `/have` — and the computer answers with what it could send.
+     *
+     * Each one is written straight into MediaStore as a **pending** item, which is this protocol's `.part` by
+     * another name: a pending item is not in the gallery, is hashed as it is written, and is published only if
+     * the hash is the one that was asked for. Anything else is deleted and counted as failed. The hash is saved
+     * against the new photo's key at once, so the metadata pass right after this one can already place its
+     * favourites, its people and its collections.
+     */
+    private fun pullPhotos(host: String, p: Pairing, known: Collection<String>, failed: MutableList<String>, progress: (BackupProgress) -> Unit): Int {
+        val answer = postJson(host, p, "/library/manifest", JSONObject().put("hashes", JSONArray(known.toList())))
+        val send = answer.optJSONArray("send") ?: return 0
+        var received = 0
+        for (i in 0 until send.length()) {
+            val item = send.getJSONObject(i)
+            progress(BackupProgress("Receiving photos", i, send.length()))
+            runCatching { receivePhoto(host, p, item) }
+                .onSuccess { received++ }
+                .onFailure { failed += "${item.optString("name")}: ${it.message}" }
+        }
+        return received
+    }
+
+    private fun receivePhoto(host: String, p: Pairing, item: JSONObject) {
+        val sha = item.getString("sha256")
+        val name = item.optString("name").takeIf { it.isNotBlank() && '/' !in it && it != "." && it != ".." }
+            ?: throw SyncException("The computer sent a photo with no usable name.")
+        val video = name.substringAfterLast('.', "").lowercase(Locale.ROOT) in setOf("mp4", "mkv", "mov", "3gp", "webm", "avi")
+        val folder = SyncRules.incomingFolder(item.optString("path"), video)
+        val collection = if (video) android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        else android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            item.optLong("modified").takeIf { it > 0 }?.let { put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, it) }
+        }
+        val uri = resolver.insert(collection, values) ?: throw SyncException("Android would not make room for $name.")
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val connection = open(host, p.port, p.fingerprint, "/blob/$sha", "GET", p.token)
+            connection.inputStream.use { input ->
+                checkNotNull(resolver.openOutputStream(uri)) { "Cannot write $name." }.use { output ->
+                    val buffer = ByteArray(256 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        digest.update(buffer, 0, n)
+                        output.write(buffer, 0, n)
+                    }
+                }
+            }
+            connection.disconnect()
+            if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
+            resolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw e
+        }
+        // The key the rest of the app knows this photo by, read back from MediaStore rather than guessed: the
+        // name may have gained a "(1)" on the way in, and the key is built from the name it actually has.
+        resolver.query(uri, arrayOf(
+            android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+            android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+            android.provider.MediaStore.MediaColumns.SIZE,
+        ), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) store.saveHash(
+                PhotoMetadataRules.stableKey(uri.toString(), cursor.getString(1)?.trim('/'), cursor.getString(0), cursor.getLong(2)), sha,
+            )
+        }
     }
 
     /**
@@ -394,19 +545,77 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * computer moves its own copy of anything that only changed place — a rename, or a move into Drive/Trash/ —
      * and asks for the rest. Nothing on the phone is changed, and nothing is ever deleted on either side.
      */
-    private fun backUpFiles(host: String, p: Pairing, progress: (BackupProgress) -> Unit) {
+    private fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, progress: (BackupProgress) -> Unit): Int {
         val root = File(android.os.Environment.getExternalStorageDirectory(), "Drive")
-        if (!root.isDirectory) return
+        if (!root.isDirectory) return 0
         val entries = driveManifest.entries(root)
         val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes) })
         val answer = postJson(host, p, "/files/manifest", JSONObject().put("files", manifest))
-        val want = answer.optJSONArray("want") ?: JSONArray()
-        val byPath = entries.associateBy { it.relativePath }
-        for (i in 0 until want.length()) {
-            val entry = byPath[want.getString(i)] ?: continue
-            progress(BackupProgress("Sending files", i, want.length()))
-            uploadFile(host, p, entry, File(root, entry.relativePath))
+        if (connection.sends) {
+            val want = answer.optJSONArray("want") ?: JSONArray()
+            val byPath = entries.associateBy { it.relativePath }
+            for (i in 0 until want.length()) {
+                val entry = byPath[want.getString(i)] ?: continue
+                progress(BackupProgress("Sending files", i, want.length()))
+                uploadFile(host, p, entry, File(root, entry.relativePath))
+            }
         }
+        if (!connection.receives) return 0
+        // A move the computer made is followed, never downloaded: the bytes are already here, under another name.
+        val moveTo = answer.optJSONArray("moveTo") ?: JSONArray()
+        for (i in 0 until moveTo.length()) runCatching {
+            val move = moveTo.getJSONObject(i)
+            moveFile(root, move.getString("from"), move.getString("to"))
+        }.onFailure { failed += "Moving a file: ${it.message}" }
+
+        val have = answer.optJSONArray("have") ?: JSONArray()
+        var received = 0
+        for (i in 0 until have.length()) {
+            val file = have.getJSONObject(i)
+            progress(BackupProgress("Receiving files", i, have.length()))
+            runCatching { receiveFile(host, p, root, file) }
+                .onSuccess { received++ }
+                .onFailure { failed += "${file.optString("path")}: ${it.message}" }
+        }
+        return received
+    }
+
+    /** The same rules as a file arriving on the computer: verified into a .part, and nothing is ever replaced. */
+    private fun receiveFile(host: String, p: Pairing, root: File, file: JSONObject) {
+        val sha = file.getString("sha256")
+        val rel = file.getString("path")
+        val target = DriveRules.newFile(root, rel)
+        target.parentFile?.mkdirs()
+        val part = File(target.parentFile, ".${target.name}.${java.util.UUID.randomUUID()}.part")
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val connection = open(host, p.port, p.fingerprint, "/file/$sha?path=${URLEncoder.encode(rel, "UTF-8")}", "GET", p.token)
+            connection.inputStream.use { input ->
+                part.outputStream().use { output ->
+                    val buffer = ByteArray(256 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        digest.update(buffer, 0, n)
+                        output.write(buffer, 0, n)
+                    }
+                }
+            }
+            connection.disconnect()
+            if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
+            if (!part.renameTo(target)) throw SyncException("Could not put it in place.")
+            file.optLong("modified").takeIf { it > 0 }?.let { target.setLastModified(it) }
+        } finally {
+            part.delete()
+        }
+    }
+
+    /** Follows a move the computer made. It never overwrites: if something is already there, both are kept. */
+    private fun moveFile(root: File, from: String, to: String) {
+        val source = DriveRules.file(root, from)
+        val target = DriveRules.newFile(root, to)
+        target.parentFile?.mkdirs()
+        if (!source.renameTo(target)) throw SyncException("Could not move ${from} to ${to}.")
     }
 
     private fun uploadFile(host: String, p: Pairing, entry: DriveFileEntry, file: File) {

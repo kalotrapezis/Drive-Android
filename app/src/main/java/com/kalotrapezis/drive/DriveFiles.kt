@@ -49,6 +49,25 @@ object DriveRules {
         }
     }
 
+    /**
+     * A place inside Drive for something that is not there yet — where a synced file lands. The path is checked
+     * the same way, and a name already taken is kept: "letter.txt" becomes "letter (2).txt", never a replacement.
+     */
+    fun newFile(root: File, relativePath: String): File {
+        require(relativePath.isSafeDriveRelativePath() && relativePath.isNotEmpty()) { "Invalid Drive file." }
+        val wanted = File(root, relativePath).canonicalFile
+        require(inside(root, wanted)) { "File is outside Drive." }
+        if (!wanted.exists()) return wanted
+        val base = wanted.name.substringBeforeLast('.', wanted.name)
+        val extension = wanted.name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" }
+        var n = 2
+        while (true) {
+            val candidate = File(wanted.parentFile, "$base ($n)$extension")
+            if (!candidate.exists()) return candidate
+            n++
+        }
+    }
+
     fun item(root: File, relativePath: String): File {
         require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive item." }
         return File(root, relativePath).canonicalFile.also {

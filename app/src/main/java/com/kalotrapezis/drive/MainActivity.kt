@@ -281,6 +281,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context) } }
+    // And for as long as it is open, the computer may say "there is something new here" and this phone will go
+    // and fetch it (SYNC_PLAN.md 6i). It answers only devices it is already paired with, and only "sync now" —
+    // the work stays ours. It stops with the app: nothing of ours listens on a phone nobody is using.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        runCatching { SyncServer.acquire(context.applicationContext, SyncStore(context.applicationContext)) }
+        onDispose { runCatching { SyncServer.release() } }
+    }
     LaunchedEffect(screen) { if (screen == Screen.Settings) pairedDevice = syncStore.pairing() }
     var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }
@@ -823,9 +830,12 @@ private fun SyncTab(back: () -> Unit) {
     val requestNotifications = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var received by remember { mutableStateOf(0) }
     var lastBackup by remember { mutableStateOf(0L) }
+    var connections by remember { mutableStateOf(SyncConnection.defaults) }
     val backup by SyncService.state.collectAsState()
     val running = SyncService.isRunning
-    LaunchedEffect(backup) { withContext(Dispatchers.IO) { received = store.receiptCount(); lastBackup = store.lastBackup() } }
+    LaunchedEffect(backup) { withContext(Dispatchers.IO) {
+        received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections()
+    } }
     // A long backup must not be cut off by the screen turning off; the foreground service itself
     // keeps running once the app is backgrounded or closed.
     val view = androidx.compose.ui.platform.LocalView.current
@@ -853,7 +863,10 @@ private fun SyncTab(back: () -> Unit) {
 
     val p = pairing
     val result = backup?.result
-    val summary = result?.let { r -> "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there." }
+    val summary = result?.let { r ->
+        "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there" +
+            if (r.received > 0) ", received ${r.received} from the computer." else "."
+    }
     val message = backup?.error ?: summary ?: pairMessage
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -906,6 +919,17 @@ private fun SyncTab(back: () -> Unit) {
                 }
             }
         }
+        // What this sync will do, in the computer's words: it owns the rules, this phone reads and obeys them.
+        if (p != null) item {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("What this sync does", style = MaterialTheme.typography.labelLarge)
+                    connections.forEach { row -> Text(row.sentence(p.name), style = MaterialTheme.typography.bodyMedium) }
+                    Text("Set on the computer, in Tetra › Devices.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f))
+                }
+            }
+        }
         if (p != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SyncStat("On the computer", "$received", Modifier.weight(1f))
@@ -921,7 +945,7 @@ private fun SyncTab(back: () -> Unit) {
         item {
             Text(
                 if (p == null) "On the computer open Tetra › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
-                else "Backup copies each photo and video the computer does not have yet, into the same folders. The computer checks every file by SHA-256 before keeping it. Nothing on this phone is changed or deleted.",
+                else "A sync copies each photo, video and file the other device does not have yet, in whichever directions the computer's rules allow, into the same folders. Both sides check every file by SHA-256 before keeping it, and nothing is ever deleted on either side because of a sync.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -957,13 +981,16 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
     var failure by remember { mutableStateOf<String?>(null) }
     var pairedWith by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
-        val server = SyncServer(context.applicationContext, store)
+        var server: SyncServer? = null
         runCatching {
+            server = SyncServer.acquire(context.applicationContext, store)
             server.onPaired = { peer -> pairedWith = peer.name }
-            server.start()
             qr = server.pairingQr(server.startPairing())
         }.onFailure { failure = it.message ?: "This device cannot show a code right now." }
-        onDispose { server.stop() }
+        onDispose {
+            server?.let { it.onPaired = {} }
+            if (server != null) runCatching { SyncServer.release() }
+        }
     }
     val bitmap = remember(qr) { qr?.let { runCatching { qrBitmap(it) }.getOrNull() } }
     Column(

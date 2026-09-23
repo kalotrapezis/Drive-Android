@@ -32,14 +32,39 @@ import kotlin.concurrent.thread
  * the same pinning: whoever scans the code remembers this certificate's fingerprint and will talk to nothing else.
  *
  * The key never leaves the Android keystore, which also issues the self-signed certificate that goes with it,
- * so no certificate library is needed. The server runs only while the QR code is on screen: something that
- * listens all day is a decision for later, and not one to make silently.
+ * so no certificate library is needed.
+ *
+ * It answers two things. **Pairing**, while the QR code is on screen. And **"sync now"** from a device already
+ * paired, for as long as Tetra is open here — that is what makes the other direction automatic: the computer
+ * has no way to put a photo on this phone by itself, but it can say that there is one, and this phone then does
+ * its own sync under its own rules. Nothing listens once the app is closed; something that listens all day is a
+ * decision to make out loud, not by leaving a process behind.
  */
 internal class SyncServer(private val context: Context, private val store: SyncStore) {
     companion object {
         const val PORT = 43180
         private const val ALIAS = "tetra-sync"
         private const val PAIRING_MS = 10 * 60 * 1000L
+
+        private var shared: SyncServer? = null
+        private var users = 0
+
+        /**
+         * One listener, however many parts of the app want it: the Sync screen showing a code and the app
+         * itself being open are two reasons for the same socket, and two of them cannot hold one port.
+         */
+        @Synchronized fun acquire(context: Context, store: SyncStore): SyncServer =
+            (shared ?: SyncServer(context.applicationContext, store).also { shared = it }).also {
+                users++
+                it.start()
+            }
+
+        @Synchronized fun release() {
+            if (--users > 0) return
+            users = 0
+            shared?.stop()
+            shared = null
+        }
 
         /** Key and certificate from the Android keystore: generated once, and the private half never leaves it. */
         fun identity(): Pair<KeyStore, X509Certificate> {
@@ -154,10 +179,21 @@ internal class SyncServer(private val context: Context, private val store: SyncS
         val request = readLine(stream) ?: return
         val (method, path) = request.split(' ').let { (it.getOrNull(0) ?: "") to (it.getOrNull(1) ?: "") }
         var length = 0
+        var bearer: String? = null
         while (true) {
             val header = readLine(stream) ?: return
             if (header.isEmpty()) break
             if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toIntOrNull() ?: 0
+            if (header.startsWith("Authorization:", true)) bearer = header.substringAfter(':').trim().removePrefix("Bearer ").trim()
+        }
+        // "Sync now" from a device we are paired with: it says nothing and carries nothing, it only asks. The
+        // work is still ours, in our own service, under our own rules — a nudge cannot make this phone do
+        // anything it would not do when its owner opens the app.
+        if (method == "POST" && path == "/sync") {
+            val known = bearer != null && store.peers().any { it.theirToken == bearer }
+            if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
+            SyncService.syncInBackground(context, gap = 0)
+            return reply(output, 200, JSONObject().put("ok", true))
         }
         if (method != "POST" || path != "/pair" || length !in 1..8192) return reply(output, 404, JSONObject().put("error", "Unknown request."))
         val body = ByteArray(length).also { var read = 0; while (read < length) { val n = stream.read(it, read, length - read); if (n < 0) break; read += n } }

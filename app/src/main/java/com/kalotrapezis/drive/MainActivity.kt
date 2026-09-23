@@ -3309,10 +3309,8 @@ private fun CollectionsToolsSheet(
             }
             Text("Look again", style = MaterialTheme.typography.titleMedium)
             Text("Reads every photo again with the rules as they are now. People you have named keep their faces; only the groups nobody named are worked out afresh.")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CollectionsToolButton(R.drawable.ic_collections, "Rescan faces", busy, Modifier.weight(1f), rescanFaces)
-                CollectionsToolButton(R.drawable.ic_collections, "Rescan documents", busy, Modifier.weight(1f), rescanDocuments)
-            }
+            CollectionsToolButton(R.drawable.ic_people, "Rescan faces", busy, Modifier.fillMaxWidth(), rescanFaces)
+            CollectionsToolButton(R.drawable.ic_file, "Rescan documents", busy, Modifier.fillMaxWidth(), rescanDocuments)
         }
     }
 }

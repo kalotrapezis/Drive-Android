@@ -390,7 +390,7 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                         val quad = small?.let { pageQuad(it, quadAtCapture) }
                             // Then let the letters have the last word on where the paper ends. Reading the page
                             // takes a moment, which is why it happens here and not thirty times a second.
-                            ?.let { found -> small.let { ScanDetection.expandToText(found, readTextCorners(it)) } }
+                            ?.let { found -> ScanDetection.fitToLetters(found, readTextCorners(small)) }
                         val page = CapturedPage(file, quad)
                         ContextCompat.getMainExecutor(context).execute { captured(page) }
                     }.start()

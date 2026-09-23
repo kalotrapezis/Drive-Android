@@ -80,33 +80,51 @@ object ScanDetection {
     }
 
     /**
-     * Grows a crop until every letter is inside it.
+     * Decides how tight to cut, by asking the letters.
      *
-     * The edge of a page is a guess made from brightness, and it is wrong in the one case that matters most:
-     * a page printed close to its own edge, where the paper's boundary and the first line of text are a
-     * millimetre apart. Text is not a guess — where there are letters, there is page — so each side is pushed
-     * out to clear the furthest letter beyond it, and never pulled in.
+     * The paper's edge is a guess made from brightness, and it is wrong in both directions. Cut exactly on it and
+     * a sliver of table comes along — a shadow line, a grout seam, the dark fringe where paper meets wood. Cut
+     * inside it to be safe and a page printed close to its own edge loses a line of text.
      *
-     * [text] are the corners of whatever the reader found, in the same normalized coordinates as the quad.
-     * A side with no text beyond it does not move at all, so a well-found page is left exactly as it was.
+     * Text is not a guess: where there are letters, there is page. So each side is placed by how far the nearest
+     * letter is from it:
+     *
+     *  - **letters comfortably inside** — the cut moves a touch *into* the paper, so no background can survive at
+     *    that edge at all;
+     *  - **letters close to the edge, or past it** — the cut moves *outside* the paper, far enough to leave the
+     *    text the margin it deserves, and the gap fill paints the new strip in the paper's own colour.
+     *
+     * Distances are fractions of the page across that side, so a margin means the same thing on a receipt as on
+     * A4. [text] are the corners of whatever the reader found, in the quad's own normalized coordinates; with
+     * nothing readable the crop is left exactly as the edges drew it.
      */
-    internal fun expandToText(quad: DocumentQuad, text: List<ScanPoint>, margin: Float = 0.006f): DocumentQuad {
+    internal fun fitToLetters(
+        quad: DocumentQuad,
+        text: List<ScanPoint>,
+        inset: Float = 0.001f,
+        safeMargin: Float = 0.015f,
+    ): DocumentQuad {
         if (text.isEmpty()) return quad
         val corners = quad.points
         val centre = ScanPoint(corners.sumOf { it.x.toDouble() }.toFloat() / 4f, corners.sumOf { it.y.toDouble() }.toFloat() / 4f)
+        val height = (distance(quad.topLeft, quad.bottomLeft) + distance(quad.topRight, quad.bottomRight)) / 2f
+        val width = (distance(quad.topLeft, quad.topRight) + distance(quad.bottomLeft, quad.bottomRight)) / 2f
         val lines = List(4) { side ->
             val from = corners[side]
             val to = corners[(side + 1) % 4]
             val length = kotlin.math.hypot(to.x - from.x, to.y - from.y)
             if (length <= 0f) return quad
             val direction = ScanPoint((to.x - from.x) / length, (to.y - from.y) / length)
-            // The normal that points into the page, so "outside" always means a negative distance.
+            // The normal that points into the page, so a letter inside is always a positive distance away.
             val normal = ScanPoint(-direction.y, direction.x).let { candidate ->
                 val towardsCentre = (centre.x - from.x) * candidate.x + (centre.y - from.y) * candidate.y
                 if (towardsCentre >= 0f) candidate else ScanPoint(-candidate.x, -candidate.y)
             }
-            val overshoot = text.minOf { point -> (point.x - from.x) * normal.x + (point.y - from.y) * normal.y }
-            val push = if (overshoot < 0f) -overshoot + margin else 0f
+            val span = if (side % 2 == 0) height else width // how far this side is from the one opposite
+            val nearestLetter = text.minOf { point -> (point.x - from.x) * normal.x + (point.y - from.y) * normal.y }
+            val safe = safeMargin * span
+            // Positive moves the cut outwards, off the paper; negative moves it in.
+            val push = if (nearestLetter >= safe) -(inset * span) else safe - nearestLetter
             Line(ScanPoint(from.x - normal.x * push, from.y - normal.y * push), direction)
         }
         val moved = List(4) { corner -> intersect(lines[(corner + 3) % 4], lines[corner]) ?: corners[corner] }

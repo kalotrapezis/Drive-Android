@@ -229,26 +229,31 @@ class ScanTextCropTest {
         ScanPoint(0.2f, 0.2f), ScanPoint(0.8f, 0.2f), ScanPoint(0.8f, 0.8f), ScanPoint(0.2f, 0.8f),
     )
 
-    @Test fun `a line of text outside the crop pushes that edge out, and only that edge`() {
-        // A page printed close to its own edge: the finder cut at 0.2, the first line starts at 0.17.
-        val text = listOf(ScanPoint(0.3f, 0.17f), ScanPoint(0.7f, 0.17f), ScanPoint(0.7f, 0.19f), ScanPoint(0.3f, 0.19f))
-        val grown = ScanDetection.expandToText(page, text)
-        assertTrue("the top comes out past the letters", grown.topLeft.y < 0.17f)
-        assertEquals("the bottom stays where it was", 0.8f, grown.bottomLeft.y, 0.001f)
-        assertEquals("and so do the sides", 0.2f, grown.topLeft.x, 0.001f)
-        assertEquals(0.8f, grown.topRight.x, 0.001f)
+    @Test fun `letters well inside let the cut move into the paper, away from the table`() {
+        val text = listOf(ScanPoint(0.3f, 0.3f), ScanPoint(0.7f, 0.3f), ScanPoint(0.7f, 0.7f), ScanPoint(0.3f, 0.7f))
+        val cut = ScanDetection.fitToLetters(page, text)
+        assertTrue("the top steps inside the paper", cut.topLeft.y > 0.2f)
+        assertTrue("but only just", cut.topLeft.y < 0.202f)
+        assertTrue("and every side does the same", cut.bottomLeft.y < 0.8f && cut.topLeft.x > 0.2f && cut.topRight.x < 0.8f)
     }
 
-    @Test fun `text safely inside changes nothing`() {
-        val text = listOf(ScanPoint(0.3f, 0.3f), ScanPoint(0.7f, 0.3f), ScanPoint(0.7f, 0.6f), ScanPoint(0.3f, 0.6f))
-        val grown = ScanDetection.expandToText(page, text)
-        page.points.zip(grown.points).forEach { (before, after) ->
-            assertEquals(before.x, after.x, 0.001f)
-            assertEquals(before.y, after.y, 0.001f)
-        }
+    @Test fun `letters close to the edge push the cut off the paper, for the fill to paint`() {
+        // A page printed to its own edge: the first line is 0.005 from the paper, well under the margin it needs.
+        val text = listOf(ScanPoint(0.3f, 0.205f), ScanPoint(0.7f, 0.205f), ScanPoint(0.7f, 0.5f), ScanPoint(0.3f, 0.5f))
+        val cut = ScanDetection.fitToLetters(page, text)
+        assertTrue("the top goes outside the paper", cut.topLeft.y < 0.2f)
+        // 1.5% of a 0.6-tall page is 0.009, and the letters start at 0.205.
+        assertEquals(0.205f - 0.009f, cut.topLeft.y, 0.002f)
+        assertTrue("the bottom, with nothing near it, still steps in", cut.bottomLeft.y < 0.8f)
+    }
+
+    @Test fun `a letter already outside the crop is taken back in`() {
+        val text = listOf(ScanPoint(0.3f, 0.17f), ScanPoint(0.7f, 0.17f), ScanPoint(0.7f, 0.5f), ScanPoint(0.3f, 0.5f))
+        val cut = ScanDetection.fitToLetters(page, text)
+        assertTrue("past the letters, not just up to them", cut.topLeft.y < 0.17f)
     }
 
     @Test fun `a page with nothing readable on it is left alone`() {
-        assertEquals(page, ScanDetection.expandToText(page, emptyList()))
+        assertEquals(page, ScanDetection.fitToLetters(page, emptyList()))
     }
 }

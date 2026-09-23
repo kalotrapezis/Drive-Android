@@ -148,6 +148,42 @@ class IncomingFaceDeviceTest {
         assertEquals("maybe-her", asked.photoKey)
     }
 
+    @Test fun twoDevicesThatDisagreeAskInsteadOfTakingTurns() {
+        val anna = givenANamedPersonHere()
+        // A second photo of hers, so the disagreement covers more than one face.
+        store.recordClassification("photo-here-2", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), base.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList())
+        assertEquals("both faces are hers", 2, store.faceGroupKeys(anna).size)
+        val hers = store.faceRecords()
+
+        // The other device knows the same faces as someone else it has also named.
+        val maria = UUID.randomUUID().toString()
+        store.applyIncomingPerson(maria, "Μαρία", System.currentTimeMillis())
+        // applyIncomingPerson only renames what is here, so give that person a group of her own first.
+        store.applyIncomingFace(
+            uuid = UUID.randomUUID().toString(), personUuid = null, updatedAt = 2_000,
+            photoKey = "maria-photo", bounds = Rect(700, 700, 820, 820), embedding = like(0.05f), quality = 0.9f,
+        )
+        val mariaGroup = store.faceGroups().single { it.id != anna }
+        store.renameFaceGroup(mariaGroup.id, "Μαρία")
+        val mariaUuid = store.personRecords().single { it.name == "Μαρία" }.uuid
+
+        val later = System.currentTimeMillis() + 60_000
+        hers.forEach { store.applyIncomingFace(it.uuid, mariaUuid, later) }
+
+        assertEquals("nobody was torn apart", 2, store.faceGroupKeys(anna).size)
+        assertEquals("and nobody was quietly taken over", 1, store.faceGroupKeys(mariaGroup.id).size)
+        val asked = store.nextReview()
+        assertNotEquals("the difference is asked about", null, asked)
+        assertEquals("one card for the pair, not one per face", mariaGroup.id, asked!!.candidateGroupId)
+
+        // Answering it is what moves anything.
+        store.resolveReview(asked, accepted = true)
+        assertEquals(2, store.faceGroupKeys(mariaGroup.id).size)
+        assertEquals(null, store.nextReview())
+    }
+
     @Test fun aNumberFromAnotherDeviceNeverReplacesAName() {
         givenANamedPersonHere()
         val uuid = store.personRecords().single().uuid

@@ -711,6 +711,15 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val incomingIsAGuess = isGeneratedPersonName(personName(groupId))
             val hereItHasAName = groupName(local.first).let { it.isNotBlank() && !isGeneratedPersonName(it) }
             if (incomingIsAGuess && hereItHasAName) return@inTransaction
+            // Both devices named this face, and they disagree. Neither is wrong: grouping is order-dependent, so
+            // two devices starting from the same library reach different people. Letting the newer one win took
+            // the face from one person and gave it to the other silently — and gave it back on the next sync.
+            // A disagreement between two decisions is a question: the face stays, and the difference is asked.
+            val hereGroup = groupOf(local.first)
+            if (!incomingIsAGuess && hereItHasAName && hereGroup != null && hereGroup != groupId) {
+                ask(local.first, sampleKey(local.first), hereGroup, groupId, updatedAt)
+                return@inTransaction
+            }
             update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
             return@inTransaction
         }
@@ -751,6 +760,37 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             }, SQLiteDatabase.CONFLICT_IGNORE)
         }
     }
+
+    /**
+     * Raise the difference between two groupings as **one** card, not fifty. Two people who disagree about a
+     * face usually disagree about every face of that person, and a question per face would bury the library in
+     * questions that are all the same question. One pending card per pair of people shows the disagreement;
+     * putting the two together, if that is the answer, is Combine on the People page.
+     */
+    private fun SQLiteDatabase.ask(sampleId: Long, photoKey: String?, mine: Long, theirs: Long, updatedAt: Long) {
+        if (photoKey == null) return
+        val already = rawQuery(
+            "SELECT 1 FROM face_reviews r JOIN face_samples s ON s.id = r.face_sample_id " +
+                "WHERE s.group_id = ? AND r.candidate_group_id = ? AND r.state = 'pending' LIMIT 1",
+            arrayOf(mine.toString(), theirs.toString()),
+        ).use { it.moveToFirst() }
+        if (already) return
+        insertWithOnConflict("face_reviews", null, ContentValues().apply {
+            put("photo_key", photoKey)
+            put("face_sample_id", sampleId)
+            put("candidate_group_id", theirs)
+            put("state", "pending")
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    private fun SQLiteDatabase.groupOf(sampleId: Long): Long? = rawQuery(
+        "SELECT group_id FROM face_samples WHERE id = ?", arrayOf(sampleId.toString()),
+    ).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+
+    private fun SQLiteDatabase.sampleKey(sampleId: Long): String? = rawQuery(
+        "SELECT photo_key FROM face_samples WHERE id = ?", arrayOf(sampleId.toString()),
+    ).use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun SQLiteDatabase.personName(groupId: Long): String =
         rawQuery("SELECT name FROM face_groups WHERE id = ?", arrayOf(groupId.toString())).use { if (it.moveToFirst()) it.getString(0) else "" }

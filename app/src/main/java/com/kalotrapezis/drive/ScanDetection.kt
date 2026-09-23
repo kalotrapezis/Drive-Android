@@ -560,67 +560,50 @@ object ScanDetection {
     }
 
     /**
-     * Paints background visible near the edges of a perspective-corrected page with the paper colour beside it.
-     * Each side gets a reference colour sampled just inside the edge band and median-smoothed along the edge, so
-     * shading continues without streaks. Only pixels that clearly differ from that local paper and connect to the
-     * image border are painted: an edge that is already paper is left untouched, ink in the page body always is.
+     * Paints out background the crop could not avoid — and nothing else.
+     *
+     * It used to paint from every edge of every page, with a colour sampled per position along each side, and on
+     * a crop that was already clean that meant smearing a streaky band over good paper. Two rules keep it to its
+     * job now:
+     *
+     *  - **it starts only where the border really is background.** A run of pixels along the edge has to be
+     *    unlike the paper for a stretch before it is treated as a gap. A table corner is such a stretch; a
+     *    printed rule or a letter touching the edge is a few pixels, so page content is never eaten.
+     *  - **it paints one colour: the paper's own.** Sampling a different colour for every position was what made
+     *    the streaks, because half those samples were of the very background being painted over.
+     *
      * [pixels] are ARGB and are modified in place.
      */
     internal fun fillPageGaps(pixels: IntArray, width: Int, height: Int, bandFraction: Float = 0.06f, tolerance: Int = 48) {
         val band = maxOf(4, (minOf(width, height) * bandFraction).toInt())
         if (width <= band * 3 || height <= band * 3) return
-        // side 0 top, 1 bottom (indexed by x); 2 left, 3 right (indexed by y). Depth grows inward from that edge.
-        fun at(side: Int, position: Int, depth: Int) = when (side) {
-            0 -> pixels[depth * width + position]
-            1 -> pixels[(height - 1 - depth) * width + position]
-            2 -> pixels[position * width + depth]
-            else -> pixels[position * width + width - 1 - depth]
-        }
-        val window = maxOf(7, band / 2) or 1
-        // The colour to paint with comes from inside the page, never from the edge: where the crop left a gap,
-        // the pixels just inside that edge *are* the table, and sampling them painted the table back in. This is
-        // the paper's own colour, taken from the middle where nothing else can be, with the darkest quarter
-        // dropped so ink does not darken it.
         val paper = paperColour(pixels, width, height) ?: return
-        // Deep enough inside that a gap cannot reach it, and anything that still does not look like paper is
-        // replaced by the paper colour rather than trusted.
-        val inside = minOf(band * 2, minOf(width, height) / 3 - 4).coerceAtLeast(band)
-        val references = Array(4) { side ->
-            val length = if (side < 2) width else height
-            val raw = Array(3) { IntArray(length) }
-            for (position in 0 until length) {
-                val sample = (inside until inside + 4).map { at(side, position, it) }
-                val looksLikePaper = sample.all { pixel -> !differsFrom(pixel, paper, tolerance) }
-                for ((channel, shift) in intArrayOf(16, 8, 0).withIndex()) {
-                    raw[channel][position] = if (looksLikePaper) sample.sumOf { (it shr shift) and 0xFF } / 4 else (paper shr shift) and 0xFF
-                }
-            }
-            // Corners: sample only beside the page, never inside the neighbouring side's gap.
-            IntArray(length) { index ->
-                val position = index.coerceIn(band, length - 1 - band)
-                val from = maxOf(band, position - window / 2)
-                val to = minOf(length - band, position + window / 2 + 1)
-                val (r, g, b) = raw.map { it.copyOfRange(from, to).sorted().let { values -> values[values.size / 2] } }
-                (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-            }
-        }
-        fun reference(x: Int, y: Int): Int = when (minOf(y, height - 1 - y, x, width - 1 - x)) {
-            y -> references[0][x]
-            height - 1 - y -> references[1][x]
-            x -> references[2][y]
-            else -> references[3][y]
-        }
-        fun differs(pixel: Int, reference: Int) = differsFrom(pixel, reference, tolerance)
+        fun isGap(index: Int) = differsFrom(pixels[index], paper, tolerance)
         fun inBand(x: Int, y: Int) = x < band || y < band || x >= width - band || y >= height - band
 
         val filled = BooleanArray(width * height)
         val queue = ArrayDeque<Int>()
         fun visit(x: Int, y: Int) {
             val index = y * width + x
-            if (!filled[index] && inBand(x, y) && differs(pixels[index], reference(x, y))) { filled[index] = true; queue.addLast(index) }
+            if (!filled[index] && inBand(x, y) && isGap(index)) { filled[index] = true; queue.addLast(index) }
         }
-        for (x in 0 until width) { visit(x, 0); visit(x, height - 1) }
-        for (y in 0 until height) { visit(0, y); visit(width - 1, y) }
+        // Seed from runs along the border, never from single pixels: that is the whole difference between a
+        // corner of table and the end of a printed line.
+        fun seedAlong(length: Int, at: (Int) -> Pair<Int, Int>) {
+            val least = maxOf(8, length * 3 / 100)
+            var start = -1
+            for (position in 0..length) {
+                val gap = position < length && at(position).let { (x, y) -> isGap(y * width + x) }
+                if (gap) { if (start < 0) start = position } else {
+                    if (start >= 0 && position - start >= least) for (p in start until position) at(p).let { (x, y) -> visit(x, y) }
+                    start = -1
+                }
+            }
+        }
+        seedAlong(width) { it to 0 }
+        seedAlong(width) { it to height - 1 }
+        seedAlong(height) { 0 to it }
+        seedAlong(height) { width - 1 to it }
         while (queue.isNotEmpty()) {
             val index = queue.removeFirst()
             val x = index % width
@@ -630,6 +613,7 @@ object ScanDetection {
             if (y > 0) visit(x, y - 1)
             if (y < height - 1) visit(x, y + 1)
         }
+        if (queue.isEmpty() && filled.none { it }) return
         // Grow a little to swallow the blended fringe and shadow line where the paper meets the table.
         repeat(maxOf(2, band / 10)) {
             val grown = filled.copyOf()
@@ -639,7 +623,7 @@ object ScanDetection {
             }
             grown.copyInto(filled)
         }
-        for (index in filled.indices) if (filled[index]) pixels[index] = reference(index % width, index / width)
+        for (index in filled.indices) if (filled[index]) pixels[index] = paper
     }
 
     private fun differsFrom(pixel: Int, reference: Int, tolerance: Int) =

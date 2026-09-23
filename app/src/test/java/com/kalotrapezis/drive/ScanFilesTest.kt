@@ -289,3 +289,36 @@ class ScanAimAndTrimTest {
         assertEquals(listOf(0, 0, 0, 0), ScanDetection.trimToPaper(pixels, width, height).toList())
     }
 }
+
+class ScanFillRestraintTest {
+    private val paper = 0xFFF0F0EC.toInt()
+
+    @Test fun `a printed line running to the very edge is not eaten`() {
+        val width = 200
+        val height = 200
+        // An invoice ruled to its own border: black lines touch every edge, and none of it is background.
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if (x in 40..42 || y in 60..62) 0xFF101010.toInt() else paper
+        }
+        val before = pixels.copyOf()
+        ScanDetection.fillPageGaps(pixels, width, height)
+        assertEquals("the page is left exactly as it was", before.toList(), pixels.toList())
+    }
+
+    @Test fun `a corner of table is painted out, in the paper's own colour`() {
+        val width = 200
+        val height = 200
+        val table = 0xFF6B4A2A.toInt()
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if (x < 10 && y < 10) table else paper // within the 6% band the fill is allowed to reach
+        }
+        ScanDetection.fillPageGaps(pixels, width, height)
+        assertEquals("the corner goes", paper, pixels[0])
+        assertEquals(paper, pixels[9 * width + 9])
+        assertTrue("and what replaces it is one flat colour, not a streak", pixels.all { it == paper })
+    }
+}

@@ -294,15 +294,43 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun peopleKeys(): Set<String> = keysFor("SELECT DISTINCT photo_key FROM face_samples", emptyArray())
 
-    fun faceGroups(): List<FaceGroup> = readableDatabase.rawQuery(
-        "SELECT g.id, g.name, COUNT(all_samples.id), s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge FROM face_groups g JOIN face_samples s ON s.id = (SELECT id FROM face_samples WHERE group_id = g.id ORDER BY id LIMIT 1) LEFT JOIN face_samples all_samples ON all_samples.group_id = g.id GROUP BY g.id ORDER BY g.name COLLATE NOCASE", null,
-    ).use { cursor -> buildList { while (cursor.moveToNext()) add(FaceGroup(cursor.getLong(0), cursor.getString(1), cursor.getInt(2), cursor.getString(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getInt(7))) } }
+    /**
+     * The people to show, and the face to show them by.
+     *
+     * A group is only as alive as its photos: when every photo of a person has been deleted or moved away there
+     * is nothing left to show, so the group does not appear (the rows stay, because Android's own Trash holds a
+     * deleted photo for thirty days and restoring it should bring the person back, name and all).
+     *
+     * The cover is the **best face**, not the first one found. Since the computer's faces now arrive with their
+     * quality score, measured by the same formula, the better portrait wins wherever it was found — which is
+     * usually the computer, because it detects at a larger size.
+     */
+    fun faceGroups(livePhotoKeys: Set<String>? = null): List<FaceGroup> = groupsFrom(livePhotoKeys, null)
         .sortedWith(compareBy<FaceGroup> { isGeneratedPersonName(it.name) }.thenBy { it.name.lowercase(Locale.ROOT) })
 
-    fun faceGroup(groupId: Long): FaceGroup? = readableDatabase.rawQuery(
-        "SELECT g.id, g.name, COUNT(all_samples.id), s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge FROM face_groups g JOIN face_samples s ON s.id = (SELECT id FROM face_samples WHERE group_id = g.id ORDER BY id LIMIT 1) LEFT JOIN face_samples all_samples ON all_samples.group_id = g.id WHERE g.id = ? GROUP BY g.id",
-        arrayOf(groupId.toString()),
-    ).use { cursor -> if (cursor.moveToFirst()) FaceGroup(cursor.getLong(0), cursor.getString(1), cursor.getInt(2), cursor.getString(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getInt(7)) else null }
+    fun faceGroup(groupId: Long, livePhotoKeys: Set<String>? = null): FaceGroup? = groupsFrom(livePhotoKeys, groupId).firstOrNull()
+
+    private fun groupsFrom(livePhotoKeys: Set<String>?, onlyGroup: Long?): List<FaceGroup> = readableDatabase.rawQuery(
+        "SELECT g.id, g.name, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.quality " +
+            "FROM face_groups g JOIN face_samples s ON s.group_id = g.id" + if (onlyGroup != null) " WHERE g.id = ?" else "",
+        onlyGroup?.let { arrayOf(it.toString()) },
+    ).use { cursor ->
+        class Sample(val key: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val quality: Float)
+        val names = HashMap<Long, String>()
+        val samples = HashMap<Long, MutableList<Sample>>()
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(0)
+            val key = cursor.getString(2)
+            if (livePhotoKeys != null && key !in livePhotoKeys) continue
+            names[id] = cursor.getString(1)
+            samples.getOrPut(id) { mutableListOf() }
+                .add(Sample(key, cursor.getInt(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getFloat(7)))
+        }
+        samples.mapNotNull { (id, list) ->
+            val cover = list.maxByOrNull { it.quality } ?: return@mapNotNull null
+            FaceGroup(id, names.getValue(id), list.distinctBy { it.key }.size, cover.key, cover.left, cover.top, cover.right, cover.bottom)
+        }
+    }
 
     fun faceGroupKeys(groupId: Long): Set<String> = keysFor("SELECT DISTINCT photo_key FROM face_samples WHERE group_id = ?", arrayOf(groupId.toString()))
 

@@ -2185,7 +2185,8 @@ private fun PhotoTab(
     val labelsByPhoto = remember(allEntries, metadataRevision) { metadataStore.labelsByPhoto(allEntries.map(Entry::photoKey)) }
     val peopleNamesByPhoto = remember(allEntries, metadataRevision) { metadataStore.peopleNamesByPhoto(allEntries.map(Entry::photoKey)) }
     val locationsByPhoto = remember(allEntries, locationVersion) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
-    val faceGroups = remember(metadataRevision) { metadataStore.faceGroups() }
+    // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
+    val faceGroups = remember(allEntries, metadataRevision) { metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey)) }
     val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
     val pendingReview = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.nextReview() else null }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }

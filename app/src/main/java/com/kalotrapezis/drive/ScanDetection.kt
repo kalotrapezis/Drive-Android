@@ -79,6 +79,41 @@ object ScanDetection {
         return true
     }
 
+    /**
+     * Grows a crop until every letter is inside it.
+     *
+     * The edge of a page is a guess made from brightness, and it is wrong in the one case that matters most:
+     * a page printed close to its own edge, where the paper's boundary and the first line of text are a
+     * millimetre apart. Text is not a guess — where there are letters, there is page — so each side is pushed
+     * out to clear the furthest letter beyond it, and never pulled in.
+     *
+     * [text] are the corners of whatever the reader found, in the same normalized coordinates as the quad.
+     * A side with no text beyond it does not move at all, so a well-found page is left exactly as it was.
+     */
+    internal fun expandToText(quad: DocumentQuad, text: List<ScanPoint>, margin: Float = 0.006f): DocumentQuad {
+        if (text.isEmpty()) return quad
+        val corners = quad.points
+        val centre = ScanPoint(corners.sumOf { it.x.toDouble() }.toFloat() / 4f, corners.sumOf { it.y.toDouble() }.toFloat() / 4f)
+        val lines = List(4) { side ->
+            val from = corners[side]
+            val to = corners[(side + 1) % 4]
+            val length = kotlin.math.hypot(to.x - from.x, to.y - from.y)
+            if (length <= 0f) return quad
+            val direction = ScanPoint((to.x - from.x) / length, (to.y - from.y) / length)
+            // The normal that points into the page, so "outside" always means a negative distance.
+            val normal = ScanPoint(-direction.y, direction.x).let { candidate ->
+                val towardsCentre = (centre.x - from.x) * candidate.x + (centre.y - from.y) * candidate.y
+                if (towardsCentre >= 0f) candidate else ScanPoint(-candidate.x, -candidate.y)
+            }
+            val overshoot = text.minOf { point -> (point.x - from.x) * normal.x + (point.y - from.y) * normal.y }
+            val push = if (overshoot < 0f) -overshoot + margin else 0f
+            Line(ScanPoint(from.x - normal.x * push, from.y - normal.y * push), direction)
+        }
+        val moved = List(4) { corner -> intersect(lines[(corner + 3) % 4], lines[corner]) ?: corners[corner] }
+        val ordered = orderCorners(moved.map { ScanPoint(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) }) ?: return quad
+        return DocumentQuad(ordered[0], ordered[1], ordered[2], ordered[3])
+    }
+
     /** A page the screen asked you to keep inside the frame. A shape running off the edge is not one. */
     internal fun isInsideFrame(quad: DocumentQuad): Boolean =
         quad.points.none { it.x < 0.02f || it.x > 0.98f || it.y < 0.02f || it.y > 0.98f }

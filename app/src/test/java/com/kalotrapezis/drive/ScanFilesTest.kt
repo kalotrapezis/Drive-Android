@@ -223,3 +223,32 @@ class ScanGapFillTest {
         assertEquals(before.toList(), pixels.toList())
     }
 }
+
+class ScanTextCropTest {
+    private val page = DocumentQuad(
+        ScanPoint(0.2f, 0.2f), ScanPoint(0.8f, 0.2f), ScanPoint(0.8f, 0.8f), ScanPoint(0.2f, 0.8f),
+    )
+
+    @Test fun `a line of text outside the crop pushes that edge out, and only that edge`() {
+        // A page printed close to its own edge: the finder cut at 0.2, the first line starts at 0.17.
+        val text = listOf(ScanPoint(0.3f, 0.17f), ScanPoint(0.7f, 0.17f), ScanPoint(0.7f, 0.19f), ScanPoint(0.3f, 0.19f))
+        val grown = ScanDetection.expandToText(page, text)
+        assertTrue("the top comes out past the letters", grown.topLeft.y < 0.17f)
+        assertEquals("the bottom stays where it was", 0.8f, grown.bottomLeft.y, 0.001f)
+        assertEquals("and so do the sides", 0.2f, grown.topLeft.x, 0.001f)
+        assertEquals(0.8f, grown.topRight.x, 0.001f)
+    }
+
+    @Test fun `text safely inside changes nothing`() {
+        val text = listOf(ScanPoint(0.3f, 0.3f), ScanPoint(0.7f, 0.3f), ScanPoint(0.7f, 0.6f), ScanPoint(0.3f, 0.6f))
+        val grown = ScanDetection.expandToText(page, text)
+        page.points.zip(grown.points).forEach { (before, after) ->
+            assertEquals(before.x, after.x, 0.001f)
+            assertEquals(before.y, after.y, 0.001f)
+        }
+    }
+
+    @Test fun `a page with nothing readable on it is left alone`() {
+        assertEquals(page, ScanDetection.expandToText(page, emptyList()))
+    }
+}

@@ -386,7 +386,11 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                     waitingForNextPage = true
                     Thread {
                         // Resolve the outline once; a quarter-size decode is plenty for detection.
-                        val quad = decodeCapturedScan(file, 4)?.let { pageQuad(it, quadAtCapture) }
+                        val small = decodeCapturedScan(file, 4)
+                        val quad = small?.let { pageQuad(it, quadAtCapture) }
+                            // Then let the letters have the last word on where the paper ends. Reading the page
+                            // takes a moment, which is why it happens here and not thirty times a second.
+                            ?.let { found -> small.let { ScanDetection.expandToText(found, readTextCorners(it)) } }
                         val page = CapturedPage(file, quad)
                         ContextCompat.getMainExecutor(context).execute { captured(page) }
                     }.start()
@@ -620,6 +624,29 @@ private fun decodeCapturedScan(file: File, sampleSize: Int = 1): Bitmap? {
     }
     return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
 }
+
+/**
+ * Where the letters are, as corners in the picture's own normalized coordinates.
+ *
+ * Only the text lines are asked for, not what they say: this is about geometry. A reader that fails or finds
+ * nothing returns an empty list, which leaves the crop exactly as the edges drew it.
+ */
+private fun readTextCorners(source: Bitmap): List<ScanPoint> = runCatching {
+    val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
+        com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS,
+    )
+    try {
+        val text = com.google.android.gms.tasks.Tasks.await(
+            recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(source, 0)),
+            8, java.util.concurrent.TimeUnit.SECONDS,
+        )
+        text.textBlocks.flatMap { it.lines }.flatMap { line ->
+            line.cornerPoints?.map { ScanPoint(it.x.toFloat() / source.width, it.y.toFloat() / source.height) }.orEmpty()
+        }
+    } finally {
+        recognizer.close()
+    }
+}.getOrDefault(emptyList())
 
 private fun detectBitmapPage(source: Bitmap): DocumentQuad? {
     val scale = maxOf(1, maxOf(source.width, source.height) / 256)

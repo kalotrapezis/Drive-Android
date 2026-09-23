@@ -48,7 +48,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
@@ -1175,6 +1177,29 @@ private fun DriveTab(
             }
         }.start()
     }
+    /** The same actions, applied to a whole selection in one pass, with one refresh at the end. */
+    fun performAll(items: List<DriveItem>, action: DriveItemAction) {
+        if (items.isEmpty()) return
+        Thread {
+            val failures = items.mapNotNull { item ->
+                runCatching {
+                    when (action) {
+                        is DriveItemAction.Favorite -> metadata.setFavorite(item.relativePath, action.add)
+                        is DriveItemAction.Move -> DriveRules.move(root, item.relativePath, action.destination)
+                            .also { metadata.rewritePath(item.relativePath, it); driveOpeners.rewritePath(item.relativePath, it) }
+                        DriveItemAction.Trash -> DriveRules.moveToTrash(root, item.relativePath)
+                            .also { metadata.rewritePath(item.relativePath, it); driveOpeners.rewritePath(item.relativePath, it) }
+                        else -> Unit // the rest are about one item by nature: rename, colour, tags, copy
+                    }
+                }.exceptionOrNull()?.let { "${item.file.name}: ${it.message ?: "failed"}" }
+            }
+            Handler(Looper.getMainLooper()).post {
+                metadataVersion++
+                refresh()
+                if (failures.isNotEmpty()) error = failures.joinToString("\n")
+            }
+        }.start()
+    }
     fun createTag(name: String): String? = runCatching { metadata.createTag(name) }.fold(
         onSuccess = { metadataVersion++; null },
         onFailure = { it.message ?: "Could not create this tag." },
@@ -1194,10 +1219,10 @@ private fun DriveTab(
                 Text("This reads only Drive in main storage. It is needed to browse and open your local Drive files.")
                 Button(onClick = grant) { Text("Allow all files access") }
             }
-            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.")
+            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.")
             pane == DrivePane.Home -> DriveHome(root, recentItems, metadata, metadataVersion, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { setPane(DrivePane.Files); refresh() }, ::perform)
             pane == DrivePane.Favorites -> DriveFavorites(favoriteItems, metadata, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, openFolder, ::perform)
-            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null)
+            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null)
         }
         Row(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -1304,11 +1329,14 @@ private fun DriveFiles(
     goParent: () -> Unit,
     refresh: () -> Unit,
     perform: (DriveItem, DriveItemAction) -> Unit,
+    performAll: (List<DriveItem>, DriveItemAction) -> Unit,
     title: String? = null,
     emptyMessage: String = "This folder is empty.",
     emptyTrash: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
+    var selected by remember(folder) { mutableStateOf(emptySet<String>()) }
     val isTrash = folder == "Trash"
     val topPadding = if (isTrash) 206.dp else 132.dp
     PullToRefreshBox(isRefreshing = state is DriveListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
@@ -1331,13 +1359,21 @@ private fun DriveFiles(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(entries, key = { it.relativePath }) { item -> DriveGridItem(item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile) { moreItem = item } }
+                        items(entries, key = { it.relativePath }) { item -> DriveGridItem(
+                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
+                            toggle = { selected = if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath },
+                        ) { moreItem = item } }
                     } else LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, top = topPadding, end = 16.dp, bottom = 164.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(entries, key = { it.relativePath }) { item -> DriveRowItem(item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile) { moreItem = item } }
+                        items(entries, key = { it.relativePath }) { item -> DriveRowItem(
+                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
+                            toggle = { selected = if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath },
+                        ) { moreItem = item } }
                     }
                 }
             }
@@ -1356,6 +1392,21 @@ private fun DriveFiles(
                 },
             )
             if (isTrash) TrashWarning(modifier = Modifier.align(Alignment.TopCenter).padding(start = 16.dp, top = 112.dp, end = 16.dp))
+            if (selected.isNotEmpty()) {
+                val chosen = (state as? DriveListState.Items)?.entries.orEmpty().filter { it.relativePath in selected }
+                DriveSelectionActions(
+                    count = chosen.size,
+                    inTrash = isTrash,
+                    anyFile = chosen.any { !it.isDirectory },
+                    share = { shareDriveFiles(context, chosen.filterNot(DriveItem::isDirectory).map(DriveItem::file)) },
+                    favorite = { performAll(chosen, DriveItemAction.Favorite(true)); selected = emptySet() },
+                    trash = { performAll(chosen, DriveItemAction.Trash); selected = emptySet() },
+                    restore = { performAll(chosen, DriveItemAction.Move("")); selected = emptySet() },
+                    cancel = { selected = emptySet() },
+                    // Clear of the Files dock, which sits at the bottom of this screen unlike the Photos one.
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 92.dp),
+                )
+            }
             moreItem?.let { item ->
                 DriveItemMoreSheet(item, metadata, { if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) }, { openWith(item.relativePath) }, perform, { moreItem = null })
             }
@@ -1534,12 +1585,25 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     modifier = Modifier.size(44.dp).then(if (selected) Modifier.border(2.dp, islandContentColor(), CircleShape) else Modifier).clickable(onClick = click),
 ) { Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No folder color", modifier = Modifier.padding(10.dp), tint = DriveTrashAccent) }
 
-@Composable private fun DriveRowItem(item: DriveItem, folderColor: DriveFolderColor?, tags: Set<String>, openFolder: (String) -> Unit, openFile: (String) -> Unit, more: () -> Unit) = Surface(
-    shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.fillMaxWidth().clickable { if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) },
+@OptIn(ExperimentalFoundationApi::class)
+@Composable private fun DriveRowItem(
+    item: DriveItem, folderColor: DriveFolderColor?, tags: Set<String>, openFolder: (String) -> Unit, openFile: (String) -> Unit,
+    selected: Boolean = false, selecting: Boolean = false, toggle: () -> Unit = {}, more: () -> Unit,
+) = Surface(
+    shape = MaterialTheme.shapes.medium,
+    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+    modifier = Modifier.fillMaxWidth().combinedClickable(
+        onLongClick = toggle,
+        onClick = { if (selecting) toggle() else if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) },
+    ),
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(painterResource(driveItemIcon(item)), contentDescription = driveItemIconDescription(item), tint = driveItemIconColor(item, folderColor), modifier = Modifier.size(32.dp))
+        Icon(
+            painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
+            contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
+            tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else driveItemIconColor(item, folderColor),
+            modifier = Modifier.size(32.dp),
+        )
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1548,13 +1612,26 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     }
 }
 
-@Composable private fun DriveGridItem(item: DriveItem, folderColor: DriveFolderColor?, tags: Set<String>, openFolder: (String) -> Unit, openFile: (String) -> Unit, more: () -> Unit) = Surface(
-    shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.aspectRatio(1f).clickable { if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) },
+@OptIn(ExperimentalFoundationApi::class)
+@Composable private fun DriveGridItem(
+    item: DriveItem, folderColor: DriveFolderColor?, tags: Set<String>, openFolder: (String) -> Unit, openFile: (String) -> Unit,
+    selected: Boolean, selecting: Boolean, toggle: () -> Unit, more: () -> Unit,
+) = Surface(
+    shape = MaterialTheme.shapes.large,
+    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+    modifier = Modifier.aspectRatio(1f).combinedClickable(
+        onLongClick = toggle,
+        onClick = { if (selecting) toggle() else if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) },
+    ),
 ) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Icon(painterResource(driveItemIcon(item)), contentDescription = driveItemIconDescription(item), tint = driveItemIconColor(item, folderColor), modifier = Modifier.size(64.dp))
+            Icon(
+                painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
+                contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
+                tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else driveItemIconColor(item, folderColor),
+                modifier = Modifier.size(64.dp),
+            )
             IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
         }
         Column {
@@ -3138,6 +3215,38 @@ private fun TrashSelectionActions(count: Int, restore: () -> Unit, emptyTrash: (
     }
 }
 
+/** The same island Photos uses, with the actions that make sense for several files or folders at once. */
+@Composable
+private fun DriveSelectionActions(
+    count: Int,
+    inTrash: Boolean,
+    anyFile: Boolean,
+    share: () -> Unit,
+    favorite: () -> Unit,
+    trash: () -> Unit,
+    restore: () -> Unit,
+    cancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
+        Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(horizontalArrangement = Arrangement.SpaceEvenly) {
+                if (!inTrash) {
+                    if (anyFile) IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share selected files") }
+                    IconButton(onClick = favorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = "Add selected to Favorites") }
+                    IconButton(onClick = trash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move selected to Trash") }
+                } else {
+                    IconButton(onClick = restore) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore selected from Trash") }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("$count selected", style = MaterialTheme.typography.labelLarge)
+                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
 @Composable
 private fun HiddenSelectionActions(count: Int, restore: () -> Unit, cancel: () -> Unit, modifier: Modifier = Modifier) {
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -3888,6 +3997,20 @@ private fun FilmstripThumbnail(entry: Entry, selected: Boolean, choose: () -> Un
         )
         if (selected) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small))
     }
+}
+
+/** Several files at once; one file still uses ACTION_SEND, which is what most apps handle best. */
+private fun shareDriveFiles(context: Context, files: List<File>) {
+    val real = files.filter { it.isFile }
+    if (real.isEmpty()) return
+    if (real.size == 1) return shareDriveFile(context, real.first())
+    val uris = ArrayList(real.map { FileProvider.getUriForFile(context, "${context.packageName}.files", it) })
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+        type = "*/*"
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        clipData = ClipData.newRawUri(real.first().name, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Share ${real.size} files"))
 }
 
 private fun shareDriveFile(context: Context, file: File) {

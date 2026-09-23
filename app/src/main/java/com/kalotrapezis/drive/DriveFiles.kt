@@ -158,6 +158,8 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath)
     return folder.listFiles().orEmpty()
         .filter { DriveRules.inside(root, it) }
+        // Trash has its own way in; as a folder in the list it is just something to open by accident.
+        .filterNot { relativePath.isEmpty() && it.name == TRASH_FOLDER }
         .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }
         .sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
 }

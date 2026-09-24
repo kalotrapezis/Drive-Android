@@ -1,129 +1,121 @@
-# Handoff — end of 23/24 September 2026
+# Handoff — end of 24 September 2026
 
-For whoever picks this up tomorrow, which is me. Read `SYNC_PLAN.md` for *why*
-anything is the way it is; this is only what you need in the first ten minutes,
-and the traps that cost time today.
+Read `SYNC_PLAN.md` for *why* anything is the way it is. This is the first ten
+minutes, and the traps that cost time today.
 
 ## Where everything is
 
 | | |
 |---|---|
-| **Phone** | `~/Έγγραφα/Claude/Coding/Drive-Android`, branch **`bidirectional-sync`**, pushed, clean |
-| **Computer** | `~/Έγγραφα/Claude/Coding/Drive` (the Electron app is in `desktop/`), branch **`bidirectional-sync`**, pushed, clean |
-| **Plan** | `SYNC_PLAN.md`, kept identical in both repos — copy it across after editing, it is not a symlink |
-| **Releases** | [phone v0.1.0-alpha.1](https://github.com/kalotrapezis/Drive-Android/releases/tag/v0.1.0-alpha.1), [desktop v0.2.0-alpha.1](https://github.com/kalotrapezis/Drive/releases/tag/v0.2.0-alpha.1), both pre-release |
-| **Backups** | `~/Έγγραφα/Claude/Coding/Drive-Android-backups/` — the phone's databases (23 Sept, verified), the desktop library before two-way, **and a copy of the release keystore** |
+| **Phone** | `~/Έγγραφα/Claude/Coding/Drive-Android`, branch **`bidirectional-sync`** — **dirty, nothing committed** |
+| **Computer** | `~/Έγγραφα/Claude/Coding/Drive` (Electron app in `desktop/`), same branch — **dirty, nothing committed** |
+| **Plan** | `SYNC_PLAN.md`, identical in both repos — copy it across after editing, it is not a symlink |
+| **Devices** | phone *Xiaomi 15* (`208c8192`), tablet *Xiaomi Tab 7 pro* (`971f6b37`), both paired with the computer |
+| **Backups** | `Drive-Android-backups/` — `2026-09-24-phone/`, `2026-09-24-desktop-before-tablet.db`, `2026-09-24-desktop-after-tablet.db`, and the release keystore |
 
-The phone has the current debug build installed, with everything from today.
+**Nothing is committed.** Everything below is in the working tree of both repos.
+Read the diff before committing; it is a day's worth.
 
 ## Running things
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ANDROID_HOME=$HOME/Android/Sdk
-./gradlew assembleDebug -q
-adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+./gradlew testDebugUnitTest assembleDebug -q
+~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ```
 
-The desktop: `cd desktop && npm start` (vite build + electron; takes ~30s before
-it is listening). `npm test` for its 39 tests.
+Desktop: `cd desktop && npm start` (vite build + electron, ~40s). `npm test` for its
+40 tests. 85 Android unit tests. **Both suites pass right now.**
 
-**Tests on the phone**: unit tests with `./gradlew testDebugUnitTest`. Device
-tests with **install + `am instrument`, never `connectedAndroidTest`** — that
-wiped the phone's app data once:
+Killing the desktop: `pkill -f electron` also kills the shell that typed it. Take the
+pid from `ss -tlnp | grep 43180` and `kill` that.
 
-```bash
-./gradlew assembleDebugAndroidTest -q
-adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -e class com.kalotrapezis.drive.IncomingFaceDeviceTest \
-  com.kalotrapezis.drive.test/androidx.test.runner.AndroidJUnitRunner
-```
-
-`IncomingFaceDeviceTest` writes to its own scratch database (a `ContextWrapper`
-that prefixes the name), so it can never touch the real library. Keep it that way.
-
-**Reading the phone's state** (debug build, so `run-as` works):
-
-```bash
-adb shell run-as com.kalotrapezis.drive cat databases/photo_metadata.db > /tmp/phone.db
-adb shell run-as com.kalotrapezis.drive cat databases/sync.db > /tmp/sync.db
-```
-
-**Making a sync happen on demand.** The phone syncs when the app opens (15-minute
-gap) or when the computer says there is something new. That nudge, by hand:
+Nudging a device to sync (it must have the app open):
 
 ```bash
 cd desktop && node -e "
 const { DatabaseSync } = require('node:sqlite'); const https = require('node:https')
 const db = new DatabaseSync(require('node:os').homedir() + '/.local/share/local-drive-desktop/library.db')
-const d = db.prepare('SELECT * FROM sync_devices').get()
-const req = https.request({ host: d.peer_hosts.split(',')[0], port: d.peer_port, method: 'POST', path: '/sync',
-  timeout: 5000, rejectUnauthorized: false, headers: { authorization: 'Bearer ' + d.peer_token, 'content-length': 0 } },
-  res => { res.resume(); console.log('nudge', res.statusCode) })
-req.on('error', e => console.log('error', e.message)); req.end()"
+for (const d of db.prepare('SELECT name, peer_hosts, peer_port, peer_token FROM sync_devices WHERE peer_token IS NOT NULL').all()) {
+  const host = d.peer_hosts.split(',')[0]
+  const req = https.request({ host, port: d.peer_port || 43180, method: 'POST', path: '/sync', timeout: 5000,
+    rejectUnauthorized: false, headers: { authorization: 'Bearer ' + d.peer_token, 'content-length': 0 } },
+    res => { res.resume(); console.log('nudge', d.name, res.statusCode) })
+  req.on('error', e => console.log('error', d.name, e.message)); req.end() }"
 ```
 
-It only works while the Tetra app is **open on the phone** (that is when it
-listens), and it is ignored if that phone synced less than a minute ago.
+## What today changed, shortest possible
 
-**Re-measuring the face numbers**: `python3 tools/measure-faces.py --phone /tmp/phone.db`.
-Every threshold in the plan came out of it.
+**Sync**
+- Labels cross both ways at last (6w 2 closed). `METADATA_EPOCH` is 3.
+- The computer learns a device's address from its own calls, so a phone that changes
+  network is still reachable.
+- Stop stops mid-file; a lost network is retried three times, then it gives up.
+- **Photos, computer → phone, ran for real**: 296 photos, nothing lost (6w 4 closed).
+
+**The overview** (Devices page, above the cards) — how much there is, where it is,
+how many copies, what is safe to free, what the library is made of, and every number
+clicks through to the files behind it.
+
+**Two real defects it found, both fixed**
+- A receipted photo could be absent from `media` (the scanner did not index raw): 83
+  `.NEF` were on disk, verified, and counted as missing.
+- A receipt could outlive its file, and `have()` trusted it, so 7 photos existed on
+  one phone and nothing would ever have fetched them again. They came back by
+  themselves once `have()` started asking whether the file is still there.
+
+**Formats**: raw is in (`.nef` and nine others; libvips reads the embedded full-size
+JPEG). HEIC already worked.
+
+**The app is one dark palette again** on every device — no dynamic colour, no system
+light theme. Tablet grids size themselves by screen width.
+
+**Devices page**: cards read like cards, each device has a name and a picture you
+choose, this machine says what *it* is (so "here" is now "this PC"), and an (i)
+explains that it is the hub.
+
+**Nothing crosses until the rules are answered** (6aj). A new device pairs with every
+row Off. This is the fix for the tablet uploading 11.8 GB this morning.
 
 ## Traps that cost time today
 
-- **A stale APK.** Enabling ABI splits changed the output filename, and the old
-  `app/build/outputs/apk/debug/app-debug.apk` sat there for hours being installed
-  instead of the new build. It is deleted; install `app-arm64-v8a-debug.apk`.
-- **`?since=` hides old data.** When the app starts accepting something it used
-  to drop, everything dropped is outside every future window. Bump
-  `METADATA_EPOCH` in `SyncClient.kt` and every device asks from the beginning
-  once. This is why 35 named people were invisible on the phone.
-- **SQLite will not resolve an outer column inside a subquery's `ORDER BY`.** Cost
-  a confusing "no such column: p.cover_face_id". Apply that kind of choice in JS.
-- **The phone cannot be trashed from a service.** Removing a photo needs
-  Android's own confirmation, which needs an Activity — hence the Move queue.
-- **Test vectors in a plane.** Building "a stranger" as `0.05 * base + 0.998 * away`
-  makes it nearly identical to a probe built the same way. Use a direction
-  orthogonal to everything (`stranger` in the device test).
+- **A running app is not the code on disk.** The desktop had been up since 00:11 and
+  was serving pre-00:44 code; a feature added that morning could not possibly work.
+  Restart before believing anything about a feature added today.
+- `db.transaction()` is better-sqlite3. `node:sqlite` has no such thing — use
+  `BEGIN`/`COMMIT`/`ROLLBACK` around a prepared statement.
+- `this.files` on `SyncServer` is the Files module. A method called `files()` silently
+  shadows nothing and breaks everything.
+- A `<th>` with `display: flex` stops being a table cell: its column collapses and the
+  header stops lining up. The file list is a grid now.
+- A test that uses a **real** drive UUID will write to that drive. Use
+  `00000000-dead-4dea-8dea-000000000000`.
 
-## What today decided, that must not be undone by accident
+## Where the drive work stopped (D5, half built)
 
-1. **A guess and a decision are different kinds of thing.** "Person 41" never
-   overwrites a name, on either device, in either direction. Anything automatic —
-   a scan, a sync, a prune — may add to a named person and may never destroy one:
-   not the name, not their faces, not when their photos leave the gallery.
-2. **Two decisions that disagree are a question, not a race.** One Help organize
-   card per pair of people; nothing moves until it is answered; answers cross and
-   clear everywhere.
-3. **Nothing is resurrected.** The phone skips photos it has a receipt for; the
-   computer skips files the device's last manifest held and its current one does
-   not.
-4. **Nothing is deleted by a sync.** A Move is the device offering, after a
-   verified receipt, through Android's own dialog, into Android's Trash.
-5. **Measure before tuning.** 0.60 → 0.68 → 0.75 all came from measurements, and
-   the first one measured the wrong statistic (random pairs, not a face against a
-   person). `tools/measure-faces.py` is the one that measures the right thing.
+`drives.js` lists mounted filesystems by UUID. A drive is an ordinary device row
+(`kind='database'`, `volume_uuid`, no peer columns), defaulting to a backup target.
+`inspectDrive` scans it; `backUpToDrive` copies under `<mount>/Tetra/Photos` with the
+same verify-then-rename discipline. The Add-a-device guide is built: select → scan →
+rules → Start.
 
-## Tomorrow: the tablet
+**It has never been run.** The Samsung T7 (`T7-TEO`, ext4, 841 GB free) scans clean —
+1,816 photos, 29.28 GB to copy, writable — and the copy itself has not been pressed.
+That is the first thing to do, and to watch: it writes ~29 GB to his working drive.
 
-The full list is at the end of `SYNC_PLAN.md`. Short version: the tablet pairs
-**with the computer**, not with the phone — every device holds one pairing and the
-computer is the hub, so nothing needs building first. Set its rows to Photos
-`receive`, Files `both` before the first sync. Steps 1–4 (pair, rows, first sync
-moves nothing, people arrive with names and chosen portraits) should hold. Step 6
-— two devices disagreeing about who someone is — has **never run between two real
-devices**, only in tests. Expect it to be the one that breaks.
-
-Take a backup of the phone and the desktop library before the first tablet sync.
-`Drive-Android-backups/` has the command in its README.
+Then, in order: Drive files as well as photos; starting by itself when the drive
+appears; and a drive as a source rather than only a target.
 
 ## Still open, in the user's order
 
-`SYNC_PLAN.md` "Roadmap" has all of it with what exists behind each. The headline:
+`SYNC_PLAN.md` "Roadmap" has all of it. The headline:
 
-- Finish what sync carries before trusting it further — the cheapest real gap is
-  **labels only travel phone → computer** (`photo_labels` has no `updated_at`).
-- **Documents** should learn the five things People needed (§ Roadmap B).
-- **Multiple pairings on the phone** is the biggest structural hole and the only
-  one that blocks a tablet from ever talking to a phone directly.
-- Then: folders as albums, settings island, notes, tray, light theme.
-- Never run for real: **photos, computer → phone** (42 of them waiting).
+- **Run the drive copy for real.** Everything for it exists and none of it has run.
+- **Move has still never run for real**, which blocks the whole release/free-space
+  design (6ac, D4) — the safest possible test is a handful of photos.
+- Tablet steps 5–7 never ran: answering a card on one device, two devices disagreeing
+  about who someone is, a rename against a rescan.
+- **Multiple pairings on the phone** (§I) is still the biggest structural hole.
+- A device does not yet say *why* a file failed to cross; `BackupResult.failed` is
+  collected on the phone and thrown away.
+- The phone has no view of the library overview; management is on the computer only.

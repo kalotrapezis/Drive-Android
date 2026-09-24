@@ -1215,7 +1215,7 @@ private fun SettingsTab(
                 // Every folder you have answered about, while the phone can still see it. A new one asks first,
                 // in Help organize; this is where you change your mind.
                 Text("Folders", style = MaterialTheme.typography.titleMedium)
-                Text("Camera, Screenshots and photos from the computer are always in. An included folder shows in Gallery, is backed up, and becomes an album.", style = MaterialTheme.typography.bodySmall)
+                Text("Camera, Screenshots and photos from the computer are always in. An included folder shows in Gallery, is backed up, and is kept as a collection.", style = MaterialTheme.typography.bodySmall)
                 folders.filter { it.included != null }.forEach { folder ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -2990,7 +2990,7 @@ private fun FolderCard(folder: DeviceFolder, answer: (Boolean) -> Unit) = Surfac
 ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Include ${folder.name} in Tetra?", style = MaterialTheme.typography.titleLarge)
-        Text("${folder.countText}. Yes shows them in Gallery, backs them up and makes a ${folder.name} album. Nothing is moved or copied on this phone.", style = MaterialTheme.typography.bodyMedium)
+        Text("${folder.countText}. Yes shows them in Gallery, backs them up and keeps them as a collection named ${folder.name}. Nothing is moved or copied on this phone.", style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             folder.entries.take(4).forEach { entry -> PhotoThumbnail(entry, false, Modifier.weight(1f).aspectRatio(1f).clip(MaterialTheme.shapes.medium)) {} }
             repeat(4 - minOf(4, folder.entries.size)) { Spacer(Modifier.weight(1f)) }

@@ -124,7 +124,7 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   forgotten and combined people with Restore.
 - **Folders**: Gallery shows Camera, Screenshots and photos from the computer. Every
   other photo folder (Viber, Messenger, Download…) is asked about once in Help
-  organize; Yes shows it, backs it up and makes it an album. Settings › Gallery ›
+  organize; Yes shows it, backs it up and keeps it as a user collection. Settings › Gallery ›
   Folders switches answered folders on or off. Files folders (Drive, SyncThing,
   Documents, USB) are never offered.
 - **Help organize** is a page of question cards answered in place, ending with

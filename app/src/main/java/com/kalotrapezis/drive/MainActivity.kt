@@ -97,6 +97,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -2157,6 +2159,7 @@ private fun PhotoTab(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val reviewScope = rememberCoroutineScope()
     val vault = remember(context) { SecureVault(context.applicationContext) }
     var vaultVersion by remember { mutableStateOf(0) }
     var vaultUnlocked by remember { mutableStateOf(false) }
@@ -2177,6 +2180,8 @@ private fun PhotoTab(
     fun closeViewer() { if (closeExternal != null) closeExternal() else viewerUri = null }
     var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
     var choosingCoverFor by remember { mutableStateOf<FaceGroup?>(null) }
+    var renamingGroup by remember { mutableStateOf<FaceGroup?>(null) }
+    var peopleHistoryOpen by remember { mutableStateOf(false) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var returnToCollections by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -2302,7 +2307,7 @@ private fun PhotoTab(
     // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
     val faceGroups = remember(allEntries, metadataRevision) { metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey)) }
     val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
-    val pendingReview = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.nextReview() else null }
+    val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
     var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
@@ -2456,6 +2461,27 @@ private fun PhotoTab(
             },
         )
     }
+    renamingGroup?.let { group ->
+        var name by remember(group.id) { mutableStateOf(if (isGeneratedPersonName(group.name)) "" else group.name) }
+        AlertDialog(
+            onDismissRequest = { renamingGroup = null },
+            title = { Text("Name this person") },
+            text = { OutlinedTextField(name, { name = it }, placeholder = { Text(group.name) }, singleLine = true) },
+            confirmButton = { Button(onClick = {
+                metadataStore.renameFaceGroup(group.id, name); renamingGroup = null; analysisVersion++
+            }, enabled = name.isNotBlank(), colors = neutralButtonColors()) { Text("Save") } },
+            dismissButton = { Button(onClick = { renamingGroup = null }, colors = neutralButtonColors()) { Text("Cancel") } },
+        )
+    }
+    if (peopleHistoryOpen) MergeHistorySheet(
+        title = "History",
+        merges = remember(analysisVersion) { metadataStore.mergeHistory() },
+        entriesByKey = allEntries.associateBy(Entry::photoKey),
+        dismiss = { peopleHistoryOpen = false },
+        restore = { merge -> metadataStore.restoreMerge(merge); analysisVersion++ },
+        forgotten = remember(allEntries, analysisVersion) { metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey), forgotten = true) },
+        unforget = { group -> metadataStore.setFaceGroupHidden(group.id, false); analysisVersion++ },
+    )
     viewingFaceGroup?.let { group ->
         PersonGroupScreen(
             group = group,
@@ -2578,10 +2604,21 @@ private fun PhotoTab(
         val mapCollection = pane == PhotosPane.Timeline && filter == PhotoFilter.Map
         when (pane) {
             PhotosPane.Timeline -> when {
+                filter == PhotoFilter.Review -> ReviewPage(pendingReviews, allEntries.associateBy(Entry::photoKey), metadataStore::faceGroup, back) { review, answer ->
+                    // null is Skip. Answers travel on the next sync; once the last card is gone, that sync is now.
+                    if (answer == null) metadataStore.skipReview(review) else metadataStore.resolveReview(review, answer)
+                    analysisVersion++
+                    if (metadataStore.nextReview() == null) reviewScope.launch {
+                        withContext(Dispatchers.IO) { SyncService.syncInBackground(context, gap = 0) }
+                    }
+                }
                 filter == PhotoFilter.People -> PeopleGroups(
                     faceGroups, allEntries.associateBy(Entry::photoKey),
                     open = { viewingFaceGroup = it },
                     chooseFace = { choosingCoverFor = it },
+                    rename = { renamingGroup = it },
+                    forget = { metadataStore.setFaceGroupHidden(it.id, true); analysisVersion++ },
+                    history = { peopleHistoryOpen = true },
                     back = back,
                 )
                 filter == PhotoFilter.Map -> PhotoMapScreen(
@@ -2852,29 +2889,6 @@ private fun PhotoTab(
         }, colors = neutralButtonColors()) { Text("I understand") } },
         dismissButton = { Button(onClick = { hideWarningOpen = false }, colors = neutralButtonColors()) { Text("Cancel") } },
     )
-    pendingReview?.let { review ->
-        allEntries.firstOrNull { it.photoKey == review.photoKey }?.let { entry ->
-            val candidate = remember(review) { review.candidateGroupId?.let(metadataStore::faceGroup) }
-            ReviewPromptSheet(
-                entry = entry,
-                review = review,
-                candidate = candidate,
-                entriesByKey = allEntries.associateBy(Entry::photoKey),
-                dismiss = {
-                    setFilter(PhotoFilter.Timeline)
-                    setPane(PhotosPane.Collections)
-                },
-                answer = { accepted ->
-                    metadataStore.resolveReview(review, accepted)
-                    analysisVersion++
-                },
-                skip = {
-                    metadataStore.skipReview(review)
-                    analysisVersion++
-                },
-            )
-        }
-    }
     actionError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
     analysisError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
 }
@@ -2900,30 +2914,56 @@ private fun AnalysisProgress(done: Int, total: Int, paused: Boolean, togglePause
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Help organize is its questions: one card per question, answered in place, and a line at the end that says
+ * how many are left — or that there are none.
+ */
 @Composable
-private fun ReviewPromptSheet(entry: Entry, review: PendingReview, candidate: FaceGroup?, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, answer: (Boolean) -> Unit, skip: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = dismiss) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (review.candidateGroupId != null && review.faceSample != null && candidate != null) {
-                Text("Compare the two face crops", style = MaterialTheme.typography.titleMedium)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FaceReviewCrop("This photo", entry, review.faceSample.bounds, Modifier.weight(1f))
-                    FaceReviewCrop(candidate.name, entriesByKey[candidate.photoKey], candidate.bounds(), Modifier.weight(1f))
-                }
-            } else if (review.candidateGroupId == null) ViewerImage(entry, Modifier.fillMaxWidth().height(240.dp).clip(MaterialTheme.shapes.large))
-            if (review.candidateGroupId != null && (review.faceSample == null || candidate == null)) {
-                Text("This face comparison is no longer available.", style = MaterialTheme.typography.titleLarge)
-                Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text("Skip") }
-            } else {
-                Text(review.question, style = MaterialTheme.typography.titleLarge)
-                if (review.candidateGroupId != null) Text("Compare the two labelled face crops. Confirm only if they are the same person.")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
-                    Button(onClick = { answer(false) }, modifier = Modifier.weight(1f)) { Text("No") }
-                    Button(onClick = skip, modifier = Modifier.weight(1f)) { Text("Skip") }
-                }
-            }
+private fun ReviewPage(
+    reviews: List<PendingReview>,
+    entriesByKey: Map<String, Entry>,
+    faceGroup: (Long) -> FaceGroup?,
+    back: () -> Unit,
+    answer: (PendingReview, Boolean?) -> Unit,
+) {
+    // A question about a photo that is not on this device cannot be shown here; another device will ask it.
+    val shown = reviews.filter { it.photoKey in entriesByKey }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { FilesPageHeader("Help organize", R.drawable.ic_tag, back) }
+        items(shown, key = { "${it.photoKey}/${it.faceSampleId}/${it.candidateGroupId}" }) { review ->
+            ReviewCard(entriesByKey.getValue(review.photoKey), review, review.candidateGroupId?.let(faceGroup), entriesByKey) { answer(review, it) }
+        }
+        item {
+            Text(
+                if (shown.isEmpty()) "Thanks, no more questions for now! That's it."
+                else "${shown.size} ${if (shown.size == 1) "question" else "questions"} left",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewCard(entry: Entry, review: PendingReview, candidate: FaceGroup?, entriesByKey: Map<String, Entry>, answer: (Boolean?) -> Unit) = Surface(
+    shape = MaterialTheme.shapes.extraLarge,
+    color = MaterialTheme.colorScheme.surfaceVariant,
+    modifier = Modifier.fillMaxWidth(),
+) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(review.question, style = MaterialTheme.typography.titleLarge)
+        if (review.candidateGroupId == null) ViewerImage(entry, Modifier.fillMaxWidth().height(240.dp).clip(MaterialTheme.shapes.large))
+        else if (review.faceSample != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FaceReviewCrop("This photo", entry, review.faceSample.bounds, Modifier.weight(1f))
+            // A person whose every face went elsewhere has nothing to compare with; the name still asks.
+            if (candidate != null) FaceReviewCrop(candidate.name, entriesByKey[candidate.photoKey], candidate.bounds(), Modifier.weight(1f))
+            else Spacer(Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
+            Button(onClick = { answer(false) }, modifier = Modifier.weight(1f)) { Text("No") }
+            Button(onClick = { answer(null) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text("Skip") }
         }
     }
 }
@@ -2935,30 +2975,53 @@ private fun FaceReviewCrop(label: String, entry: Entry?, bounds: Rect, modifier:
 }
 
 @Composable
-private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, chooseFace: (FaceGroup) -> Unit, back: () -> Unit) {
+private fun PeopleGroups(
+    groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, chooseFace: (FaceGroup) -> Unit,
+    rename: (FaceGroup) -> Unit, forget: (FaceGroup) -> Unit, history: () -> Unit, back: () -> Unit,
+) {
+    val header = @Composable {
+        FilesPageHeader("People", R.drawable.ic_people, back) {
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                IconButton(onClick = history) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "History: forgotten and combined people") }
+            }
+        }
+    }
     if (groups.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            FilesPageHeader("People", R.drawable.ic_people, back)
+            header()
             Text("No people found yet.")
         }
         return
     }
     LazyVerticalGrid(gridColumns(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_people, back) }
+        item(span = { GridItemSpan(maxLineSpan) }) { header() }
         items(groups, key = { it.id }) { group ->
-            FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }) { open(group) }
+            FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }, rename = { rename(group) }, forget = { forget(group) }) { open(group) }
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Unit, open: () -> Unit) = Surface(
+private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Unit, rename: () -> Unit, forget: () -> Unit, open: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = open, onLongClick = chooseFace),
 ) { Box(Modifier.fillMaxSize()) {
     FaceCrop(entry, group, Modifier.fillMaxSize())
+    var menu by remember { mutableStateOf(false) }
+    Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
+        Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, shape = CircleShape) {
+            IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) {
+                Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit ${group.name}", modifier = Modifier.size(20.dp))
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(painterResource(R.drawable.ic_edit), null) }, onClick = { menu = false; rename() })
+            DropdownMenuItem(text = { Text("Choose face") }, leadingIcon = { Icon(painterResource(R.drawable.ic_people), null) }, onClick = { menu = false; chooseFace() })
+            DropdownMenuItem(text = { Text("Forget this person") }, leadingIcon = { Icon(painterResource(R.drawable.ic_visibility_off), null) }, onClick = { menu = false; forget() })
+        }
+    }
     Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
         Column(Modifier.padding(10.dp)) {
             Text(group.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -3134,29 +3197,42 @@ private fun ChooseCoverSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MergeHistorySheet(merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit) {
+private fun MergeHistorySheet(
+    merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit,
+    // The People page's History also lists everyone forgotten; a person's own History is only what was combined.
+    title: String = "Combined into this person", forgotten: List<FaceGroup>? = null, unforget: (FaceGroup) -> Unit = {},
+) {
     val when_ = remember { java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()) }
+    @Composable fun HistoryRow(entry: Entry?, bounds: Rect?, name: String, detail: String, restore: () -> Unit) =
+        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                bounds?.let { FaceCrop(entry, it, Modifier.size(72.dp).clip(MaterialTheme.shapes.medium)) }
+                Column(Modifier.weight(1f)) {
+                    Text(name, style = MaterialTheme.typography.titleMedium)
+                    Text(detail, style = MaterialTheme.typography.bodyMedium)
+                }
+                Button(onClick = restore, colors = neutralButtonColors()) { Text("Restore") }
+            }
+        }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Combined into this person", style = MaterialTheme.typography.titleLarge)
-            if (merges.isEmpty()) Text("Nothing has been combined into this person yet.")
-            else {
-                Text("Restore puts a group back the way it was, with the same faces.")
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(merges, key = { it.id }) { merge ->
-                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                merge.head?.let { head ->
-                                    FaceCrop(entriesByKey[head.photoKey], Rect(head.left, head.top, head.right, head.bottom), Modifier.size(72.dp).clip(MaterialTheme.shapes.medium))
-                                }
-                                Column(Modifier.weight(1f)) {
-                                    Text(merge.sourceName, style = MaterialTheme.typography.titleMedium)
-                                    Text("${merge.sampleIds.size} face${if (merge.sampleIds.size == 1) "" else "s"} · ${when_.format(merge.mergedAt)}", style = MaterialTheme.typography.bodyMedium)
-                                }
-                                Button(onClick = { restore(merge) }, colors = neutralButtonColors()) { Text("Restore") }
-                            }
-                        }
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text("Restore puts a person back the way they were, with the same faces.")
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (forgotten != null) {
+                    item { Text("Forgotten", style = MaterialTheme.typography.labelLarge) }
+                    if (forgotten.isEmpty()) item { Text("Nobody has been forgotten.") }
+                    items(forgotten, key = { "f${it.id}" }) { group ->
+                        HistoryRow(entriesByKey[group.photoKey], group.bounds(), group.name, "${group.count} photo${if (group.count == 1) "" else "s"}") { unforget(group) }
                     }
+                    item { Text("Combined", style = MaterialTheme.typography.labelLarge) }
+                }
+                if (merges.isEmpty()) item { Text("Nothing has been combined yet.") }
+                items(merges, key = { "m${it.id}" }) { merge ->
+                    HistoryRow(
+                        merge.head?.let { entriesByKey[it.photoKey] }, merge.head?.let { Rect(it.left, it.top, it.right, it.bottom) }, merge.sourceName,
+                        "${merge.sampleIds.size} face${if (merge.sampleIds.size == 1) "" else "s"} · ${when_.format(merge.mergedAt)}",
+                    ) { restore(merge) }
                 }
             }
         }
@@ -4538,10 +4614,14 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
         MediaStore.Images.Media.HEIGHT,
         MediaStore.MediaColumns.ORIENTATION,
     )
-    val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+    // Pictures/Tetra is the app's fallback for desktop photos. Other Pictures folders (Viber, etc.)
+    // remain outside Gallery until the user chooses them in the planned folder-album flow.
+    val folders = if (isVideo) arrayOf("DCIM/%", "Pictures/Screenshots/%", "Pictures/Tetra/%", "Movies/Tetra/%")
+        else arrayOf("DCIM/%", "Pictures/Screenshots/%", "Pictures/Tetra/%")
+    val selection = List(folders.size) { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }.joinToString(" OR ")
     val arguments = android.os.Bundle().apply {
         putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf("DCIM/%", "Pictures/Screenshots/%", "DCIM/Screenshots/%"))
+        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, folders)
         if (trashed) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
     }
     return context.contentResolver.query(collection, projection, arguments, null)?.use { cursor ->

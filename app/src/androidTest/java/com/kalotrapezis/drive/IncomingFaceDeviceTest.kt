@@ -195,7 +195,7 @@ class IncomingFaceDeviceTest {
         // The other device knows the same faces as someone else it has also named.
         val maria = UUID.randomUUID().toString()
         store.applyIncomingPerson(maria, "Μαρία", System.currentTimeMillis())
-        // applyIncomingPerson only renames what is here, so give that person a group of her own first.
+        // Give Maria a local photo too, so both sides of the question can be shown.
         store.applyIncomingFace(
             uuid = UUID.randomUUID().toString(), personUuid = null, updatedAt = 2_000,
             photoKey = "maria-photo", bounds = Rect(700, 700, 820, 820), embedding = like(0.05f), quality = 0.9f,
@@ -203,20 +203,34 @@ class IncomingFaceDeviceTest {
         val mariaGroup = store.faceGroups().single { it.id != anna }
         store.renameFaceGroup(mariaGroup.id, "Μαρία")
         val mariaUuid = store.personRecords().single { it.name == "Μαρία" }.uuid
+        val annaUuid = store.personRecords().single { it.name == "Άννα" }.uuid
 
         val later = System.currentTimeMillis() + 60_000
         hers.forEach { store.applyIncomingFace(it.uuid, mariaUuid, later) }
+        store.applyIncomingReview(hers.first().uuid, annaUuid, "pending", later + 1)
 
-        assertEquals("nobody was torn apart", 2, store.faceGroupKeys(anna).size)
-        assertEquals("and nobody was quietly taken over", 1, store.faceGroupKeys(mariaGroup.id).size)
+        assertEquals("the computer's current grouping arrives", 3, store.faceGroupKeys(mariaGroup.id).size)
         val asked = store.nextReview()
         assertNotEquals("the difference is asked about", null, asked)
-        assertEquals("one card for the pair, not one per face", mariaGroup.id, asked!!.candidateGroupId)
+        assertEquals("the alternative is the original group", anna, asked!!.candidateGroupId)
 
-        // Answering it is what moves anything.
+        // One answer is carried to the computer and the other device.
         store.resolveReview(asked, accepted = true)
         assertEquals(2, store.faceGroupKeys(mariaGroup.id).size)
         assertEquals(null, store.nextReview())
+        assertEquals("accepted", store.reviewRecords().single().state)
+    }
+
+    @Test fun aForgottenPersonIsHiddenKeptAndTravels() {
+        val anna = givenANamedPersonHere()
+        store.setFaceGroupHidden(anna, true)
+        assertEquals("not in People", 0, store.faceGroups().size)
+        assertEquals("but in History", listOf(anna), store.faceGroups(forgotten = true).map { it.id })
+        assertEquals("not searchable", emptyMap<String, List<String>>(), store.peopleNamesByPhoto(store.faceGroupKeys(anna)))
+        val record = store.personRecords().single()
+        assertEquals("it travels", true, record.hidden)
+        store.applyIncomingPerson(record.uuid, record.name, System.currentTimeMillis() + 60_000, hidden = false) // restored elsewhere
+        assertEquals(1, store.faceGroups().size)
     }
 
     @Test fun someoneNamedOnAnotherDeviceArrivesWithTheirName() {
@@ -238,6 +252,30 @@ class IncomingFaceDeviceTest {
         // A guess from another device still creates nobody: it is not a decision, so its faces are grouped here.
         store.applyIncomingPerson(UUID.randomUUID().toString(), "Person 41", now)
         assertEquals(2, store.faceGroups().size)
+    }
+
+    @Test fun aComputerNameReplacesAnEquallyOldGuess() {
+        store.recordClassification("photo-here", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), base.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList())
+        val face = store.faceRecords().single()
+        val person = UUID.randomUUID().toString()
+        store.applyIncomingPerson(person, "Μαρία", face.updatedAt)
+        store.applyIncomingFace(face.uuid, person, face.updatedAt)
+        assertEquals("Μαρία", store.faceGroups().single().name)
+    }
+
+    @Test fun identicalLocalCopiesUseTheComputersFaceIdentity() {
+        for (key in listOf("original", "copy")) store.recordClassification(key, 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), base.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList())
+        val person = UUID.randomUUID().toString()
+        store.applyIncomingPerson(person, "Person 900", System.currentTimeMillis())
+        for (key in listOf("original", "copy")) store.applyIncomingFace(
+            "same-crop-on-computer", person, System.currentTimeMillis(), key, Rect(10, 10, 120, 120), base.copyOf().bytes(), 0.9f,
+        )
+        assertEquals(1, store.faceRecords().count { it.uuid == "same-crop-on-computer" })
+        assertEquals(2, store.faceRecords().count { it.personUuid == person })
     }
 
     @Test fun theFaceAPersonIsShownByCanBeChosenAndSurvives() {

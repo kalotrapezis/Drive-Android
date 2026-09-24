@@ -1,7 +1,9 @@
 package com.kalotrapezis.drive
 
 import android.content.ContentValues
+import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.Build
@@ -123,6 +125,17 @@ internal object SyncRules {
     }
 }
 
+/** MediaStore derives the gallery date from the file mtime when the image has no readable EXIF. */
+internal fun publishReceivedPhoto(resolver: ContentResolver, uri: Uri, taken: Long?) {
+    taken?.let { time ->
+        val path = resolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATA), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        // A wrong date is worth a warning, not the photo: failing here would delete it and fetch it again forever.
+        if (path == null || !File(path).setLastModified(time)) android.util.Log.w("SyncClient", "Could not keep the date of $uri")
+    }
+    check(resolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1)
+}
+
 /** Separate from photo_metadata.db: content hashes (by the gallery's photo key) and receipts from the computer. */
 internal class SyncStore(private val context: Context) : SQLiteOpenHelper(context, "sync.db", null, 3) {
     private val prefs = context.getSharedPreferences("sync_pairing", Context.MODE_PRIVATE)
@@ -202,7 +215,6 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     fun summary(): String = pairing()?.let { "Paired with ${it.name} · ${receiptCount()} photos on the computer" } ?: "No computer paired yet"
 
     fun cachedHash(photoKey: String): String? = readableDatabase.rawQuery("SELECT sha256 FROM identity WHERE photo_key = ?", arrayOf(photoKey)).use { if (it.moveToFirst()) it.getString(0) else null }
-    fun photoKeyForSha(sha256: String): String? = readableDatabase.rawQuery("SELECT photo_key FROM identity WHERE sha256 = ? LIMIT 1", arrayOf(sha256)).use { if (it.moveToFirst()) it.getString(0) else null }
     fun saveHash(photoKey: String, sha256: String) { writableDatabase.insertWithOnConflict("identity", null, ContentValues().apply { put("photo_key", photoKey); put("sha256", sha256) }, SQLiteDatabase.CONFLICT_REPLACE) }
     /**
      * Everything is asked for again when the rules for accepting it change.
@@ -253,7 +265,7 @@ internal class SyncException(message: String) : Exception(message)
  *
  * 2: a person named on another device is created here rather than dropped (SYNC_PLAN.md 6y).
  */
-private const val METADATA_EPOCH = 3 // 3: the computer can finally send its own search labels (6w 2)
+private const val METADATA_EPOCH = 5 // 5: reconcile every local copy of a face with the computer's group
 
 /** How many files cross at once. Four keeps the link busy; more turns a phone's Wi-Fi into stalled sockets. */
 private const val AT_ONCE = 4
@@ -524,7 +536,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
         // a metadata sync that fails looks exactly like one that had nothing to say, and on 2026-09-23 that hid
         // a whole library's names failing to come back.
-        runCatching { syncMetadata(host, p, entries) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
+        runCatching { syncMetadata(host, p, listPhotos(context)) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
         return BackupResult(bySha.size, sent, alreadyThere, failed, received)
     }
 
@@ -582,6 +594,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             ?: throw SyncException("The computer sent a photo with no usable name.")
         val video = name.substringAfterLast('.', "").lowercase(Locale.ROOT) in setOf("mp4", "mkv", "mov", "3gp", "webm", "avi")
         val folder = SyncRules.incomingFolder(item.optString("path"), video)
+        val taken = item.optLong("modified").takeIf { it > 0 }
         val collection = if (video) android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         else android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val resolver = context.contentResolver
@@ -589,7 +602,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, folder)
             put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
-            item.optLong("modified").takeIf { it > 0 }?.let { put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, it) }
+            taken?.let { put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, it) }
         }
         val uri = resolver.insert(collection, values) ?: throw SyncException("Android would not make room for $name.")
         try {
@@ -600,7 +613,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             }
             connection.disconnect()
             if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
-            resolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            publishReceivedPhoto(resolver, uri, taken)
         } catch (e: Exception) {
             runCatching { resolver.delete(uri, null, null) }
             throw e
@@ -613,7 +626,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             android.provider.MediaStore.MediaColumns.SIZE,
         ), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) store.saveHash(
-                PhotoMetadataRules.stableKey(uri.toString(), cursor.getString(1)?.trim('/'), cursor.getString(0), cursor.getLong(2)), sha,
+                PhotoMetadataRules.stableKey(uri.toString(), cursor.getString(1), cursor.getString(0), cursor.getLong(2)), sha,
             )
         }
     }
@@ -628,6 +641,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * text-heavy photo on pixels alone) and for its own face detection; the desktop may still rename a person.
      */
     private fun syncMetadata(host: String, p: Pairing, entries: List<Entry>) {
+        val keysBySha = entries.mapNotNull { entry -> runCatching { sha256(entry) to entry.photoKey }.getOrNull() }
+            .groupBy({ it.first }, { it.second })
+        val keyFor = { record: JSONObject -> keysBySha[record.optString("sha256")]?.firstOrNull() }
         val sizes = entries.associate { it.photoKey to (it.width to it.height) }
         val sha = { key: String -> store.cachedHash(key) }
         val labels = metadataStore.allLabels()
@@ -651,7 +667,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             } }))
             .put("people", JSONArray(metadataStore.personRecords().map { r ->
                 JSONObject().put("uuid", r.uuid).put("name", r.name).put("updatedAt", r.updatedAt)
-                    .put("cover", r.coverUuid ?: JSONObject.NULL)
+                    .put("cover", r.coverUuid ?: JSONObject.NULL).put("hidden", r.hidden)
             }))
             .put("faces", JSONArray(metadataStore.faceRecords().mapNotNull { r -> faceJson(r, sha(r.photoKey), sizes[r.photoKey]) }))
             // Answers to Help organize. A question answered here must stop being asked over there, or the same
@@ -685,27 +701,27 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             metadataStore.applyIncomingLabels(key, (0 until list.length()).map(list::getString))
         } }
         pulled.each("people") { d ->
-            metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt"), d.optString("cover").ifEmpty { null })
+            metadataStore.applyIncomingPerson(d.getString("uuid"), d.getString("name"), d.getLong("updatedAt"), d.optString("cover").ifEmpty { null }, d.optBoolean("hidden"))
         }
         // A face the computer found but this phone's detector missed arrives whole — box, embedding and all —
         // and is kept, so the photo still shows up under that person here (SYNC_PLAN.md 6m). The box comes as
         // fractions of the upright photo and goes back into the analyser's own pixels on the way in.
-        val keysBySha = entries.mapNotNull { e -> store.cachedHash(e.photoKey)?.let { it to e.photoKey } }.toMap()
         pulled.each("faces") { d ->
-            val key = keysBySha[d.optString("sha256")]
-            val size = key?.let { sizes[it] }?.let { SyncRules.analysisSize(it.first, it.second) }
             val box = d.optJSONArray("box")?.takeIf { it.length() == 4 }
-            val bounds = if (size != null && box != null) android.graphics.Rect(
-                (box.getDouble(0) * size.first).toInt(), (box.getDouble(1) * size.second).toInt(),
-                (box.getDouble(2) * size.first).toInt(), (box.getDouble(3) * size.second).toInt(),
-            ) else null
             val embedding = d.optString("embedding").takeIf { it.isNotBlank() }
                 ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
                 ?.takeIf { d.optString("model") == FACE_EMBEDDING_MODEL } // another model's vector means nothing here
-            metadataStore.applyIncomingFace(
-                d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt"),
-                photoKey = key, bounds = bounds, embedding = embedding, quality = d.optDouble("quality", 1.0).toFloat(),
-            )
+            keysBySha[d.optString("sha256")]?.forEach { key ->
+                val size = sizes[key]?.let { SyncRules.analysisSize(it.first, it.second) }
+                val bounds = if (size != null && box != null) android.graphics.Rect(
+                    (box.getDouble(0) * size.first).toInt(), (box.getDouble(1) * size.second).toInt(),
+                    (box.getDouble(2) * size.first).toInt(), (box.getDouble(3) * size.second).toInt(),
+                ) else null
+                metadataStore.applyIncomingFace(
+                    d.getString("uuid"), d.optString("person").ifEmpty { null }, d.getLong("updatedAt"),
+                    photoKey = key, bounds = bounds, embedding = embedding, quality = d.optDouble("quality", 1.0).toFloat(),
+                )
+            }
         }
         pulled.each("reviews") { d ->
             metadataStore.applyIncomingReview(d.getString("face"), d.getString("person"), d.optString("state"), d.getLong("updatedAt"))
@@ -815,7 +831,6 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             .put("person", r.personUuid ?: JSONObject.NULL).put("updatedAt", r.updatedAt)
     }
 
-    private fun keyFor(record: JSONObject): String? = store.photoKeyForSha(record.optString("sha256"))
 
     private inline fun JSONObject.each(name: String, block: (JSONObject) -> Unit) {
         val array = optJSONArray(name) ?: return

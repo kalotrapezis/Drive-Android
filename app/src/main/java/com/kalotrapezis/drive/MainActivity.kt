@@ -201,11 +201,11 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
-private const val DRIVE_PATH = "/sdcard/Drive/"
+private const val DRIVE_PATH = "/sdcard/Tetra/"
 private const val PHOTO_SETUP_COMPLETED = "photo_setup_completed"
 private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 
-private fun driveRoot(): File = File(Environment.getExternalStorageDirectory(), "Drive")
+private fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageDirectory())
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1190,7 +1190,7 @@ private fun SettingsTab(
                 Text("Drive: ${if (hasDriveAccess) "All files access granted" else "All files access not granted"}", style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = managePhotos) { Text("Photos") }
-                    Button(onClick = manageDrive) { Text("Drive") }
+                    Button(onClick = manageDrive) { Text("Files") }
                 }
             }
         }
@@ -1846,7 +1846,7 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 }
                 DriveItemSheetPanel.Properties -> {
                     Text(if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name))
-                    Text("Location: /sdcard/Drive/${item.relativePath}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Location: $DRIVE_PATH${item.relativePath}", style = MaterialTheme.typography.bodyMedium)
                     Text("${item.file.length()} bytes", style = MaterialTheme.typography.bodyMedium)
                     if (metadata.tags(item.relativePath).isNotEmpty()) Text("Tags: ${metadata.tags(item.relativePath).joinToString()}", style = MaterialTheme.typography.bodyMedium)
                     DriveWideAction(if (item.isDirectory) R.drawable.ic_folder else R.drawable.ic_file, if (item.isDirectory) "Open folder" else "Open file") { dismiss(); open() }

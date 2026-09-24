@@ -28,6 +28,22 @@ data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
 }
 
 /** File boundary rules are kept independent from Compose so they can be tested without a device. */
+/**
+ * The app's folder on the phone: /sdcard/Tetra. Until 2026-09-24 it was /sdcard/Drive, after the app's old name;
+ * it is moved once, by a rename — instant on one storage, no space needed, and it happens or it does not. Nothing
+ * that refers to a file inside it changes: favorites, tags, recents and sync all use paths relative to it, so a
+ * phone that has moved and a computer that has not still match file for file. When both exist, Tetra is used and
+ * Drive is left exactly as it is.
+ */
+object TetraFolder {
+    fun root(storage: File): File {
+        val root = File(storage, "Tetra")
+        val old = File(storage, "Drive")
+        if (!root.exists() && old.isDirectory) old.renameTo(root)
+        return if (!root.exists() && old.isDirectory) old else root // the rename refused: keep using where it all is
+    }
+}
+
 object DriveRules {
     /**
      * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
@@ -96,7 +112,7 @@ object DriveRules {
         .map { file -> relative(root, file) }
         .filterNot { it == TRASH_FOLDER || it.startsWith("$TRASH_FOLDER/") }
         .sortedWith(compareBy<String> { it.isNotEmpty() }.thenBy { it.lowercase(Locale.ROOT) })
-        .map { DriveDestination(it, if (it.isEmpty()) "Drive" else it) }
+        .map { DriveDestination(it, if (it.isEmpty()) "Tetra" else it) }
         .toList()
 
     fun allItems(root: File, includeTrash: Boolean = false): List<DriveItem> = root.walkTopDown()

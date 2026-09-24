@@ -753,7 +753,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * and asks for the rest. Nothing on the phone is changed, and nothing is ever deleted on either side.
      */
     private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {
-        val root = File(android.os.Environment.getExternalStorageDirectory(), "Drive")
+        val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
         if (!root.isDirectory) return 0
         val entries = driveManifest.entries(root)
         val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes) })

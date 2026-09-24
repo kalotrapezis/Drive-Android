@@ -332,6 +332,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             val result = runCatching {
                 val root = driveRoot()
                 check((root.exists() && root.isDirectory) || root.mkdirs()) { "Could not create Drive." }
+                DriveRules.ensureSystemFolders(root)
                 if (folder == "Trash" && !File(root, folder).exists()) emptyList() else listDriveFolder(root, folder)
             }
             (context as MainActivity).runOnUiThread {
@@ -1596,8 +1597,8 @@ private fun DriveFiles(
                 is DriveListState.Items -> {
                     val entries = remember(state.entries, sort) {
                         when (sort) {
-                            DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
-                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem> { !it.isDirectory }.thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
+                            DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
+                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
                         }
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
@@ -1783,8 +1784,10 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 DriveItemSheetPanel.Menu -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         DriveActionTile(R.drawable.ic_copy, "Copy") { panel = DriveItemSheetPanel.Copy }
-                        DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
-                        DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
+                        if (!DriveRules.isSystem(item.relativePath)) {
+                            DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
+                            DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
+                        }
                         if (!item.isDirectory) DriveActionTile(R.drawable.ic_share, "Share") { dismiss(); shareDriveFile(context, item.file) }
                     }
                     if (!item.isDirectory) DriveWideAction(R.drawable.ic_open_with, "Open with…") { dismiss(); openWith() }
@@ -1795,7 +1798,8 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, "Sync now") { panel = DriveItemSheetPanel.Sync }
                     // Already in Trash: the useful action is the opposite one — put it back where Drive keeps things.
                     if (item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_restore, "Restore from Trash") { submit(DriveItemAction.Move("")) }
-                    else if (item.relativePath != "Trash") DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
+                    else if (item.relativePath != "Trash" && !DriveRules.isSystem(item.relativePath)) DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
+                    if (DriveRules.isSystem(item.relativePath)) Text("A system folder: Tetra keeps it, so it cannot be moved, renamed or deleted. Everything inside it can.", style = MaterialTheme.typography.bodySmall)
                 }
                 DriveItemSheetPanel.Rename -> {
                     Text("Rename this ${if (item.isDirectory) "folder" else "file"}.")
@@ -1899,12 +1903,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     ),
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
-            contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
-            tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
-            modifier = Modifier.size(32.dp),
-        )
+        DriveItemIcon(item, folderColor, selected, 32.dp)
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1928,12 +1927,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
 ) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Icon(
-                painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
-                contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
-                tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
-                modifier = Modifier.size(64.dp),
-            )
+            DriveItemIcon(item, folderColor, selected, 64.dp)
             IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
         }
         Column {
@@ -1943,15 +1937,25 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     }
 }
 
+@Composable private fun DriveItemIcon(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) = Icon(
+    painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
+    contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
+    tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
+    modifier = Modifier.size(size),
+)
+
 private fun driveItemIcon(item: DriveItem): Int = when {
     item.relativePath == "Trash" -> R.drawable.ic_delete
+    // System folders carry their emblem in the folder itself, so they read as different at a glance.
+    item.relativePath == "Documents" -> R.drawable.ic_folder_documents
+    item.relativePath == "Documents/Scanned Documents" -> R.drawable.ic_folder_scans
     item.isDirectory -> R.drawable.ic_folder
     else -> R.drawable.ic_file
 }
 
 private fun driveItemIconDescription(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else "File"
 
-private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
+private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
 @Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
 

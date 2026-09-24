@@ -9,6 +9,25 @@ import java.io.File
 import java.nio.file.Files
 
 class DriveFilesTest {
+    @Test fun theDriveFolderBecomesTetraByRenamingItOnce() {
+        val storage = Files.createTempDirectory("sdcard").toFile()
+        File(storage, "Drive/Documents/Scanned Documents").mkdirs()
+        File(storage, "Drive/Documents/Scanned Documents/scan.pdf").writeText("pdf")
+        val root = TetraFolder.root(storage)
+        assertEquals(File(storage, "Tetra"), root)
+        assertEquals("pdf", File(root, "Documents/Scanned Documents/scan.pdf").readText())
+        assertFalse(File(storage, "Drive").exists())
+        assertEquals(root, TetraFolder.root(storage))
+    }
+
+    @Test fun whenBothFoldersExistTetraIsUsedAndDriveIsLeftAlone() {
+        val storage = Files.createTempDirectory("sdcard").toFile()
+        File(storage, "Drive/keep.txt").apply { parentFile!!.mkdirs(); writeText("x") }
+        File(storage, "Tetra").mkdirs()
+        assertEquals(File(storage, "Tetra"), TetraFolder.root(storage))
+        assertTrue(File(storage, "Drive/keep.txt").exists())
+    }
+
     @Test fun systemFoldersStayButTheirContentsMove() {
         val root = Files.createTempDirectory("drive-root").toFile()
         DriveRules.ensureSystemFolders(root)

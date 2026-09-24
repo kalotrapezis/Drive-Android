@@ -51,6 +51,11 @@ So, in order (all designed in SYNC_PLAN D3 — nothing here is hard-coded, every
 5. **Test Move for real**, on a handful of photos first, then watch the phone and tablet not send them back.
 
 Also:
+- **The copies bar on the Devices page is fixed at three buckets** ("One copy · Two places · Three or more"). With
+  the T7 added there are four places (PC, phone, tablet, T7) and every photo is in all four, which the bar cannot
+  show. It should have one bucket per count, 1…N, where N grows with the devices that hold photos (the user noticed
+  it right after adding the T7). `overview()` in sync.js already returns a row per `copies` value; the fixed three
+  are in the Devices page's rendering. One-copy stays red and two amber — the colours mean risk, not count.
 - The **T7's card on the Devices page** still offers "T7-TEO → this PC" and "Both ways", which do nothing for a
   drive — the Add-a-drive guide was fixed tonight, the card was not.
 - A **folder-emblem catalog** (finance, medical, education, receipts…) on the personalisation card, next to

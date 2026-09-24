@@ -7,7 +7,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -17,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -34,6 +37,8 @@ internal class SyncService : Service() {
     companion object {
         private const val CHANNEL_ID = "sync"
         private const val AUTO_SYNC_GAP_MS = 15 * 60_000L
+        /** How long the service holds itself open waiting for a network to come back before giving up. */
+        private const val WAIT_FOR_NETWORK_MS = 10 * 60_000L
 
         /**
          * A VPN answers for the connection it hides, and an ad-blocking VPN answers "no idea": its network has
@@ -94,12 +99,15 @@ internal class SyncService : Service() {
     private var lastTotal = 0
     private var lastShown = 0L
     private var announced = false
+    private var attempt = 0
+    private var waiting: ConnectivityManager.NetworkCallback? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> job?.cancel()
+            // Stop while it is waiting for a network has nothing to cancel, and the button must still work.
+            ACTION_STOP -> job?.cancel() ?: run { stopWaiting(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
             else -> startBackup()
         }
         return START_NOT_STICKY
@@ -107,6 +115,8 @@ internal class SyncService : Service() {
 
     private fun startBackup() {
         if (job != null) return
+        stopWaiting()
+        attempt++
         val store = SyncStore(applicationContext)
         val client = SyncClient(applicationContext, store)
         announced = false
@@ -126,11 +136,48 @@ internal class SyncService : Service() {
                 { e -> BackupState(null, null, if (e is kotlinx.coroutines.CancellationException) "Stopped. Photos already sent are safe on the computer." else e.message ?: "Backup failed.") },
             )
             job = null
-            stopForeground(STOP_FOREGROUND_REMOVE)
             // A sync is the other moment photos appear here without anyone taking them.
             PhotoAnalysisService.start(applicationContext)
+            if (!paused.value && SyncRules.retriesAfterNetworkLoss(attempt, result.exceptionOrNull())) return@launch waitForNetwork()
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
+    }
+
+    /**
+     * The Wi-Fi moving under a sync — an extender handing over to the main router, 24 September — used to end
+     * it for good. The service stays up instead, says so, and starts again when a network is back; after
+     * SyncRules.NETWORK_RETRIES it gives up rather than sit here draining the battery, and the next sync waits
+     * for the app to be opened.
+     */
+    private fun waitForNetwork() {
+        val networks = getSystemService(ConnectivityManager::class.java)
+        if (networks == null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return }
+        show("Waiting for Wi-Fi", 0, 0)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scope.launch { delay(5_000); if (job == null) startBackup() }
+            }
+        }
+        waiting = callback
+        runCatching {
+            networks.registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                    .build(),
+                callback,
+            )
+        }.onFailure { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return }
+        scope.launch {
+            delay(WAIT_FOR_NETWORK_MS)
+            if (waiting === callback && job == null) { stopWaiting(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+        }
+    }
+
+    private fun stopWaiting() {
+        waiting?.let { callback -> runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback) } }
+        waiting = null
     }
 
     private fun onProgress(p: BackupProgress) {
@@ -182,6 +229,7 @@ internal class SyncService : Service() {
     )
 
     override fun onDestroy() {
+        stopWaiting()
         scope.cancel()
         _state.value = null
         super.onDestroy()

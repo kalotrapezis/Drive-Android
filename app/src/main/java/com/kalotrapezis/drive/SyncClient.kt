@@ -69,6 +69,18 @@ internal data class SyncConnection(val content: String, val direction: String, v
 internal object SyncRules {
     private val hex64 = Regex("^[0-9a-f]{64}$")
 
+    /** How many times a sync that died on a lost network is started again, once a network is back. */
+    const val NETWORK_RETRIES = 3
+
+    /**
+     * A sync that died when the Wi-Fi moved under it — an extender handing over to the main router, on
+     * 24 September — is worth starting again the moment a network is back. Three times, and no more: after
+     * that the computer is assumed to be away, and the next attempt waits for someone to open the app. A
+     * cancellation is not a failure; Stop means stop.
+     */
+    fun retriesAfterNetworkLoss(attempt: Int, failure: Throwable?): Boolean =
+        failure != null && failure !is kotlinx.coroutines.CancellationException && attempt < NETWORK_RETRIES
+
     fun parseQr(text: String): PairingQr? = runCatching {
         val o = JSONObject(text)
         if (o.getInt("v") != 1) return null
@@ -241,7 +253,7 @@ internal class SyncException(message: String) : Exception(message)
  *
  * 2: a person named on another device is created here rather than dropped (SYNC_PLAN.md 6y).
  */
-private const val METADATA_EPOCH = 2
+private const val METADATA_EPOCH = 3 // 3: the computer can finally send its own search labels (6w 2)
 
 /** How many files cross at once. Four keeps the link busy; more turns a phone's Wi-Fi into stalled sockets. */
 private const val AT_ONCE = 4
@@ -330,6 +342,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val request = JSONObject().put("code", qr.code).put("name", "${Build.MANUFACTURER} ${Build.MODEL}")
                 .put("port", SyncServer.PORT).put("hosts", JSONArray(SyncServer.lanAddresses()))
                 .put("token", ourToken)
+                // Android's own answer to "phone or tablet": the narrowest the screen ever gets, in dp. 369 here,
+                // 777 on the tablet, and 600 is where Android itself draws the line — so the computer can pick
+                // the right picture without asking anyone (SYNC_PLAN.md 6af).
+                .put("widthDp", context.resources.configuration.smallestScreenWidthDp)
             ourFingerprint?.let { request.put("fp", it) }
             outputStream.use { it.write(request.toString().toByteArray()) }
             jsonResult().also { disconnect() }
@@ -373,7 +389,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         progress: (BackupProgress) -> Unit,
         failed: MutableList<String>,
         name: (T) -> String,
-        work: (T) -> Unit,
+        work: suspend (T) -> Unit,
     ): Int = coroutineScope {
         if (items.isEmpty()) return@coroutineScope 0
         val limit = Semaphore(AT_ONCE)
@@ -411,12 +427,29 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         return SyncRules.hex(digest.digest()).also { store.saveHash(entry.photoKey, it) }
     }
 
-    private fun uploadOne(host: String, p: Pairing, sha: String, e: Entry) {
+    /**
+     * A copy that notices Stop. `copyTo` hands a whole 400MB video to the socket before anything looks at the
+     * coroutine again, which is why Stop did nothing until the video in flight had finished (24 Sept).
+     * ponytail: a read already blocked on a dead socket still waits out readTimeout; closing the connection
+     * from outside is the fix if that ever matters.
+     */
+    private suspend fun pump(input: java.io.InputStream, output: java.io.OutputStream, digest: MessageDigest? = null) {
+        val buffer = ByteArray(256 * 1024)
+        while (true) {
+            coroutineContext.ensureActive()
+            val n = input.read(buffer)
+            if (n < 0) break
+            digest?.update(buffer, 0, n)
+            output.write(buffer, 0, n)
+        }
+    }
+
+    private suspend fun uploadOne(host: String, p: Pairing, sha: String, e: Entry) {
         val c = open(host, p.port, p.fingerprint, SyncRules.blobPath(sha, e.relativePath, e.name, e.takenMillis), "PUT", p.token)
         c.doOutput = true
         c.setFixedLengthStreamingMode(e.sizeBytes)
         c.setRequestProperty("Content-Type", "application/octet-stream")
-        c.outputStream.use { out -> checkNotNull(context.contentResolver.openInputStream(e.contentUri!!)).use { it.copyTo(out, 256 * 1024) } }
+        c.outputStream.use { out -> checkNotNull(context.contentResolver.openInputStream(e.contentUri!!)).use { pump(it, out) } }
         val receipt = c.jsonResult().also { c.disconnect() }
         if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException("No verified receipt.")
         store.saveReceipt(e.photoKey, sha, receipt.getString("path"))
@@ -440,6 +473,19 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             checkpoint() // Pause waits here, between files, so a half-sent photo is never left behind
             if (i % 10 == 0) progress(BackupProgress("Checking photos", i, entries.size))
             runCatching { bySha.putIfAbsent(sha256(e), e) }.onFailure { failed += "${e.name}: ${it.message}" }
+        }
+        // What this device holds, in words rather than in hashes (SYNC_PLAN.md 6ae). The computer can name and
+        // size everything it was given; for a photo it was never given, a hash is all it had — which is exactly
+        // the photo worth warning about. Best-effort and never fatal: a computer that does not know the endpoint
+        // simply answers 404 and everything else about this sync is unaffected.
+        runCatching {
+            bySha.entries.chunked(2_000).forEach { chunk ->
+                val items = JSONArray(chunk.map { (sha, e) ->
+                    JSONObject().put("sha256", sha).put("name", e.name).put("size", e.sizeBytes)
+                        .put("video", e.isVideo).put("takenAt", e.takenMillis)
+                })
+                postJson(host, p, "/inventory", JSONObject().put("items", items))
+            }
         }
         val rows = connections(host, p).associateBy { it.content }
         val photos = rows["photos"] ?: SyncConnection("photos", "both", "everything")
@@ -530,7 +576,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }
     }
 
-    private fun receivePhoto(host: String, p: Pairing, item: JSONObject) {
+    private suspend fun receivePhoto(host: String, p: Pairing, item: JSONObject) {
         val sha = item.getString("sha256")
         val name = item.optString("name").takeIf { it.isNotBlank() && '/' !in it && it != "." && it != ".." }
             ?: throw SyncException("The computer sent a photo with no usable name.")
@@ -550,15 +596,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val digest = MessageDigest.getInstance("SHA-256")
             val connection = open(host, p.port, p.fingerprint, "/blob/$sha", "GET", p.token)
             connection.inputStream.use { input ->
-                checkNotNull(resolver.openOutputStream(uri)) { "Cannot write $name." }.use { output ->
-                    val buffer = ByteArray(256 * 1024)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        digest.update(buffer, 0, n)
-                        output.write(buffer, 0, n)
-                    }
-                }
+                checkNotNull(resolver.openOutputStream(uri)) { "Cannot write $name." }.use { output -> pump(input, output, digest) }
             }
             connection.disconnect()
             if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
@@ -725,7 +763,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     }
 
     /** The same rules as a file arriving on the computer: verified into a .part, and nothing is ever replaced. */
-    private fun receiveFile(host: String, p: Pairing, root: File, file: JSONObject) {
+    private suspend fun receiveFile(host: String, p: Pairing, root: File, file: JSONObject) {
         val sha = file.getString("sha256")
         val rel = file.getString("path")
         val target = DriveRules.newFile(root, rel)
@@ -734,17 +772,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             val connection = open(host, p.port, p.fingerprint, "/file/$sha?path=${URLEncoder.encode(rel, "UTF-8")}", "GET", p.token)
-            connection.inputStream.use { input ->
-                part.outputStream().use { output ->
-                    val buffer = ByteArray(256 * 1024)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        digest.update(buffer, 0, n)
-                        output.write(buffer, 0, n)
-                    }
-                }
-            }
+            connection.inputStream.use { input -> part.outputStream().use { output -> pump(input, output, digest) } }
             connection.disconnect()
             if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
             if (!part.renameTo(target)) throw SyncException("Could not put it in place.")
@@ -762,13 +790,13 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         if (!source.renameTo(target)) throw SyncException("Could not move ${from} to ${to}.")
     }
 
-    private fun uploadFile(host: String, p: Pairing, entry: DriveFileEntry, file: File) {
+    private suspend fun uploadFile(host: String, p: Pairing, entry: DriveFileEntry, file: File) {
         val path = "/file/${entry.sha256}?path=${URLEncoder.encode(entry.relativePath, "UTF-8")}&modified=${entry.modified}"
         val c = open(host, p.port, p.fingerprint, path, "PUT", p.token)
         c.doOutput = true
         c.setFixedLengthStreamingMode(entry.sizeBytes)
         c.setRequestProperty("Content-Type", "application/octet-stream")
-        c.outputStream.use { out -> file.inputStream().use { it.copyTo(out, 256 * 1024) } }
+        c.outputStream.use { out -> file.inputStream().use { pump(it, out) } }
         val receipt = c.jsonResult().also { c.disconnect() }
         if (!receipt.optBoolean("verified")) throw SyncException("No verified receipt for ${entry.relativePath}.")
     }

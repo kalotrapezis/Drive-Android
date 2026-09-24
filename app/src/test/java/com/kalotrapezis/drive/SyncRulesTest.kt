@@ -17,6 +17,14 @@ class SyncRulesTest {
         assertEquals(fp, qr.fingerprint)
     }
 
+    @Test fun retriesALostNetworkThreeTimesAndNotAStop() {
+        assertTrue(SyncRules.retriesAfterNetworkLoss(1, SyncException("Could not reach the computer")))
+        assertTrue(SyncRules.retriesAfterNetworkLoss(2, SyncException("Could not reach the computer")))
+        assertFalse("the fourth attempt gives up", SyncRules.retriesAfterNetworkLoss(3, SyncException("boom")))
+        assertFalse("a finished sync is not retried", SyncRules.retriesAfterNetworkLoss(1, null))
+        assertFalse("Stop means stop", SyncRules.retriesAfterNetworkLoss(1, kotlinx.coroutines.CancellationException()))
+    }
+
     @Test fun rejectsAnythingElse() {
         assertNull(SyncRules.parseQr("https://example.com"))
         assertNull(SyncRules.parseQr("""{"v":2,"hosts":["h"],"port":1,"fp":"$fp","code":"abcdefghijklmnopqrstuv"}"""))

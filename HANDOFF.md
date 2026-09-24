@@ -1,121 +1,86 @@
-# Handoff — end of 24 September 2026
+# Handoff — night of 24 September 2026
 
-Read `SYNC_PLAN.md` for *why* anything is the way it is. This is the first ten
-minutes, and the traps that cost time today.
+Read `SYNC_PLAN.md` for *why* anything is the way it is — **section D3** is the design for everything below. This is
+the first ten minutes, the state of the devices, and the traps that cost time today.
 
 ## Where everything is
 
 | | |
 |---|---|
-| **Phone** | `~/Έγγραφα/Claude/Coding/Drive-Android`, branch **`bidirectional-sync`** — **dirty, nothing committed** |
-| **Computer** | `~/Έγγραφα/Claude/Coding/Drive` (Electron app in `desktop/`), same branch — **dirty, nothing committed** |
-| **Plan** | `SYNC_PLAN.md`, identical in both repos — copy it across after editing, it is not a symlink |
-| **Devices** | phone *Xiaomi 15* (`208c8192`), tablet *Xiaomi Tab 7 pro* (`971f6b37`), both paired with the computer |
-| **Backups** | `Drive-Android-backups/` — `2026-09-24-phone/`, `2026-09-24-desktop-before-tablet.db`, `2026-09-24-desktop-after-tablet.db`, and the release keystore |
+| **Phone** | `~/Έγγραφα/Claude/Coding/Drive-Android`, branch `bidirectional-sync`, merged into `alpha` (PR #5) |
+| **Computer** | `~/Έγγραφα/Claude/Coding/Drive` (Electron app in `desktop/`), same branch, merged into `electron-desktop` (PR #4) |
+| **Released** | **0.2.0-alpha.3** on GitHub, both repos (APK; AppImage + .deb) |
+| **Installed** | PC: the .deb (`/opt/Tetra`, menu entry "Tetra"). Phone and tablet: **debug** builds of alpha.3 — keep installing debug over them; a release APK needs an uninstall, which wipes app data |
+| **Folders** | `~/Tetra/Photos`, `~/Tetra/Files` on the PC; `/sdcard/Tetra` on phone and tablet (renamed from `Drive` tonight, `desktop/home.js`, `TetraFolder` in DriveFiles.kt) |
+| **T7 drive** | `T7-TEO`, ext4, UUID `f0544ced-…`, mounted `/mnt/T7`. **Full verified copy** under `/mnt/T7/Tetra/Photos` (3,969, 29 GB) and `/mnt/T7/Tetra/Files` (44, 103 MB), done 22:26. Four 0-byte `*.jpg.part` from 15:10 are old leftovers, harmless |
+| **Backups** | `Drive-Android-backups/` — tonight's `2026-09-24-evening-*`, `2026-09-24-before-folders/`, and `~/.local/share/local-drive-desktop/library.db.before-tetra-folder` |
 
-**Nothing is committed.** Everything below is in the working tree of both repos.
-Read the diff before committing; it is a day's worth.
-
-## Running things
+Build and test:
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ANDROID_HOME=$HOME/Android/Sdk
 ./gradlew testDebugUnitTest assembleDebug -q
-~/Android/Sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+~/Android/Sdk/platform-tools/adb -s 208c8192 install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk   # phone
+~/Android/Sdk/platform-tools/adb -s 971f6b37 install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk   # tablet
 ```
 
-Desktop: `cd desktop && npm start` (vite build + electron, ~40s). `npm test` for its
-40 tests. 85 Android unit tests. **Both suites pass right now.**
+Desktop: `cd desktop && npm test` (54 tests), `npm run dist` for the AppImage and .deb. The user runs the
+**installed** app now — to test a dev build, quit Tetra from the tray first (it lives in the tray; closing the
+window does not quit it, and a second copy exits at once).
 
-Killing the desktop: `pkill -f electron` also kills the shell that typed it. Take the
-pid from `ss -tlnp | grep 43180` and `kill` that.
+## Next session, in the user's words
 
-Nudging a device to sync (it must have the app open):
+> complete the hard drive backup and move functionality, implement and test the move, the notification system
+> for "free this much space" — "Yes" and they are gone. Could we use the hard drive as a library in the app as a
+> new location so I can continue seeing and opening all the images, videos and files?
 
-```bash
-cd desktop && node -e "
-const { DatabaseSync } = require('node:sqlite'); const https = require('node:https')
-const db = new DatabaseSync(require('node:os').homedir() + '/.local/share/local-drive-desktop/library.db')
-for (const d of db.prepare('SELECT name, peer_hosts, peer_port, peer_token FROM sync_devices WHERE peer_token IS NOT NULL').all()) {
-  const host = d.peer_hosts.split(',')[0]
-  const req = https.request({ host, port: d.peer_port || 43180, method: 'POST', path: '/sync', timeout: 5000,
-    rejectUnauthorized: false, headers: { authorization: 'Bearer ' + d.peer_token, 'content-length': 0 } },
-    res => { res.resume(); console.log('nudge', d.name, res.statusCode) })
-  req.on('error', e => console.log('error', d.name, e.message)); req.end() }"
-```
+So, in order (all designed in SYNC_PLAN D3 — nothing here is hard-coded, every choice is a setting):
 
-## What today changed, shortest possible
+1. **The drive as a library location.** Each photo gets a location: this PC, or a storage drive. Thumbnails stay
+   in the PC's cache, so the grid, People, collections and search keep working; opening reads from the drive when it
+   is plugged in and says "Plug in T7-TEO" when not. Files: the drive is a location in Files. This comes first —
+   without it a Move makes photos disappear from view.
+2. **The storage role for a drive** (next to Backup), and **"do you have it?" answered for the library** (PC *or*
+   its storage drive), or every device re-sends what was moved — the loop the user spotted.
+3. **Move / Offload on the sender (the PC):** release to the drive what is verified there (read back, not just
+   receipted), oldest first — either *keep the disk under N %* (Offload on, a slider) or *keep a year / month /
+   week* (Offload off). The PC's copy goes to the system Trash, never a hard delete.
+4. **The notification:** *"Free 22 GB — 3,100 photos older than a year are safe on T7-TEO. Yes?"* — Yes and they
+   go. Plus a full-disk warning that is always shown (nothing watches free space today). The PC had ~80 GB free
+   before syncing, 57 GB tonight.
+5. **Test Move for real**, on a handful of photos first, then watch the phone and tablet not send them back.
 
-**Sync**
-- Labels cross both ways at last (6w 2 closed). `METADATA_EPOCH` is 3.
-- The computer learns a device's address from its own calls, so a phone that changes
-  network is still reachable.
-- Stop stops mid-file; a lost network is retried three times, then it gives up.
-- **Photos, computer → phone, ran for real**: 296 photos, nothing lost (6w 4 closed).
+Also:
+- The **T7's card on the Devices page** still offers "T7-TEO → this PC" and "Both ways", which do nothing for a
+  drive — the Add-a-drive guide was fixed tonight, the card was not.
+- A **folder-emblem catalog** (finance, medical, education, receipts…) on the personalisation card, next to
+  colour — asked for, deferred.
+- The AppImage needs **libfuse2** on Ubuntu 24.04+; a static-runtime AppImage would not.
+- The phone's post-rename sync check did not finish (the phone was unplugged): compare `/sdcard/Tetra` with
+  `~/Tetra/Files` next time it is plugged in.
 
-**The overview** (Devices page, above the cards) — how much there is, where it is,
-how many copies, what is safe to free, what the library is made of, and every number
-clicks through to the files behind it.
+## What tonight changed, shortest possible
 
-**Two real defects it found, both fixed**
-- A receipted photo could be absent from `media` (the scanner did not index raw): 83
-  `.NEF` were on disk, verified, and counted as missing.
-- A receipt could outlive its file, and `have()` trusted it, so 7 photos existed on
-  one phone and nothing would ever have fetched them again. They came back by
-  themselves once `have()` started asking whether the file is still there.
-
-**Formats**: raw is in (`.nef` and nine others; libvips reads the embedded full-size
-JPEG). HEIC already worked.
-
-**The app is one dark palette again** on every device — no dynamic colour, no system
-light theme. Tablet grids size themselves by screen width.
-
-**Devices page**: cards read like cards, each device has a name and a picture you
-choose, this machine says what *it* is (so "here" is now "this PC"), and an (i)
-explains that it is the hub.
-
-**Nothing crosses until the rules are answered** (6aj). A new device pairs with every
-row Off. This is the fix for the tablet uploading 11.8 GB this morning.
+- **ChatGPT's session reviewed and repaired**: names beat guesses again, no guess-vs-guess cards, combined people
+  stay combined (a deleted "Εγώ" was holding six faces), Help organize is a page of cards.
+- **People**: pencil menu (Rename · Choose face · Forget), History with Restore, forgetting syncs.
+- **Folders** as user collections, asked about once, on both apps; files folders never offered.
+- **Desktop**: scanning and analysis on a **worker thread**, the tray, bigger dialogs, system folders (Documents,
+  Scanned Documents) with emblem icons on both apps, drive backups of photos and files (auto when plugged in).
+- **The Devices page froze the app**: a missing index made its overview 1.2 s a call, asked every 3 s. Fixed
+  (38 ms), with a test.
+- **The Tetra folder** on every device, by renames.
 
 ## Traps that cost time today
 
-- **A running app is not the code on disk.** The desktop had been up since 00:11 and
-  was serving pre-00:44 code; a feature added that morning could not possibly work.
-  Restart before believing anything about a feature added today.
-- `db.transaction()` is better-sqlite3. `node:sqlite` has no such thing — use
-  `BEGIN`/`COMMIT`/`ROLLBACK` around a prepared statement.
-- `this.files` on `SyncServer` is the Files module. A method called `files()` silently
-  shadows nothing and breaks everything.
-- A `<th>` with `display: flex` stops being a table cell: its column collapses and the
-  header stops lining up. The file list is a grid now.
-- A test that uses a **real** drive UUID will write to that drive. Use
-  `00000000-dead-4dea-8dea-000000000000`.
-
-## Where the drive work stopped (D5, half built)
-
-`drives.js` lists mounted filesystems by UUID. A drive is an ordinary device row
-(`kind='database'`, `volume_uuid`, no peer columns), defaulting to a backup target.
-`inspectDrive` scans it; `backUpToDrive` copies under `<mount>/Tetra/Photos` with the
-same verify-then-rename discipline. The Add-a-device guide is built: select → scan →
-rules → Start.
-
-**It has never been run.** The Samsung T7 (`T7-TEO`, ext4, 841 GB free) scans clean —
-1,816 photos, 29.28 GB to copy, writable — and the copy itself has not been pressed.
-That is the first thing to do, and to watch: it writes ~29 GB to his working drive.
-
-Then, in order: Drive files as well as photos; starting by itself when the drive
-appears; and a drive as a source rather than only a target.
-
-## Still open, in the user's order
-
-`SYNC_PLAN.md` "Roadmap" has all of it. The headline:
-
-- **Run the drive copy for real.** Everything for it exists and none of it has run.
-- **Move has still never run for real**, which blocks the whole release/free-space
-  design (6ac, D4) — the safest possible test is a handful of photos.
-- Tablet steps 5–7 never ran: answering a card on one device, two devices disagreeing
-  about who someone is, a rename against a rescan.
-- **Multiple pairings on the phone** (§I) is still the biggest structural hole.
-- A device does not yet say *why* a file failed to cross; `BackupResult.failed` is
-  collected on the phone and thrown away.
-- The phone has no view of the library overview; management is on the computer only.
+- **sharp segfaults outside Electron's main process** on this machine (utility process, ELECTRON_RUN_AS_NODE) —
+  that is why `analyzer.js` is a `worker_threads` Worker. Do not move it back into a process.
+- **Every new desktop module must be added to `package.json` build.files** — analyzer, folders, drives and home
+  were each missing once, and the AppImage would not have started. Check with `npx asar list`.
+- **Freezes: pause the stuck process, do not guess.** `kill -USR1 <pid>` opens the inspector on 9229; a
+  `Debugger.pause` over CDP names the function (that is how the Devices overview was found).
+- **A file's time stamp through `utimes` comes back a hair early** — compare within 2 ms, not to the millisecond.
+- **The scan refuses a missing Photos folder, or an empty one where 20+ photos were known**, instead of reading it
+  as everything deleted. Keep that guard when drives become library locations — an unplugged storage drive must
+  never read as deleted either.
+- `pkill -f <pattern>` kills the shell that typed it when the pattern is in its own command line. Kill by PID.

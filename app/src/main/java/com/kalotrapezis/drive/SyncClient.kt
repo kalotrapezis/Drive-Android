@@ -526,7 +526,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // What the computer has and this phone does not, before the metadata pass, so a photo that has just
         // arrived already has its favourites, its people and its collections when that pass runs.
         var received = 0
-        if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys, failed, checkpoint, progress) }
+        // "Already here" includes folders you left out of Tetra: a photo in DCIM/Creation is still on this phone,
+        // and fetching it again because it is not shown would write a duplicate on every sync.
+        val alsoHere = listDeviceMedia(context).mapNotNullTo(HashSet()) { store.cachedHash(it.photoKey) }
+        if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys + alsoHere, failed, checkpoint, progress) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Photos from the computer: ${it.message}" }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }

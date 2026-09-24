@@ -54,7 +54,7 @@ internal data class DocumentRecord(val photoKey: String, val type: String?, val 
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 21) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 22) {
 
     private companion object {
         /**
@@ -69,6 +69,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
          */
         const val FORGET_EMPTY_GUESSES = "DELETE FROM face_groups WHERE name GLOB 'Person [0-9]*' " +
             "AND id NOT IN (SELECT DISTINCT group_id FROM face_samples WHERE group_id IS NOT NULL)"
+        /** Your answer per folder of this phone (FolderRules). A folder's files are this device's, so it does not sync; its album does. */
+        const val DEVICE_FOLDERS = "CREATE TABLE IF NOT EXISTS device_folders (name TEXT PRIMARY KEY COLLATE NOCASE, included INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
         const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
             "target_id INTEGER NOT NULL, source_name TEXT NOT NULL, source_uuid TEXT, sample_ids TEXT NOT NULL, merged_at INTEGER NOT NULL)"
     }
@@ -76,6 +78,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     private val galleryPreferences = this.context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(MERGE_HISTORY)
+        db.execSQL(DEVICE_FOLDERS)
         db.execSQL("CREATE TABLE photo_state (photo_key TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE collections (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE collection_membership (collection_id INTEGER NOT NULL, photo_key TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(collection_id, photo_key), FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE)")
@@ -161,6 +164,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // Forgotten: a TV presenter, a stranger in the background. Kept, so their next photo still finds them and
         // does not come back as a new person — just never shown, searched or asked about.
         if (oldVersion < 21) db.execSQL("ALTER TABLE face_groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+        if (oldVersion < 22) db.execSQL(DEVICE_FOLDERS)
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -226,6 +230,31 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     fun addToCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = true)
+
+    /** Lower-cased folder name → the answer given. A folder with no entry has never been asked about. */
+    fun folderChoices(): Map<String, Boolean> = readableDatabase.rawQuery("SELECT name, included FROM device_folders", null)
+        .use { c -> buildMap { while (c.moveToNext()) put(c.getString(0).lowercase(), c.getInt(1) != 0) } }
+
+    fun setFolderIncluded(name: String, included: Boolean) {
+        writableDatabase.insertWithOnConflict("device_folders", null, ContentValues().apply {
+            put("name", name); put("included", if (included) 1 else 0); put("updated_at", System.currentTimeMillis())
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    /**
+     * An included folder is an album named after it, kept full as photos arrive. A photo you took out of the
+     * album keeps its tombstone and is not put back; the album's membership syncs like any other album's.
+     */
+    fun fillFolderAlbum(name: String, keys: Collection<String>) = writableDatabase.inTransaction {
+        val id = rawQuery("SELECT id FROM collections WHERE name = ? COLLATE NOCASE AND deleted = 0", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) else null }
+            ?: createCollection(name).id
+        val now = System.currentTimeMillis()
+        keys.forEach { key ->
+            insertWithOnConflict("collection_membership", null, ContentValues().apply {
+                put("collection_id", id); put("photo_key", key); put("updated_at", now); put("deleted", 0)
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+        }
+    }
 
     fun removeFromCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = false)
 

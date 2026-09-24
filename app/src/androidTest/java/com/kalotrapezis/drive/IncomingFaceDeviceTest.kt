@@ -221,6 +221,20 @@ class IncomingFaceDeviceTest {
         assertEquals("accepted", store.reviewRecords().single().state)
     }
 
+    @Test fun anIncludedFolderIsAnAlbumThatKeepsYourRemovals() {
+        assertEquals("never asked", emptyMap<String, Boolean>(), store.folderChoices())
+        store.setFolderIncluded("Viber", true)
+        assertEquals(mapOf("viber" to true), store.folderChoices())
+        store.fillFolderAlbum("Viber", listOf("a", "b"))
+        val album = store.collections().single { it.name == "Viber" }
+        assertEquals(setOf("a", "b"), store.collectionKeys(album.id))
+        store.removeFromCollection(album.id, listOf("a"))
+        store.fillFolderAlbum("Viber", listOf("a", "b", "c")) // the next load, with a new photo
+        assertEquals("a removal stays removed, a new photo joins", setOf("b", "c"), store.collectionKeys(album.id))
+        store.setFolderIncluded("viber", false)
+        assertEquals(mapOf("viber" to false), store.folderChoices())
+    }
+
     @Test fun aForgottenPersonIsHiddenKeptAndTravels() {
         val anna = givenANamedPersonHere()
         store.setFaceGroupHidden(anna, true)

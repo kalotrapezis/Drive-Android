@@ -122,6 +122,15 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   person). Forgetting hides someone from People, search and Help organize on
   every device without losing their faces; People's History (top right) lists
   forgotten and combined people with Restore.
+- **System folders in Files**: Drive/Documents and Documents/Scanned Documents (where
+  the scanner saves) are always there, sorted first, and drawn with their emblem in the
+  folder icon. They cannot be moved, renamed or trashed; their contents can. Same on the
+  desktop.
+- **Folders**: Gallery shows Camera, Screenshots and photos from the computer. Every
+  other photo folder (Viber, Messenger, Download…) is asked about once in Help
+  organize; Yes shows it, backs it up and keeps it as a user collection. Settings › Gallery ›
+  Folders switches answered folders on or off. Files folders (Drive, SyncThing,
+  Documents, USB) are never offered.
 - **Help organize** is a page of question cards answered in place, ending with
   how many are left, or "Thanks, no more questions for now! That's it." Two
   names that disagree about a face become a card on every device; a name always

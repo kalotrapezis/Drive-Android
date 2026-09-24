@@ -298,6 +298,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val driveOpeners = remember(context) { DriveOpeners(context) }
     var recentsVersion by remember { mutableStateOf(0) }
     var photosState by remember { mutableStateOf<ListState>(ListState.Idle) }
+    var photoFolders by remember { mutableStateOf(emptyList<DeviceFolder>()) }
     var photoFilter by remember { mutableStateOf<PhotoFilter>(PhotoFilter.Timeline) }
     val photoMetadata = remember(context) { PhotoMetadataStore(context.applicationContext) }
     var metadataVersion by remember { mutableStateOf(0) }
@@ -331,6 +332,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             val result = runCatching {
                 val root = driveRoot()
                 check((root.exists() && root.isDirectory) || root.mkdirs()) { "Could not create Drive." }
+                DriveRules.ensureSystemFolders(root)
                 if (folder == "Trash" && !File(root, folder).exists()) emptyList() else listDriveFolder(root, folder)
             }
             (context as MainActivity).runOnUiThread {
@@ -368,7 +370,16 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
         photosState = ListState.Loading
         Thread {
-            val result = runCatching { listPhotos(context) }
+            val result = runCatching {
+                val all = listDeviceMedia(context)
+                val choices = photoMetadata.folderChoices()
+                deviceFolders(all, choices).also { folders ->
+                    // Keep each included folder's album full as new photos land in it.
+                    folders.filter { it.included == true }.forEach { photoMetadata.fillFolderAlbum(it.name, it.entries.map(Entry::photoKey)) }
+                    (context as MainActivity).runOnUiThread { photoFolders = folders }
+                }
+                all.filter { FolderRules.isIncluded(it.relativePath, choices) }
+            }
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
                     onSuccess = { ListState.Items(it) },
@@ -582,6 +593,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     { collectionId, uris -> metadataAction { photoMetadata.removeFromCollection(collectionId, selectedEntries(uris).map { it.photoKey }) } },
                     { name -> runCatching { photoMetadata.createCollection(name) }.onSuccess { metadataVersion++ } },
                     { collectionId -> metadataAction { photoMetadata.deleteCollection(collectionId) } },
+                    folders = photoFolders,
+                    setFolderIncluded = { name, on -> photoMetadata.setFolderIncluded(name, on); loadPhotos() },
                     externalMediaId = externalMediaId,
                     externalMissing = { externalSingle = true },
                     closeExternal = if (external != null) ::closeExternal else null,
@@ -645,6 +658,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openSync = { screen = Screen.Sync },
                     pairedDevice = pairedDevice,
                     forgetPairedDevice = { syncStore.forgetPairing(); pairedDevice = null },
+                    folders = photoFolders,
+                    setFolderIncluded = { name, on -> photoMetadata.setFolderIncluded(name, on); loadPhotos() },
                 )
             }
         }
@@ -1153,6 +1168,8 @@ private fun SettingsTab(
     openSync: () -> Unit,
     pairedDevice: Pairing?,
     forgetPairedDevice: () -> Unit,
+    folders: List<DeviceFolder>,
+    setFolderIncluded: (String, Boolean) -> Unit,
 ) {
     var searchQuality by remember { mutableStateOf(metadataStore.searchQuality()) }
     Box(Modifier.fillMaxSize()) {
@@ -1196,6 +1213,20 @@ private fun SettingsTab(
                     metadataStore.setSearchQuality(searchQuality)
                 }
                 Text("Changing this re-analyzes photos the next time you open People or Documents. Advanced keeps the Fast tags too.", style = MaterialTheme.typography.bodySmall)
+                // Every folder you have answered about, while the phone can still see it. A new one asks first,
+                // in Help organize; this is where you change your mind.
+                Text("Folders", style = MaterialTheme.typography.titleMedium)
+                Text("Camera, Screenshots and photos from the computer are always in. An included folder shows in Gallery, is backed up, and is kept as a collection.", style = MaterialTheme.typography.bodySmall)
+                folders.filter { it.included != null }.forEach { folder ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(folder.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(folder.countText, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = folder.included == true, onCheckedChange = { setFolderIncluded(folder.name, it) })
+                    }
+                }
+                if (folders.none { it.included != null }) Text("No other folders yet. New ones are asked about in Help organize.", style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -1566,8 +1597,8 @@ private fun DriveFiles(
                 is DriveListState.Items -> {
                     val entries = remember(state.entries, sort) {
                         when (sort) {
-                            DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
-                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem> { !it.isDirectory }.thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
+                            DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
+                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
                         }
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
@@ -1753,8 +1784,10 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 DriveItemSheetPanel.Menu -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         DriveActionTile(R.drawable.ic_copy, "Copy") { panel = DriveItemSheetPanel.Copy }
-                        DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
-                        DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
+                        if (!DriveRules.isSystem(item.relativePath)) {
+                            DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
+                            DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
+                        }
                         if (!item.isDirectory) DriveActionTile(R.drawable.ic_share, "Share") { dismiss(); shareDriveFile(context, item.file) }
                     }
                     if (!item.isDirectory) DriveWideAction(R.drawable.ic_open_with, "Open with…") { dismiss(); openWith() }
@@ -1765,7 +1798,8 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                     if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, "Sync now") { panel = DriveItemSheetPanel.Sync }
                     // Already in Trash: the useful action is the opposite one — put it back where Drive keeps things.
                     if (item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_restore, "Restore from Trash") { submit(DriveItemAction.Move("")) }
-                    else if (item.relativePath != "Trash") DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
+                    else if (item.relativePath != "Trash" && !DriveRules.isSystem(item.relativePath)) DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
+                    if (DriveRules.isSystem(item.relativePath)) Text("A system folder: Tetra keeps it, so it cannot be moved, renamed or deleted. Everything inside it can.", style = MaterialTheme.typography.bodySmall)
                 }
                 DriveItemSheetPanel.Rename -> {
                     Text("Rename this ${if (item.isDirectory) "folder" else "file"}.")
@@ -1869,12 +1903,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     ),
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
-            contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
-            tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
-            modifier = Modifier.size(32.dp),
-        )
+        DriveItemIcon(item, folderColor, selected, 32.dp)
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1898,12 +1927,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
 ) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Icon(
-                painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
-                contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
-                tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
-                modifier = Modifier.size(64.dp),
-            )
+            DriveItemIcon(item, folderColor, selected, 64.dp)
             IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
         }
         Column {
@@ -1913,15 +1937,25 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     }
 }
 
+@Composable private fun DriveItemIcon(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) = Icon(
+    painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
+    contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
+    tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
+    modifier = Modifier.size(size),
+)
+
 private fun driveItemIcon(item: DriveItem): Int = when {
     item.relativePath == "Trash" -> R.drawable.ic_delete
+    // System folders carry their emblem in the folder itself, so they read as different at a glance.
+    item.relativePath == "Documents" -> R.drawable.ic_folder_documents
+    item.relativePath == "Documents/Scanned Documents" -> R.drawable.ic_folder_scans
     item.isDirectory -> R.drawable.ic_folder
     else -> R.drawable.ic_file
 }
 
 private fun driveItemIconDescription(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else "File"
 
-private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
+private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
 @Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
 
@@ -2153,6 +2187,8 @@ private fun PhotoTab(
     removeFromCollection: (Long, Set<Uri>) -> String?,
     createCollection: (String) -> Result<PhotoCollection>,
     deleteCollection: (Long) -> String?,
+    folders: List<DeviceFolder> = emptyList(),
+    setFolderIncluded: (String, Boolean) -> Unit = { _, _ -> },
     externalMediaId: String? = null,
     externalMissing: () -> Unit = {},
     closeExternal: (() -> Unit)? = null,
@@ -2604,7 +2640,7 @@ private fun PhotoTab(
         val mapCollection = pane == PhotosPane.Timeline && filter == PhotoFilter.Map
         when (pane) {
             PhotosPane.Timeline -> when {
-                filter == PhotoFilter.Review -> ReviewPage(pendingReviews, allEntries.associateBy(Entry::photoKey), metadataStore::faceGroup, back) { review, answer ->
+                filter == PhotoFilter.Review -> ReviewPage(pendingReviews, folders.filter { it.included == null }, setFolderIncluded, allEntries.associateBy(Entry::photoKey), metadataStore::faceGroup, back) { review, answer ->
                     // null is Skip. Answers travel on the next sync; once the last card is gone, that sync is now.
                     if (answer == null) metadataStore.skipReview(review) else metadataStore.resolveReview(review, answer)
                     analysisVersion++
@@ -2663,7 +2699,7 @@ private fun PhotoTab(
             PhotosPane.Collections -> PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().padding(bottom = 76.dp)) {
                     Collections(
-                        allEntries, metadata, collections, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, vaultItems.size,
+                        allEntries, metadata, collections, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, folders.count { it.included == null }, vaultItems.size,
                         !hidePeopleFromCollections, !hideDocumentsFromCollections, analysisRunning, analysisPaused,
                         analysisDone, analysisTotal, PhotoAnalysisService::togglePause, back, { newCollectionOpen = true }, ::openCollection,
                         selectedCollection?.id,
@@ -2921,6 +2957,8 @@ private fun AnalysisProgress(done: Int, total: Int, paused: Boolean, togglePause
 @Composable
 private fun ReviewPage(
     reviews: List<PendingReview>,
+    folders: List<DeviceFolder>,
+    includeFolder: (String, Boolean) -> Unit,
     entriesByKey: Map<String, Entry>,
     faceGroup: (Long) -> FaceGroup?,
     back: () -> Unit,
@@ -2928,19 +2966,42 @@ private fun ReviewPage(
 ) {
     // A question about a photo that is not on this device cannot be shown here; another device will ask it.
     val shown = reviews.filter { it.photoKey in entriesByKey }
+    val left = folders.size + shown.size
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { FilesPageHeader("Help organize", R.drawable.ic_tag, back) }
+        items(folders, key = { "folder/${it.name}" }) { folder -> FolderCard(folder) { includeFolder(folder.name, it) } }
         items(shown, key = { "${it.photoKey}/${it.faceSampleId}/${it.candidateGroupId}" }) { review ->
             ReviewCard(entriesByKey.getValue(review.photoKey), review, review.candidateGroupId?.let(faceGroup), entriesByKey) { answer(review, it) }
         }
         item {
             Text(
-                if (shown.isEmpty()) "Thanks, no more questions for now! That's it."
-                else "${shown.size} ${if (shown.size == 1) "question" else "questions"} left",
+                if (left == 0) "Thanks, no more questions for now! That's it."
+                else "$left ${if (left == 1) "question" else "questions"} left",
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
             )
+        }
+    }
+}
+
+/** "Include Viber in Tetra?" — a folder found on this phone, shown by its newest photos. */
+@Composable
+private fun FolderCard(folder: DeviceFolder, answer: (Boolean) -> Unit) = Surface(
+    shape = MaterialTheme.shapes.extraLarge,
+    color = MaterialTheme.colorScheme.surfaceVariant,
+    modifier = Modifier.fillMaxWidth(),
+) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("Include ${folder.name} in Tetra?", style = MaterialTheme.typography.titleLarge)
+        Text("${folder.countText}. Yes shows them in Gallery, backs them up and keeps them as a collection named ${folder.name}. Nothing is moved or copied on this phone.", style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            folder.entries.take(4).forEach { entry -> PhotoThumbnail(entry, false, Modifier.weight(1f).aspectRatio(1f).clip(MaterialTheme.shapes.medium)) {} }
+            repeat(4 - minOf(4, folder.entries.size)) { Spacer(Modifier.weight(1f)) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
+            Button(onClick = { answer(false) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text("No") }
         }
     }
 }
@@ -3289,7 +3350,7 @@ private fun LockedVaultScreen(back: () -> Unit, unlock: () -> Unit) {
 }
 
 @Composable
-private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>, custom: List<PhotoCollection>, previews: Map<Long, Entry?>, documentKeys: Set<String>, peopleCount: Int, reviewKeys: Set<String>, hiddenCount: Int, showPeople: Boolean, showDocuments: Boolean, analysisRunning: Boolean, analysisPaused: Boolean, analysisDone: Int, analysisTotal: Int, toggleAnalysisPause: () -> Unit, back: () -> Unit, create: () -> Unit, open: (PhotoFilter) -> Unit, selectedCollectionId: Long?, selectCollection: (PhotoCollection) -> Unit) {
+private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>, custom: List<PhotoCollection>, previews: Map<Long, Entry?>, documentKeys: Set<String>, peopleCount: Int, reviewKeys: Set<String>, folderQuestions: Int, hiddenCount: Int, showPeople: Boolean, showDocuments: Boolean, analysisRunning: Boolean, analysisPaused: Boolean, analysisDone: Int, analysisTotal: Int, toggleAnalysisPause: () -> Unit, back: () -> Unit, create: () -> Unit, open: (PhotoFilter) -> Unit, selectedCollectionId: Long?, selectCollection: (PhotoCollection) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { FilesPageHeader("Collections", R.drawable.ic_collections, back, trailing = {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
@@ -3312,7 +3373,7 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
             SystemCollectionButton("Map", null, R.drawable.ic_map, { open(PhotoFilter.Map) }, Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Help organize", entries.count { it.photoKey in reviewKeys }, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
+            SystemCollectionButton("Help organize", entries.count { it.photoKey in reviewKeys } + folderQuestions, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
             SystemCollectionButton("Favorites", entries.count { metadata[it.photoKey].orDefault().favorite }, R.drawable.ic_favorite_border, { open(PhotoFilter.Favorites) }, Modifier.weight(1f))
         } }
         // No count: Android holds the trash, and asking it for one on every Collections draw is a query per draw.
@@ -4581,8 +4642,8 @@ private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0
 
 /** A random real photo for the Home card: never a screenshot or a photo the local analysis filed as a document. */
 private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>): Bitmap? = runCatching {
-    listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
-        .filter { !it.isScreenshot() && it.photoKey !in documentKeys }
+    listPhotos(context)
+        .filter { !it.isVideo && !it.isScreenshot() && it.photoKey !in documentKeys }
         .randomOrNull()
         ?.contentUri
         ?.let { context.contentResolver.loadThumbnail(it, android.util.Size(720, 720), null) }
@@ -4593,14 +4654,22 @@ private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>):
  * MediaStore listing, so Trash is its own query rather than a filter over the timeline. Android keeps these for
  * 30 days and deletes them itself; restoring and deleting early both go through its own confirmation.
  */
-internal fun listTrashedPhotos(context: Context): List<Entry> =
-    listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, trashed = true) +
-        listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, trashed = true)
+internal fun listTrashedPhotos(context: Context): List<Entry> = PhotoMetadataStore(context).use { it.folderChoices() }.let { choices ->
+    (listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, trashed = true) +
+        listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, trashed = true))
+        .filter { FolderRules.isIncluded(it.relativePath, choices) }
+}
 
-internal fun listPhotos(context: Context): List<Entry> = (
+/** Every photo and video in a photo folder of this phone, included or not: what the folder questions are about. */
+internal fun listDeviceMedia(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
 ).sortedByDescending { it.takenMillis }
+
+/** The library: the default folders and the ones you said yes to. Gallery, backup and analysis all read this. */
+internal fun listPhotos(context: Context): List<Entry> = PhotoMetadataStore(context).use { it.folderChoices() }.let { choices ->
+    listDeviceMedia(context).filter { FolderRules.isIncluded(it.relativePath, choices) }
+}
 
 private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean, trashed: Boolean = false): List<Entry> {
     val projection = arrayOf(
@@ -4614,19 +4683,17 @@ private fun listGalleryMedia(context: Context, collection: Uri, isVideo: Boolean
         MediaStore.Images.Media.HEIGHT,
         MediaStore.MediaColumns.ORIENTATION,
     )
-    // Pictures/Tetra is the app's fallback for desktop photos. Other Pictures folders (Viber, etc.)
-    // remain outside Gallery until the user chooses them in the planned folder-album flow.
-    val folders = if (isVideo) arrayOf("DCIM/%", "Pictures/Screenshots/%", "Pictures/Tetra/%", "Movies/Tetra/%")
-        else arrayOf("DCIM/%", "Pictures/Screenshots/%", "Pictures/Tetra/%")
-    val selection = List(folders.size) { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }.joinToString(" OR ")
+    // Everything on the phone's own storage; which folders count is FolderRules' decision, made once for every
+    // caller. A real SD card or USB stick is another volume and is never read: it will not always be there.
     val arguments = android.os.Bundle().apply {
-        putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, folders)
+        putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.MediaColumns.VOLUME_NAME} = ?")
+        putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(MediaStore.VOLUME_EXTERNAL_PRIMARY))
         if (trashed) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
     }
     return context.contentResolver.query(collection, projection, arguments, null)?.use { cursor ->
         buildList { while (cursor.moveToNext()) {
             val path = cursor.string(2)
+            if (FolderRules.albumName(path) == null) continue // files, not photos
             val sizeBytes = cursor.long(3)
             val uri = android.content.ContentUris.withAppendedId(collection, cursor.long(0))
             val takenMillis = cursor.long(4).takeIf { it > 0 } ?: cursor.long(5) * 1000

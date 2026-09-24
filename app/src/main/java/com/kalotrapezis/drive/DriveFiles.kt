@@ -29,6 +29,15 @@ data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
 
 /** File boundary rules are kept independent from Compose so they can be tested without a device. */
 object DriveRules {
+    /**
+     * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
+     * are always there, marked with an emblem, and cannot be renamed, moved or put in the Trash — their contents can.
+     */
+    val SYSTEM_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
+    fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
+    private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }
+
     fun inside(root: File, candidate: File): Boolean {
         val rootPath = root.canonicalFile.path
         val candidatePath = candidate.canonicalFile.path
@@ -104,6 +113,7 @@ object DriveRules {
 
     fun rename(root: File, relativePath: String, newName: String): String {
         require(newName.isSafeDriveName()) { "Invalid name." }
+        requireMovable(relativePath)
         val source = item(root, relativePath)
         val target = File(source.parentFile, newName).canonicalFile
         moveExisting(root, source, target)
@@ -121,6 +131,7 @@ object DriveRules {
     }
 
     fun move(root: File, relativePath: String, destinationRelativePath: String): String {
+        requireMovable(relativePath)
         val source = item(root, relativePath)
         val destination = folder(root, destinationRelativePath)
         require(!source.isDirectory || !inside(source, destination)) { "A folder cannot be moved into itself." }

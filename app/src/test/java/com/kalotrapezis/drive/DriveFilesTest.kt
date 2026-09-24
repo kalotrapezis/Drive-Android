@@ -9,6 +9,22 @@ import java.io.File
 import java.nio.file.Files
 
 class DriveFilesTest {
+    @Test fun systemFoldersStayButTheirContentsMove() {
+        val root = Files.createTempDirectory("drive-root").toFile()
+        DriveRules.ensureSystemFolders(root)
+        assertTrue(File(root, "Documents/Scanned Documents").isDirectory)
+        for (attempt in listOf<() -> Unit>(
+            { DriveRules.rename(root, "Documents", "Docs") },
+            { DriveRules.moveToTrash(root, "Documents") },
+            { DriveRules.move(root, "Documents/Scanned Documents", "") },
+            { DriveRules.moveToTrash(root, "Documents/Scanned Documents") },
+        )) try { attempt(); fail("a system folder moved") } catch (_: IllegalArgumentException) {}
+        File(root, "Documents/Scanned Documents/scan.pdf").writeText("x")
+        DriveRules.moveToTrash(root, "Documents/Scanned Documents/scan.pdf")
+        assertTrue(File(root, "Trash/scan.pdf").exists())
+        assertTrue(File(root, "Documents/Scanned Documents").isDirectory)
+    }
+
     @Test fun containmentRejectsSiblingPrefixAndTraversal() {
         val base = Files.createTempDirectory("drive-root").toFile()
         val root = File(base, "Drive").apply { mkdirs() }

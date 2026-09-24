@@ -118,7 +118,14 @@ device acceptance steps remain in `MANUAL_CHECKLIST.md`.
   request. Analysis can be paused. It uses bundled local models and does not
   run as a background service or upload media.
 - People groups can be renamed and manually combined; a recent combine can be
-  undone briefly. **Help organize** shows items needing a review.
+  undone briefly. Each person has a pencil (Rename · Choose face · Forget this
+  person). Forgetting hides someone from People, search and Help organize on
+  every device without losing their faces; People's History (top right) lists
+  forgotten and combined people with Restore.
+- **Help organize** is a page of question cards answered in place, ending with
+  how many are left, or "Thanks, no more questions for now! That's it." Two
+  names that disagree about a face become a card on every device; a name always
+  beats a guess ("Person 41") without asking.
 - **Screenshots**, **Videos**, **Favorites**, **Hidden**, **Map** and
   **Trash** are real filters. Trash is Android's own trash, queried separately
   because trashed media is deliberately absent from the ordinary listing; it

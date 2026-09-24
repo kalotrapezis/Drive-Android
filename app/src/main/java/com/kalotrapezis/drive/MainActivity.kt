@@ -62,7 +62,6 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
@@ -117,9 +116,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -281,6 +277,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context) } }
+    // And for as long as it is open, the computer may say "there is something new here" and this phone will go
+    // and fetch it (SYNC_PLAN.md 6i). It answers only devices it is already paired with, and only "sync now" —
+    // the work stays ours. It stops with the app: nothing of ours listens on a phone nobody is using.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        runCatching { SyncServer.acquire(context.applicationContext, SyncStore(context.applicationContext)) }
+        onDispose { runCatching { SyncServer.release() } }
+    }
     LaunchedEffect(screen) { if (screen == Screen.Settings) pairedDevice = syncStore.pairing() }
     var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }
@@ -514,17 +517,18 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val darkTheme = isSystemInDarkTheme()
-    val colors = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme -> dynamicDarkColorScheme(context)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }.let { scheme ->
-        // Neutral accents to match the islands: white/grey buttons instead of the wallpaper's cyan.
-        if (darkTheme) scheme.copy(primary = Color(0xFFE6E6E6), onPrimary = Color.Black, primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White)
-        else scheme.copy(primary = Color(0xFF2B2B2B), onPrimary = Color.White, primaryContainer = Color(0xFFE2E2E2), onPrimaryContainer = Color.Black)
-    }
+    // One palette, on every device (24 September). Dynamic colour read the wallpaper, so the same home screen
+    // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
+    // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
+    // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
+    val colors = darkColorScheme(
+        primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
+        primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
+        tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
+        background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
+        surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
+        surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
+    )
     MaterialTheme(colorScheme = colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
@@ -823,9 +827,24 @@ private fun SyncTab(back: () -> Unit) {
     val requestNotifications = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var received by remember { mutableStateOf(0) }
     var lastBackup by remember { mutableStateOf(0L) }
+    var connections by remember { mutableStateOf(SyncConnection.defaults) }
+    var waitingToMove by remember { mutableStateOf(emptySet<String>()) }
+    var moveError by remember { mutableStateOf<String?>(null) }
+    // Android's own request, with Android's own confirmation and its own 30-day Trash. A sync never takes a
+    // photo off this phone; a verified receipt only earns the right to ask.
+    val removeRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val moved = waitingToMove
+            waitingToMove = emptySet()
+            scope.launch { withContext(Dispatchers.IO) { store.forgetQueued(moved) } }
+        }
+    }
     val backup by SyncService.state.collectAsState()
     val running = SyncService.isRunning
-    LaunchedEffect(backup) { withContext(Dispatchers.IO) { received = store.receiptCount(); lastBackup = store.lastBackup() } }
+    LaunchedEffect(backup) { withContext(Dispatchers.IO) {
+        received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections()
+        waitingToMove = store.queuedForRemoval()
+    } }
     // A long backup must not be cut off by the screen turning off; the foreground service itself
     // keeps running once the app is backgrounded or closed.
     val view = androidx.compose.ui.platform.LocalView.current
@@ -853,7 +872,10 @@ private fun SyncTab(back: () -> Unit) {
 
     val p = pairing
     val result = backup?.result
-    val summary = result?.let { r -> "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there." }
+    val summary = result?.let { r ->
+        "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there" +
+            if (r.received > 0) ", received ${r.received} from the computer." else "."
+    }
     val message = backup?.error ?: summary ?: pairMessage
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -906,6 +928,47 @@ private fun SyncTab(back: () -> Unit) {
                 }
             }
         }
+        // A Move that has been earned but not yet agreed to. It says what will happen and where they go, because
+        // "moved off this phone" is the one sentence in this app that has to be impossible to misread.
+        if (p != null && waitingToMove.isNotEmpty()) item {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${waitingToMove.size} ${if (waitingToMove.size == 1) "photo is" else "photos are"} on ${p.name}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "This connection is set to Move, so these can leave this phone. Each one was read back and " +
+                            "checked on ${p.name} before it counted. They go to Android's Trash, which holds them for 30 days.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = {
+                        // Finding the gallery uris means reading the gallery, which is not work for the thread
+                        // that draws the button.
+                        scope.launch {
+                            val uris = withContext(Dispatchers.IO) { allPhotoUris(context, waitingToMove) }
+                            if (uris.isEmpty()) { withContext(Dispatchers.IO) { store.forgetQueued(waitingToMove) }; waitingToMove = emptySet() }
+                            else runCatching { MediaStore.createTrashRequest(context.contentResolver, uris, true) }
+                                .onSuccess { removeRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+                                .onFailure { moveError = it.message ?: "Android would not take the request." }
+                        }
+                    }, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Move them off this phone")
+                    }
+                    moveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+        // What this sync will do, in the computer's words: it owns the rules, this phone reads and obeys them.
+        if (p != null) item {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("What this sync does", style = MaterialTheme.typography.labelLarge)
+                    connections.forEach { row -> Text(row.sentence(p.name), style = MaterialTheme.typography.bodyMedium) }
+                    Text("Set on the computer, in Tetra › Devices.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f))
+                }
+            }
+        }
         if (p != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SyncStat("On the computer", "$received", Modifier.weight(1f))
@@ -921,7 +984,7 @@ private fun SyncTab(back: () -> Unit) {
         item {
             Text(
                 if (p == null) "On the computer open Tetra › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
-                else "Backup copies each photo and video the computer does not have yet, into the same folders. The computer checks every file by SHA-256 before keeping it. Nothing on this phone is changed or deleted.",
+                else "A sync copies each photo, video and file the other device does not have yet, in whichever directions the computer's rules allow, into the same folders. Both sides check every file by SHA-256 before keeping it, and nothing is ever deleted on either side because of a sync.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -929,6 +992,14 @@ private fun SyncTab(back: () -> Unit) {
         }
     }
 }
+
+/**
+ * The gallery uris behind a set of photo keys. A key is this app's own name for a photo — it survives the app
+ * being reinstalled, where a MediaStore id does not — so the way back to Android's own id is to look for it.
+ * A photo already gone (deleted by hand, or on another device) simply has no uri, and is quietly forgotten.
+ */
+private fun allPhotoUris(context: android.content.Context, keys: Set<String>): List<Uri> =
+    listPhotos(context).filter { it.photoKey in keys }.mapNotNull { it.contentUri }
 
 private fun startSync(context: android.content.Context) {
     val intent = android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)
@@ -957,13 +1028,16 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
     var failure by remember { mutableStateOf<String?>(null) }
     var pairedWith by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
-        val server = SyncServer(context.applicationContext, store)
+        var server: SyncServer? = null
         runCatching {
+            server = SyncServer.acquire(context.applicationContext, store)
             server.onPaired = { peer -> pairedWith = peer.name }
-            server.start()
             qr = server.pairingQr(server.startPairing())
         }.onFailure { failure = it.message ?: "This device cannot show a code right now." }
-        onDispose { server.stop() }
+        onDispose {
+            server?.let { it.onPaired = {} }
+            if (server != null) runCatching { SyncServer.release() }
+        }
     }
     val bitmap = remember(qr) { qr?.let { runCatching { qrBitmap(it) }.getOrNull() } }
     Column(
@@ -1165,7 +1239,7 @@ private fun SettingsTab(
         item {
             SettingsCard("Appearance") {
                 Text("Follow system", style = MaterialTheme.typography.titleMedium)
-                Text("Tetra follows the Android light/dark theme and dynamic colour where Android provides it.", style = MaterialTheme.typography.bodyMedium)
+                Text("Tetra is a dark app, and the same one on every device: it does not follow the system light theme or the wallpaper's colours.", style = MaterialTheme.typography.bodyMedium)
             }
         }
             item { Box(Modifier.heightIn(min = 32.dp)) }
@@ -1496,7 +1570,7 @@ private fun DriveFiles(
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
                     else if (grid) LazyVerticalGrid(
-                        GridCells.Fixed(2),
+                        gridColumns(2),
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, top = topPadding, end = 16.dp, bottom = 164.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1770,7 +1844,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
 } }
 
 @Composable private fun DriveColorCircle(color: DriveFolderColor, selected: Boolean, click: () -> Unit) = Surface(
-    color = driveFolderAccent(color).copy(alpha = if (isSystemInDarkTheme()) 0.68f else 0.58f), contentColor = if (color == DriveFolderColor.Yellow) Color.Black else Color.White, shape = CircleShape,
+    color = driveFolderAccent(color).copy(alpha = 0.68f), contentColor = if (color == DriveFolderColor.Yellow) Color.Black else Color.White, shape = CircleShape,
     modifier = Modifier.size(44.dp).then(if (selected) Modifier.border(2.dp, islandContentColor(), CircleShape) else Modifier).clickable(onClick = click),
 ) { if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = color.name, modifier = Modifier.padding(10.dp)) }
 
@@ -1884,11 +1958,9 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
 }
 
 /** Selection is a neutral state, not a category: a picked item goes pale, it does not change colour. */
-@Composable private fun driveSelectionColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFFE3E4E6) else Color(0xFF2B2E30)
+@Composable private fun driveSelectionColor(): Color = Color(0xFFE3E4E6)
 
-@Composable private fun driveSelectionContentColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFF1B1D1F) else Color(0xFFF2F3F4)
+@Composable private fun driveSelectionContentColor(): Color = Color(0xFF1B1D1F)
 
 @Composable private fun IslandVisibility(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
@@ -2021,8 +2093,8 @@ private fun driveSpaceColor(type: String): Color = when (type) {
     }
 }
 
-@Composable internal fun driveNavigationSelectedColor(): Color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.72f)
-@Composable internal fun driveNavigationSelectedContentColor(): Color = if (isSystemInDarkTheme()) Color.Black else Color.White
+@Composable internal fun driveNavigationSelectedColor(): Color = Color.White.copy(alpha = 0.72f)
+@Composable internal fun driveNavigationSelectedContentColor(): Color = Color.Black
 
 private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
@@ -2046,8 +2118,18 @@ private fun driveFolderAccent(color: DriveFolderColor): Color = when (color) {
     DriveFolderColor.Purple -> Color(0xFFAD68CF)
 }
 private fun formatOpenedTime(time: Long): String = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(time))
-@Composable internal fun islandColor(): Color = if (isSystemInDarkTheme()) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.78f)
-@Composable internal fun islandContentColor(): Color = if (isSystemInDarkTheme()) Color.White else Color.Black
+/**
+ * A grid that keeps its phone-sized cells on a wider screen (SYNC_PLAN.md D2). Pass what the phone shows and
+ * the cell keeps roughly that size everywhere: the tablet gets more of them, a narrow phone never gets fewer.
+ */
+@Composable internal fun gridColumns(phoneColumns: Int): GridCells =
+    GridCells.Fixed(TimelineRules.columns(phoneColumns, PHONE_WIDTH_DP / phoneColumns, LocalConfiguration.current.screenWidthDp))
+
+/** The width the phone layouts were drawn against, and the only thing the cell sizes are relative to. */
+private const val PHONE_WIDTH_DP = 406
+
+@Composable internal fun islandColor(): Color = Color.Black.copy(alpha = 0.72f)
+@Composable internal fun islandContentColor(): Color = Color.White
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2094,6 +2176,7 @@ private fun PhotoTab(
     // Opened from another app: closing the viewer returns there instead of to the Gallery.
     fun closeViewer() { if (closeExternal != null) closeExternal() else viewerUri = null }
     var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
+    var choosingCoverFor by remember { mutableStateOf<FaceGroup?>(null) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var returnToCollections by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -2360,6 +2443,19 @@ private fun PhotoTab(
         }
     }
     BackHandler(onBack = ::navigateBack)
+    choosingCoverFor?.let { group ->
+        ChooseCoverSheet(
+            group = group,
+            faces = remember(group.id, analysisVersion) { metadataStore.faceGroupFaces(group.id) },
+            entriesByKey = allEntries.associateBy(Entry::photoKey),
+            dismiss = { choosingCoverFor = null },
+            choose = { face ->
+                metadataStore.setFaceGroupCover(group.id, face?.uuid)
+                choosingCoverFor = null
+                analysisVersion++
+            },
+        )
+    }
     viewingFaceGroup?.let { group ->
         PersonGroupScreen(
             group = group,
@@ -2482,7 +2578,12 @@ private fun PhotoTab(
         val mapCollection = pane == PhotosPane.Timeline && filter == PhotoFilter.Map
         when (pane) {
             PhotosPane.Timeline -> when {
-                filter == PhotoFilter.People -> PeopleGroups(faceGroups, allEntries.associateBy(Entry::photoKey), { viewingFaceGroup = it }, back)
+                filter == PhotoFilter.People -> PeopleGroups(
+                    faceGroups, allEntries.associateBy(Entry::photoKey),
+                    open = { viewingFaceGroup = it },
+                    chooseFace = { choosingCoverFor = it },
+                    back = back,
+                )
                 filter == PhotoFilter.Map -> PhotoMapScreen(
                     entries = allEntries,
                     metadataStore = metadataStore,
@@ -2834,7 +2935,7 @@ private fun FaceReviewCrop(label: String, entry: Entry?, bounds: Rect, modifier:
 }
 
 @Composable
-private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, back: () -> Unit) {
+private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, open: (FaceGroup) -> Unit, chooseFace: (FaceGroup) -> Unit, back: () -> Unit) {
     if (groups.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FilesPageHeader("People", R.drawable.ic_people, back)
@@ -2842,19 +2943,20 @@ private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, o
         }
         return
     }
-    LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyVerticalGrid(gridColumns(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_people, back) }
         items(groups, key = { it.id }) { group ->
-            FaceGroupCard(group, entries[group.photoKey]) { open(group) }
+            FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }) { open(group) }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FaceGroupCard(group: FaceGroup, entry: Entry?, open: () -> Unit) = Surface(
+private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Unit, open: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.aspectRatio(1f).clickable(onClick = open),
+    modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = open, onLongClick = chooseFace),
 ) { Box(Modifier.fillMaxSize()) {
     FaceCrop(entry, group, Modifier.fillMaxSize())
     Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
@@ -2922,7 +3024,7 @@ private fun PersonGroupScreen(
                 Text("Undo", modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
             }
         } }
-        LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        LazyVerticalGrid(gridColumns(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             items(entries, key = { it.photoKey }) { entry ->
                 PhotoThumbnail(entry, entry.photoKey in picked, longPress = { picked = picked + entry.photoKey }) {
                     if (picked.isEmpty()) openPhoto(entry)
@@ -2984,6 +3086,52 @@ private fun PersonGroupScreen(
  * the one action here that throws a grouping away, and the person it was wrong about cannot be reached
  * afterwards — so they are kept, and putting one back is one tap, not an eight-second window you had to catch.
  */
+/**
+ * Which face a person is shown by. The best one the scores can find is a guess, and the one you would have
+ * picked is often not it — a good photo of someone is not the sharpest crop of them. Holding a person opens
+ * this; everything they appear in is here, newest first, and the choice travels to the other devices.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChooseCoverSheet(
+    group: FaceGroup,
+    faces: List<FaceOfPerson>,
+    entriesByKey: Map<String, Entry>,
+    dismiss: () -> Unit,
+    choose: (FaceOfPerson?) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Show ${group.name} by", style = MaterialTheme.typography.titleLarge)
+            if (faces.isEmpty()) Text("No faces to choose from yet.")
+            else {
+                Text("Pick the face this person is shown by, here and on your other devices.")
+                LazyVerticalGrid(
+                    GridCells.Adaptive(88.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(faces, key = { it.uuid }) { face ->
+                        Surface(
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.aspectRatio(1f)
+                                .then(if (face.chosen) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium) else Modifier)
+                                .clickable { choose(face) },
+                        ) { FaceCrop(entriesByKey[face.photoKey], face.bounds, Modifier.fillMaxSize()) }
+                    }
+                }
+                if (faces.any { it.chosen }) Text(
+                    "Use the best one instead",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.clickable { choose(null) }.padding(vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MergeHistorySheet(merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit) {
@@ -3599,9 +3747,10 @@ private fun PhotoTimeline(
                     if (!scrollbarInteracting) scrollbarVisible = false
                 }
             }
+            val widthDp = LocalConfiguration.current.screenWidthDp
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(scale.columns),
+                    columns = GridCells.Fixed(TimelineRules.columns(scale, widthDp)),
                     state = gridState,
                     modifier = Modifier
                         .fillMaxSize()

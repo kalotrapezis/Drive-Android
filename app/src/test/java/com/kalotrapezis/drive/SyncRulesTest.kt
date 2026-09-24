@@ -3,6 +3,7 @@ package com.kalotrapezis.drive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,6 +15,14 @@ class SyncRulesTest {
         assertEquals(listOf("192.168.1.146"), qr.hosts)
         assertEquals(43180, qr.port)
         assertEquals(fp, qr.fingerprint)
+    }
+
+    @Test fun retriesALostNetworkThreeTimesAndNotAStop() {
+        assertTrue(SyncRules.retriesAfterNetworkLoss(1, SyncException("Could not reach the computer")))
+        assertTrue(SyncRules.retriesAfterNetworkLoss(2, SyncException("Could not reach the computer")))
+        assertFalse("the fourth attempt gives up", SyncRules.retriesAfterNetworkLoss(3, SyncException("boom")))
+        assertFalse("a finished sync is not retried", SyncRules.retriesAfterNetworkLoss(1, null))
+        assertFalse("Stop means stop", SyncRules.retriesAfterNetworkLoss(1, kotlinx.coroutines.CancellationException()))
     }
 
     @Test fun rejectsAnythingElse() {
@@ -46,5 +55,92 @@ class SyncDiscoveryTest {
             val bytes = junk.toByteArray()
             assertNull("«$junk» is not a reply", SyncDiscovery.replyPort(bytes, bytes.size))
         }
+    }
+}
+
+class SyncConnectionTest {
+    @Test
+    fun `direction is read from this device's side, and says what it may do`() {
+        val send = SyncConnection("photos", "send", "everything")
+        val receive = SyncConnection("photos", "receive", "everything")
+        val both = SyncConnection("files", "both", "everything")
+        assertTrue(send.sends); assertFalse(send.receives)
+        assertFalse(receive.sends); assertTrue(receive.receives)
+        assertTrue(both.sends && both.receives)
+    }
+
+    @Test
+    fun `the sentence names the other device and what happens to this one's copy`() {
+        assertEquals("Photos → Desk · Copy", SyncConnection("photos", "send", "everything").sentence("Desk"))
+        assertEquals("Photos ← Desk · Copy", SyncConnection("photos", "receive", "everything").sentence("Desk"))
+        assertEquals("Files ⇄ Desk · Copy", SyncConnection("files", "both", "everything").sentence("Desk"))
+        assertEquals("Files → Desk · Move", SyncConnection("files", "send", "nothing").sentence("Desk"))
+    }
+
+    @Test
+    fun `a computer too old to answer is treated as two-way, which is what it always did`() {
+        assertEquals(listOf("photos", "files"), SyncConnection.defaults.map { it.content })
+        assertTrue(SyncConnection.defaults.all { it.sends && it.receives && it.keep == "everything" })
+    }
+}
+
+class DriveNewFileTest {
+    @Test
+    fun `a synced file never replaces one that is already there`() {
+        val root = java.io.File.createTempFile("drive-root", "").let { it.delete(); it.mkdirs(); it }
+        try {
+            val first = DriveRules.newFile(root, "Notes/letter.txt")
+            assertEquals(java.io.File(root, "Notes/letter.txt").canonicalFile, first)
+            first.parentFile!!.mkdirs()
+            first.writeText("the one already here")
+
+            val second = DriveRules.newFile(root, "Notes/letter.txt")
+            assertEquals("letter (2).txt", second.name)
+            second.writeText("the one that arrived")
+            assertEquals("letter (3).txt", DriveRules.newFile(root, "Notes/letter.txt").name)
+            assertEquals("the one already here", java.io.File(root, "Notes/letter.txt").readText())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a path that tries to leave Drive is refused`() {
+        val root = java.io.File.createTempFile("drive-root", "").let { it.delete(); it.mkdirs(); it }
+        try {
+            for (bad in listOf("../escape.txt", "/etc/passwd", "Notes/../../escape.txt", "")) {
+                assertThrows(IllegalArgumentException::class.java) { DriveRules.newFile(root, bad) }
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+}
+
+class IncomingPhotoFolderTest {
+    @Test
+    fun `the computer's own folder is kept when Android allows it there`() {
+        assertEquals("DCIM/Camera", SyncRules.incomingFolder("DCIM/Camera", video = false))
+        assertEquals("Pictures/Screenshots", SyncRules.incomingFolder("/Pictures/Screenshots/", video = false))
+        assertEquals("Movies/Holiday", SyncRules.incomingFolder("Movies/Holiday", video = true))
+    }
+
+    @Test
+    fun `anywhere Android would refuse becomes Tetra's own folder instead of a failure`() {
+        assertEquals("Pictures/Tetra", SyncRules.incomingFolder("Photos/2024", video = false))
+        assertEquals("Pictures/Tetra", SyncRules.incomingFolder("", video = false))
+        assertEquals("Pictures/Tetra", SyncRules.incomingFolder("../escape", video = false))
+        assertEquals("Movies/Tetra", SyncRules.incomingFolder("Home videos", video = true))
+        assertEquals("Movies/Tetra", SyncRules.incomingFolder("Documents/clips", video = true))
+    }
+}
+
+class SyncConnectionOffTest {
+    @Test
+    fun `off means neither way, and says so`() {
+        val off = SyncConnection("photos", "off", "everything")
+        assertFalse(off.sends)
+        assertFalse(off.receives)
+        assertEquals("Photos · not synced", off.sentence("Desk"))
     }
 }

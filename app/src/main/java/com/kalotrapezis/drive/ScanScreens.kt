@@ -1014,7 +1014,7 @@ private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit,
         ModuleHeader("Pages", back)
         Text("Long-press a page and drag it to reorder.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = gridColumns(3),
             state = gridState,
             contentPadding = PaddingValues(bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),

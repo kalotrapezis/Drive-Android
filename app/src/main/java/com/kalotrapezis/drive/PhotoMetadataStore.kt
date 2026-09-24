@@ -38,15 +38,37 @@ internal data class FaceGroup(val id: Long, val name: String, val count: Int, va
 internal data class FavoriteRecord(val photoKey: String, val favorite: Boolean, val updatedAt: Long)
 internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long, val hiddenFromGallery: Boolean = false)
 internal data class CollectionItemRecord(val collectionUuid: String, val photoKey: String, val deleted: Boolean, val updatedAt: Long)
-internal data class PersonRecord(val uuid: String, val name: String, val updatedAt: Long)
+internal data class PersonRecord(val uuid: String, val name: String, val updatedAt: Long, val coverUuid: String? = null)
+/**
+ * One answered question, as the other device can recognise it: the face and the person it was asked about, both
+ * by the uuids that already cross. A question nobody has answered stays here — it is this device's own
+ * uncertainty, worked out from what it holds — but an answer is a decision, and decisions travel.
+ */
+/** One face of a person, as the picker shows it. */
+internal data class FaceOfPerson(val uuid: String, val photoKey: String, val bounds: Rect, val quality: Float, val chosen: Boolean)
+
+internal data class ReviewRecord(val faceUuid: String, val personUuid: String, val state: String, val updatedAt: Long)
+
 internal data class FaceRecord(val uuid: String, val photoKey: String, val bounds: android.graphics.Rect, val embedding: ByteArray, val quality: Float, val personUuid: String?, val updatedAt: Long)
 internal data class DocumentRecord(val photoKey: String, val type: String?, val confidence: Float, val userVerified: Boolean, val updatedAt: Long)
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 17) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 20) {
 
     private companion object {
+        /**
+         * Tidying away people nobody has left any faces for — **guesses only**.
+         *
+         * A name is not a thing this app may throw away. A person you have named and whose photos have all gone
+         * to the Trash, or one whose name arrived from another device a moment before their faces, has an empty
+         * group for a while; deleting it loses the name for good, and the next sync or the next restore brings
+         * the faces back to nobody. An empty person is simply not shown (`groupsFrom` needs a face to draw), so
+         * keeping one costs a row and nothing else. Only "Person 41" is swept up, because that is a guess and
+         * guesses are what a rescan exists to redo.
+         */
+        const val FORGET_EMPTY_GUESSES = "DELETE FROM face_groups WHERE name GLOB 'Person [0-9]*' " +
+            "AND id NOT IN (SELECT DISTINCT group_id FROM face_samples WHERE group_id IS NOT NULL)"
         const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
             "target_id INTEGER NOT NULL, source_name TEXT NOT NULL, source_uuid TEXT, sample_ids TEXT NOT NULL, merged_at INTEGER NOT NULL)"
     }
@@ -128,6 +150,14 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // "Hide this album from Gallery" belongs to the album, not to this phone, so it moves out of preferences
         // and onto the collection, where it travels with it (SYNC_PLAN.md "Which settings sync").
         if (oldVersion < 17) db.execSQL(MERGE_HISTORY)
+        // An answer to Help organize is a decision, and decisions travel; a question is local. So a review needs
+        // a time, to be told apart from one answered on another device a minute later.
+        if (oldVersion < 18) db.execSQL("ALTER TABLE face_reviews ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+        // When a face's photo was taken: evidence about who is in it that the pixels do not carry (SAME_DAY_BONUS).
+        // Faces recorded before this have 0, which is a day of its own and shares itself with nothing.
+        if (oldVersion < 19) db.execSQL("ALTER TABLE face_samples ADD COLUMN taken_at INTEGER NOT NULL DEFAULT 0")
+        // The face a person is shown by, when somebody has chosen one. Null means "the best one we can find".
+        if (oldVersion < 20) db.execSQL("ALTER TABLE face_groups ADD COLUMN cover_uuid TEXT")
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -255,8 +285,17 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         val placeholders = unique.joinToString { "?" }
         val arguments = unique.toTypedArray()
         execSQL("DELETE FROM face_reviews WHERE photo_key IN ($placeholders) OR face_sample_id IN (SELECT id FROM face_samples WHERE photo_key IN ($placeholders))", arguments + arguments)
-        delete("face_samples", "photo_key IN ($placeholders)", arguments)
-        execSQL("DELETE FROM face_groups WHERE id NOT IN (SELECT DISTINCT group_id FROM face_samples WHERE group_id IS NOT NULL)")
+        // A photo leaving the gallery does not un-recognise the person in it. The faces of somebody you have
+        // named stay — they are not shown, because the photo that held them is gone (`groupsFrom` only draws
+        // what is still there), but they remain what she is recognised by, so a photo restored from the Trash
+        // or arriving from another device comes back *to her* instead of starting a stranger. Faces of people
+        // nobody has named are guesses about a photo that no longer exists, and go with it.
+        execSQL(
+            "DELETE FROM face_samples WHERE photo_key IN ($placeholders) AND (group_id IS NULL OR group_id IN " +
+                "(SELECT id FROM face_groups WHERE name GLOB 'Person [0-9]*'))",
+            arguments,
+        )
+        execSQL(FORGET_EMPTY_GUESSES)
         execSQL("DELETE FROM face_reviews WHERE candidate_group_id NOT IN (SELECT id FROM face_groups)")
         listOf("photo_ai_label", "photo_ai_record", "collection_membership", "photo_state", "photo_location").forEach { table ->
             delete(table, "photo_key IN ($placeholders)", arguments)
@@ -292,14 +331,20 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             put("review_state", "none")
             put("updated_at", System.currentTimeMillis())
         }, "photo_key = ?", arrayOf(review.photoKey)) else {
-            if (accepted) update("face_samples", ContentValues().apply { put("group_id", review.candidateGroupId) }, "id = ?", arrayOf(review.faceSampleId.toString()))
-            update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id = ?", arrayOf(review.faceSampleId.toString()))
+            if (accepted) update("face_samples", ContentValues().apply {
+                put("group_id", review.candidateGroupId); put("updated_at", System.currentTimeMillis())
+            }, "id = ?", arrayOf(review.faceSampleId.toString()))
+            update("face_reviews", ContentValues().apply {
+                put("state", "resolved"); put("updated_at", System.currentTimeMillis())
+            }, "face_sample_id = ?", arrayOf(review.faceSampleId.toString()))
         }
     }
 
     fun skipReview(review: PendingReview) = writableDatabase.inTransaction {
         if (review.candidateGroupId == null) update("photo_ai_record", ContentValues().apply { put("review_state", "none") }, "photo_key = ?", arrayOf(review.photoKey))
-        else update("face_reviews", ContentValues().apply { put("state", "skipped") }, "face_sample_id = ? AND candidate_group_id = ?", arrayOf(review.faceSampleId.toString(), review.candidateGroupId.toString()))
+        else update("face_reviews", ContentValues().apply {
+            put("state", "skipped"); put("updated_at", System.currentTimeMillis())
+        }, "face_sample_id = ? AND candidate_group_id = ?", arrayOf(review.faceSampleId.toString(), review.candidateGroupId.toString()))
     }
 
     fun peopleKeys(): Set<String> = keysFor("SELECT DISTINCT photo_key FROM face_samples", emptyArray())
@@ -321,11 +366,12 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun faceGroup(groupId: Long, livePhotoKeys: Set<String>? = null): FaceGroup? = groupsFrom(livePhotoKeys, groupId).firstOrNull()
 
     private fun groupsFrom(livePhotoKeys: Set<String>?, onlyGroup: Long?): List<FaceGroup> = readableDatabase.rawQuery(
-        "SELECT g.id, g.name, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.quality " +
+        "SELECT g.id, g.name, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.quality, " +
+            "CASE WHEN g.cover_uuid IS NOT NULL AND g.cover_uuid = s.uuid THEN 1 ELSE 0 END " +
             "FROM face_groups g JOIN face_samples s ON s.group_id = g.id" + if (onlyGroup != null) " WHERE g.id = ?" else "",
         onlyGroup?.let { arrayOf(it.toString()) },
     ).use { cursor ->
-        class Sample(val key: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val quality: Float)
+        class Sample(val key: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val quality: Float, val chosen: Boolean = false)
         val names = HashMap<Long, String>()
         val samples = HashMap<Long, MutableList<Sample>>()
         while (cursor.moveToNext()) {
@@ -334,10 +380,11 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             if (livePhotoKeys != null && key !in livePhotoKeys) continue
             names[id] = cursor.getString(1)
             samples.getOrPut(id) { mutableListOf() }
-                .add(Sample(key, cursor.getInt(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getFloat(7)))
+                .add(Sample(key, cursor.getInt(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getFloat(7), cursor.getInt(8) == 1))
         }
         samples.mapNotNull { (id, list) ->
-            val cover = list.maxByOrNull { it.quality } ?: return@mapNotNull null
+            // A face somebody chose is the face, whatever the scores say. Otherwise the best one wins.
+            val cover = list.firstOrNull { it.chosen } ?: list.maxByOrNull { it.quality } ?: return@mapNotNull null
             FaceGroup(id, names.getValue(id), list.distinctBy { it.key }.size, cover.key, cover.left, cover.top, cover.right, cover.bottom)
         }
     }
@@ -351,6 +398,28 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun peopleNamesByPhoto(keys: Collection<String>): Map<String, List<String>> = valuesByPhoto(
         "SELECT DISTINCT s.photo_key, g.name FROM face_samples s JOIN face_groups g ON g.id = s.group_id WHERE s.photo_key IN (${keys.joinToString { "?" }}) ORDER BY g.name COLLATE NOCASE", keys,
     )
+
+    /** Every face of this person, newest first, for choosing which one they are shown by. */
+    fun faceGroupFaces(groupId: Long): List<FaceOfPerson> = readableDatabase.rawQuery(
+        "SELECT s.uuid, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.quality, " +
+            "CASE WHEN g.cover_uuid = s.uuid THEN 1 ELSE 0 END FROM face_samples s JOIN face_groups g ON g.id = s.group_id " +
+            "WHERE s.group_id = ? AND s.uuid IS NOT NULL ORDER BY s.taken_at DESC, s.id DESC",
+        arrayOf(groupId.toString()),
+    ).use { c ->
+        buildList {
+            while (c.moveToNext()) add(FaceOfPerson(
+                c.getString(0), c.getString(1), Rect(c.getInt(2), c.getInt(3), c.getInt(4), c.getInt(5)), c.getFloat(6), c.getInt(7) == 1,
+            ))
+        }
+    }
+
+    /** Choosing the face a person is shown by is a decision, so it is kept and it travels like one. */
+    fun setFaceGroupCover(groupId: Long, faceUuid: String?) {
+        writableDatabase.update("face_groups", ContentValues().apply {
+            put("cover_uuid", faceUuid)
+            put("updated_at", System.currentTimeMillis())
+        }, "id = ?", arrayOf(groupId.toString()))
+    }
 
     fun renameFaceGroup(groupId: Long, name: String) {
         val cleaned = PhotoMetadataRules.collectionName(name)
@@ -461,7 +530,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     fun forgetUnnamedFaces() = writableDatabase.inTransaction {
         execSQL("DELETE FROM face_reviews WHERE face_sample_id IN (SELECT s.id FROM face_samples s LEFT JOIN face_groups g ON g.id = s.group_id WHERE g.id IS NULL OR g.name GLOB 'Person [0-9]*')")
         execSQL("DELETE FROM face_samples WHERE id IN (SELECT s.id FROM face_samples s LEFT JOIN face_groups g ON g.id = s.group_id WHERE g.id IS NULL OR g.name GLOB 'Person [0-9]*')")
-        execSQL("DELETE FROM face_groups WHERE id NOT IN (SELECT DISTINCT group_id FROM face_samples WHERE group_id IS NOT NULL)")
+        execSQL(FORGET_EMPTY_GUESSES)
         execSQL("DELETE FROM face_reviews WHERE candidate_group_id NOT IN (SELECT id FROM face_groups)")
         execSQL("DELETE FROM face_merges WHERE target_id NOT IN (SELECT id FROM face_groups)")
     }
@@ -471,7 +540,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         "SELECT photo_key FROM photo_ai_record WHERE model_version = ?", arrayOf(analysisModelVersion()),
     )
 
-    fun recordClassification(photoKey: String, documentConfidence: Float, faces: List<DetectedFace>, labels: List<String>, modelVersion: String = analysisModelVersion()) = writableDatabase.inTransaction {
+    fun recordClassification(photoKey: String, documentConfidence: Float, faces: List<DetectedFace>, labels: List<String>, modelVersion: String = analysisModelVersion(), takenMillis: Long = 0) = writableDatabase.inTransaction {
         val document = documentConfidence >= 0.70f
         val review = documentConfidence in 0.40f..<0.70f
         val verifiedDocument = rawQuery("SELECT user_verified, type FROM photo_ai_record WHERE photo_key = ?", arrayOf(photoKey)).use { cursor ->
@@ -495,9 +564,13 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             })
         }
         val candidates = faceCandidates()
+        val day = dayOf(takenMillis)
         faces.forEach { face ->
-            val match = candidates.maxByOrNull { cosineSimilarity(face.embedding, it.embedding) }
-            val similarity = match?.let { cosineSimilarity(face.embedding, it.embedding) } ?: -1f
+            // The day is evidence, not proof: a face seen on the same day as someone already known starts a
+            // little closer to them, which is what catches the same person across two photos of one moment.
+            fun scoreOf(c: FaceCandidate) = cosineSimilarity(face.embedding, c.embedding) + if (c.day == day) SAME_DAY_BONUS else 0f
+            val match = candidates.maxByOrNull(::scoreOf)
+            val similarity = match?.let(::scoreOf) ?: -1f
             val reliable = isReliableFace(face.quality, face.yaw, face.roll)
             val groupId = when {
                 similarity >= SAME_PERSON -> match!!.groupId
@@ -517,6 +590,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("quality", face.quality)
                 put("uuid", UUID.randomUUID().toString())
                 put("updated_at", System.currentTimeMillis())
+                put("taken_at", takenMillis)
             }, SQLiteDatabase.CONFLICT_IGNORE)
             if (sampleId != -1L && reliable && similarity in REVIEW_FROM..<SAME_PERSON) insertWithOnConflict("face_reviews", null, ContentValues().apply {
                 put("photo_key", photoKey)
@@ -567,9 +641,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     /** Only groups that still hold a face: a merged-away person needs no tombstone, it simply has none left. */
     fun personRecords(): List<PersonRecord> = readableDatabase.rawQuery(
-        "SELECT g.uuid, g.name, MAX(g.updated_at, IFNULL(MAX(s.updated_at), 0)) FROM face_groups g JOIN face_samples s ON s.group_id = g.id WHERE g.uuid IS NOT NULL GROUP BY g.id",
+        "SELECT g.uuid, g.name, MAX(g.updated_at, IFNULL(MAX(s.updated_at), 0)), g.cover_uuid FROM face_groups g JOIN face_samples s ON s.group_id = g.id WHERE g.uuid IS NOT NULL GROUP BY g.id",
         null,
-    ).use { c -> buildList { while (c.moveToNext()) add(PersonRecord(c.getString(0), c.getString(1), c.getLong(2))) } }
+    ).use { c -> buildList { while (c.moveToNext()) add(PersonRecord(c.getString(0), c.getString(1), c.getLong(2), c.getString(3))) } }
 
     // ponytail: the whole set goes over on every sync — last-write-wins makes that safe and self-healing, and
     // 387 faces are ~260 KB of base64. Switch to an updated_at cursor if a library ever outgrows one request.
@@ -582,6 +656,38 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     )) } }
 
     /** Labels are the search tags Photos shows. They are derived, never hand-deleted, so they only ever merge. */
+    /** Answered questions, for the sync push. Pending ones are not sent: they are local uncertainty, not news. */
+    fun reviewRecords(): List<ReviewRecord> = readableDatabase.rawQuery(
+        "SELECT s.uuid, g.uuid, r.state, r.updated_at FROM face_reviews r " +
+            "JOIN face_samples s ON s.id = r.face_sample_id JOIN face_groups g ON g.id = r.candidate_group_id " +
+            "WHERE r.state != 'pending' AND s.uuid IS NOT NULL AND g.uuid IS NOT NULL", null,
+    ).use { c -> buildList { while (c.moveToNext()) add(ReviewRecord(c.getString(0), c.getString(1), c.getString(2), c.getLong(3))) } }
+
+    /**
+     * A question answered on another device stops being asked here. The pair (face, person) is the question's
+     * name — both already cross — so nothing new had to be invented to identify one.
+     *
+     * Only the *state* travels. Where the face ended up is the face's own record, which arrives on its own and
+     * carries the same rule as everything else: a guess never overwrites a decision.
+     */
+    fun applyIncomingReview(faceUuid: String, personUuid: String, state: String, updatedAt: Long) = writableDatabase.inTransaction {
+        if (state !in setOf("resolved", "skipped")) return@inTransaction
+        val sample = rawQuery("SELECT id, photo_key FROM face_samples WHERE uuid = ?", arrayOf(faceUuid))
+            .use { if (it.moveToFirst()) it.getLong(0) to it.getString(1) else null } ?: return@inTransaction
+        val group = rawQuery("SELECT id FROM face_groups WHERE uuid = ?", arrayOf(personUuid))
+            .use { if (it.moveToFirst()) it.getLong(0) else null } ?: return@inTransaction
+        val mine = rawQuery("SELECT state, updated_at FROM face_reviews WHERE face_sample_id = ? AND candidate_group_id = ?",
+            arrayOf(sample.first.toString(), group.toString())).use { if (it.moveToFirst()) it.getString(0) to it.getLong(1) else null }
+        if (mine != null && (mine.first != "pending" && mine.second >= updatedAt)) return@inTransaction
+        insertWithOnConflict("face_reviews", null, ContentValues().apply {
+            put("photo_key", sample.second)
+            put("face_sample_id", sample.first)
+            put("candidate_group_id", group)
+            put("state", state)
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
     fun allLabels(): Map<String, List<String>> = readableDatabase.rawQuery("SELECT photo_key, label FROM photo_ai_label", null)
         .use { c -> buildMap<String, MutableList<String>> { while (c.moveToNext()) getOrPut(c.getString(0)) { mutableListOf() } += c.getString(1) } }
 
@@ -621,10 +727,33 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     /** A name given on the computer. Unknown people are not created here: the phone owns its own grouping. */
-    fun applyIncomingPerson(uuid: String, name: String, updatedAt: Long) = writableDatabase.inTransaction {
-        val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return@inTransaction
+    fun applyIncomingPerson(uuid: String, name: String, updatedAt: Long, coverUuid: String? = null) = writableDatabase.inTransaction {
+        val local = rawQuery("SELECT id, updated_at FROM face_groups WHERE uuid = ?", arrayOf(uuid)).use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null }
+            ?: return@inTransaction run {
+                // Somebody named on another device, who this phone has never seen. A name is a decision and
+                // decisions travel — including the person they are about, or the faces arriving behind this
+                // would land in a nameless group here and the naming would have to be done twice. A guess
+                // ("Person 41") is not a decision, so it creates nothing and its faces are grouped here by this
+                // phone's own rules instead. A person who ends up with no faces is never shown.
+                if (isGeneratedPersonName(name)) return@inTransaction
+                insertWithOnConflict("face_groups", null, ContentValues().apply {
+                    put("uuid", uuid)
+                    put("name", name)
+                    put("updated_at", updatedAt)
+                    put("cover_uuid", coverUuid)
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+                Unit
+            }
         if (updatedAt <= local.second) return@inTransaction
-        update("face_groups", ContentValues().apply { put("name", name); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
+        // The rule faces already had, and people did not: "Person 41" is what an algorithm called someone it had
+        // not been told about, and it never replaces what a human typed, however recently it was written.
+        if (isGeneratedPersonName(name) && !isGeneratedPersonName(personName(local.first))) return@inTransaction
+        update("face_groups", ContentValues().apply {
+            put("name", name)
+            put("updated_at", updatedAt)
+            // The face somebody chose to show this person by is a decision too, and travels with the name.
+            if (coverUuid != null) put("cover_uuid", coverUuid)
+        }, "id = ?", arrayOf(local.first.toString()))
     }
 
     /**
@@ -660,24 +789,96 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
             val incomingIsAGuess = isGeneratedPersonName(personName(groupId))
             val hereItHasAName = groupName(local.first).let { it.isNotBlank() && !isGeneratedPersonName(it) }
             if (incomingIsAGuess && hereItHasAName) return@inTransaction
+            // Both devices named this face, and they disagree. Neither is wrong: grouping is order-dependent, so
+            // two devices starting from the same library reach different people. Letting the newer one win took
+            // the face from one person and gave it to the other silently — and gave it back on the next sync.
+            // A disagreement between two decisions is a question: the face stays, and the difference is asked.
+            val hereGroup = groupOf(local.first)
+            if (!incomingIsAGuess && hereItHasAName && hereGroup != null && hereGroup != groupId) {
+                ask(local.first, sampleKey(local.first), hereGroup, groupId, updatedAt)
+                return@inTransaction
+            }
             update("face_samples", ContentValues().apply { put("group_id", groupId); put("updated_at", updatedAt) }, "id = ?", arrayOf(local.first.toString()))
             return@inTransaction
         }
-        if (groupId == null || photoKey == null || bounds == null || embedding == null || bounds.isEmpty) return@inTransaction
+        if (photoKey == null || bounds == null || embedding == null || bounds.isEmpty) return@inTransaction
         if (overlappingFace(photoKey, bounds) != null) return@inTransaction // this phone found the same face itself
-        insertWithOnConflict("face_samples", null, ContentValues().apply {
+
+        // A face from a person this phone has never heard of. It used to be dropped, which threw away exactly
+        // what the computer is better at: it detects at a larger size and finds faces this phone's detector
+        // misses. But its *grouping* is not what we want either — the phone is where people are grouped and
+        // named — so the face is taken and put through this phone's own rules, against this phone's own people.
+        // A close enough match joins that person; anything else becomes a new one, and the uncertain band in
+        // between becomes a question for Help organize, exactly as a face found here would.
+        val vector = embedding.toFloatArray()
+        // The same day counts here too, when this phone knows when the photo was taken — it does whenever it
+        // has read that photo itself, which is the usual case for one the computer found an extra face in.
+        val day = dayOf(takenAtOf(photoKey))
+        fun scoreOf(c: FaceCandidate) = cosineSimilarity(vector, c.embedding) + if (c.day == day) SAME_DAY_BONUS else 0f
+        val match = if (groupId != null) null else faceCandidates().maxByOrNull(::scoreOf)
+        val similarity = match?.let(::scoreOf) ?: -1f
+        val home = groupId ?: when {
+            similarity >= SAME_PERSON -> match!!.groupId
+            else -> createFaceGroup()
+        }
+        val sampleId = insertWithOnConflict("face_samples", null, ContentValues().apply {
             put("photo_key", photoKey)
             put("left_edge", bounds.left)
             put("top_edge", bounds.top)
             put("right_edge", bounds.right)
             put("bottom_edge", bounds.bottom)
             put("embedding", embedding)
-            put("group_id", groupId)
+            put("group_id", home)
+            put("taken_at", takenAtOf(photoKey))
             put("quality", quality)
             put("uuid", uuid)
             put("updated_at", updatedAt)
         }, SQLiteDatabase.CONFLICT_IGNORE)
+        if (sampleId != -1L && groupId == null && match != null && similarity in REVIEW_FROM..<SAME_PERSON) {
+            insertWithOnConflict("face_reviews", null, ContentValues().apply {
+                put("photo_key", photoKey)
+                put("face_sample_id", sampleId)
+                put("candidate_group_id", match.groupId)
+                put("state", "pending")
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
+
+    /**
+     * Raise the difference between two groupings as **one** card, not fifty. Two people who disagree about a
+     * face usually disagree about every face of that person, and a question per face would bury the library in
+     * questions that are all the same question. One pending card per pair of people shows the disagreement;
+     * putting the two together, if that is the answer, is Combine on the People page.
+     */
+    private fun SQLiteDatabase.ask(sampleId: Long, photoKey: String?, mine: Long, theirs: Long, updatedAt: Long) {
+        if (photoKey == null) return
+        val already = rawQuery(
+            "SELECT 1 FROM face_reviews r JOIN face_samples s ON s.id = r.face_sample_id " +
+                "WHERE s.group_id = ? AND r.candidate_group_id = ? AND r.state = 'pending' LIMIT 1",
+            arrayOf(mine.toString(), theirs.toString()),
+        ).use { it.moveToFirst() }
+        if (already) return
+        insertWithOnConflict("face_reviews", null, ContentValues().apply {
+            put("photo_key", photoKey)
+            put("face_sample_id", sampleId)
+            put("candidate_group_id", theirs)
+            put("state", "pending")
+            put("updated_at", updatedAt)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    /** When this photo was taken, as some other face on it already recorded. 0 when nothing here knows. */
+    private fun SQLiteDatabase.takenAtOf(photoKey: String): Long = rawQuery(
+        "SELECT MAX(taken_at) FROM face_samples WHERE photo_key = ?", arrayOf(photoKey),
+    ).use { if (it.moveToFirst()) it.getLong(0) else 0 }
+
+    private fun SQLiteDatabase.groupOf(sampleId: Long): Long? = rawQuery(
+        "SELECT group_id FROM face_samples WHERE id = ?", arrayOf(sampleId.toString()),
+    ).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+
+    private fun SQLiteDatabase.sampleKey(sampleId: Long): String? = rawQuery(
+        "SELECT photo_key FROM face_samples WHERE id = ?", arrayOf(sampleId.toString()),
+    ).use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun SQLiteDatabase.personName(groupId: Long): String =
         rawQuery("SELECT name FROM face_groups WHERE id = ?", arrayOf(groupId.toString())).use { if (it.moveToFirst()) it.getString(0) else "" }
@@ -800,12 +1001,12 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     private fun createFaceTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_samples (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, left_edge INTEGER NOT NULL, top_edge INTEGER NOT NULL, right_edge INTEGER NOT NULL, bottom_edge INTEGER NOT NULL, embedding BLOB NOT NULL, group_id INTEGER, quality REAL NOT NULL DEFAULT 1.0, updated_at INTEGER NOT NULL DEFAULT 0, taken_at INTEGER NOT NULL DEFAULT 0, UNIQUE(photo_key, left_edge, top_edge, right_edge, bottom_edge))")
     }
 
     private fun createFaceGroupingTables(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS face_reviews (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, face_sample_id INTEGER NOT NULL, candidate_group_id INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', UNIQUE(face_sample_id, candidate_group_id))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, cover_uuid TEXT)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS face_reviews (id INTEGER PRIMARY KEY, photo_key TEXT NOT NULL, face_sample_id INTEGER NOT NULL, candidate_group_id INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', updated_at INTEGER NOT NULL DEFAULT 0, UNIQUE(face_sample_id, candidate_group_id))")
     }
 
     private fun createLabelTables(db: SQLiteDatabase) {
@@ -819,10 +1020,14 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     })
 
     private fun SQLiteDatabase.faceCandidates(): List<FaceCandidate> = rawQuery(
-        "SELECT group_id, embedding FROM face_samples WHERE group_id IS NOT NULL AND quality >= 0.68", null,
-    ).use { cursor -> buildList { while (cursor.moveToNext()) add(FaceCandidate(cursor.getLong(0), cursor.getBlob(1).toFloatArray())) } }
+        "SELECT group_id, embedding, taken_at FROM face_samples WHERE group_id IS NOT NULL AND quality >= 0.68", null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) add(FaceCandidate(cursor.getLong(0), cursor.getBlob(1).toFloatArray(), dayOf(cursor.getLong(2))))
+        }
+    }
 
-    private data class FaceCandidate(val groupId: Long, val embedding: FloatArray)
+    private data class FaceCandidate(val groupId: Long, val embedding: FloatArray, val day: Long)
 }
 
 internal object PhotoSearchRules {

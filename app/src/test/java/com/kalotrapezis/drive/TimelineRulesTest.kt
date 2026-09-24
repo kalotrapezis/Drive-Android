@@ -6,6 +6,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TimelineRulesTest {
+
+    @Test fun thumbnailsKeepTheirSizeOnAWiderScreen() {
+        // A phone is exactly as it was: 2 / 3 / 6.
+        assertEquals(2, TimelineRules.columns(TimelineScale.Week, 406))
+        assertEquals(3, TimelineRules.columns(TimelineScale.Month, 406))
+        assertEquals(6, TimelineRules.columns(TimelineScale.Year, 406))
+        // A narrow phone never goes below the phone count, whatever the arithmetic says.
+        assertEquals(2, TimelineRules.columns(TimelineScale.Week, 320))
+        // The tablet, 1164dp across in landscape and 777dp in portrait, gets more and smaller.
+        assertEquals(6, TimelineRules.columns(TimelineScale.Week, 1164))
+        assertEquals(4, TimelineRules.columns(TimelineScale.Week, 777))
+        assertEquals(9, TimelineRules.columns(TimelineScale.Month, 1164))
+    }
     @Test
     fun `ISO week grouping keeps the week-year boundary in descending order`() {
         fun millis(date: LocalDate) = date.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()

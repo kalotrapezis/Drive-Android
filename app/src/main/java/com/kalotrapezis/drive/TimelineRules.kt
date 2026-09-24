@@ -7,10 +7,14 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.WeekFields
 import java.util.Locale
 
-internal enum class TimelineScale(val columns: Int, val label: String) {
-    Week(2, "Week"),
-    Month(3, "Month"),
-    Year(6, "Year"),
+/**
+ * `columns` is what a phone shows, and `targetDp` is roughly how wide one thumbnail wants to be there — the
+ * two agree at a phone's ~400dp. See [TimelineRules.columns].
+ */
+internal enum class TimelineScale(val columns: Int, val targetDp: Int, val label: String) {
+    Week(2, 190, "Week"),
+    Month(3, 128, "Month"),
+    Year(6, 64, "Year"),
     ;
 
     fun finer() = entries.getOrElse(ordinal - 1) { this }
@@ -18,6 +22,17 @@ internal enum class TimelineScale(val columns: Int, val label: String) {
 }
 
 internal object TimelineRules {
+    /**
+     * How many photos across. A tablet is not a big phone: the same two columns that make a Week comfortable
+     * on a phone made every photo 582dp wide on the tablet (24 September), which is how it looked — huge and
+     * wrong. So the scale sets how big a thumbnail should *feel* and the screen decides how many fit, never
+     * fewer than the phone's count, so a narrow phone is left exactly as it was.
+     */
+    fun columns(scale: TimelineScale, widthDp: Int): Int = columns(scale.columns, scale.targetDp, widthDp)
+
+    /** The same rule for a grid that has no scale: keep the phone's cell size, fit as many as the screen allows. */
+    fun columns(phoneColumns: Int, targetDp: Int, widthDp: Int): Int = maxOf(phoneColumns, widthDp / targetDp)
+
     fun groupKey(timestampMillis: Long, scale: TimelineScale, zoneId: ZoneId = ZoneId.systemDefault()): String {
         if (timestampMillis <= 0) return "unknown"
         val date = Instant.ofEpochMilli(timestampMillis).atZone(zoneId).toLocalDate()

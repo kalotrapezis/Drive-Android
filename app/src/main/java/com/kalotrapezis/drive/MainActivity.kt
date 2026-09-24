@@ -62,7 +62,6 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
@@ -117,9 +116,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -521,17 +517,18 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val darkTheme = isSystemInDarkTheme()
-    val colors = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme -> dynamicDarkColorScheme(context)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }.let { scheme ->
-        // Neutral accents to match the islands: white/grey buttons instead of the wallpaper's cyan.
-        if (darkTheme) scheme.copy(primary = Color(0xFFE6E6E6), onPrimary = Color.Black, primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White)
-        else scheme.copy(primary = Color(0xFF2B2B2B), onPrimary = Color.White, primaryContainer = Color(0xFFE2E2E2), onPrimaryContainer = Color.Black)
-    }
+    // One palette, on every device (24 September). Dynamic colour read the wallpaper, so the same home screen
+    // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
+    // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
+    // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
+    val colors = darkColorScheme(
+        primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
+        primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
+        tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
+        background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
+        surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
+        surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
+    )
     MaterialTheme(colorScheme = colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
@@ -1242,7 +1239,7 @@ private fun SettingsTab(
         item {
             SettingsCard("Appearance") {
                 Text("Follow system", style = MaterialTheme.typography.titleMedium)
-                Text("Tetra follows the Android light/dark theme and dynamic colour where Android provides it.", style = MaterialTheme.typography.bodyMedium)
+                Text("Tetra is a dark app, and the same one on every device: it does not follow the system light theme or the wallpaper's colours.", style = MaterialTheme.typography.bodyMedium)
             }
         }
             item { Box(Modifier.heightIn(min = 32.dp)) }
@@ -1573,7 +1570,7 @@ private fun DriveFiles(
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
                     else if (grid) LazyVerticalGrid(
-                        GridCells.Fixed(2),
+                        gridColumns(2),
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, top = topPadding, end = 16.dp, bottom = 164.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1847,7 +1844,7 @@ private val DriveTrashAccent = Color(0xFFE3685F)
 } }
 
 @Composable private fun DriveColorCircle(color: DriveFolderColor, selected: Boolean, click: () -> Unit) = Surface(
-    color = driveFolderAccent(color).copy(alpha = if (isSystemInDarkTheme()) 0.68f else 0.58f), contentColor = if (color == DriveFolderColor.Yellow) Color.Black else Color.White, shape = CircleShape,
+    color = driveFolderAccent(color).copy(alpha = 0.68f), contentColor = if (color == DriveFolderColor.Yellow) Color.Black else Color.White, shape = CircleShape,
     modifier = Modifier.size(44.dp).then(if (selected) Modifier.border(2.dp, islandContentColor(), CircleShape) else Modifier).clickable(onClick = click),
 ) { if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = color.name, modifier = Modifier.padding(10.dp)) }
 
@@ -1961,11 +1958,9 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
 }
 
 /** Selection is a neutral state, not a category: a picked item goes pale, it does not change colour. */
-@Composable private fun driveSelectionColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFFE3E4E6) else Color(0xFF2B2E30)
+@Composable private fun driveSelectionColor(): Color = Color(0xFFE3E4E6)
 
-@Composable private fun driveSelectionContentColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFF1B1D1F) else Color(0xFFF2F3F4)
+@Composable private fun driveSelectionContentColor(): Color = Color(0xFF1B1D1F)
 
 @Composable private fun IslandVisibility(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
@@ -2098,8 +2093,8 @@ private fun driveSpaceColor(type: String): Color = when (type) {
     }
 }
 
-@Composable internal fun driveNavigationSelectedColor(): Color = if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.72f) else Color.Black.copy(alpha = 0.72f)
-@Composable internal fun driveNavigationSelectedContentColor(): Color = if (isSystemInDarkTheme()) Color.Black else Color.White
+@Composable internal fun driveNavigationSelectedColor(): Color = Color.White.copy(alpha = 0.72f)
+@Composable internal fun driveNavigationSelectedContentColor(): Color = Color.Black
 
 private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
@@ -2123,8 +2118,18 @@ private fun driveFolderAccent(color: DriveFolderColor): Color = when (color) {
     DriveFolderColor.Purple -> Color(0xFFAD68CF)
 }
 private fun formatOpenedTime(time: Long): String = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(time))
-@Composable internal fun islandColor(): Color = if (isSystemInDarkTheme()) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.78f)
-@Composable internal fun islandContentColor(): Color = if (isSystemInDarkTheme()) Color.White else Color.Black
+/**
+ * A grid that keeps its phone-sized cells on a wider screen (SYNC_PLAN.md D2). Pass what the phone shows and
+ * the cell keeps roughly that size everywhere: the tablet gets more of them, a narrow phone never gets fewer.
+ */
+@Composable internal fun gridColumns(phoneColumns: Int): GridCells =
+    GridCells.Fixed(TimelineRules.columns(phoneColumns, PHONE_WIDTH_DP / phoneColumns, LocalConfiguration.current.screenWidthDp))
+
+/** The width the phone layouts were drawn against, and the only thing the cell sizes are relative to. */
+private const val PHONE_WIDTH_DP = 406
+
+@Composable internal fun islandColor(): Color = Color.Black.copy(alpha = 0.72f)
+@Composable internal fun islandContentColor(): Color = Color.White
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2938,7 +2943,7 @@ private fun PeopleGroups(groups: List<FaceGroup>, entries: Map<String, Entry>, o
         }
         return
     }
-    LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyVerticalGrid(gridColumns(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { FilesPageHeader("People", R.drawable.ic_people, back) }
         items(groups, key = { it.id }) { group ->
             FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }) { open(group) }
@@ -3019,7 +3024,7 @@ private fun PersonGroupScreen(
                 Text("Undo", modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
             }
         } }
-        LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        LazyVerticalGrid(gridColumns(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             items(entries, key = { it.photoKey }) { entry ->
                 PhotoThumbnail(entry, entry.photoKey in picked, longPress = { picked = picked + entry.photoKey }) {
                     if (picked.isEmpty()) openPhoto(entry)
@@ -3742,9 +3747,10 @@ private fun PhotoTimeline(
                     if (!scrollbarInteracting) scrollbarVisible = false
                 }
             }
+            val widthDp = LocalConfiguration.current.screenWidthDp
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(scale.columns),
+                    columns = GridCells.Fixed(TimelineRules.columns(scale, widthDp)),
                     state = gridState,
                     modifier = Modifier
                         .fillMaxSize()

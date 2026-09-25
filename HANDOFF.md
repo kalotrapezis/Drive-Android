@@ -1,3 +1,60 @@
+# Morning of 25 September — Move is built, test it together at noon
+
+Built on the computer (SYNC_PLAN "D3, built"): a photo's **location** (this PC or a storage drive), opening from
+the drive or "Plug in T7-TEO", a drive card with **Backup / Storage**, **Offload on (a line) / off (a window)**,
+copies required and favorites, the **"Free 21 GB?"** dialog with *Try 10 first*, notifications and a tray item,
+and the copies bar with one band per count. 55 desktop tests. Built **0.2.0-alpha.4** (.deb + AppImage in
+`desktop/release/`), not released, not committed.
+
+**The old alpha.3 must never run after a Move**: its scan reads moved photos as deleted (and forgets their faces).
+Install alpha.4 before moving anything, and do not go back.
+
+Noon test, in order:
+
+```bash
+cp ~/.local/share/local-drive-desktop/library.db ~/Έγγραφα/Claude/Coding/Drive-Android-backups/library.db.before-move-2026-09-25
+sudo dpkg -i ~/Έγγραφα/Claude/Coding/Drive/desktop/release/local-drive-desktop_0.2.0-alpha.4_amd64.deb
+```
+
+1. Quit Tetra from the tray, start the new one. T7-TEO plugged in. Devices → T7 card → **Storage**, Offload
+   off, keep the last 1 year. The card should say ~2,664 photos, ~21 GB.
+2. **Free 21 GB… → Try 10 first.** Check: 10 files in the system Trash, the 10 still in Photos (oldest, 2008),
+   they open (from `/mnt/T7`), Details says "On T7-TEO".
+3. Unmount/unplug T7: open one of them → "Plug in T7-TEO to open this" over the thumbnail. Plug back in.
+4. Sync the phone and the tablet: they must not send those 10 back, and the Devices bar must not call them missing.
+5. Restore one from the Trash (Photos → Trash): it is back on this PC (Details loses "On T7-TEO").
+6. If all is right: the full Yes. Wait a minute for the notification path (tray item "Free …").
+
+Also this morning:
+- **Map** (desktop): red pins drawn by the map itself (the photo markers lagged every pan), light style, a group
+  opens a grid panel from the bottom and the viewer pages only that group. Phone pins are red too.
+- **A folder album is a folder** (both apps): in a collection that is an included folder, Remove *moves the file*
+  out of the folder (a picker, Camera first); **Move to folder…** is in the selection bar (and the desktop viewer).
+  Never overwrites (a taken name becomes "(2)"). Desktop: `folders.move`, test in folders.test.js. Phone:
+  `movePhotosToFolder` (FolderAlbums.kt) after Android's write consent; the key includes the folder, so
+  `rekeyPhoto(…, sameContent = true)` carries favorites, collections, location, faces and labels to the new key.
+  Not tested on a device yet. Installed on the tablet; the phone was not plugged in.
+- **Folder rule over Both ways** (user, 2026-09-25): a folder that is On on any device in a two-way chain is On on
+  every device in it; a No given on a device does not hide it there. A device that only sends keeps its own answers.
+  The folder's album is the yes that travels (`folderChoices` on the phone, `Folders.choices` with `bothWays` on the
+  computer). The tablet had hidden DCIM, so the synced DCIM album arrived empty and its member was dropped for good;
+  METADATA_EPOCH 6 pulls everything once more. Open: how an Off travels (today only deleting the album does).
+  A device still *sends* only the folders it shows — I changed that to "every folder" by mistake and undid it.
+
+Found on the phone, 25 September afternoon (not fixed yet):
+- **Long-press selects, then deselects on release**; it only sticks if the finger moves a little.
+- **Photos Trash lists oldest first** (user confirmed: "the view counts backwards, the latest is at the bottom"), so
+  what was just trashed is at the bottom and looks missing.
+- **Empty Trash "did not work"**: the fast-scroll strip covered the whole right edge, top bar included, and took the
+  tap. Fixed (the strip is only as tall as its track) and installed on the phone; the user then emptied the
+  phone's Photos Trash on purpose (broken copies from an earlier buggy sync). It deletes for good with no Android
+  prompt (Media management) — Purgatory (SYNC_PLAN D6) should come before this is trusted with real photos. The
+  Empty button still has no accessibility label.
+- Asked: **a history — a manifest of what goes and what comes** (every transfer, trash, purgatory and deletion,
+  per device), because sync rules are only safe if they can be read back.
+
+---
+
 # Handoff — night of 24 September 2026
 
 Read `SYNC_PLAN.md` for *why* anything is the way it is — **section D3** is the design for everything below. This is

@@ -55,6 +55,7 @@ internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(l
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
 internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 22) {
+    private val appContext = context.applicationContext
 
     private companion object {
         /**
@@ -187,12 +188,16 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     /**
      * After "Save" replaces a photo, its size and so its key change. Favorite, collections and location follow the
-     * photo; faces and labels are left to re-analysis because crop or rotation moved them.
+     * photo; faces and labels are left to re-analysis because crop or rotation moved them. A photo moved to another
+     * folder (`sameContent`) changes key too, since the key includes the folder, but its pixels did not: everything
+     * follows it, faces and labels included.
      */
-    fun rekeyPhoto(oldKey: String, newKey: String) {
+    fun rekeyPhoto(oldKey: String, newKey: String, sameContent: Boolean = false) {
         if (oldKey == newKey) return
+        val tables = listOf("photo_state", "collection_membership", "photo_location") +
+            if (sameContent) listOf("photo_ai_record", "photo_ai_label", "face_samples", "face_reviews") else emptyList()
         writableDatabase.inTransaction {
-            for (table in listOf("photo_state", "collection_membership", "photo_location")) {
+            for (table in tables) {
                 execSQL("UPDATE OR IGNORE $table SET photo_key = ? WHERE photo_key = ?", arrayOf(newKey, oldKey))
                 delete(table, "photo_key = ?", arrayOf(oldKey)) // only rows that already existed for the new key are left
             }
@@ -231,9 +236,32 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun addToCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = true)
 
-    /** Lower-cased folder name → the answer given. A folder with no entry has never been asked about. */
-    fun folderChoices(): Map<String, Boolean> = readableDatabase.rawQuery("SELECT name, included FROM device_folders", null)
-        .use { c -> buildMap { while (c.moveToNext()) put(c.getString(0).lowercase(), c.getInt(1) != 0) } }
+    /**
+     * Lower-cased folder name → whether its photos are shown here. A folder with no entry has never been asked about.
+     *
+     * The folder's album is what travels: an album of the folder's name means some device said yes to it. On a
+     * device that syncs photos **both ways** that yes wins over a No given here — a folder that is On anywhere in a
+     * two-way chain is On everywhere in it (asked 2026-09-25). A device that only sends keeps its own answers.
+     */
+    fun folderChoices(): Map<String, Boolean> = buildMap {
+        val albums = readableDatabase.rawQuery("SELECT name FROM collections WHERE deleted = 0", null)
+            .use { c -> buildSet { while (c.moveToNext()) add(c.getString(0).lowercase()) } }
+        albums.forEach { put(it, true) }
+        val chain = photosBothWays()
+        readableDatabase.rawQuery("SELECT name, included FROM device_folders", null).use { c -> while (c.moveToNext()) {
+            val name = c.getString(0).lowercase()
+            val on = c.getInt(1) != 0
+            if (on || !(chain && name in albums)) put(name, on)
+        } }
+    }
+
+    /** Whether this device is paired and its photos go both ways (the rules the computer last gave, SyncStore). */
+    private fun photosBothWays(): Boolean {
+        val prefs = appContext.getSharedPreferences("sync_pairing", Context.MODE_PRIVATE)
+        if (prefs.getString("token", null) == null) return false
+        val photos = prefs.getString("connections", null)?.split(';')?.firstOrNull { it.startsWith("photos,") } ?: return true // default: both
+        return photos.split(',').getOrNull(1) == "both"
+    }
 
     fun setFolderIncluded(name: String, included: Boolean) {
         writableDatabase.insertWithOnConflict("device_folders", null, ContentValues().apply {
@@ -257,6 +285,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
     }
 
     fun removeFromCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = false)
+
+    fun collectionIdNamed(name: String): Long? =
+        readableDatabase.rawQuery("SELECT id FROM collections WHERE name = ? COLLATE NOCASE AND deleted = 0", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) else null }
 
     /** A tombstone, not a delete: the removal has to reach the computer, and photos stay in the library. */
     fun deleteCollection(collectionId: Long) = writableDatabase.inTransaction {

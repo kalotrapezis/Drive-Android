@@ -47,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -169,8 +168,7 @@ private fun MapLoading(modifier: Modifier = Modifier) {
 private fun PhotoMap(photos: List<LocatedPhoto>, focusPhotoKey: String?, openPhoto: (Entry) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val accent = MaterialTheme.colorScheme.primary
-    val pinIcon = remember(context, accent) { mapPinIcon(context, accent.toArgb()) }
+    val pinIcon = remember(context) { mapPinIcon(context, MAP_PIN_RED) }
     var selected by remember(photos, focusPhotoKey) { mutableStateOf(photos.firstOrNull { it.entry.photoKey == focusPhotoKey }) }
     val mapView = remember(photos) {
         MapLibre.getInstance(context)
@@ -254,8 +252,7 @@ internal fun PhotoLocationPreview(location: PhotoLocation, open: () -> Unit) {
         MapLibre.getInstance(context)
         MapView(context).apply { onCreate(Bundle()) }
     }
-    val accent = MaterialTheme.colorScheme.primary
-    val pinIcon = remember(context, accent) { mapPinIcon(context, accent.toArgb()) }
+    val pinIcon = remember(context) { mapPinIcon(context, MAP_PIN_RED) }
     DisposableEffect(mapView, lifecycle) {
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
@@ -288,6 +285,9 @@ internal fun PhotoLocationPreview(location: PhotoLocation, open: () -> Unit) {
         Box(Modifier.fillMaxSize().clickable(onClickLabel = "Show on map", onClick = open))
     }
 }
+
+/** Red on every device, the same as the desktop map: a pin reads as a place, whatever the theme accent is. */
+private const val MAP_PIN_RED = 0xFFE5484D.toInt()
 
 private fun mapPinIcon(context: Context, color: Int): org.maplibre.android.annotations.Icon {
     val size = (48 * context.resources.displayMetrics.density).toInt()

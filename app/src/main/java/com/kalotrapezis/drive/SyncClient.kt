@@ -47,7 +47,7 @@ internal data class BackupResult(val checked: Int, val sent: Int, val alreadyThe
  * phone → computer, **receive** is computer → phone, **both** is both. Keep says what the source does with its
  * copy afterwards, and only "everything" — a Copy — is implemented; two-way forces it anyway.
  */
-internal data class SyncConnection(val content: String, val direction: String, val keep: String) {
+internal data class SyncConnection(val content: String, val direction: String, val keep: String, val keepDays: Int = 30, val keepFavorites: Boolean = true) {
     val sends: Boolean get() = direction == "send" || direction == "both"
     val receives: Boolean get() = direction == "receive" || direction == "both"
 
@@ -60,7 +60,7 @@ internal data class SyncConnection(val content: String, val direction: String, v
             "receive" -> "← $computer"
             else -> "⇄ $computer"
         }
-        return "$what $arrow · ${if (keep == "nothing") "Move" else "Copy"}"
+        return "$what $arrow · ${if (keep == "nothing") "Move, keeping ${SyncRules.span(keepDays)}" else "Copy"}"
     }
 
     companion object {
@@ -98,6 +98,13 @@ internal object SyncRules {
     }
 
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+
+    /** "3 months", "1 year", "10 days": a Move's window, in the largest unit it divides into (as the computer shows it). */
+    fun span(days: Int): String {
+        val (unit, per) = listOf("year" to 365, "month" to 30, "week" to 7, "day" to 1).first { (_, n) -> days % n == 0 }
+        val n = days / per
+        return "$n $unit${if (n > 1) "s" else ""}"
+    }
 
     /**
      * Where a photo the computer sends is allowed to land.
@@ -202,11 +209,17 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
      * runs. They are never the authority — the computer's answer at sync time is.
      */
     fun connections(): List<SyncConnection> = prefs.getString("connections", null)
-        ?.split(';')?.mapNotNull { row -> row.split(',').takeIf { it.size == 3 }?.let { SyncConnection(it[0], it[1], it[2]) } }
+        ?.split(';')?.mapNotNull { row -> row.split(',').takeIf { it.size >= 3 }?.let {
+            SyncConnection(it[0], it[1], it[2], it.getOrNull(3)?.toIntOrNull() ?: 30, it.getOrNull(4) != "0")
+        } }
         ?.takeIf { it.isNotEmpty() } ?: SyncConnection.defaults
 
     fun saveConnections(rows: List<SyncConnection>) =
-        prefs.edit().putString("connections", rows.joinToString(";") { "${it.content},${it.direction},${it.keep}" }).apply()
+        prefs.edit().putString("connections", rows.joinToString(";") { "${it.content},${it.direction},${it.keep},${it.keepDays},${if (it.keepFavorites) 1 else 0}" }).apply()
+
+    /** Trash items already safe in the purgatory, so they are not sent twice while Android counts down. */
+    fun handedOver(uri: String) = uri in prefs.getStringSet("purgatory_sent", emptySet())!!
+    fun markHandedOver(uri: String) = prefs.edit().putStringSet("purgatory_sent", prefs.getStringSet("purgatory_sent", emptySet())!! + uri).apply()
 
     fun lastBackup(): Long = prefs.getLong("last_backup", 0)
     fun setLastBackup(at: Long) = prefs.edit().putLong("last_backup", at).apply()
@@ -265,7 +278,12 @@ internal class SyncException(message: String) : Exception(message)
  *
  * 2: a person named on another device is created here rather than dropped (SYNC_PLAN.md 6y).
  */
-private const val METADATA_EPOCH = 5 // 5: reconcile every local copy of a face with the computer's group
+/** Days before Android's own deletion at which a trashed photo goes to the purgatory (D6). */
+private const val HAND_OVER_DAYS = 3
+/** Files' Trash has no clock of its own; the same 30 days as Android's (D6). */
+private const val FILES_TRASH_DAYS = 30
+private const val METADATA_EPOCH = 6 // 5: reconcile every local copy of a face with the computer's group. 6: pull again the
+// collection members that were dropped while their folder was hidden here (2026-09-25)
 
 /** How many files cross at once. Four keeps the link busy; more turns a phone's Wi-Fi into stalled sockets. */
 private const val AT_ONCE = 4
@@ -377,7 +395,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val array = body.optJSONArray("connections") ?: return@runCatching SyncConnection.defaults
         (0 until array.length()).map { i ->
             val o = array.getJSONObject(i)
-            SyncConnection(o.getString("content"), o.optString("direction", "both"), o.optString("keep", "everything"))
+            SyncConnection(o.getString("content"), o.optString("direction", "both"), o.optString("keep", "everything"),
+                o.optInt("keepDays", 30).coerceAtLeast(1), o.optBoolean("keepFavorites", true))
         }.ifEmpty { SyncConnection.defaults }
     }.getOrDefault(SyncConnection.defaults).also(store::saveConnections)
 
@@ -456,6 +475,80 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }
     }
 
+    /**
+     * Trash → Purgatory → gone (SYNC_PLAN.md D6). Android deletes a trashed photo by itself when its 30 days are up;
+     * one that is within [HAND_OVER_DAYS] of that is sent to the purgatory on the computer's drive instead, and
+     * then left for Android to delete. If the computer has no drive right now it is trashed again, which starts
+     * Android's clock again, so nothing expires unsent. Files' Trash has no clock of its own: an item there past
+     * 30 days is sent the same way and then deleted here. Emptying a Trash by hand stays a plain delete.
+     */
+    private suspend fun handOverTrash(host: String, p: Pairing, failed: MutableList<String>) {
+        val resolver = context.contentResolver
+        val soon = System.currentTimeMillis() / 1000 + HAND_OVER_DAYS * 86_400L
+        var noDrive = false
+        for (collection in listOf(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI)) {
+            val args = android.os.Bundle().apply {
+                putInt(android.provider.MediaStore.QUERY_ARG_MATCH_TRASHED, android.provider.MediaStore.MATCH_ONLY)
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${android.provider.MediaStore.MediaColumns.DATE_EXPIRES} < ? AND ${android.provider.MediaStore.MediaColumns.VOLUME_NAME} = ?")
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(soon.toString(), android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY))
+            }
+            val columns = arrayOf(android.provider.MediaStore.MediaColumns._ID, android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.provider.MediaStore.MediaColumns.SIZE)
+            val items = resolver.query(collection, columns, args, null)?.use { c -> buildList { while (c.moveToNext()) {
+                add(Triple(android.content.ContentUris.withAppendedId(collection, c.getLong(0)), (c.getString(2) ?: "").trim('/') + "/" + (c.getString(1) ?: "unnamed"), c.getLong(3)))
+            } } }.orEmpty()
+            for ((uri, origin, size) in items) {
+                coroutineContext.ensureActive()
+                if (store.handedOver(uri.toString())) continue
+                val sha = MessageDigest.getInstance("SHA-256").let { d -> checkNotNull(resolver.openInputStream(uri)).use { input ->
+                    val buffer = ByteArray(256 * 1024); while (true) { val n = input.read(buffer); if (n < 0) break; d.update(buffer, 0, n) }
+                }; SyncRules.hex(d.digest()) }
+                // Nothing is sent that the server or its backup already holds (asked 2026-09-25): Android may let it go.
+                val held = postJson(host, p, "/held", JSONObject().put("hashes", JSONArray(listOf(sha)))).optJSONArray("held")
+                if (held != null && held.length() > 0) { store.markHandedOver(uri.toString()); continue }
+                if (noDrive) { retrash(uri); continue }
+                when (sendToPurgatory(host, p, sha, "photo", origin, size) { checkNotNull(resolver.openInputStream(uri)) }) {
+                    200 -> store.markHandedOver(uri.toString())
+                    503 -> { noDrive = true; retrash(uri) }
+                    else -> failed += "$origin: not taken by the purgatory"
+                }
+            }
+        }
+        // Files' Trash, by when each item went in (a move into Trash/ changes its ctime and nothing else).
+        val trash = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), "Trash")
+        val cutoff = System.currentTimeMillis() / 1000 - FILES_TRASH_DAYS * 86_400L
+        if (!noDrive) for (item in trash.listFiles().orEmpty()) {
+            if (android.system.Os.lstat(item.path).st_ctime > cutoff) continue
+            val all = item.walkTopDown().filter { it.isFile }.toList()
+            val ok = all.all { f ->
+                val sha = MessageDigest.getInstance("SHA-256").let { d -> f.inputStream().use { input ->
+                    val buffer = ByteArray(256 * 1024); while (true) { val n = input.read(buffer); if (n < 0) break; d.update(buffer, 0, n) }
+                }; SyncRules.hex(d.digest()) }
+                val code = sendToPurgatory(host, p, sha, "file", f.relativeTo(trash).invariantSeparatorsPath, f.length()) { f.inputStream() }
+                if (code == 503) noDrive = true
+                code == 200
+            }
+            if (ok) item.deleteRecursively() else if (noDrive) break else failed += "Files Trash/${item.name}: not taken by the purgatory"
+        }
+    }
+
+    /** One item to the purgatory; the HTTP status (200 taken, 503 no drive there now). */
+    private suspend fun sendToPurgatory(host: String, p: Pairing, sha: String, kind: String, origin: String, size: Long, source: () -> java.io.InputStream): Int {
+        val c = open(host, p.port, p.fingerprint, "/purgatory/$sha?kind=$kind&path=${URLEncoder.encode(origin, "UTF-8")}", "PUT", p.token)
+        c.doOutput = true
+        c.setFixedLengthStreamingMode(size)
+        c.setRequestProperty("Content-Type", "application/octet-stream")
+        c.outputStream.use { out -> source().use { pump(it, out) } }
+        return c.responseCode.also { c.disconnect() }
+    }
+
+    /** Trashed again: Android sets a fresh 30 days. Needs write access to the item, which Media management gives. */
+    private fun retrash(uri: Uri) {
+        runCatching {
+            context.contentResolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_TRASHED, 1) }, null, null)
+        }.onFailure { android.util.Log.w("Tetra", "Could not restart the Trash clock for $uri: ${it.message}") }
+    }
+
     private suspend fun uploadOne(host: String, p: Pairing, sha: String, e: Entry) {
         val c = open(host, p.port, p.fingerprint, SyncRules.blobPath(sha, e.relativePath, e.name, e.takenMillis), "PUT", p.token)
         c.doOutput = true
@@ -511,13 +604,20 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val sent = eachInParallel(missing, "Sending", checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
             uploadOne(host, p, sha, bySha.getValue(sha))
         }
-        // Keep Nothing — a Move. Nothing is removed here and now: a photo leaves this phone through Android's
-        // own request, with Android's own confirmation, which needs a screen this service does not have. What a
-        // verified receipt buys is the right to *offer* it, so the ones that are provably on the computer are
-        // queued and the Sync page asks. A photo with no receipt is never queued, whatever the card says.
+        // A Move keeps a window here — the last keepDays days, and favorites unless told otherwise — and offers the
+        // rest (SYNC_PLAN.md D6, asked 2026-09-25). Nothing is removed here and now: a photo leaves this phone through
+        // Android's own request, which needs a screen this service does not have, so the Sync page asks. Offered is
+        // what the computer confirmed holding *in this sync* — its /have answer is checked against its disk — or what
+        // it just received with a verified receipt; not only what this phone once sent, which left out every photo
+        // that came from the computer in the first place.
         if (photos.sends && photos.keep == "nothing") {
-            val receipted = store.receiptShas()
-            bySha.forEach { (sha, entry) -> if (sha in receipted) store.queueForRemoval(entry.photoKey, sha) }
+            val onComputer = (bySha.keys - missing.toSet()) + store.receiptShas()
+            val cutoff = System.currentTimeMillis() - photos.keepDays * 86_400_000L
+            val favorites = if (photos.keepFavorites) metadataStore.states(bySha.values.map { it.photoKey }).filterValues { it.favorite }.keys else emptySet()
+            store.forgetQueued(store.queuedForRemoval()) // the window may have changed since the last sync
+            bySha.forEach { (sha, entry) ->
+                if (sha in onComputer && entry.takenMillis in 1 until cutoff && entry.photoKey !in favorites) store.queueForRemoval(entry.photoKey, sha)
+            }
         } else {
             // The card says Copy again. An offer to move photos off this phone must not outlive the rule that
             // made it, or a setting changed on the computer leaves a question here that nothing can answer.
@@ -534,6 +634,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
+        // Trash items about to be deleted by Android (or past their days in Files' Trash) go to the purgatory on the
+        // computer's drive instead (SYNC_PLAN.md D6).
+        runCatching { handOverTrash(host, p, failed) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Trash to the purgatory: ${it.message}" }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
@@ -756,14 +860,32 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
         if (!root.isDirectory) return 0
         val entries = driveManifest.entries(root)
-        val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes) })
+        val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes).put("modified", it.modified) })
         val answer = postJson(host, p, "/files/manifest", JSONObject().put("files", manifest))
         if (connection.sends) {
             val want = answer.optJSONArray("want") ?: JSONArray()
             val byPath = entries.associateBy { it.relativePath }
             val mine = (0 until want.length()).mapNotNull { byPath[want.getString(it)] }
+            val sent = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
             eachInParallel(mine, "Sending files", checkpoint, progress, failed, { it.relativePath }) { entry ->
                 uploadFile(host, p, entry, File(root, entry.relativePath))
+                sent += entry.relativePath
+            }
+            // A Move keeps a window of files here and deletes the older ones — files only; system folders stay,
+            // regular folders left empty go (asked 2026-09-25). Only what the computer confirmed holding in this sync
+            // goes: it did not ask for it, or it just received it verified.
+            if (connection.keep == "nothing") {
+                val asked = (0 until want.length()).mapTo(HashSet()) { want.getString(it) }
+                val cutoff = System.currentTimeMillis() - connection.keepDays * 86_400_000L
+                val favorites = if (connection.keepFavorites) driveMetadata.records().filter { it.favorite }.mapTo(HashSet()) { it.path } else emptySet()
+                entries.filter { e ->
+                    !e.relativePath.startsWith("Trash/") && (e.relativePath !in asked || e.relativePath in sent) &&
+                        e.modified in 1 until cutoff && e.relativePath !in favorites
+                }.also { going ->
+                    // Deleted, not trashed: the computer holds each one (asked 2026-09-25 — a Trash only keeps the room).
+                    going.forEach { e -> runCatching { check(DriveRules.file(root, e.relativePath).delete()) { "could not delete it" } }.onFailure { failed += "${e.relativePath}: ${it.message}" } }
+                    DriveRules.removeEmptyFolders(root, going.map { DriveRules.parent(it.relativePath) }.toSet())
+                }
             }
         }
         if (!connection.receives) return 0

@@ -10,6 +10,14 @@ import org.junit.Test
 class SyncRulesTest {
     private val fp = "a".repeat(64)
 
+    @Test fun aMoveWindowIsSaidInItsLargestUnit() {
+        assertEquals("1 month", SyncRules.span(30))
+        assertEquals("1 year", SyncRules.span(365))
+        assertEquals("2 weeks", SyncRules.span(14))
+        assertEquals("10 days", SyncRules.span(10))
+        assertEquals("Photos → pc · Move, keeping 3 months", SyncConnection("photos", "send", "nothing", 90).sentence("pc"))
+    }
+
     @Test fun parsesTheDesktopPairingQr() {
         val qr = SyncRules.parseQr("""{"v":1,"name":"teo-pc","hosts":["192.168.1.146"],"port":43180,"fp":"${fp.uppercase()}","code":"abcdefghijklmnopqrstuv"}""")!!
         assertEquals(listOf("192.168.1.146"), qr.hosts)
@@ -74,7 +82,7 @@ class SyncConnectionTest {
         assertEquals("Photos → Desk · Copy", SyncConnection("photos", "send", "everything").sentence("Desk"))
         assertEquals("Photos ← Desk · Copy", SyncConnection("photos", "receive", "everything").sentence("Desk"))
         assertEquals("Files ⇄ Desk · Copy", SyncConnection("files", "both", "everything").sentence("Desk"))
-        assertEquals("Files → Desk · Move", SyncConnection("files", "send", "nothing").sentence("Desk"))
+        assertEquals("Files → Desk · Move, keeping 1 month", SyncConnection("files", "send", "nothing").sentence("Desk"))
     }
 
     @Test

@@ -1,5 +1,9 @@
 package com.kalotrapezis.drive
 
+import android.content.ContentValues
+import android.content.Context
+import android.provider.MediaStore
+
 /**
  * Which folders are photos (SYNC_PLAN.md §7 / D). The phone holds far more pictures than a gallery should show —
  * Viber, SyncThing mirrors, a USB copy, game presets under Download — so a folder is only ever *offered* when it
@@ -48,3 +52,33 @@ internal fun deviceFolders(all: List<Entry>, choices: Map<String, Boolean>): Lis
         }
     }
     .sortedByDescending { it.entries.size }
+
+/**
+ * Really moves photos into another folder (asked 2026-09-25: a folder album is a folder, so taking a photo out of
+ * it moves the file). Android keeps the item and its uri and only changes RELATIVE_PATH; a name already taken there
+ * is made unique by MediaStore, never overwritten. The key includes the folder, so everything about the photo is
+ * carried to its new key, and it leaves the old folder's album and joins the new one's. Needs Android's write consent
+ * for photos another app made (the caller asks first). Returns how many moved.
+ */
+internal fun movePhotosToFolder(context: Context, entries: List<Entry>, dest: String, store: PhotoMetadataStore): Int {
+    val target = dest.trim('/') + "/"
+    var moved = 0
+    for (entry in entries) {
+        val uri = entry.contentUri ?: continue
+        if (entry.relativePath?.trim('/') == target.trim('/')) continue
+        val changed = runCatching {
+            context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, target) }, null, null)
+        }.getOrDefault(0)
+        if (changed == 0) continue
+        val columns = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.SIZE)
+        val newKey = context.contentResolver.query(uri, columns, null, null, null)?.use { c ->
+            if (!c.moveToFirst()) null
+            else PhotoMetadataRules.stableKey(uri.toString(), c.getString(1) ?: "Unnamed", c.getString(0) ?: "Unnamed", if (c.isNull(2)) 0L else c.getLong(2))
+        } ?: continue
+        store.rekeyPhoto(entry.photoKey, newKey, sameContent = true)
+        FolderRules.albumName(entry.relativePath)?.let(store::collectionIdNamed)?.let { store.removeFromCollection(it, listOf(newKey)) }
+        FolderRules.albumName(target)?.let(store::collectionIdNamed)?.let { store.addToCollection(it, listOf(newKey)) }
+        moved++
+    }
+    return moved
+}

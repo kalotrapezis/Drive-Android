@@ -9,6 +9,17 @@ import java.io.File
 import java.nio.file.Files
 
 class DriveFilesTest {
+    @Test fun aMoveTakesFilesKeepsSystemFoldersAndLetsEmptyRegularFoldersGo() {
+        val root = Files.createTempDirectory("tetra").toFile()
+        val gone = listOf("Documents/Scanned Documents/scan.pdf", "Documents/cv.pdf", "Work/2019/tax.pdf")
+        for (f in gone + "Work/keep.txt") File(root, f).apply { parentFile!!.mkdirs(); writeText(f) }
+        gone.forEach { assertTrue(DriveRules.file(root, it).delete()) }
+        DriveRules.removeEmptyFolders(root, setOf("Documents/Scanned Documents", "Documents", "Work/2019"))
+        assertTrue("system folders stay", File(root, "Documents/Scanned Documents").isDirectory && File(root, "Documents").isDirectory)
+        assertFalse("an emptied regular folder goes", File(root, "Work/2019").exists())
+        assertTrue("a folder with something left in it stays", File(root, "Work/keep.txt").exists())
+    }
+
     @Test fun theDriveFolderBecomesTetraByRenamingItOnce() {
         val storage = Files.createTempDirectory("sdcard").toFile()
         File(storage, "Drive/Documents/Scanned Documents").mkdirs()

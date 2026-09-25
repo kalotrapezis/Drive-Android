@@ -399,6 +399,24 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         screen = Screen.Home
         if (allowPhotos && !canReadPhotos()) requestPhotos.launch(photoPermissions())
     }
+    // Moving another app's photo to another folder needs Android's own write consent first (asked once per move).
+    var pendingMove by remember { mutableStateOf<Pair<List<Entry>, String>?>(null) }
+    val requestMove = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val move = pendingMove
+        pendingMove = null
+        if (result.resultCode == Activity.RESULT_OK && move != null) Thread {
+            movePhotosToFolder(context, move.first, move.second, photoMetadata)
+            (context as MainActivity).runOnUiThread { metadataVersion++; loadPhotos() }
+        }.start()
+    }
+    fun moveSelectedToFolder(uris: Set<Uri>, dest: String) {
+        val chosen = (photosState as? ListState.Items)?.entries.orEmpty().filter { it.contentUri in uris }
+        if (chosen.isEmpty()) return
+        pendingMove = chosen to dest
+        runCatching { MediaStore.createWriteRequest(context.contentResolver, chosen.mapNotNull(Entry::contentUri)) }
+            .onSuccess { requestMove.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+            .onFailure { pendingMove = null; photosState = ListState.Error("Cannot move photos: ${it.message ?: "request failed"}") }
+    }
     fun movePhotosToTrash(uris: Set<Uri>) {
         if (uris.isEmpty()) return
         runCatching { MediaStore.createTrashRequest(context.contentResolver, uris.toList(), true) }
@@ -594,6 +612,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     { name -> runCatching { photoMetadata.createCollection(name) }.onSuccess { metadataVersion++ } },
                     { collectionId -> metadataAction { photoMetadata.deleteCollection(collectionId) } },
                     folders = photoFolders,
+                    moveToFolder = ::moveSelectedToFolder,
                     setFolderIncluded = { name, on -> photoMetadata.setFolderIncluded(name, on); loadPhotos() },
                     externalMediaId = externalMediaId,
                     externalMissing = { externalSingle = true },
@@ -849,11 +868,33 @@ private fun SyncTab(back: () -> Unit) {
     var moveError by remember { mutableStateOf<String?>(null) }
     // Android's own request, with Android's own confirmation and its own 30-day Trash. A sync never takes a
     // photo off this phone; a verified receipt only earns the right to ask.
+    // Android takes at most 2,000 items per request (4,217 were asked for at once on 25 September), so they go in
+    // batches: each is forgotten only once Android said yes, and the next one starts by itself.
+    var batch by remember { mutableStateOf<Set<String>>(emptySet()) }
+    lateinit var removeNext: () -> Unit
     val removeRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val done = batch
+        batch = emptySet()
         if (result.resultCode == Activity.RESULT_OK) {
-            val moved = waitingToMove
-            waitingToMove = emptySet()
-            scope.launch { withContext(Dispatchers.IO) { store.forgetQueued(moved) } }
+            waitingToMove = waitingToMove - done
+            scope.launch { withContext(Dispatchers.IO) { store.forgetQueued(done) }; if (waitingToMove.isNotEmpty()) removeNext() }
+        }
+    }
+    removeNext = {
+        scope.launch {
+            val found = withContext(Dispatchers.IO) { photoUrisByKey(context, waitingToMove) }
+            // Queued photos that are no longer here at all (removed some other way) are simply forgotten.
+            val gone = waitingToMove - found.keys
+            if (gone.isNotEmpty()) { withContext(Dispatchers.IO) { store.forgetQueued(gone) }; waitingToMove = waitingToMove - gone }
+            val next = found.entries.take(MAX_MEDIA_REQUEST)
+            if (next.isNotEmpty()) {
+                batch = next.mapTo(HashSet()) { it.key }
+                // Deleted, not trashed: the computer holds each one, checked in this sync, and Android's Trash would
+                // keep the room for 30 days — the room the Move is for (asked 2026-09-25).
+                runCatching { MediaStore.createDeleteRequest(context.contentResolver, next.map { it.value }) }
+                    .onSuccess { removeRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+                    .onFailure { batch = emptySet(); moveError = it.message ?: "Android would not take the request." }
+            }
         }
     }
     val backup by SyncService.state.collectAsState()
@@ -952,24 +993,14 @@ private fun SyncTab(back: () -> Unit) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("${waitingToMove.size} ${if (waitingToMove.size == 1) "photo is" else "photos are"} on ${p.name}", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "This connection is set to Move, so these can leave this phone. Each one was read back and " +
-                            "checked on ${p.name} before it counted. They go to Android's Trash, which holds them for 30 days.",
+"This connection is a Move, so these can leave this device: ${p.name} holds each one, checked in the last " +
+                            "sync. They are deleted here, not put in the Trash, so the room is free at once; ${p.name} keeps them.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(onClick = {
-                        // Finding the gallery uris means reading the gallery, which is not work for the thread
-                        // that draws the button.
-                        scope.launch {
-                            val uris = withContext(Dispatchers.IO) { allPhotoUris(context, waitingToMove) }
-                            if (uris.isEmpty()) { withContext(Dispatchers.IO) { store.forgetQueued(waitingToMove) }; waitingToMove = emptySet() }
-                            else runCatching { MediaStore.createTrashRequest(context.contentResolver, uris, true) }
-                                .onSuccess { removeRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-                                .onFailure { moveError = it.message ?: "Android would not take the request." }
-                        }
-                    }, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { moveError = null; removeNext() }, enabled = batch.isEmpty(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                         Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Move them off this phone")
+                        Text("Free the room on this device")
                     }
                     moveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
@@ -1015,8 +1046,12 @@ private fun SyncTab(back: () -> Unit) {
  * being reinstalled, where a MediaStore id does not — so the way back to Android's own id is to look for it.
  * A photo already gone (deleted by hand, or on another device) simply has no uri, and is quietly forgotten.
  */
-private fun allPhotoUris(context: android.content.Context, keys: Set<String>): List<Uri> =
-    listPhotos(context).filter { it.photoKey in keys }.mapNotNull { it.contentUri }
+/** Every photo on this device, shown or not, by key: a queued photo in a hidden folder is still on this device. */
+private fun photoUrisByKey(context: android.content.Context, keys: Set<String>): Map<String, Uri> =
+    listDeviceMedia(context).filter { it.photoKey in keys }.mapNotNull { e -> e.contentUri?.let { e.photoKey to it } }.toMap()
+
+/** Android's limit on how many items one MediaStore request may name. */
+private const val MAX_MEDIA_REQUEST = 2000
 
 private fun startSync(context: android.content.Context) {
     val intent = android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)
@@ -2188,6 +2223,7 @@ private fun PhotoTab(
     createCollection: (String) -> Result<PhotoCollection>,
     deleteCollection: (Long) -> String?,
     folders: List<DeviceFolder> = emptyList(),
+    moveToFolder: (Set<Uri>, String) -> Unit = { _, _ -> },
     setFolderIncluded: (String, Boolean) -> Unit = { _, _ -> },
     externalMediaId: String? = null,
     externalMissing: () -> Unit = {},
@@ -2224,6 +2260,8 @@ private fun PhotoTab(
     var searchQuery by remember { mutableStateOf("") }
     var recentTags by remember { mutableStateOf(emptyList<String>()) }
     var collectionSheetFor by remember { mutableStateOf<Set<Uri>?>(null) }
+    // Photos to move to another folder, and the folder album they are being taken out of (null: a plain move).
+    var moveSheetFor by remember { mutableStateOf<Pair<Set<Uri>, String?>?>(null) }
     var newCollectionOpen by remember { mutableStateOf(false) }
     var selectedCollection by remember { mutableStateOf<PhotoCollection?>(null) }
     var collectionPendingDelete by remember { mutableStateOf<PhotoCollection?>(null) }
@@ -2353,6 +2391,21 @@ private fun PhotoTab(
     var hidePeopleFromCollections by remember { mutableStateOf(metadataStore.hidesPeopleFromCollections()) }
     var hideDocumentsFromCollections by remember { mutableStateOf(metadataStore.hidesDocumentsFromCollections()) }
     val activeCollection = (filter as? PhotoFilter.Collection)?.let { chosen -> collections.firstOrNull { it.id == chosen.id } }
+    // A collection that is a folder is not a grouping: taking a photo out of it moves the file (asked 2026-09-25).
+    val folderAlbum = activeCollection?.name?.takeIf { name -> folders.any { it.included == true && it.name.equals(name, ignoreCase = true) } }
+    val moveDestinations = remember(allEntries, folders) {
+        (allEntries + folders.flatMap { it.entries }).mapNotNull { it.relativePath?.trim('/')?.takeIf(String::isNotEmpty) }
+            .plus("DCIM/Camera").groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
+    }
+    @Composable fun MoveSheet() {
+        val (targets, leaving) = moveSheetFor ?: return
+        FolderMoveSheet(
+            count = targets.size, leaving = leaving,
+            destinations = moveDestinations.filter { (dest, _) -> leaving == null || !FolderRules.albumName(dest).equals(leaving, ignoreCase = true) },
+            onDismiss = { moveSheetFor = null },
+            onPick = { dest -> moveSheetFor = null; selectedUris = emptySet(); moveToFolder(targets, dest) },
+        )
+    }
     val collectionKeys = remember(filter, metadataRevision) {
         (filter as? PhotoFilter.Collection)?.let { metadataStore.collectionKeys(it.id) }.orEmpty()
     }
@@ -2568,8 +2621,11 @@ private fun PhotoTab(
             } else null,
             activeCollection?.let { collection -> { entry ->
                 entry.contentUri?.let { uri ->
-                    actionError = removeFromCollection(collection.id, setOf(uri))
-                    if (actionError == null) viewerUri = null
+                    if (folderAlbum != null) moveSheetFor = setOf(uri) to folderAlbum
+                    else {
+                        actionError = removeFromCollection(collection.id, setOf(uri))
+                        if (actionError == null) viewerUri = null
+                    }
                 }
             } },
             metadata,
@@ -2589,6 +2645,7 @@ private fun PhotoTab(
             // Hidden items live in the private vault; an edited copy would publish them, so no editing there.
             if (filter == PhotoFilter.Hidden) null else { entry -> editingEntry = entry },
         )
+        MoveSheet()
         collectionSheetFor?.let { targets -> CollectionPickerSheet(
             collections = collections,
             previews = collectionPreviews,
@@ -2750,9 +2807,14 @@ private fun PhotoTab(
                 share = { sharePhotos(context, entries.filter { it.contentUri in selectedUris }) },
                 addToCollection = if (activeCollection == null) ({ collectionSheetFor = selectedUris }) else null,
                 removeFromCollection = activeCollection?.let { collection -> {
-                    actionError = removeFromCollection(collection.id, selectedUris)
-                    if (actionError == null) selectedUris = emptySet()
+                    if (folderAlbum != null) moveSheetFor = selectedUris to folderAlbum
+                    else {
+                        actionError = removeFromCollection(collection.id, selectedUris)
+                        if (actionError == null) selectedUris = emptySet()
+                    }
                 } },
+                removeLabel = folderAlbum?.let { "Move out of the $it folder" } ?: "Remove from this collection",
+                moveToFolder = { moveSheetFor = selectedUris to null },
                 toggleFavorite = {
                     val allFavorite = entries.filter { it.contentUri in selectedUris }.all { metadata[it.photoKey].orDefault().favorite }
                     actionError = setFavorite(selectedUris, !allFavorite)
@@ -2871,6 +2933,7 @@ private fun PhotoTab(
             dismissButton = { Button(onClick = { analysisConsentFor = null }) { Text("Not now") } },
         )
     }
+    MoveSheet()
     collectionSheetFor?.let { targets -> CollectionPickerSheet(
         collections = collections,
         previews = collectionPreviews,
@@ -3439,6 +3502,35 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
     } else Image(bitmap = image.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
 }
 
+/** Where to move photos: a real folder on this device, not a collection. A new folder goes under Pictures. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolderMoveSheet(count: Int, leaving: String?, destinations: List<Pair<String, Int>>, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    val what = if (count == 1) "this photo" else "$count photos"
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (leaving != null) "Move $what out of $leaving" else "Move $what to a folder", style = MaterialTheme.typography.titleMedium)
+            Text("The file really moves, on this device. Favorites, collections and people stay with it.", style = MaterialTheme.typography.bodySmall)
+            destinations.forEach { (path, n) ->
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth().clickable { onPick(path) }) {
+                    Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_folder), contentDescription = null)
+                        Column(Modifier.weight(1f)) {
+                            Text(FolderRules.albumName(path) ?: path)
+                            Text("$path · $n", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(name, { name = it.replace("/", "").replace("\\", "") }, label = { Text("New folder in Pictures") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { onPick("Pictures/${name.trim()}") }, enabled = name.isNotBlank(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) { Text("Move") }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewCollectionSheet(dismiss: () -> Unit, create: (String) -> Result<PhotoCollection>) {
@@ -3728,6 +3820,8 @@ private fun SelectionActions(
     hide: () -> Unit,
     cancel: () -> Unit,
     modifier: Modifier = Modifier,
+    removeLabel: String = "Remove from this collection",
+    moveToFolder: (() -> Unit)? = null,
 ) {
     Surface(
         color = islandColor(),
@@ -3739,7 +3833,7 @@ private fun SelectionActions(
             removeFromCollection?.let { remove ->
                 Button(onClick = remove, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
                     Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = null)
-                    Text("Remove from this collection", modifier = Modifier.padding(start = 10.dp))
+                    Text(removeLabel, modifier = Modifier.padding(start = 10.dp))
                 }
             }
             Row(horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -3749,6 +3843,7 @@ private fun SelectionActions(
                 } }
                 IconButton(onClick = toggleFavorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = "Toggle favorite for selected photos") }
                 IconButton(onClick = moveToTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move selected photos to trash") }
+                moveToFolder?.let { move -> IconButton(onClick = move) { Icon(painterResource(R.drawable.ic_move), contentDescription = "Move selected photos to a folder") } }
                 IconButton(onClick = hide) { Icon(painterResource(R.drawable.ic_lock), contentDescription = "Move selected photos to Hidden") }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4009,9 +4104,11 @@ private fun TimelineFastScrollbar(
         scrollJob?.cancel()
         scrollJob = scope.launch { onScrollTo(index) }
     }
+    // Only as tall as the track it draws: a full-height strip sat over the top bar's buttons and took their taps —
+    // Empty Trash, top right, scrolled the list instead (2026-09-25).
     Box(
         modifier
-            .fillMaxHeight()
+            .fillMaxHeight(0.64f)
             .width(48.dp)
             .onSizeChanged { size = it }
             .semantics { contentDescription = "Fast scroll photos" }
@@ -4036,7 +4133,7 @@ private fun TimelineFastScrollbar(
     ) {
         if (visible) {
             Box(
-                Modifier.align(Alignment.Center).fillMaxHeight(0.64f).width(12.dp).clip(CircleShape)
+                Modifier.align(Alignment.Center).fillMaxHeight().width(12.dp).clip(CircleShape)
                     .background(islandColor()),
             )
             Box(

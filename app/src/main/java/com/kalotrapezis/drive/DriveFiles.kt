@@ -156,6 +156,21 @@ object DriveRules {
         return relative(root, target)
     }
 
+    /**
+     * After a Move, the regular folders it left empty go too; a system folder (Documents, Scanned Documents) and
+     * Trash always stay — the app needs them (asked 2026-09-25). Walks up from each folder given.
+     */
+    fun removeEmptyFolders(root: File, folders: Collection<String>) {
+        for (start in folders) {
+            var rel = start
+            while (rel.isNotEmpty() && !isSystem(rel) && rel != TRASH_FOLDER && !rel.startsWith("$TRASH_FOLDER/")) {
+                val dir = File(root, rel).canonicalFile
+                if (!inside(root, dir) || !dir.isDirectory || dir.list().orEmpty().isNotEmpty() || !dir.delete()) break
+                rel = parent(rel)
+            }
+        }
+    }
+
     fun moveToTrash(root: File, relativePath: String): String {
         val trash = File(root, TRASH_FOLDER).canonicalFile
         require(inside(root, trash)) { "Trash is outside Drive." }

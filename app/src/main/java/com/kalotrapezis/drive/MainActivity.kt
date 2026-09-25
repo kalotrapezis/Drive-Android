@@ -2819,7 +2819,10 @@ private fun PhotoTab(
             PhotosPane.Collections -> PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().padding(bottom = 76.dp)) {
                     Collections(
-                        allEntries, metadata, collections, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, folders.count { it.included == null }, vaultItems.size,
+                        // A collection with nothing on this device is not shown here — after a Move its photos are on
+                        // the computer — and comes back with its first photo (asked 2026-09-25). A new, still empty one
+                        // stays, so it can be filled. "Add to collection" still lists them all.
+                        allEntries, metadata, collections.filter { it.here > 0 || it.storedCount == 0 }, collectionPreviews, documentKeys, faceGroups.size, reviewKeys, folders.count { it.included == null }, vaultItems.size,
                         !hidePeopleFromCollections, !hideDocumentsFromCollections, analysisRunning, analysisPaused,
                         analysisDone, analysisTotal, PhotoAnalysisService::togglePause, back, { newCollectionOpen = true }, ::openCollection,
                         selectedCollection?.id,

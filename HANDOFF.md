@@ -1,3 +1,31 @@
+# Evening of 25 September — beta from here; next: a Notes applet
+
+The user starts using Tetra for real now ("most of it works fine"). Tomorrow: **a Notes applet**, then beta.
+
+State: both repos pushed on `bidirectional-sync`; PC runs the installed 0.2.0-alpha.4 .deb (16:13 build); phone and
+tablet run the latest debug build. Read SYNC_PLAN **D3 built**, **D6 built**, **Move, as agreed and built** first —
+the rules there were each asked for by the user; do not change what syncs, shows or deletes without asking.
+
+What was done today, in one line each:
+- Storage drive as a library location; Free space to T7 (read back, then deleted — a Trash frees nothing); 2,795
+  photos (21 GB) live on T7-TEO; the old Trash copies were let go (Trash 43 → 22 GB, disk 94 → 92 %).
+- Move: always keeps a window (default 1 month + favorites), dialog with numbers first, photos and files; the
+  tablet went from ~4,500 photos to ~410. Deletes, never trashes, what the computer confirmed.
+- Trash → Purgatory → gone (30 + 30 days, purgatory on the PC or a chosen drive; now on T7). History page.
+- Folder albums are folders (Remove moves the file; Move to folder); On anywhere in a two-way chain is On everywhere.
+- Map: red pins, group grid panel. Devices: copies colours by halving, holdings on cards, this PC's counts,
+  storage drive counted as in the library; the same overview on the phones' Sync page.
+- Fixed today: fast-scroll strip took Empty Trash's tap; >2,000 photos per Android request; a device's holdings
+  now drop at once after a complete (numbered) inventory; empty-looking collections on a Move device are hidden.
+- **Trap**: a syntax error in `main.js` shipped once (no window, no sync). `test/syntax.test.js` parses every file
+  the package runs now — keep it. Always check the PC is running the build you think (`stat` the dpkg list).
+
+Still open: Both-ways trash/restore mirroring; Hidden mirrored to the PC; long-press deselects without a drag;
+Trash lists oldest first; first-run guide (download → pair by QR → rules card by card → Sync now); showing the
+computer's photos inside a collection on a Move device.
+
+---
+
 # Morning of 25 September — Move is built, test it together at noon
 
 Built on the computer (SYNC_PLAN "D3, built"): a photo's **location** (this PC or a storage drive), opening from

@@ -10,6 +10,12 @@ import org.junit.Test
 class SyncRulesTest {
     private val fp = "a".repeat(64)
 
+    @Test fun theCopiesColoursAreTheComputersOwn() {
+        assertEquals(listOf(125f, 220f, 173f, 268f, 149f), (3..7).map { SyncRules.copiesColor(it).first })
+        assertEquals(358f, SyncRules.copiesColor(1).first)
+        assertEquals(30, (3..32).map { SyncRules.copiesColor(it).first }.toSet().size)
+    }
+
     @Test fun aMoveWindowIsSaidInItsLargestUnit() {
         assertEquals("1 month", SyncRules.span(30))
         assertEquals("1 year", SyncRules.span(365))

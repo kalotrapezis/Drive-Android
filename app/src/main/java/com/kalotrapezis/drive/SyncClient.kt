@@ -99,6 +99,19 @@ internal object SyncRules {
 
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
+    /**
+     * The colour of a number of places, the same as the computer's copies bar: 1 and 2 are the risk (red, yellow);
+     * from 3 on the hue is found by halving — 0, 1/2, 1/4, 3/4, 1/8… of the way from green to magenta — so every
+     * count stays as far from the others as it can. Hue, saturation, lightness.
+     */
+    fun copiesColor(n: Int): Triple<Float, Float, Float> {
+        if (n <= 1) return Triple(358f, 0.75f, 0.59f)
+        if (n == 2) return Triple(47f, 0.92f, 0.53f)
+        var k = n - 3; var f = 0.0; var half = 0.5
+        while (k > 0) { if (k and 1 == 1) f += half; k = k shr 1; half /= 2 }
+        return Triple(Math.round(125 + f * 190).toFloat(), 0.75f, 0.52f)
+    }
+
     /** "3 months", "1 year", "10 days": a Move's window, in the largest unit it divides into (as the computer shows it). */
     fun span(days: Int): String {
         val (unit, per) = listOf("year" to 365, "month" to 30, "week" to 7, "day" to 1).first { (_, n) -> days % n == 0 }
@@ -220,6 +233,10 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     /** Trash items already safe in the purgatory, so they are not sent twice while Android counts down. */
     fun handedOver(uri: String) = uri in prefs.getStringSet("purgatory_sent", emptySet())!!
     fun markHandedOver(uri: String) = prefs.edit().putStringSet("purgatory_sent", prefs.getStringSet("purgatory_sent", emptySet())!! + uri).apply()
+
+    /** The computer's overview from the last sync (GET /overview), or null before the first one. */
+    fun overview(): JSONObject? = prefs.getString("overview", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    fun saveOverview(json: String) = prefs.edit().putString("overview", json).apply()
 
     fun lastBackup(): Long = prefs.getLong("last_backup", 0)
     fun setLastBackup(at: Long) = prefs.edit().putLong("last_backup", at).apply()
@@ -638,6 +655,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // computer's drive instead (SYNC_PLAN.md D6).
         runCatching { handOverTrash(host, p, failed) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Trash to the purgatory: ${it.message}" }
+        // The library, and where it is, as the computer sees it now — for this device's Sync page.
+        runCatching { store.saveOverview(open(host, p.port, p.fingerprint, "/overview", "GET", p.token).jsonResult().toString()) }
         progress(BackupProgress("Done", missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:

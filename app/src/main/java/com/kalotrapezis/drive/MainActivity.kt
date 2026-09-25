@@ -862,6 +862,7 @@ private fun SyncTab(back: () -> Unit) {
     var pairMessage by remember { mutableStateOf<String?>(null) }
     val requestNotifications = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var received by remember { mutableStateOf(0) }
+    var overview by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var lastBackup by remember { mutableStateOf(0L) }
     var connections by remember { mutableStateOf(SyncConnection.defaults) }
     var waitingToMove by remember { mutableStateOf(emptySet<String>()) }
@@ -900,7 +901,7 @@ private fun SyncTab(back: () -> Unit) {
     val backup by SyncService.state.collectAsState()
     val running = SyncService.isRunning
     LaunchedEffect(backup) { withContext(Dispatchers.IO) {
-        received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections()
+        received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections(); overview = store.overview()
         waitingToMove = store.queuedForRemoval()
     } }
     // A long backup must not be cut off by the screen turning off; the foreground service itself
@@ -1017,9 +1018,10 @@ private fun SyncTab(back: () -> Unit) {
                 }
             }
         }
+        overview?.let { o -> if (p != null) item { LibraryOverview(o) } }
         if (p != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SyncStat("On the computer", "$received", Modifier.weight(1f))
+                SyncStat("Photos in the library", overview?.optInt("known")?.toString() ?: "—", Modifier.weight(1f))
                 SyncStat("Last backup", if (lastBackup == 0L) "Never" else DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(lastBackup)), Modifier.weight(1f))
             }
         }
@@ -1176,6 +1178,56 @@ private fun SyncFailureCard(failure: String) {
                 Text(name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (reason.isNotEmpty()) Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
             }
+        }
+    }
+}
+
+/**
+ * The library, and where it is — the computer's own overview (GET /overview, fetched at the end of each sync), so
+ * this page says what the Devices page says: how much there is, on which machine, and how many places hold each.
+ */
+@Composable
+private fun LibraryOverview(o: org.json.JSONObject) {
+    val known = o.optInt("known")
+    val here = o.optJSONObject("here")?.optInt("files") ?: 0
+    val stored = o.optJSONArray("stored")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty()
+    val onlyDevice = known - here - stored.sumOf { it.optInt("files") }
+    val copies = o.optJSONArray("copies")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty().filter { it.optInt("copies") > 0 }
+    val devices = o.optJSONArray("devices")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty()
+    val you = o.optString("you")
+    val color = { n: Int -> SyncRules.copiesColor(n).let { (h, s, l) -> Color.hsl(h, s, l) } }
+    val words = listOf("", "One copy", "Two places", "Three places", "Four places", "Five places", "Six places")
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("The library, and where it is", style = MaterialTheme.typography.titleMedium)
+            Text(buildString {
+                append("${"%,d".format(known)} photos known · ${"%,d".format(here)} on ${o.optString("name")}")
+                stored.forEach { append(" · ${"%,d".format(it.optInt("files"))} on ${it.optString("name")}") }
+                if (onlyDevice > 0) append(" · ${"%,d".format(onlyDevice)} only on a device")
+            }, style = MaterialTheme.typography.bodyMedium)
+            if (known > 0) Row(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape)) {
+                copies.forEach { c -> Box(Modifier.weight(c.optInt("files").coerceAtLeast(1).toFloat()).fillMaxHeight().background(color(c.optInt("copies")))) }
+            }
+            copies.forEach { c ->
+                val n = c.optInt("copies")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(color(n)))
+                    Text(words.getOrElse(n) { "$n places" }, style = MaterialTheme.typography.bodyMedium)
+                    Text("${"%,d".format(c.optInt("files"))} · ${if (n == 1) "in one place in the world" else if (n == 2) "one machine could fail" else "safe"}",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("Device · holds · also in the library · only there", style = MaterialTheme.typography.labelMedium)
+            devices.forEach { d ->
+                val only = d.optInt("onlyThere")
+                Text(
+                    "${d.optString("name")}${if (d.optString("id") == you) " (this device)" else ""} · ${"%,d".format(d.optInt("holds"))} · " +
+                        "${"%,d".format(d.optInt("alsoHere"))} · ${"%,d".format(only)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (only > 0) MaterialTheme.colorScheme.error else Color.Unspecified,
+                )
+            }
+            Text("As the computer saw it at the end of the last sync.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

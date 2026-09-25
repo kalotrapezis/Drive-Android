@@ -21,7 +21,8 @@ internal data class PhotoLocation(
 )
 internal enum class PhotoSearchQuality { Fast, Advanced }
 
-internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int, val uuid: String? = null)
+/** `here` of its photos are on this device and `elsewhere` are not — kept by the computer after a Move (25 September). */
+internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int, val uuid: String? = null, val here: Int = storedCount, val elsewhere: Int = 0)
 internal data class FaceSample(val photoKey: String, val bounds: android.graphics.Rect)
 internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null)
 /** The head a combined group was shown by, so History can draw it after the group itself is gone. */

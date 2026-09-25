@@ -2420,7 +2420,16 @@ private fun PhotoTab(
     } }
     val metadataRevision = metadataVersion + analysisVersion
     val metadata = remember(allEntries, metadataRevision) { metadataStore.states(allEntries.map { it.photoKey }) }
-    val collections = remember(metadataRevision) { metadataStore.collections() }
+    // A collection counts what is on this device: after a Move its other photos are on the computer, and a tile that
+    // said 52 over an empty grid read as a broken library (25 September).
+    val collections = remember(metadataRevision, allEntries) {
+        val onDevice = allEntries.mapTo(HashSet()) { it.photoKey }
+        metadataStore.collections().map { c ->
+            val keys = metadataStore.collectionKeys(c.id)
+            val here = keys.count { it in onDevice }
+            c.copy(here = here, elsewhere = keys.size - here)
+        }
+    }
     val collectionPreviews = remember(allEntries, collections, metadataRevision) {
         val entriesByKey = allEntries.associateBy(Entry::photoKey)
         collections.associate { collection -> collection.id to metadataStore.collectionKeys(collection.id).firstNotNullOfOrNull(entriesByKey::get) }
@@ -2801,7 +2810,9 @@ private fun PhotoTab(
                     PhotoFilter.Review -> "Nothing needs your review."
                     PhotoFilter.Hidden -> "Hidden is empty. Select photos or videos and tap the lock button to add them."
                     PhotoFilter.Trash -> "Trash is empty. Deleted photos wait here for 30 days."
-                    else -> "No photos found in this collection."
+                    else -> activeCollection?.takeIf { it.elsewhere > 0 }
+                        ?.let { "None of these are on this device. ${it.elsewhere} ${if (it.elsewhere == 1) "is" else "are"} kept on the computer." }
+                        ?: "No photos found in this collection."
                 },
             )
             }
@@ -3539,7 +3550,8 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
         modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
     ) { Column(Modifier.padding(12.dp)) {
         Text(collection.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(collection.storedCount.toString(), style = MaterialTheme.typography.labelSmall)
+        Text(if (collection.elsewhere > 0) "${collection.here} · +${collection.elsewhere} on the computer" else collection.here.toString(),
+            style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     } }
 } }
 
@@ -3707,7 +3719,7 @@ private fun GalleryToolsSheet(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setAlbumHidden(album, !hidden) }) {
                     Checkbox(checked = hidden, onCheckedChange = { setAlbumHidden(album, it) }, colors = neutralCheckboxColors())
                     Text(album.name, modifier = Modifier.weight(1f))
-                    Text("${album.storedCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("${album.here}", style = MaterialTheme.typography.bodySmall)
                 }
             }
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)

@@ -601,12 +601,15 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // the photo worth warning about. Best-effort and never fatal: a computer that does not know the endpoint
         // simply answers 404 and everything else about this sync is unaffected.
         runCatching {
-            bySha.entries.chunked(2_000).forEach { chunk ->
+            // Numbered, so the computer knows when it has the whole list and can forget what is not on it: a device
+            // that deleted 4,000 photos in a Move still "held" them for a day before this (25 September).
+            val chunks = bySha.entries.chunked(2_000).ifEmpty { listOf(emptyList()) }
+            chunks.forEachIndexed { i, chunk ->
                 val items = JSONArray(chunk.map { (sha, e) ->
                     JSONObject().put("sha256", sha).put("name", e.name).put("size", e.sizeBytes)
                         .put("video", e.isVideo).put("takenAt", e.takenMillis)
                 })
-                postJson(host, p, "/inventory", JSONObject().put("items", items))
+                postJson(host, p, "/inventory", JSONObject().put("items", items).put("part", i).put("of", chunks.size))
             }
         }
         val rows = connections(host, p).associateBy { it.content }

@@ -1,15 +1,25 @@
-# Bug to fix (found by the user, 26 September): a photo trashed on the PC comes back
+# 26 September — 0.3.0-beta.1 built, not published
 
-Trash a photo on the PC while a device that sends its photos to the PC (Copy or Move) still holds it: at that device's
-next sync the photo is sent again and is back in the library. Cause: trashing deletes the photo's `media` row
-(`library.trash`, via `photos:trash` in main.js), so `SyncServer.have()` (sync.js) answers "no" for its hash and the
-device's `/have` question lists it as missing. The same happens to a photo deleted by hand in a drive's collection
-(`deleteFromDrive`, to the purgatory). Fix direction, not yet agreed: `have()` should also answer yes for a hash that
-is in the PC's Trash or purgatory, or that the PC deleted on purpose (a small "deleted here" ledger, like the
-`drive_removed` table) — and whether the device should then trash its own copy is the Both-ways trash question still
-open in SYNC_PLAN D6. Ask the user before choosing.
+Built today: **Notes** in both apps (SYNC_PLAN D7), a drive as a folder album with its own Screenshots/Documents and
+Delete to the purgatory (D5b), the PC sidebar as one entry per part with bottom islands (Photos, Files, Notes, T7,
+Devices), a two-column tablet home with a yellow Notes group, Android sync every 30 min on Wi-Fi (`SyncJob`), a
+note changed on the PC nudges the devices, split screen no longer resets the app to Home.
+
+**Fixed: a photo trashed on the PC came back** — `/have` now answers `declined` for what was deleted here on purpose
+(`deleted_here`, filled by the PC's Trash and a drive's Delete; cleared when the photo is back in the library). A
+device neither re-sends it nor counts it as safe on the computer, so a Move never lets its copy go because of it. Still
+open: whether a device should trash its own copy (Both-ways trash, D6).
+
+**Trap found today**: the first import swept 85 notes that were in the old app's Trash (their dates were months old);
+restored from `~/.local/share/Notes`, and an imported trashed note now gets its 30 days from moving in. The tablet's
+`deletions.json` had to be cleaned too, or its next sync would have deleted them again — a tombstone travels.
+
+State: PC runs 0.2.0-alpha.10 (installed); the beta .deb/AppImage are in `Drive/desktop/release/`; the tablet has the
+latest debug build; the phone has not had any of today's builds (not plugged in). Release APK: `app-arm64-v8a-release.apk`
+(installing it over a debug build needs an uninstall, which wipes app data — keep debug on the two devices).
 
 ---
+
 
 # Evening of 25 September — beta from here; next: a Notes applet
 

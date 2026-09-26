@@ -1,3 +1,16 @@
+# Bug to fix (found by the user, 26 September): a photo trashed on the PC comes back
+
+Trash a photo on the PC while a device that sends its photos to the PC (Copy or Move) still holds it: at that device's
+next sync the photo is sent again and is back in the library. Cause: trashing deletes the photo's `media` row
+(`library.trash`, via `photos:trash` in main.js), so `SyncServer.have()` (sync.js) answers "no" for its hash and the
+device's `/have` question lists it as missing. The same happens to a photo deleted by hand in a drive's collection
+(`deleteFromDrive`, to the purgatory). Fix direction, not yet agreed: `have()` should also answer yes for a hash that
+is in the PC's Trash or purgatory, or that the PC deleted on purpose (a small "deleted here" ledger, like the
+`drive_removed` table) — and whether the device should then trash its own copy is the Both-ways trash question still
+open in SYNC_PLAN D6. Ask the user before choosing.
+
+---
+
 # Evening of 25 September — beta from here; next: a Notes applet
 
 The user starts using Tetra for real now ("most of it works fine"). Tomorrow: **a Notes applet**, then beta.

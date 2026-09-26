@@ -939,11 +939,34 @@ private fun SyncTab(back: () -> Unit) {
             }
         }
     }
+    // Deleted on the computer, waiting for Android's yes to go to this phone's Trash too (Both ways trash).
+    var waitingToTrash by remember { mutableStateOf(emptySet<String>()) }
+    var trashBatch by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val trashRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val done = trashBatch
+        trashBatch = emptySet()
+        if (result.resultCode == Activity.RESULT_OK) { waitingToTrash = waitingToTrash - done; scope.launch { withContext(Dispatchers.IO) { store.forgetTrash(done) } } }
+    }
+    val trashNext: () -> Unit = {
+        scope.launch {
+            val found = withContext(Dispatchers.IO) { photoUrisByKey(context, waitingToTrash) }
+            val gone = waitingToTrash - found.keys
+            if (gone.isNotEmpty()) { withContext(Dispatchers.IO) { store.forgetTrash(gone) }; waitingToTrash = waitingToTrash - gone }
+            val next = found.entries.take(MAX_MEDIA_REQUEST)
+            if (next.isNotEmpty()) {
+                trashBatch = next.mapTo(HashSet()) { it.key }
+                runCatching { MediaStore.createTrashRequest(context.contentResolver, next.map { it.value }, true) }
+                    .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
+                    .onFailure { trashBatch = emptySet(); moveError = it.message ?: "Android would not take the request." }
+            }
+        }
+    }
     val backup by SyncService.state.collectAsState()
     val running = SyncService.isRunning
     LaunchedEffect(backup) { withContext(Dispatchers.IO) {
         received = store.receiptCount(); lastBackup = store.lastBackup(); connections = store.connections(); overview = store.overview()
         waitingToMove = store.queuedForRemoval()
+        waitingToTrash = store.queuedForTrash()
     } }
     // A long backup must not be cut off by the screen turning off; the foreground service itself
     // keeps running once the app is backgrounded or closed.
@@ -1045,6 +1068,23 @@ private fun SyncTab(back: () -> Unit) {
                         Text("Free the room on this device")
                     }
                     moveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+        if (p != null && waitingToTrash.isNotEmpty()) item {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${waitingToTrash.size} ${if (waitingToTrash.size == 1) "photo" else "photos"} you deleted on ${p.name}", style = MaterialTheme.typography.titleMedium)
+                    Text("This connection goes both ways, so they go to this phone's Trash too, where they stay 30 days. Android asks first; " +
+                        "with Media management allowed, they go by themselves.", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { moveError = null; trashNext() }, enabled = trashBatch.isEmpty(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
+                        Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Move to Trash here")
+                    }
+                    if (!MediaStore.canManageMedia(context)) TextButton(onClick = {
+                        runCatching { context.startActivity(Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:${context.packageName}"))) }
+                    }) { Text("Allow Media management") }
                 }
             }
         }

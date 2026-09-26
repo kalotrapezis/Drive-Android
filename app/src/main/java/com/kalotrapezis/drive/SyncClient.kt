@@ -270,6 +270,16 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
         }, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
+    // Photos deleted on the computer that Android would not let this app trash by itself (no Media management):
+    // they wait for one tap on the Sync page, with Android's own confirmation (Both ways trash, 2026-09-26).
+    private fun trashTable() = writableDatabase.execSQL("CREATE TABLE IF NOT EXISTS to_trash (photo_key TEXT PRIMARY KEY, sha256 TEXT NOT NULL, queued_at INTEGER NOT NULL)")
+    fun queueForTrash(photoKey: String, sha256: String) { trashTable(); writableDatabase.insertWithOnConflict("to_trash", null, ContentValues().apply {
+        put("photo_key", photoKey); put("sha256", sha256); put("queued_at", System.currentTimeMillis())
+    }, SQLiteDatabase.CONFLICT_REPLACE) }
+    fun queuedForTrash(): Set<String> { trashTable(); return readableDatabase.rawQuery("SELECT photo_key FROM to_trash", null).use { c -> buildSet { while (c.moveToNext()) add(c.getString(0)) } } }
+    fun forgetTrash(photoKeys: Collection<String>) { if (photoKeys.isEmpty()) return; trashTable()
+        writableDatabase.delete("to_trash", "photo_key IN (${photoKeys.joinToString { "?" }})", photoKeys.toTypedArray()) }
+
     fun queuedForRemoval(): Set<String> = readableDatabase.rawQuery("SELECT photo_key FROM to_remove", null)
         .use { c -> buildSet { while (c.moveToNext()) add(c.getString(0)) } }
 
@@ -640,10 +650,11 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // restore is not mirrored: a photo restored here is simply offered again, and the computer takes it.
         if (photos.direction == "both") {
             var trashedHere = 0
-            declined.forEach { sha -> bySha[sha]?.contentUri?.let { uri ->
+            declined.forEach { sha -> bySha[sha]?.let { e -> e.contentUri?.let { uri ->
                 runCatching { context.contentResolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_TRASHED, 1) }, null, null) }
-                    .onSuccess { if (it > 0) trashedHere++ }.onFailure { android.util.Log.w("Tetra", "Could not trash $uri: ${it.message}") }
-            } }
+                    .onSuccess { if (it > 0) trashedHere++ else store.queueForTrash(e.photoKey, sha) }
+                    .onFailure { store.queueForTrash(e.photoKey, sha) } // Android wants the person to say yes: the Sync page asks
+            } } }
             if (trashedHere > 0) android.util.Log.i("Tetra", "$trashedHere photos trashed on the computer went to this Trash")
             runCatching {
                 val mine = listTrashedPhotos(context).mapNotNull { store.cachedHash(it.photoKey) }.distinct()

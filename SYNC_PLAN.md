@@ -2102,6 +2102,23 @@ presses the button. That answers what made it dangerous.
 Steps 1 and 2 are worth doing whatever happens to the age rule: they are what make
 Keep-nothing safe, and it is already shipped.
 
+### D5b. A drive is a folder album (asked and built 2026-09-26)
+
+A drive works like a phone's folder album: everything this app put on it (`<drive>/Tetra/Photos`, by backup,
+Move, Free space or Add) is **its collection**, named after the drive, on this PC only — it does not sync. The folders
+(`Tetra/Photos`, `Tetra/Files`) are made the moment the drive is backed up to. Answers from the user:
+
+- Members: everything on the drive — moved photos and backup copies (receipts), `sync.driveMembers`.
+- **Remove is the only way off the drive.** A photo that lives only there comes back to this PC first, checked; a
+  backup copy of one this PC has is deleted from the drive. Either way `drive_removed` remembers it and backup never
+  puts it back — **Add** to the collection (copies it there, checked) is what undoes that. Never the last copy.
+- **Delete** (the Trash button and the Delete key, in that collection): the photo leaves the library — one copy, the
+  drive's or else this PC's, goes to the purgatory checked (`sync.deleteFromDrive`), then both copies are deleted.
+  No purgatory reachable: nothing is deleted. Asked for the screenshots that were only for a day or a week.
+- **Screenshots are not backed up** (drive rule `screenshots`, default off, a checkbox on the drive's card). The 408
+  already on T7-TEO stay until deleted or removed by hand. Not backed up also means Free space never moves them.
+- Otherwise read-only: no Hidden, Edit or Move to folder inside a drive's collection.
+
 ### D5. External storage as a device (asked 2026-09-24)
 
 "Add a device" should also offer **a drive that is plugged in right now** — pick it

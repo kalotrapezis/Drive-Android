@@ -616,11 +616,16 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val photos = rows["photos"] ?: SyncConnection("photos", "both", "everything")
         val files = rows["files"] ?: SyncConnection("files", "both", "everything")
         // Asking what the computer is missing is only worth the round trip if we are allowed to send it.
+        // "Declined": deleted on the computer on purpose. Not sent again, and not counted as safe there either, so a
+        // Move never offers to let this phone's copy go (the bug of 26 September: a trashed photo came back).
+        val declined = mutableSetOf<String>()
         val missing = if (!photos.sends) emptyList() else bySha.keys.chunked(500).flatMap { batch ->
-            val r = postJson(host, p, "/have", JSONObject().put("hashes", JSONArray(batch))).getJSONArray("missing")
+            val answer = postJson(host, p, "/have", JSONObject().put("hashes", JSONArray(batch)))
+            answer.optJSONArray("declined")?.let { d -> (0 until d.length()).mapTo(declined, d::getString) }
+            val r = answer.getJSONArray("missing")
             (0 until r.length()).map(r::getString)
         }
-        val alreadyThere = if (photos.sends) bySha.size - missing.size else 0
+        val alreadyThere = if (photos.sends) bySha.size - missing.size - declined.size else 0
         val sent = eachInParallel(missing, "Sending", checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
             uploadOne(host, p, sha, bySha.getValue(sha))
         }
@@ -631,7 +636,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // it just received with a verified receipt; not only what this phone once sent, which left out every photo
         // that came from the computer in the first place.
         if (photos.sends && photos.keep == "nothing") {
-            val onComputer = (bySha.keys - missing.toSet()) + store.receiptShas()
+            val onComputer = (bySha.keys - missing.toSet() - declined) + (store.receiptShas() - declined)
             val cutoff = System.currentTimeMillis() - photos.keepDays * 86_400_000L
             val favorites = if (photos.keepFavorites) metadataStore.states(bySha.values.map { it.photoKey }).filterValues { it.favorite }.keys else emptySet()
             store.forgetQueued(store.queuedForRemoval()) // the window may have changed since the last sync

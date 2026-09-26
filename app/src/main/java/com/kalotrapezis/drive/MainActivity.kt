@@ -279,7 +279,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context) } }
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context); SyncJob.schedule(context) } }
     // And for as long as it is open, the computer may say "there is something new here" and this phone will go
     // and fetch it (SYNC_PLAN.md 6i). It answers only devices it is already paired with, and only "sync now" —
     // the work stays ours. It stops with the app: nothing of ours listens on a phone nobody is using.

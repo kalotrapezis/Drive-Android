@@ -39,6 +39,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -154,7 +155,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         withContext(Dispatchers.Main) { selected = emptySet(); version++; message = said }
     }
     val card: @Composable (Note) -> Unit = { n ->
-        NoteCard(n, selected = n.id in selected, longPress = { selected = if (n.id in selected) selected - n.id else selected + n.id }) {
+        NoteCard(n, selected = n.id in selected, selecting = selected.isNotEmpty(), longPress = { selected = if (n.id in selected) selected - n.id else selected + n.id }) {
             if (selected.isEmpty()) open = n else selected = if (n.id in selected) selected - n.id else selected + n.id
         }
     }
@@ -284,7 +285,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
 ) { Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge) }
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun NoteCard(n: Note, small: Boolean = false, selected: Boolean = false, longPress: (() -> Unit)? = null, open: () -> Unit) {
+@Composable private fun NoteCard(n: Note, small: Boolean = false, selected: Boolean = false, selecting: Boolean = false, longPress: (() -> Unit)? = null, open: () -> Unit) {
     val tint = noteColor(n.color)
     Surface(
         color = tint ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -296,6 +297,11 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.Top) {
+                // A check while choosing, as on photos.
+                if (selecting) Box(
+                    Modifier.padding(end = 8.dp).size(22.dp).then(if (selected) Modifier.background(Color.White, CircleShape) else Modifier.border(2.dp, LocalContentColor.current.copy(alpha = 0.6f), CircleShape)),
+                    contentAlignment = Alignment.Center,
+                ) { if (selected) Text("✓", color = Color.Black, style = MaterialTheme.typography.labelMedium) }
                 if (n.title.isNotBlank()) Text(n.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 else Spacer(Modifier.weight(1f))
                 if (n.pinned && !small) Icon(painterResource(R.drawable.ic_push_pin), contentDescription = "Pinned", modifier = Modifier.size(16.dp))

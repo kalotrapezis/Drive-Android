@@ -601,34 +601,45 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 }
 
 /**
- * Tags for a note (asked 2026-09-26): the box for a new one on top, where the keyboard leaves it in view; Enter or +
- * adds it to the note. A tap on a tag puts it on or takes it off. Each change is saved at once — no Save button.
+ * Tags for a note (asked 2026-09-26): only the tags, to browse and tap — a tap puts one on or takes it off, saved at
+ * once. "Add tag" leads the list and opens its own small window, so the keyboard comes up only to type a new one.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable private fun NoteTagsSheet(store: NotesStore, initial: List<String>, dismiss: () -> Unit, change: (List<String>) -> Unit) {
     var selected by remember { mutableStateOf(initial) }
-    var newTag by remember { mutableStateOf("") }
+    var adding by remember { mutableStateOf(false) }
     val known = remember { store.list().flatMap { it.labels } }
     val all = (known + selected).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
     fun set(next: List<String>) { selected = next; change(next) }
-    fun add() {
-        val t = newTag.trim().removePrefix("#").trim().take(60)
-        if (t.isEmpty()) return
-        val tag = all.firstOrNull { it.equals(t, ignoreCase = true) } ?: t
-        if (tag !in selected) set(selected + tag)
-        newTag = ""
-    }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Tags", style = MaterialTheme.typography.titleLarge)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedTextField(newTag, { newTag = it }, modifier = Modifier.weight(1f), placeholder = { Text("New tag") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }))
-                RoundIsland(R.drawable.ic_add, "Add tag") { add() }
-            }
-            if (all.isNotEmpty()) FlowRow(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("+  Add tag", on = false) { adding = true }
                 all.forEach { tag -> Chip(tag, on = tag in selected) { set(if (tag in selected) selected - tag else selected + tag) } }
             }
         }
+    }
+    if (adding) {
+        var name by remember { mutableStateOf("") }
+        val focus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { focus.requestFocus() }
+        fun add() {
+            val t = name.trim().removePrefix("#").trim().take(60)
+            if (t.isEmpty()) return
+            val tag = all.firstOrNull { it.equals(t, ignoreCase = true) } ?: t
+            if (tag !in selected) set(selected + tag)
+            adding = false
+        }
+        AlertDialog(
+            onDismissRequest = { adding = false },
+            title = { Text("Add tag") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().focusRequester(focus), placeholder = { Text("Name") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }))
+            },
+            confirmButton = { TextButton(onClick = { add() }, enabled = name.isNotBlank()) { Text("Add") } },
+            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+        )
     }
 }

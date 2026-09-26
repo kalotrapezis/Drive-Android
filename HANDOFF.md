@@ -1,3 +1,19 @@
+# 26 September night — 0.3.0 Beta 1 published
+
+Both repos merged into `main`; releases `v0.3.0-beta.1` (APK) and `desktop-v0.3.0-beta.1` (.deb, AppImage), both
+pre-releases. READMEs lead with a showcase card from demo content (`Assets/screenshots/`; the demo generators were
+throwaway scripts: painted landscapes, a small Files tree, seven notes, shot hidden with `DRIVE_DATA/PHOTOS/FILES`
+and on the `notes_phone` emulator with a temporary x86_64 split). The old C++/Qt app is removed from `Drive`
+(history: `1b71025`); only `desktop/` is developed there.
+
+Fixed tonight: **Open / Open with failed for every file** since the Tetra rename — the FileProvider still named
+`Drive/` (test in DriveFilesTest). The opener is now remembered per file type too (`/type/<ext>` in drive_openers).
+Phone and tablet run the latest debug build; the PC runs the beta .deb.
+
+Next is still motion photos (below).
+
+---
+
 # 26 September evening — deleted files came back
 
 Files deleted on the PC came back from the phone: the PC had no "deleted here" memory for Files (photos do). Now

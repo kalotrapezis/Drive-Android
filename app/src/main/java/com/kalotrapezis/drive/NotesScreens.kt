@@ -379,11 +379,12 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     val noteLabels: @Composable (Modifier) -> Unit = { modifier ->
         // The tags, and a + that opens them (asked 2026-09-27: on a phone the island had no room left for Pin).
         if (!trashed) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
-            labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color(0x33888888)).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 4.dp)) }
-            Row(Modifier.clip(CircleShape).background(Color(0x33888888)).clickable(onClickLabel = "Tags") { tagsOpen = true }.padding(horizontal = 8.dp, vertical = 4.dp),
+            // Solid, so text scrolled under them never shows through (asked 2026-09-27).
+            labels.forEach { Text(it, color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color.Black).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp)) }
+            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = "Tags") { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Icon(painterResource(R.drawable.ic_add), contentDescription = "Tags", tint = ink, modifier = Modifier.size(16.dp))
-                if (labels.isEmpty()) Text(" Tag", color = ink, style = MaterialTheme.typography.labelMedium)
+                Text("Tag ", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Tags", tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -445,9 +446,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                     decorationBox = { inner -> Box { if (body.text.isEmpty()) Text("Write here. **bold**, - [ ] a checkbox…", color = ink.copy(alpha = 0.45f)); inner() } },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp).focusRequester(bodyFocus))
             }
-            if (imeOpen) noteLabels(Modifier.padding(bottom = 24.dp))
         }
-        // The note's tags sit at the bottom, over the island, when the keyboard is down; under the text while typing.
+        // The note's tags float at the bottom, over the island, when the keyboard is down; while typing they are out of the way.
         if (!imeOpen) noteLabels(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 96.dp))
         // The tools are an island at the bottom, like the rest of Tetra: one line of the basics, pulled up (or its grip
         // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).

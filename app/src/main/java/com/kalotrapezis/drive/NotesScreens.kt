@@ -376,6 +376,11 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     val trashed = initial.trashedAt != null
     val tint = noteColor(color)
     val ink = if (tint != null) InkOnColor else MaterialTheme.colorScheme.onSurface
+    val noteLabels: @Composable (Modifier) -> Unit = { modifier ->
+        if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
+            labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
+        }
+    }
 
     // Saved as you type (a short pause), the whole text each time.
     LaunchedEffect(title, body.text, items) {
@@ -416,7 +421,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     BackHandler { if (tools) tools = false else leave() }
 
     Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else 120.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (labels.isNotEmpty()) 170.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->
                 if ('\n' in t) { if (initial.checklist) toBody++ else bodyFocus.requestFocus() } else edit(t = t)
@@ -434,10 +439,10 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                     decorationBox = { inner -> Box { if (body.text.isEmpty()) Text("Write here. **bold**, - [ ] a checkbox…", color = ink.copy(alpha = 0.45f)); inner() } },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp).focusRequester(bodyFocus))
             }
-            if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 24.dp)) {
-                labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
-            }
+            if (imeOpen) noteLabels(Modifier.padding(bottom = 24.dp))
         }
+        // The note's tags sit at the bottom, over the island, when the keyboard is down; under the text while typing.
+        if (!imeOpen) noteLabels(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 96.dp))
         // The tools are an island at the bottom, like the rest of Tetra: one line of the basics, pulled up (or its grip
         // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).
         val w = islandContentColor()

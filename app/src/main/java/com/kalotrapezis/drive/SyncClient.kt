@@ -635,6 +635,21 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // what the computer confirmed holding *in this sync* — its /have answer is checked against its disk — or what
         // it just received with a verified receipt; not only what this phone once sent, which left out every photo
         // that came from the computer in the first place.
+        // Both ways (SYNC_PLAN D6, built 2026-09-26): a photo trashed on the computer goes to this phone's Trash, and one
+        // trashed here goes to the computer's. Each Trash keeps it 30 days, so either side can still take it back. A
+        // restore is not mirrored: a photo restored here is simply offered again, and the computer takes it.
+        if (photos.direction == "both") {
+            var trashedHere = 0
+            declined.forEach { sha -> bySha[sha]?.contentUri?.let { uri ->
+                runCatching { context.contentResolver.update(uri, ContentValues().apply { put(android.provider.MediaStore.MediaColumns.IS_TRASHED, 1) }, null, null) }
+                    .onSuccess { if (it > 0) trashedHere++ }.onFailure { android.util.Log.w("Tetra", "Could not trash $uri: ${it.message}") }
+            } }
+            if (trashedHere > 0) android.util.Log.i("Tetra", "$trashedHere photos trashed on the computer went to this Trash")
+            runCatching {
+                val mine = listTrashedPhotos(context).mapNotNull { store.cachedHash(it.photoKey) }.distinct()
+                if (mine.isNotEmpty()) mine.chunked(500).forEach { postJson(host, p, "/trashed", JSONObject().put("hashes", JSONArray(it))) }
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Trash to the computer: ${it.message}" }
+        }
         if (photos.sends && photos.keep == "nothing") {
             val onComputer = (bySha.keys - missing.toSet() - declined) + (store.receiptShas() - declined)
             val cutoff = System.currentTimeMillis() - photos.keepDays * 86_400_000L

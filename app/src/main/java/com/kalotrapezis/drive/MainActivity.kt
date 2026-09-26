@@ -4531,7 +4531,9 @@ private fun PhotoViewer(
         if (hasLocationAccess) locationsUpdated()
     }
     // Motion photos: the paired video (selected.motion) or the one inside the file, played in place of the picture.
-    var motionPlaying by remember(selectedUri) { mutableStateOf(false) }
+    // Motion on: a motion photo plays once by itself when it opens (asked 2026-09-27); off: the still. Remembered.
+    var motionOn by remember { mutableStateOf(metadataStore.motionPlays()) }
+    var motionEnded by remember(selectedUri) { mutableStateOf(false) }
     val motionUri by produceState<Uri?>(initialValue = null, selected.photoKey) {
         value = if (selected.isVideo) null else selected.motion ?: withContext(Dispatchers.IO) { embeddedMotion(context, selected) }
     }
@@ -4586,8 +4588,8 @@ private fun PhotoViewer(
             background = if (fullscreen) Color.Black else MaterialTheme.colorScheme.surfaceVariant,
             toggleControls = { if (fullscreen && !zoomMode) controlsVisible = !controlsVisible },
             showDetails = { detailsOpen = true },
-            motion = motionUri.takeIf { motionPlaying },
-            motionEnded = { motionPlaying = false },
+            motion = motionUri.takeIf { motionOn && !motionEnded },
+            motionEnded = { motionEnded = true },
         )
     }
     val actions: @Composable (Modifier) -> Unit = { modifier ->
@@ -4603,11 +4605,10 @@ private fun PhotoViewer(
             removeFromCollection = removeFromCollection?.let { action -> { action(selected) } },
             edit = editPhoto?.takeIf { !selected.isVideo }?.let { open -> { open(selected) } },
             toggleFullscreen = { manualFullscreen = !manualFullscreen },
-            motion = motionUri?.let { { motionPlaying = !motionPlaying } },
-            motionPlaying = motionPlaying,
             modifier = modifier,
         )
     }
+    val toggleMotion: (() -> Unit)? = motionUri?.let { { motionOn = !motionOn; motionEnded = false; metadataStore.setMotionPlays(motionOn) } }
     if (fullscreen) Box(Modifier.fillMaxSize().background(Color.Black)) {
         pager(Modifier.fillMaxSize())
         AnimatedVisibility(controlsVisible && !zoomMode, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -4618,6 +4619,10 @@ private fun PhotoViewer(
                 ) { IconButton(onClick = { if (manualFullscreen) manualFullscreen = false else close() }) {
                     Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back")
                 } }
+                toggleMotion?.let { toggle -> Surface(
+                    color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                ) { MotionSwitch(motionOn, toggle) } }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                     ViewerFilmstrip(entries, selectedUri, filmstripState, select)
                     actions(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
@@ -4625,7 +4630,7 @@ private fun PhotoViewer(
             }
         }
     } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        ViewerHeader(selected, close)
+        ViewerHeader(selected, close) { toggleMotion?.let { MotionSwitch(motionOn, it) } }
         pager(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp))
         ViewerFilmstrip(entries, selectedUri, filmstripState, select)
         actions(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
@@ -4653,7 +4658,13 @@ private fun PhotoViewer(
 }
 
 @Composable
-private fun ViewerHeader(entry: Entry, close: () -> Unit) = Surface(
+private fun MotionSwitch(on: Boolean, toggle: () -> Unit) = IconButton(onClick = toggle) {
+    Icon(painterResource(R.drawable.ic_motion), contentDescription = if (on) "Motion on" else "Motion off",
+        tint = if (on) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.45f))
+}
+
+@Composable
+private fun ViewerHeader(entry: Entry, close: () -> Unit, end: @Composable () -> Unit = {}) = Surface(
     color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge,
     modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp),
 ) {
@@ -4663,6 +4674,7 @@ private fun ViewerHeader(entry: Entry, close: () -> Unit) = Surface(
             Text(formatPhotoDateTime(entry.takenMillis), style = MaterialTheme.typography.titleSmall)
             Text(entry.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
+        end()
     }
 }
 
@@ -4703,7 +4715,7 @@ private fun ViewerActionsIsland(
     favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
     share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
     restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: (() -> Unit)?,
-    toggleFullscreen: () -> Unit, motion: (() -> Unit)? = null, motionPlaying: Boolean = false, modifier: Modifier = Modifier,
+    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(true) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -4722,10 +4734,6 @@ private fun ViewerActionsIsland(
                     restore?.let { action -> IconButton(onClick = action) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore from Hidden") } }
                     removeFromCollection?.let { action -> IconButton(onClick = action) {
                         Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
-                    } }
-                    motion?.let { IconButton(onClick = it) {
-                        Icon(painterResource(R.drawable.ic_motion), contentDescription = if (motionPlaying) "Stop the motion" else "Play the motion",
-                            tint = if (motionPlaying) MaterialTheme.colorScheme.primary else LocalContentColor.current)
                     } }
                     edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {

@@ -343,6 +343,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var tools by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<NoteVersion>?>(null) }
     var tagsOpen by remember { mutableStateOf(false) }
+    val bodyFocus = remember { FocusRequester() }
+    var toBody by remember { mutableIntStateOf(0) } // a checklist's first item takes the focus when this counts up
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     var changed by remember { mutableStateOf(false) }
     var snapped by remember { mutableStateOf(false) }
@@ -390,18 +392,22 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 
     Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
-            BasicTextField(title, { edit(t = it) }, readOnly = trashed, singleLine = false,
+            // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
+            BasicTextField(title, { t ->
+                if ('\n' in t) { if (initial.checklist) toBody++ else bodyFocus.requestFocus() } else edit(t = t)
+            }, readOnly = trashed, singleLine = false, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { if (initial.checklist) toBody++ else bodyFocus.requestFocus() }),
                 textStyle = TextStyle(color = ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold), cursorBrush = SolidColor(ink),
                 decorationBox = { inner -> Box { if (title.isEmpty()) Text("Title", color = ink.copy(alpha = 0.45f), fontSize = 24.sp); inner() } },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
             when {
-                initial.checklist -> ChecklistEditor(items, ink, trashed) { next, step -> edit(i = next, step = step) }
+                initial.checklist -> ChecklistEditor(items, ink, trashed, toBody) { next, step -> edit(i = next, step = step) }
                 reading -> Text(renderMarkdown(body.text), color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 24.sp), modifier = Modifier.padding(bottom = 80.dp))
                 else -> BasicTextField(body, { edit(b = it) }, readOnly = trashed,
                     textStyle = TextStyle(color = ink, fontSize = 16.sp, lineHeight = 24.sp), cursorBrush = SolidColor(ink),
                     visualTransformation = markdownVisualTransformation(),
                     decorationBox = { inner -> Box { if (body.text.isEmpty()) Text("Write here. **bold**, - [ ] a checkbox…", color = ink.copy(alpha = 0.45f)); inner() } },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp))
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp).focusRequester(bodyFocus))
             }
             if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 24.dp)) {
                 labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
@@ -523,7 +529,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
 
 /** Open items in their order, then the done ones under a line; Next on the keyboard makes the next item. */
-@Composable private fun ChecklistEditor(items: List<CheckItem>, ink: Color, readOnly: Boolean, change: (List<CheckItem>, Boolean) -> Unit) {
+@Composable private fun ChecklistEditor(items: List<CheckItem>, ink: Color, readOnly: Boolean, focusFirst: Int, change: (List<CheckItem>, Boolean) -> Unit) {
     val sorted = items.sortedForList()
     val open = sorted.filter { !it.checked }
     val done = sorted.filter { it.checked }
@@ -534,6 +540,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         val list = (open.take(at) + added + open.drop(at)).mapIndexed { n, i -> i.copy(order = n) }
         change(list + done, true); focus = added.id
     }
+    LaunchedEffect(focusFirst) { if (focusFirst > 0) { if (open.isEmpty()) insertAfter(null) else focus = open.first().id } }
     @Composable fun row(i: CheckItem) {
         val requester = remember(i.id) { FocusRequester() }
         LaunchedEffect(focus) { if (focus == i.id) { requester.requestFocus(); focus = null } }

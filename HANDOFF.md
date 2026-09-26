@@ -1,3 +1,14 @@
+# 26 September evening — deleted files came back
+
+Files deleted on the PC came back from the phone: the PC had no "deleted here" memory for Files (photos do). Now
+`file_deleted_here` (files.js reconcile) — what the PC held at the last sync and holds nowhere now is never asked for
+again, until the same bytes are back. Also: a name already in Trash failed the delete silently (both apps now use
+"name (2)"), and the phone listed `.notes`/`.templates` (hidden now). Built: beta .deb (not installed; needs
+`sudo dpkg -i`), debug APK (phone not plugged in). The phone still holds Document 📃, LocalDrive-Tag-Check and the
+LocalDrive-* folders in its Trash; delete them there once the new builds are in.
+
+---
+
 # Next, first thing (asked at the close of beta-1, 26 September): motion photos, as one or not at all
 
 A motion photo is a picture plus a few seconds of video; an export (Google Takeout) splits it into two files of one

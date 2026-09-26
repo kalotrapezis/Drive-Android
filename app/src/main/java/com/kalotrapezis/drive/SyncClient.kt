@@ -891,7 +891,13 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val store = notesStore()
         if (store.root.parentFile?.isDirectory != true) return 0
         val answer = postJson(host, p, "/notes", store.payload())
-        return if (answer.optBoolean("off")) 0 else store.apply(answer)
+        return (if (answer.optBoolean("off")) 0 else store.apply(answer)).also { if (it > 0) NotesSync.changed.value++ }
+    }
+
+    /** Only the notes, a few kilobytes: what a pause in writing sends (NotesSync). */
+    fun notesOnly(): Int {
+        val p = reach(store.pairing() ?: return 0)
+        return syncNotes(p.hosts.first(), p)
     }
 
     private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {

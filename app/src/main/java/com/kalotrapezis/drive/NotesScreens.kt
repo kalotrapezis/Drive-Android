@@ -52,6 +52,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -119,7 +120,10 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var open by remember { mutableStateOf<Note?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf(emptySet<String>()) }
-    LaunchedEffect(version, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
+    val remote by NotesSync.changed.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(version, remote, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
+    LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
     fun create(checklist: Boolean) = scope.launch {
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
     }
@@ -357,6 +361,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var changed by remember { mutableStateOf(false) }
     var snapped by remember { mutableStateOf(false) }
     var undoTick by remember { mutableIntStateOf(0) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val undo = remember { NoteUndo(Snap(title, body.text, items)) }
     val trashed = initial.trashedAt != null
     val tint = noteColor(color)
@@ -371,6 +376,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             if (!snapped) { store.snapshot(initial.id); snapped = true }
             store.setText(initial.id, title, body.text, if (initial.checklist) items else null)
         }
+        NotesSync.soon(context)
     }
     fun edit(t: String = title, b: TextFieldValue = body, i: List<CheckItem> = items, step: Boolean = false) {
         val snap = Snap(t, b.text, i)
@@ -379,7 +385,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         title = t; body = b; items = i; changed = true; undoTick++
     }
     fun apply(s: Snap?) { if (s == null) return; title = s.title; body = TextFieldValue(s.body, TextRange(s.body.length)); items = s.items; changed = true; undoTick++ }
-    fun meta(change: (org.json.JSONObject) -> Unit) { changed = true; scope.launch(Dispatchers.IO) { store.update(initial.id, change) } }
+    fun meta(change: (org.json.JSONObject) -> Unit) { changed = true; scope.launch(Dispatchers.IO) { store.update(initial.id, change); NotesSync.soon(context) } }
     // Leaving: what is pending is saved, and the note as it now is goes to its history, if anything changed.
     fun leave(said: String? = null, last: ((org.json.JSONObject) -> Unit)? = null) = scope.launch {
         val saved = withContext(Dispatchers.IO) {
@@ -388,6 +394,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             if (changed) store.snapshot(initial.id)
             store.get(initial.id)
         }
+        NotesSync.soon(context, 500)
         onClose(saved, said)
     }
     fun archive() { if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave("Note archived") { it.put("archivedAt", System.currentTimeMillis()) } }

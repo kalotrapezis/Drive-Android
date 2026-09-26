@@ -5,6 +5,14 @@ import org.json.JSONObject
 import java.io.File
 import java.util.Calendar
 import java.util.UUID
+import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Notes (asked 2026-09-26): a hidden folder of Files, `/sdcard/Tetra/.notes/`, one `<id>.json` per note in the format
@@ -243,4 +251,24 @@ internal object NoteFormat {
         else n.content.lines().filter { it.isNotBlank() }.take(max).map {
             it.replace(Regex("^(#{1,3} |> )"), "").replace(Regex("^(\\s*)- \\[ \\] "), "$1☐ ").replace(Regex("^(\\s*)- \\[[xX]\\] "), "$1☑ ").replace(Regex("\\*\\*|~~|`"), "")
         }
+}
+
+/**
+ * Notes cross on their own, a moment after writing pauses — as the old Notes app did, every two or three seconds
+ * (asked 2026-09-26) — not only with the whole sync. Only the notes go: a few kilobytes, a second's work.
+ */
+internal object NotesSync {
+    /** Counts up when notes from the computer land here, so an open list reloads. */
+    val changed = MutableStateFlow(0)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var pending: Job? = null
+
+    fun soon(context: Context, delayMs: Long = 2_500) {
+        val app = context.applicationContext
+        pending?.cancel()
+        pending = scope.launch {
+            delay(delayMs)
+            runCatching { SyncClient(app, SyncStore(app)).notesOnly() } // the computer asleep: the next pause, or the next sync
+        }
+    }
 }

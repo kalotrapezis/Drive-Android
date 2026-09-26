@@ -263,6 +263,12 @@ internal object NotesSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pending: Job? = null
 
+    /** At once, and waits: pull to refresh, and opening Notes. Returns what changed here, or null when unreachable. */
+    suspend fun now(context: Context): Int? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        runCatching { SyncClient(app, SyncStore(app)).notesOnly() }.getOrNull()
+    }
+
     fun soon(context: Context, delayMs: Long = 2_500) {
         val app = context.applicationContext
         pending?.cancel()

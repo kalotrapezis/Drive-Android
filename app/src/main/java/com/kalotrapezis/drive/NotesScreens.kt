@@ -124,6 +124,15 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(version, remote, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
     LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
+    // Opening Notes is the moment to catch up — the whole sync may have been skipped (asked 2026-09-26).
+    var refreshing by remember { mutableStateOf(false) }
+    fun refresh() = scope.launch {
+        refreshing = true
+        val got = NotesSync.now(context) // what arrives reloads the list through NotesSync.changed
+        refreshing = false
+        if (got == null) message = "Could not reach the computer"
+    }
+    LaunchedEffect(hasAccess) { if (hasAccess) NotesSync.now(context) }
     fun create(checklist: Boolean) = scope.launch {
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
     }
@@ -171,7 +180,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     }
     val header: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp)) }
 
-    Box(Modifier.fillMaxSize()) {
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.fillMaxSize()) {
         LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Adaptive(165.dp),
             modifier = Modifier.fillMaxSize().statusBarsPadding(),

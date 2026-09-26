@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -344,6 +347,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var history by remember { mutableStateOf<List<NoteVersion>?>(null) }
     var tagsOpen by remember { mutableStateOf(false) }
     val bodyFocus = remember { FocusRequester() }
+    val imeOpen = WindowInsets.isImeVisible
     var toBody by remember { mutableIntStateOf(0) } // a checklist's first item takes the focus when this counts up
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     var changed by remember { mutableStateOf(false) }
@@ -391,7 +395,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     BackHandler { if (tools) tools = false else leave() }
 
     Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->
                 if ('\n' in t) { if (initial.checklist) toBody++ else bodyFocus.requestFocus() } else edit(t = t)
@@ -416,7 +420,23 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         // The tools are an island at the bottom, like the rest of Tetra: one line of the basics, pulled up (or its grip
         // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).
         val w = islandContentColor()
-        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
+        // With the keyboard up the island would take half of what is left: like Google Keep, it becomes one thin strip
+        // on the keyboard — the tools for writing, and the rest one tap away (asked 2026-09-26).
+        if (imeOpen && !trashed) Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(islandColor()).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            undoTick
+            Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
+            Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
+            if (!initial.checklist) {
+                Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
+                Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
+                Tool(R.drawable.ic_format_list_bulleted, "Bulleted list", w) { format { NoteFormat.prefix(it, "- ") } }
+            }
+            Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+            Tool(R.drawable.ic_keyboard_arrow_up, "More tools", w) { tools = true }
+        } else Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
             // Out of the way while a sheet or dialog is up, back when it closes.
             IslandBottomBar(expand = { if (!trashed) tools = true }, visible = !tools && !tagsOpen && history == null) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }

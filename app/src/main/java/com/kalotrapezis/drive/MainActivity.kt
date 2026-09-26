@@ -1494,7 +1494,7 @@ private fun PhotoSetup(allow: () -> Unit, skip: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Gallery setup", style = MaterialTheme.typography.headlineMedium)
         Text("Tetra needs permission to show your real Camera and Screenshots photos and videos.")
-        Text("Photos stay where they are. The app does not choose a folder or copy them into LocalDrive.", style = MaterialTheme.typography.bodyMedium)
+        Text("Photos stay where they are. The app does not choose a folder or copy them anywhere.", style = MaterialTheme.typography.bodyMedium)
         Text("You can change this later from the Gallery pull-up tools.", style = MaterialTheme.typography.bodySmall)
         Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text("Yes, allow photos") }
         Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text("No, not now") }

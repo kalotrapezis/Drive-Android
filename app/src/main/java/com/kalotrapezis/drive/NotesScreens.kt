@@ -336,6 +336,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var reading by remember { mutableStateOf(false) }
     var tools by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<NoteVersion>?>(null) }
+    var tagsOpen by remember { mutableStateOf(false) }
+    val wide = LocalConfiguration.current.screenWidthDp >= 600
     var changed by remember { mutableStateOf(false) }
     var snapped by remember { mutableStateOf(false) }
     var undoTick by remember { mutableIntStateOf(0) }
@@ -385,9 +387,14 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             undoTick // read, so the two buttons follow the undo history, which is not state itself
             Tool(R.drawable.ic_undo, "Undo", ink, enabled = undo.canUndo && !trashed) { apply(undo.undo()) }
             Tool(R.drawable.ic_redo, "Redo", ink, enabled = undo.canRedo && !trashed) { apply(undo.redo()) }
-            if (!initial.checklist && !reading && !trashed) {
+            // A phone has room for one line only: Bold and Checkbox wait in the sheet there, a tablet shows them here.
+            if (wide && !initial.checklist && !reading && !trashed) {
                 Tool(R.drawable.ic_format_bold, "Bold", ink) { format { NoteFormat.wrap(it, "**") } }
                 Tool(R.drawable.ic_check_box, "Checkbox list", ink) { format { NoteFormat.prefix(it, "- [ ] ") } }
+            }
+            if (!trashed) {
+                Tool(R.drawable.ic_label, "Tags", ink, on = labels.isNotEmpty()) { tagsOpen = true }
+                Tool(R.drawable.ic_history, "History", ink) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
             }
             Spacer(Modifier.weight(1f))
             if (trashed) {
@@ -448,20 +455,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                         .clickable { color = hex; meta { if (hex == null) it.remove("color") else it.put("color", hex) } })
                 }
             }
-            Text("Labels", style = MaterialTheme.typography.titleSmall)
-            val allLabels = remember { store.list().flatMap { it.labels }.toSortedSet() }
-            var newLabel by remember { mutableStateOf("") }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                (allLabels + labels).toSortedSet().forEach { l ->
-                    Chip(l, on = l in labels) { labels = if (l in labels) labels - l else labels + l; val now = labels; meta { it.put("labels", org.json.JSONArray(now)) } }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NoteField(newLabel, { newLabel = it }, "New label", Modifier.weight(1f))
-                TextButton(onClick = { val l = newLabel.trim(); if (l.isNotEmpty() && l !in labels) { labels = labels + l; val now = labels; meta { it.put("labels", org.json.JSONArray(now)) } }; newLabel = "" }) { Text("Add", color = Color.White) }
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }) { Icon(painterResource(R.drawable.ic_history), null, tint = Color.White); Text("  History", color = Color.White) }
                 TextButton(onClick = {
                     tools = false
                     if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave("Note archived") { it.put("archivedAt", System.currentTimeMillis()) }
@@ -471,6 +465,10 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                 }
             }
         }
+    }
+
+    if (tagsOpen) NoteTagsSheet(store, labels, dismiss = { tagsOpen = false }) { chosen ->
+        labels = chosen; tagsOpen = false; meta { it.put("labels", org.json.JSONArray(chosen)) }
     }
 
     history?.let { versions ->
@@ -543,5 +541,40 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             done.forEach { row(it) }
         }
         Spacer(Modifier.heightIn(min = 80.dp))
+    }
+}
+
+/** Tags for a note, chosen or created: the same sheet as a file's tags in Files (asked 2026-09-26). */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable private fun NoteTagsSheet(store: NotesStore, initial: List<String>, dismiss: () -> Unit, save: (List<String>) -> Unit) {
+    var selected by remember { mutableStateOf(initial) }
+    var newTag by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val known = remember { store.list().flatMap { it.labels } }
+    val all = (known + selected).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Tags", style = MaterialTheme.typography.titleLarge)
+            Text("Select existing tags, or create one for this note.")
+            if (all.isNotEmpty()) FlowRow(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                all.forEach { tag ->
+                    Surface(
+                        color = if (tag in selected) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (tag in selected) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = CircleShape,
+                        modifier = Modifier.clickable { selected = if (tag in selected) selected - tag else selected + tag },
+                    ) { Text("#$tag", modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) }
+                }
+            }
+            androidx.compose.material3.OutlinedTextField(newTag, { newTag = it; error = null }, modifier = Modifier.fillMaxWidth(), label = { Text("New tag") }, singleLine = true,
+                isError = error != null, supportingText = error?.let { { Text(it) } })
+            DriveWideAction(R.drawable.ic_tag, "Add tag") {
+                val t = newTag.trim()
+                if (t.isEmpty() || t.length > 60) error = "A tag is 1 to 60 characters." else {
+                    selected = selected + (all.firstOrNull { it.equals(t, ignoreCase = true) } ?: t); newTag = ""
+                }
+            }
+            DriveWideAction(R.drawable.ic_check, "Save tags") { save(selected.distinct()) }
+        }
     }
 }

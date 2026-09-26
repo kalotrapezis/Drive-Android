@@ -55,6 +55,22 @@ class DriveFilesTest {
         assertTrue(File(root, "Documents/Scanned Documents").isDirectory)
     }
 
+    @Test fun aNameAlreadyInTrashNeverBlocksADelete() {
+        val root = Files.createTempDirectory("drive-root").toFile()
+        repeat(2) { File(root, "QA").mkdirs(); File(root, "a.txt").writeText("x") ; DriveRules.moveToTrash(root, "QA"); DriveRules.moveToTrash(root, "a.txt") }
+        assertTrue(File(root, "Trash/QA (2)").isDirectory)
+        assertTrue(File(root, "Trash/a (2).txt").exists())
+        assertFalse(File(root, "QA").exists())
+    }
+
+    @Test fun dotFoldersAreHidden() {
+        val root = Files.createTempDirectory("drive-root").toFile()
+        File(root, ".notes").mkdirs(); File(root, ".notes/n.json").writeText("x"); File(root, "a.txt").writeText("x")
+        assertEquals(listOf("a.txt"), listDriveFolder(root, "").map { it.relativePath })
+        assertEquals(listOf("a.txt"), DriveRules.allItems(root).map { it.relativePath })
+        assertFalse(DriveRules.destinations(root).any { it.relativePath.startsWith(".") })
+    }
+
     @Test fun containmentRejectsSiblingPrefixAndTraversal() {
         val base = Files.createTempDirectory("drive-root").toFile()
         val root = File(base, "Drive").apply { mkdirs() }

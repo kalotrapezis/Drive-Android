@@ -108,6 +108,7 @@ object DriveRules {
     fun parent(relativePath: String): String = relativePath.substringBeforeLast('/', "")
 
     fun destinations(root: File): List<DriveDestination> = root.walkTopDown()
+        .onEnter { it == root || !it.name.startsWith(".") }
         .filter { it.isDirectory && inside(root, it) }
         .map { file -> relative(root, file) }
         .filterNot { it == TRASH_FOLDER || it.startsWith("$TRASH_FOLDER/") }
@@ -116,8 +117,8 @@ object DriveRules {
         .toList()
 
     fun allItems(root: File, includeTrash: Boolean = false): List<DriveItem> = root.walkTopDown()
-        .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || relative(root, folder) != TRASH_FOLDER) }
-        .filter { it != root && it.exists() && inside(root, it) }
+        .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || (relative(root, folder) != TRASH_FOLDER && !folder.name.startsWith("."))) }
+        .filter { it != root && it.exists() && inside(root, it) && (includeTrash || !it.name.startsWith(".")) }
         .map { DriveItem(it.canonicalFile, relative(root, it), it.isDirectory) }
         .toList()
 
@@ -175,7 +176,17 @@ object DriveRules {
         val trash = File(root, TRASH_FOLDER).canonicalFile
         require(inside(root, trash)) { "Trash is outside Drive." }
         if (!trash.exists()) require(trash.mkdirs()) { "Could not create Trash." }
-        return move(root, relativePath, TRASH_FOLDER)
+        requireMovable(relativePath)
+        val source = item(root, relativePath)
+        require(!inside(trash, source)) { "This item is already in Trash." }
+        // A name already in Trash never blocks a delete: the newcomer becomes "name (2)", as everywhere in Drive.
+        var target = File(trash, source.name)
+        for (n in 2..Int.MAX_VALUE) {
+            if (!target.exists()) break
+            target = File(trash, source.nameWithoutExtension + " ($n)" + source.name.removePrefix(source.nameWithoutExtension))
+        }
+        moveExisting(root, source, target.canonicalFile)
+        return relative(root, target.canonicalFile)
     }
 
     fun emptyTrash(root: File): Int {
@@ -218,7 +229,8 @@ private const val TRASH_FOLDER = "Trash"
 fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath)
     return folder.listFiles().orEmpty()
-        .filter { DriveRules.inside(root, it) }
+        // Dot folders (.notes, .templates) are the apps' own, hidden as in file managers and on the desktop.
+        .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
         // Trash has its own way in; as a folder in the list it is just something to open by accident.
         .filterNot { relativePath.isEmpty() && it.name == TRASH_FOLDER }
         .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }

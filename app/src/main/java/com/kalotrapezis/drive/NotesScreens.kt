@@ -377,8 +377,14 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     val tint = noteColor(color)
     val ink = if (tint != null) InkOnColor else MaterialTheme.colorScheme.onSurface
     val noteLabels: @Composable (Modifier) -> Unit = { modifier ->
-        if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
-            labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
+        // The tags, and a + that opens them (asked 2026-09-27: on a phone the island had no room left for Pin).
+        if (!trashed) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
+            labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color(0x33888888)).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 4.dp)) }
+            Row(Modifier.clip(CircleShape).background(Color(0x33888888)).clickable(onClickLabel = "Tags") { tagsOpen = true }.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Tags", tint = ink, modifier = Modifier.size(16.dp))
+                if (labels.isEmpty()) Text(" Tag", color = ink, style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 
@@ -421,7 +427,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     BackHandler { if (tools) tools = false else leave() }
 
     Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (labels.isNotEmpty()) 170.dp else 120.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (!trashed) 170.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->
                 if ('\n' in t) { if (initial.checklist) toBody++ else bodyFocus.requestFocus() } else edit(t = t)
@@ -471,7 +477,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             } else if (!trashed) {
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-                Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+                if (wide) Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
                 Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
                 if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
                 Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }

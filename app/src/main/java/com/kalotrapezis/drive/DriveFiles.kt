@@ -487,25 +487,31 @@ object DriveStoredPathRules {
 class DriveOpeners(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(OPENERS_PREFS, Context.MODE_PRIVATE)
 
+    /** This file's own app first, else the app last chosen for its type (asked 2026-09-26: "remember my preference"). */
     fun component(relativePath: String): ComponentName? {
         require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
-        return preferences.getString(relativePath, null)?.let(ComponentName::unflattenFromString)
+        return (preferences.getString(relativePath, null) ?: preferences.getString(typeKey(relativePath), null))
+            ?.let(ComponentName::unflattenFromString)
     }
 
     fun set(relativePath: String, component: ComponentName) {
         require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
-        preferences.edit().putString(relativePath, component.flattenToString()).apply()
+        preferences.edit().putString(relativePath, component.flattenToString()).putString(typeKey(relativePath), component.flattenToString()).commit()
     }
 
+    /** The remembered app is gone: forget it for this file and for its type, so the chooser asks again. */
     fun clear(relativePath: String) {
         require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
-        preferences.edit().remove(relativePath).apply()
+        preferences.edit().remove(relativePath).remove(typeKey(relativePath)).apply()
     }
+
+    // A '/' first can never be a Drive path, so a type key never collides with a file's.
+    private fun typeKey(relativePath: String) = "/type/" + relativePath.substringAfterLast('/').substringAfterLast('.', "").lowercase(Locale.ROOT)
 
     fun rewritePath(from: String, to: String) {
         val edits = preferences.edit()
         preferences.all.forEach { (path, value) ->
-            if (value !is String) return@forEach
+            if (value !is String || path.startsWith("/")) return@forEach
             val rewritten = DriveStoredPathRules.rewrite(path, from, to)
             if (rewritten != path) {
                 edits.remove(path)

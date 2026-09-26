@@ -380,33 +380,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
     BackHandler { if (tools) tools = false else leave() }
 
-    Column(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
-        // One line of the basics; everything else slides up from the bottom.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tool(R.drawable.ic_chevron_left, "Back", ink) { leave() }
-            undoTick // read, so the two buttons follow the undo history, which is not state itself
-            Tool(R.drawable.ic_undo, "Undo", ink, enabled = undo.canUndo && !trashed) { apply(undo.undo()) }
-            Tool(R.drawable.ic_redo, "Redo", ink, enabled = undo.canRedo && !trashed) { apply(undo.redo()) }
-            // A phone has room for one line only: Bold and Checkbox wait in the sheet there, a tablet shows them here.
-            if (wide && !initial.checklist && !reading && !trashed) {
-                Tool(R.drawable.ic_format_bold, "Bold", ink) { format { NoteFormat.wrap(it, "**") } }
-                Tool(R.drawable.ic_check_box, "Checkbox list", ink) { format { NoteFormat.prefix(it, "- [ ] ") } }
-            }
-            if (!trashed) {
-                Tool(R.drawable.ic_label, "Tags", ink, on = labels.isNotEmpty()) { tagsOpen = true }
-                Tool(R.drawable.ic_history, "History", ink) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
-            }
-            Spacer(Modifier.weight(1f))
-            if (trashed) {
-                TextButton(onClick = { leave("Note restored") { it.remove("trashedAt") } }) { Text("Restore", color = ink) }
-                TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, "Note deleted") } } }) { Text("Delete", color = Color(0xFFE35A4F)) }
-            } else {
-                if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", ink) { reading = !reading }
-                Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", ink, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
-                Tool(R.drawable.ic_keyboard_arrow_up, "More tools", ink) { tools = true }
-            }
-        }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+    Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
             BasicTextField(title, { edit(t = it) }, readOnly = trashed, singleLine = false,
                 textStyle = TextStyle(color = ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold), cursorBrush = SolidColor(ink),
                 decorationBox = { inner -> Box { if (title.isEmpty()) Text("Title", color = ink.copy(alpha = 0.45f), fontSize = 24.sp); inner() } },
@@ -422,6 +397,31 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             }
             if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 24.dp)) {
                 labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
+            }
+        }
+        // The tools are an island at the bottom, like the rest of Tetra: one line of the basics, pulled up (or its grip
+        // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).
+        val w = islandContentColor()
+        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
+            IslandBottomBar(expand = { if (!trashed) tools = true }, visible = true) {
+                Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
+                if (trashed) {
+                    TextButton(onClick = { leave("Note restored") { it.remove("trashedAt") } }) { Text("Restore", color = w) }
+                    TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, "Note deleted") } } }) { Text("Delete", color = Color(0xFFE35A4F)) }
+                } else {
+                    undoTick // read, so the two buttons follow the undo history, which is not state itself
+                    Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
+                    Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
+                    // A phone has room for one line only: Bold and Checkbox wait in the sheet there, a tablet shows them here.
+                    if (wide && !initial.checklist && !reading) {
+                        Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
+                        Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
+                    }
+                    Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+                    Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
+                    if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
+                    Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
+                }
             }
         }
     }

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Files can only be opened or shared from folders named here: Tetra, and Drive for a phone whose rename refused (TetraFolder). -->
+    <external-path name="tetra" path="Tetra/" />
     <external-path name="drive" path="Drive/" />
     <files-path name="hidden_media" path="hidden_media/" />
 </paths>

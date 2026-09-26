@@ -1014,6 +1014,10 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun hidesDocumentsFromCollections(): Boolean = galleryPreferences.getBoolean("hide_documents_collection", false)
 
+    /** Motion photos (asked 2026-09-26): "one" shows a picture and its seconds of video as one; "remove" sends the video half to Android's Trash. */
+    fun motionPhotos(): String = galleryPreferences.getString("motion_photos", "one") ?: "one"
+    fun setMotionPhotos(mode: String) { if (mode == "one" || mode == "remove") galleryPreferences.edit().putString("motion_photos", mode).apply() }
+
     fun setHidesScreenshotsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_screenshots", hide).apply(); touchViewSettings() }
 
     fun setHidesDocumentsFromGallery(hide: Boolean) { galleryPreferences.edit().putBoolean("hide_documents", hide).apply(); touchViewSettings() }

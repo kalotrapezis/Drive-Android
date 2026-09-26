@@ -108,6 +108,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -251,6 +252,8 @@ internal data class Entry(
     // Pixel size of the upright photo. Sync turns face boxes into fractions with it.
     val width: Int = 0,
     val height: Int = 0,
+    /** A motion photo's video half (MotionRules): played by the viewer's Motion button; never an item of its own. */
+    val motion: Uri? = null,
 )
 private sealed interface ListState {
     data object Idle : ListState
@@ -379,7 +382,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     folders.filter { it.included == true }.forEach { photoMetadata.fillFolderAlbum(it.name, it.entries.map(Entry::photoKey)) }
                     (context as MainActivity).runOnUiThread { photoFolders = folders }
                 }
-                all.filter { FolderRules.isIncluded(it.relativePath, choices) }
+                showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })
             }
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
@@ -2525,6 +2528,7 @@ private fun PhotoTab(
     val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
+    var motionMode by remember { mutableStateOf(metadataStore.motionPhotos()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
     var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
     val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
@@ -3032,6 +3036,10 @@ private fun PhotoTab(
         hideDocuments = hideDocuments,
         setHideScreenshots = { hide -> metadataStore.setHidesScreenshotsFromGallery(hide); hideScreenshots = hide },
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromGallery(hide); hideDocuments = hide },
+        motionMode = motionMode,
+        setMotionMode = { mode -> metadataStore.setMotionPhotos(mode); motionMode = mode },
+        motionHalves = allEntries.count { it.motion != null },
+        removeMotionHalves = { moveToTrash(allEntries.mapNotNullTo(HashSet()) { it.motion }); toolsOpen = false },
         albums = collections,
         hiddenAlbums = hiddenAlbums,
         setAlbumHidden = { album, hide -> album.uuid?.let { metadataStore.setAlbumHiddenFromGallery(it, hide) }; hiddenAlbums = metadataStore.albumsHiddenFromGallery() },
@@ -3772,6 +3780,10 @@ private fun GalleryToolsSheet(
     hideDocuments: Boolean,
     setHideScreenshots: (Boolean) -> Unit,
     setHideDocuments: (Boolean) -> Unit,
+    motionMode: String,
+    setMotionMode: (String) -> Unit,
+    motionHalves: Int,
+    removeMotionHalves: () -> Unit,
     albums: List<PhotoCollection>,
     hiddenAlbums: Set<String>,
     setAlbumHidden: (PhotoCollection, Boolean) -> Unit,
@@ -3806,6 +3818,21 @@ private fun GalleryToolsSheet(
                     Text("${album.here}", style = MaterialTheme.typography.bodySmall)
                 }
             }
+            Text("Motion photos", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("one" to "Show as one", "remove" to "Remove").forEach { (mode, label) ->
+                    Surface(
+                        color = if (motionMode == mode) driveNavigationSelectedColor() else islandColor(),
+                        contentColor = if (motionMode == mode) driveNavigationSelectedContentColor() else islandContentColor(),
+                        shape = CircleShape,
+                        modifier = Modifier.weight(1f).clickable { setMotionMode(mode) },
+                    ) { Text(label, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
+                }
+            }
+            Text(if (motionMode == "remove") "The few seconds of video beside a picture (MVIMG_….MP4 next to MVIMG_….jpg) go to Android's Trash, where they stay 30 days."
+                else "A picture and its few seconds of video show as one photo; Motion in the viewer plays them. Pictures with the video inside play too.",
+                style = MaterialTheme.typography.bodySmall)
+            if (motionMode == "remove" && motionHalves > 0) DriveWideAction(R.drawable.ic_delete, "Move $motionHalves motion ${if (motionHalves == 1) "video" else "videos"} to Trash", removeMotionHalves)
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimelineScale.entries.forEach { option ->
@@ -4503,6 +4530,11 @@ private fun PhotoViewer(
         value = if (hasLocationAccess) withContext(Dispatchers.IO) { loadPhotoLocation(context, selected, metadataStore) } else null
         if (hasLocationAccess) locationsUpdated()
     }
+    // Motion photos: the paired video (selected.motion) or the one inside the file, played in place of the picture.
+    var motionPlaying by remember(selectedUri) { mutableStateOf(false) }
+    val motionUri by produceState<Uri?>(initialValue = null, selected.photoKey) {
+        value = if (selected.isVideo) null else selected.motion ?: withContext(Dispatchers.IO) { embeddedMotion(context, selected) }
+    }
     val zoomMode = !selected.isVideo && selectedZoom.scale > 1f
     val rotatedLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val fullscreen = zoomMode || manualFullscreen || rotatedLandscape
@@ -4554,6 +4586,8 @@ private fun PhotoViewer(
             background = if (fullscreen) Color.Black else MaterialTheme.colorScheme.surfaceVariant,
             toggleControls = { if (fullscreen && !zoomMode) controlsVisible = !controlsVisible },
             showDetails = { detailsOpen = true },
+            motion = motionUri.takeIf { motionPlaying },
+            motionEnded = { motionPlaying = false },
         )
     }
     val actions: @Composable (Modifier) -> Unit = { modifier ->
@@ -4569,6 +4603,8 @@ private fun PhotoViewer(
             removeFromCollection = removeFromCollection?.let { action -> { action(selected) } },
             edit = editPhoto?.takeIf { !selected.isVideo }?.let { open -> { open(selected) } },
             toggleFullscreen = { manualFullscreen = !manualFullscreen },
+            motion = motionUri?.let { { motionPlaying = !motionPlaying } },
+            motionPlaying = motionPlaying,
             modifier = modifier,
         )
     }
@@ -4648,6 +4684,7 @@ private fun ViewerPager(
     entries: List<Entry>, state: PagerState, playback: MutableMap<String, VideoPlaybackState>,
     imageZoom: MutableMap<String, ViewerZoomState>, zoomMode: Boolean, modifier: Modifier,
     background: Color, toggleControls: () -> Unit, showDetails: () -> Unit,
+    motion: Uri? = null, motionEnded: () -> Unit = {},
 ) {
     HorizontalPager(state = state, modifier = modifier, userScrollEnabled = !zoomMode, key = { entries[it].contentUri.toString() }) { page ->
         val entry = entries[page]
@@ -4656,7 +4693,8 @@ private fun ViewerPager(
             else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 Icon(painterResource(R.drawable.ic_play), contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
             }
-        } else ViewerImage(entry, Modifier.fillMaxSize(), toggleControls, showDetails, background, imageZoom.getOrPut(entry.photoKey) { ViewerZoomState() })
+        } else if (motion != null && page == state.currentPage) MotionVideo(motion, Modifier.fillMaxSize(), motionEnded)
+        else ViewerImage(entry, Modifier.fillMaxSize(), toggleControls, showDetails, background, imageZoom.getOrPut(entry.photoKey) { ViewerZoomState() })
     }
 }
 
@@ -4665,7 +4703,7 @@ private fun ViewerActionsIsland(
     favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
     share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
     restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: (() -> Unit)?,
-    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
+    toggleFullscreen: () -> Unit, motion: (() -> Unit)? = null, motionPlaying: Boolean = false, modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(true) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -4684,6 +4722,10 @@ private fun ViewerActionsIsland(
                     restore?.let { action -> IconButton(onClick = action) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore from Hidden") } }
                     removeFromCollection?.let { action -> IconButton(onClick = action) {
                         Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
+                    } }
+                    motion?.let { IconButton(onClick = it) {
+                        Icon(painterResource(R.drawable.ic_motion), contentDescription = if (motionPlaying) "Stop the motion" else "Play the motion",
+                            tint = if (motionPlaying) MaterialTheme.colorScheme.primary else LocalContentColor.current)
                     } }
                     edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {
@@ -4765,6 +4807,41 @@ private fun ViewerImage(
         )
     }
 }
+
+/** A motion photo's few seconds, played once in place of the picture; a tap or the end brings the picture back. */
+@Composable
+private fun MotionVideo(uri: Uri, modifier: Modifier, ended: () -> Unit) {
+    key(uri) {
+        AndroidView(
+            factory = { viewContext ->
+                VideoView(viewContext).apply {
+                    setVideoURI(uri)
+                    setOnPreparedListener { start() }
+                    setOnCompletionListener { ended() }
+                    setOnErrorListener { _, _, _ -> ended(); true }
+                    setOnClickListener { ended() }
+                }
+            },
+            modifier = modifier.background(Color.Black),
+            onRelease = { it.stopPlayback() },
+        )
+    }
+}
+
+/**
+ * The video inside a motion photo (Pixel, Samsung, Xiaomi), cut from the end of the picture into the app's cache —
+ * one file at a time, replaced by the next photo's. Null when the picture has none.
+ */
+internal fun embeddedMotion(context: Context, entry: Entry): Uri? = runCatching {
+    if (!Regex("""\.(jpe?g|heic|heif)$""", RegexOption.IGNORE_CASE).containsMatchIn(entry.name)) return null
+    val bytes = context.contentResolver.openInputStream(entry.contentUri ?: return null)?.use { it.readBytes() } ?: return null
+    val at = MotionRules.embeddedVideoOffset(bytes)
+    if (at <= 0) return null
+    val dir = File(context.cacheDir, "motion").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+    val file = File(dir, "${entry.photoKey.hashCode()}.mp4")
+    file.outputStream().use { it.write(bytes, at, bytes.size - at) }
+    Uri.fromFile(file)
+}.getOrNull()
 
 private class VideoPlaybackState(var positionMs: Int = 0, var playWhenReady: Boolean = true)
 
@@ -4917,6 +4994,14 @@ internal fun listDeviceMedia(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
 ).sortedByDescending { it.takenMillis }
+
+/** The Gallery's view: a motion photo's video half leaves the list and rides on its picture as `motion`. */
+internal fun showMotionAsOne(entries: List<Entry>): List<Entry> {
+    val pairs = MotionRules.pairs(entries.map { Triple(it.relativePath, it.name, it.isVideo) })
+    if (pairs.isEmpty()) return entries
+    val videoOf = pairs.entries.associate { (video, picture) -> picture to entries[video].contentUri }
+    return entries.mapIndexedNotNull { i, e -> if (i in pairs) null else videoOf[i]?.let { e.copy(motion = it) } ?: e }
+}
 
 /** The library: the default folders and the ones you said yes to. Gallery, backup and analysis all read this. */
 internal fun listPhotos(context: Context): List<Entry> = PhotoMetadataStore(context).use { it.folderChoices() }.let { choices ->

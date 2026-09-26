@@ -71,3 +71,46 @@ internal object TimelineRules {
         else -> key
     }
 }
+
+/**
+ * Motion photos, shown as one (asked 2026-09-26; the desktop's library.pairMotion is the same rule): an export
+ * splits a motion photo into a picture and a few seconds of video of the same name in the same folder —
+ * MVIMG_1.jpg + MVIMG_1.MP4, 20230529_201908.heic + 20230529_201908(2).MP4, PXL_1.MP.jpg + PXL_1.mp4.
+ */
+internal object MotionRules {
+    private val suffix = Regex("""(\(\d+\)|~\d+)$""")
+
+    fun stem(folder: String?, name: String): String =
+        (folder.orEmpty().trimEnd('/') + "/" + name.substringBeforeLast('.').removeSuffix(".MP").removeSuffix(".mp").replace(suffix, "")).lowercase(Locale.ROOT)
+
+    /** Each video that is a picture's other half → that picture, by index. `items` is (folder, name, isVideo). */
+    fun pairs(items: List<Triple<String?, String, Boolean>>): Map<Int, Int> {
+        val pictures = HashMap<String, Int>()
+        items.forEachIndexed { i, (folder, name, video) -> if (!video) pictures[stem(folder, name)] = i }
+        val out = HashMap<Int, Int>()
+        val taken = HashSet<Int>()
+        items.forEachIndexed { i, (folder, name, video) ->
+            if (video) pictures[stem(folder, name)]?.takeIf { taken.add(it) }?.let { out[i] = it }
+        }
+        return out
+    }
+
+    private val brands = setOf("mp41", "mp42", "isom", "iso2", "iso4", "iso5", "iso6", "avc1", "qt  ", "M4V ", "MSNV")
+
+    /**
+     * Where the video inside a motion photo starts (Pixel, Samsung, Xiaomi): the picture's file ends with an MP4,
+     * whose first box is `ftyp` after a 4-byte size. -1 when there is none. A HEIC's own `ftyp` is at 4, so the
+     * search starts past it; the brand check keeps a stray "ftyp" in the picture's data from counting.
+     */
+    fun embeddedVideoOffset(bytes: ByteArray): Int {
+        var i = 16
+        while (i + 8 <= bytes.size) {
+            if (bytes[i] == 'f'.code.toByte() && bytes[i + 1] == 't'.code.toByte() && bytes[i + 2] == 'y'.code.toByte() && bytes[i + 3] == 'p'.code.toByte()) {
+                val size = ((bytes[i - 4].toInt() and 0xff) shl 24) or ((bytes[i - 3].toInt() and 0xff) shl 16) or ((bytes[i - 2].toInt() and 0xff) shl 8) or (bytes[i - 1].toInt() and 0xff)
+                if (size in 16..256 && String(bytes, i + 4, 4, Charsets.ISO_8859_1) in brands) return i - 4
+            }
+            i++
+        }
+        return -1
+    }
+}

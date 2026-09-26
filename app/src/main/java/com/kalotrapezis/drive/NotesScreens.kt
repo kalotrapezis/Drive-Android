@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -90,6 +91,8 @@ private enum class NotesView(val label: String) { Home("Home"), Archived("Archiv
 private val NOTE_COLORS = listOf("#F28B82", "#FBBC04", "#FFF475", "#CCFF90", "#A7FFEB", "#CBF0F8", "#AECBFA", "#D7AEFB", "#FDCFE8", "#E6C9A8", "#E8EAED")
 private fun noteColor(hex: String?): Color? = hex?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
 private val InkOnColor = Color(0xFF1B1D1F)
+// Sheets are solid: over a page of coloured notes a see-through one was hard to read (asked 2026-09-26).
+private val SheetColor = Color(0xFF16191A)
 
 internal fun notesStore() = NotesStore(File(TetraFolder.root(Environment.getExternalStorageDirectory()), ".notes"))
 
@@ -223,7 +226,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                         IconButton(onClick = { act("Moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move to Trash") }
                     }
                 }
-            } else IslandBottomBar(expand = { drawer = true }, visible = true) {
+            } else IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                 // Home, then the two ways to start; a tablet has room for Archive and Trash too, a phone keeps them in the drawer.
                 IslandNavigationItem("Home", view == NotesView.Home, R.drawable.ic_home) { view = NotesView.Home }
                 IslandNavigationItem("New note", false, R.drawable.ic_note_add) { create(false) }
@@ -234,13 +237,13 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 }
             }
             // Search where it is everywhere else in the app: bottom right.
-            if (selected.isEmpty()) RoundIsland(R.drawable.ic_search, "Search notes") { searching = !searching; if (!searching) query = "" }
+            if (selected.isEmpty() && !drawer) RoundIsland(R.drawable.ic_search, "Search notes") { searching = !searching; if (!searching) query = "" }
         }
         message?.let { Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)) { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) } }
     }
 
-    if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = islandColor(), contentColor = islandContentColor()) {
+    if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DrawerButton(R.drawable.ic_archive, "Archived", view == NotesView.Archived, Modifier.weight(1f)) { view = NotesView.Archived; drawer = false }
@@ -346,6 +349,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var tools by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<NoteVersion>?>(null) }
     var tagsOpen by remember { mutableStateOf(false) }
+    var formatting by remember { mutableStateOf(false) }
     val bodyFocus = remember { FocusRequester() }
     val imeOpen = WindowInsets.isImeVisible
     var toBody by remember { mutableIntStateOf(0) } // a checklist's first item takes the focus when this counts up
@@ -422,50 +426,63 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         val w = islandContentColor()
         // With the keyboard up the island would take half of what is left: like Google Keep, it becomes one thin strip
         // on the keyboard — the tools for writing, and the rest one tap away (asked 2026-09-26).
+        // Two islands in one: the note's own controls, or the formatting tools, swapped by a button (asked 2026-09-26).
+        // With the keyboard up it is one thin strip on the keyboard, as in Google Keep; otherwise a floating island,
+        // out of the way while a sheet or dialog is up.
+        val canFormat = !initial.checklist && !reading && !trashed
+        val row: @Composable () -> Unit = {
+            undoTick // read, so undo and redo follow the history, which is not state itself
+            if (formatting && canFormat) {
+                Tool(R.drawable.ic_title, "Heading", w) { format { NoteFormat.prefix(it, "# ") } }
+                Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
+                Tool(R.drawable.ic_format_italic, "Italic", w) { format { NoteFormat.wrap(it, "*") } }
+                Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w) { format { NoteFormat.wrap(it, "~~") } }
+                Tool(R.drawable.ic_format_list_bulleted, "Bulleted list", w) { format { NoteFormat.prefix(it, "- ") } }
+                Tool(R.drawable.ic_format_list_numbered, "Numbered list", w) { format { NoteFormat.prefix(it, "1. ") } }
+                Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
+                Tool(R.drawable.ic_format_quote, "Quote", w) { format { NoteFormat.prefix(it, "> ") } }
+                Tool(R.drawable.ic_code, "Code", w) { format { NoteFormat.wrap(it, "`") } }
+                Tool(R.drawable.ic_link, "Link", w) { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { "link" }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } }
+                Tool(R.drawable.ic_horizontal_rule, "Divider", w) { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } }
+                Tool(R.drawable.ic_format_indent_increase, "Indent", w) { format { NoteFormat.indent(it, false) } }
+                Tool(R.drawable.ic_format_indent_decrease, "Outdent", w) { format { NoteFormat.indent(it, true) } }
+            } else if (!trashed) {
+                Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
+                Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
+                Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+                Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
+                if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
+                Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
+                if (wide) {
+                    Tool(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive", w) { archive() }
+                    Tool(R.drawable.ic_delete, "Move to Trash", w) { toTrash() }
+                }
+            }
+        }
+        val swap: @Composable () -> Unit = { if (canFormat) Tool(R.drawable.ic_swap_horiz, if (formatting) "Note controls" else "Formatting tools", w, on = formatting) { formatting = !formatting } }
+        val screen = LocalConfiguration.current.screenWidthDp.dp
         if (imeOpen && !trashed) Row(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(islandColor()).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(islandColor()).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            undoTick
-            Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
-            Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-            if (!initial.checklist) {
-                Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
-                Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
-                Tool(R.drawable.ic_format_list_bulleted, "Bulleted list", w) { format { NoteFormat.prefix(it, "- ") } }
-            }
-            Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+            swap()
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) { row() }
             Tool(R.drawable.ic_keyboard_arrow_up, "More tools", w) { tools = true }
         } else Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
-            // Out of the way while a sheet or dialog is up, back when it closes.
             IslandBottomBar(expand = { if (!trashed) tools = true }, visible = !tools && !tagsOpen && history == null) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 if (trashed) {
                     TextButton(onClick = { leave("Note restored") { it.remove("trashedAt") } }) { Text("Restore", color = w) }
                     TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, "Note deleted") } } }) { Text("Delete", color = Color(0xFFE35A4F)) }
                 } else {
-                    undoTick // read, so the two buttons follow the undo history, which is not state itself
-                    Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
-                    Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-                    // A phone has room for one line only: Bold and Checkbox wait in the sheet there, a tablet shows them here.
-                    if (wide && !initial.checklist && !reading) {
-                        Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
-                        Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
-                    }
-                    Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
-                    Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
-                    if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
-                    Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
-                    if (wide) {
-                        Tool(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive", w) { archive() }
-                        Tool(R.drawable.ic_delete, "Move to Trash", w) { toTrash() }
-                    }
+                    swap()
+                    Row(Modifier.widthIn(max = screen - 150.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) { row() }
                 }
             }
         }
     }
 
-    if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = islandColor(), contentColor = islandContentColor()) {
+    if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         // Big tiles, as in Files' tools sheet (asked 2026-09-26: the small ones were too small on a phone).
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!initial.checklist && !reading) {
@@ -544,8 +561,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 }
 
 @Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) =
-    IconButton(onClick = click, enabled = enabled, modifier = Modifier.size(48.dp).then(if (on) Modifier.background(tint.copy(alpha = 0.15f), CircleShape) else Modifier)) {
-        Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(24.dp))
+    IconButton(onClick = click, enabled = enabled, modifier = Modifier.size(40.dp).then(if (on) Modifier.background(tint.copy(alpha = 0.15f), CircleShape) else Modifier)) {
+        Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(21.dp))
     }
 
 /** Open items in their order, then the done ones under a line; Next on the keyboard makes the next item. */
@@ -594,7 +611,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var error by remember { mutableStateOf<String?>(null) }
     val known = remember { store.list().flatMap { it.labels } }
     val all = (known + selected).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Tags", style = MaterialTheme.typography.titleLarge)
             Text("Select existing tags, or create one for this note.")

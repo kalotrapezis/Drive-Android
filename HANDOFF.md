@@ -1,3 +1,20 @@
+# Next, first thing (asked at the close of beta-1, 26 September): motion photos, as one or not at all
+
+A motion photo is a picture plus a few seconds of video; an export (Google Takeout) splits it into two files of one
+name — MVIMG_….jpg + MVIMG_….MP4, 20230529_201908.heic + 20230529_201908(2).MP4, Pixel's PXL_….MP. Today: PC import
+leaves the video half out (`withoutMotionVideos`, importer.js), and the 23 that had come in were removed to the
+purgatory. Asked for, **on desktop and mobile**, a setting:
+- **Show as one** — the picture in the gallery with a Motion button that plays its seconds (the viewer); the video half
+  never a second item. Pairing rule: same folder, same name stem (drop the extension, a trailing `.MP`, `(n)`, `~n`).
+- **Remove on import** — as the PC does now; on Android, the same for photos that arrive by sync or sit in DCIM.
+Android also has true motion photos (the video inside the JPEG/HEIC, Samsung and Pixel): Show as one should play those
+too, where the file carries it (XMP `MotionPhoto` / `MicroVideo`).
+
+Also open: the 163 imported photos in "Φωτογραφίες από YYYY" folders still dated 21 Aug 2026 (the copy day) — the user
+was asked whether to give them the folder's year; no answer yet.
+
+---
+
 # End of 26 September — the suite is complete; 0.3.0-beta.1 not published yet
 
 Since the morning's entry below: Notes in both apps (D7, sync on a pause, history of 3, labels only); Both ways trash

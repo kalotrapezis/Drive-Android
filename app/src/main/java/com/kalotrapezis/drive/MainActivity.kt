@@ -4026,6 +4026,8 @@ private fun PhotoTimeline(
             is ListState.Items -> if (state.entries.isEmpty()) TimelineMessage(emptyMessage) else {
             val grouped = state.entries.groupBy { TimelineRules.groupKey(it.takenMillis, scale) }
             val photosByKey = state.entries.associateBy { "photo:${it.contentUri}" }
+            // The photo a long press just selected: lifting the finger is a tap on it, which must not deselect it.
+            val longPressed = remember { java.util.concurrent.atomic.AtomicReference<Uri?>(null) }
             val itemGroupKeys = remember(grouped, scale) {
                 val groups = TimelineRules.itemGroupKeys(grouped.map { (key, photos) -> key to photos.size }, firstGroupHasHeader = false)
                 listOf(groups.firstOrNull() ?: "unknown") + groups
@@ -4054,7 +4056,7 @@ private fun PhotoTimeline(
                     modifier = Modifier
                         .fillMaxSize()
                         .timelinePinch(scale, setScale)
-                        .timelineSelection(gridState, photosByKey, addSelection),
+                        .timelineSelection(gridState, photosByKey, addSelection, longPressed),
                 ) {
                     if (title == null) item(key = "timeline-top-inset", span = { GridItemSpan(maxLineSpan) }) {
                         Box(Modifier.heightIn(min = 140.dp))
@@ -4082,6 +4084,7 @@ private fun PhotoTimeline(
                         items(entries, key = { "photo:${it.contentUri}" }) { entry ->
                             val selected = entry.contentUri in selectedUris
                             PhotoThumbnail(entry, selected) {
+                                if (longPressed.getAndSet(null) == entry.contentUri) return@PhotoThumbnail
                                 if (selectedUris.isEmpty()) openPhoto(entry) else toggleSelection(entry)
                             }
                         }
@@ -4300,6 +4303,7 @@ private fun Modifier.timelineSelection(
     gridState: LazyGridState,
     photosByKey: Map<String, Entry>,
     addSelection: (Entry) -> Unit,
+    longPressed: java.util.concurrent.atomic.AtomicReference<Uri?>,
 ) = pointerInput(gridState, photosByKey) {
     kotlinx.coroutines.coroutineScope {
         var startedOnPhoto = false
@@ -4353,9 +4357,11 @@ private fun Modifier.timelineSelection(
                 val entry = entryAt(it)
                 startedOnPhoto = entry != null
                 lastPosition = it
+                longPressed.set(entry?.contentUri)
                 entry?.let(addSelection)
             },
             onDrag = { change, _ ->
+                longPressed.set(null) // a drag cancels the tap, so there is no release to swallow
                 if (startedOnPhoto) {
                     lastPosition = change.position
                     entryAt(change.position)?.let(addSelection)
@@ -4364,7 +4370,7 @@ private fun Modifier.timelineSelection(
                 change.consume()
             },
             onDragEnd = { startedOnPhoto = false; lastPosition = null; stopAutoScroll() },
-            onDragCancel = { startedOnPhoto = false; lastPosition = null; stopAutoScroll() },
+            onDragCancel = { startedOnPhoto = false; lastPosition = null; longPressed.set(null); stopAutoScroll() },
         )
     }
 }
@@ -4822,6 +4828,7 @@ internal fun listTrashedPhotos(context: Context): List<Entry> = PhotoMetadataSto
     (listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, trashed = true) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, trashed = true))
         .filter { FolderRules.isIncluded(it.relativePath, choices) }
+        .sortedByDescending { it.takenMillis } // newest first, like the timeline (MediaStore hands them oldest first)
 }
 
 /** Every photo and video in a photo folder of this phone, included or not: what the folder questions are about. */

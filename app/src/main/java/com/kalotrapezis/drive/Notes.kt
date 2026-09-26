@@ -179,23 +179,29 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
 internal fun List<CheckItem>.sortedForList() = sortedWith(compareBy<CheckItem> { it.checked }.thenBy { it.order })
 
 /**
- * Undo in memory, per open note. A change within [quietMs] of the last joins it, so one undo takes back a burst of
- * typing, not a letter; a toolbar action is a step of its own.
+ * Undo in memory, per open note, by the word (asked 2026-09-26): typing joins the step it is in until a word ends — a
+ * space or a mark typed after it — or it pauses for [quietMs]. A toolbar action is a step of its own.
  */
-internal class NoteUndo<T>(private var current: T, private val quietMs: Long = 700) {
+internal class NoteUndo<T>(private var current: T, private val quietMs: Long = 2000) {
     private val past = ArrayDeque<T>()
     private val future = ArrayDeque<T>()
     private var last = 0L
+    private var split = true // the next change starts a step of its own
     val canUndo get() = past.isNotEmpty()
     val canRedo get() = future.isNotEmpty()
-    fun push(next: T, now: Long = System.currentTimeMillis()) {
-        if (now - last > quietMs || past.isEmpty()) past.addLast(current)
+    fun push(next: T, now: Long = System.currentTimeMillis(), wordDone: Boolean = false) {
+        if (split || now - last > quietMs) past.addLast(current)
         if (past.size > 500) past.removeFirst()
-        current = next; future.clear(); last = now
+        current = next; future.clear(); last = now; split = wordDone
     }
-    fun step(next: T) { last = 0; push(next) }
-    fun undo(): T? = past.removeLastOrNull()?.also { future.addLast(current); current = it; last = 0 }
-    fun redo(): T? = future.removeLastOrNull()?.also { past.addLast(current); current = it; last = 0 }
+    fun step(next: T) { split = true; push(next); split = true }
+    fun undo(): T? = past.removeLastOrNull()?.also { future.addLast(current); current = it; split = true }
+    fun redo(): T? = future.removeLastOrNull()?.also { past.addLast(current); current = it; split = true }
+
+    companion object {
+        /** One character typed at [at] that is not part of a word: the word before it is done. */
+        fun endsWord(old: String, new: String, at: Int) = new.length == old.length + 1 && at in 1..new.length && !new[at - 1].isLetterOrDigit()
+    }
 }
 
 /** Formatting a selection of the text: the same rules as the computer's editor (desktop/src/notesEdit.ts). */

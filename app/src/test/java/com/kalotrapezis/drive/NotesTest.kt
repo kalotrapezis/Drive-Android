@@ -57,7 +57,10 @@ class NotesTest {
         assertEquals("a word here", NoteFormat.wrap(on, "**").text)
         assertEquals("1. a\n2. b", NoteFormat.prefix(NoteFormat.Edit("a\nb", 0, 3), "1. ").text)
         assertEquals("- [ ] one\n- [ ] two", NoteFormat.prefix(NoteFormat.Edit("one\n- two", 0, 9), "- [ ] ").text)
-        val u = NoteUndo("")
+        val w = NoteUndo("")
+        w.push("h", 1000); w.push("hi", 1100); w.push("hi ", 1200, wordDone = NoteUndo.endsWord("hi", "hi ", 3)); w.push("hi t", 1300); w.push("hi th", 1400)
+        assertEquals("hi ", w.undo()); assertEquals("", w.undo())
+        val u = NoteUndo("", quietMs = 700)
         u.push("h", 1000); u.push("he", 1100); u.step("**he**")
         assertEquals("he", u.undo()); assertEquals("", u.undo()); assertEquals("he", u.redo())
     }

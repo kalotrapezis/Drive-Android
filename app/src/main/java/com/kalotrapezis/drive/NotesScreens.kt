@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -79,10 +80,7 @@ import java.util.UUID
 // labels only; an island for Home / Pinned / Archived / Trash, pulled up for the pins and labels, and an editor with
 // one line of tools whose full set slides up from the bottom.
 
-private enum class NotesView(val label: String, val icon: Int) {
-    Home("Home", R.drawable.ic_home), Pinned("Pinned", R.drawable.ic_push_pin),
-    Archived("Archived", R.drawable.ic_archive), Trash("Trash", R.drawable.ic_delete),
-}
+private enum class NotesView(val label: String) { Home("Home"), Archived("Archived"), Trash("Trash") }
 
 // Keep's palette, which the imported notes already use.
 private val NOTE_COLORS = listOf("#F28B82", "#FBBC04", "#FFF475", "#CCFF90", "#A7FFEB", "#CBF0F8", "#AECBFA", "#D7AEFB", "#FDCFE8", "#E6C9A8", "#E8EAED")
@@ -94,7 +92,6 @@ internal fun notesStore() = NotesStore(File(TetraFolder.root(Environment.getExte
 private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Trash -> n.trashedAt != null
     NotesView.Archived -> n.trashedAt == null && n.archivedAt != null
-    NotesView.Pinned -> n.trashedAt == null && n.archivedAt == null && n.pinned
     NotesView.Home -> n.trashedAt == null && n.archivedAt == null
 }
 private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "").lowercase()
@@ -114,6 +111,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var drawer by remember { mutableStateOf(false) }
     var open by remember { mutableStateOf<Note?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(version, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
     fun create(checklist: Boolean) = scope.launch {
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
@@ -138,14 +136,29 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         })
         return
     }
-    BackHandler { when { drawer -> drawer = false; searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() } }
+    BackHandler { when { selected.isNotEmpty() -> selected = emptySet(); drawer -> drawer = false; searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() } }
 
     val all = notes.orEmpty()
     val q = fold(query.trim())
     val shown = all.filter { n -> inView(n, view) && (label == null || label in n.labels) &&
         (q.isEmpty() || fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")).contains(q)) }
-        .sortedWith(if (view == NotesView.Trash) compareByDescending { it.trashedAt } else compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt })
+        .sortedWith(if (view == NotesView.Trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt })
+    // Pinned on top of Home, the rest below them (asked 2026-09-26).
+    val pinned = if (view == NotesView.Home) shown.filter { it.pinned } else emptyList()
+    val others = shown - pinned.toSet()
     val labels = all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap()
+    val wide = LocalConfiguration.current.screenWidthDp >= 700
+    val picked = all.filter { it.id in selected }
+    fun act(said: String, change: (org.json.JSONObject) -> Unit) = scope.launch(Dispatchers.IO) {
+        picked.forEach { store.update(it.id, change) }
+        withContext(Dispatchers.Main) { selected = emptySet(); version++; message = said }
+    }
+    val card: @Composable (Note) -> Unit = { n ->
+        NoteCard(n, selected = n.id in selected, longPress = { selected = if (n.id in selected) selected - n.id else selected + n.id }) {
+            if (selected.isEmpty()) open = n else selected = if (n.id in selected) selected - n.id else selected + n.id
+        }
+    }
+    val header: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp)) }
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalStaggeredGrid(
@@ -163,7 +176,6 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                         if (view == NotesView.Trash && shown.isNotEmpty()) TextButton(onClick = {
                             scope.launch(Dispatchers.IO) { shown.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { version++; message = "Notes Trash emptied" } }
                         }) { Text("Empty") }
-                        IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search notes") }
                     }
                     if (searching) NoteField(query, { query = it }, "Search notes", Modifier.fillMaxWidth(), autofocus = true)
                     if (label != null) Chip("$label  ✕", on = true) { label = null }
@@ -175,24 +187,50 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                     q.isNotEmpty() -> "No note matches."
                     view == NotesView.Trash -> "The Trash is empty. Notes stay here 30 days."
                     view == NotesView.Archived -> "Nothing archived."
-                    view == NotesView.Pinned -> "Pin a note to keep it at hand."
                     else -> "No notes yet. Start one below."
                 }, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            items(shown, key = { it.id }) { n -> NoteCard(n) { open = n } }
+            if (pinned.isNotEmpty()) {
+                item(span = StaggeredGridItemSpan.FullLine) { header("Pinned") }
+                items(pinned, key = { it.id }) { card(it) }
+                if (others.isNotEmpty()) item(span = StaggeredGridItemSpan.FullLine) { header("Others") }
+            }
+            items(others, key = { it.id }) { card(it) }
         }
 
         Row(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom,
         ) {
-            IslandBottomBar(expand = { drawer = true }, visible = true) {
-                NotesView.entries.forEach { v -> IslandNavigationItem(v.label, view == v, v.icon) { view = v } }
+            if (selected.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = islandColor(), contentColor = islandContentColor()) {
+                // What you picked: the navigation gives way to what can be done with it.
+                Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = "Clear selection") }
+                    Text("${selected.size}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
+                    if (view == NotesView.Trash) {
+                        IconButton(onClick = { act("Restored") { it.remove("trashedAt") } }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore") }
+                        IconButton(onClick = { scope.launch(Dispatchers.IO) { picked.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { selected = emptySet(); version++; message = "Deleted" } } }) {
+                            Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete for good", tint = Color(0xFFE35A4F)) }
+                    } else {
+                        val allPinned = picked.all { it.pinned }
+                        IconButton(onClick = { act(if (allPinned) "Unpinned" else "Pinned") { it.put("isPinned", !allPinned) } }) { Icon(painterResource(R.drawable.ic_push_pin), contentDescription = if (allPinned) "Unpin" else "Pin") }
+                        if (view == NotesView.Archived) IconButton(onClick = { act("Unarchived") { it.remove("archivedAt") } }) { Icon(painterResource(R.drawable.ic_unarchive), contentDescription = "Unarchive") }
+                        else IconButton(onClick = { act("Archived") { it.put("archivedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_archive), contentDescription = "Archive") }
+                        IconButton(onClick = { act("Moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move to Trash") }
+                    }
+                }
+            } else IslandBottomBar(expand = { drawer = true }, visible = true) {
+                // Home, then the two ways to start; a tablet has room for Archive and Trash too, a phone keeps them in the drawer.
+                IslandNavigationItem("Home", view == NotesView.Home, R.drawable.ic_home) { view = NotesView.Home }
+                IslandNavigationItem("New note", false, R.drawable.ic_note_add) { create(false) }
+                IslandNavigationItem("Checklist", false, R.drawable.ic_checklist) { create(true) }
+                if (wide) {
+                    IslandNavigationItem("Archived", view == NotesView.Archived, R.drawable.ic_archive) { view = NotesView.Archived }
+                    IslandNavigationItem("Trash", view == NotesView.Trash, R.drawable.ic_delete) { view = NotesView.Trash }
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RoundIsland(R.drawable.ic_note_add, "New note") { create(false) }
-                RoundIsland(R.drawable.ic_checklist, "New checklist") { create(true) }
-            }
+            // Search where it is everywhere else in the app: bottom right.
+            if (selected.isEmpty()) RoundIsland(R.drawable.ic_search, "Search notes") { searching = !searching; if (!searching) query = "" }
         }
         message?.let { Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)) { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) } }
@@ -200,18 +238,37 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
 
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Pinned", style = MaterialTheme.typography.titleMedium)
-            val pinned = all.filter { it.pinned && it.trashedAt == null && it.archivedAt == null }
-            if (pinned.isEmpty()) Text("Pin a note from its editor to find it here.", style = MaterialTheme.typography.bodyMedium)
-            else LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(pinned, key = { it.id }) { n -> Box(Modifier.width(170.dp)) { NoteCard(n, small = true) { drawer = false; open = n } } }
+            if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DrawerButton(R.drawable.ic_archive, "Archived", view == NotesView.Archived, Modifier.weight(1f)) { view = NotesView.Archived; drawer = false }
+                DrawerButton(R.drawable.ic_delete, "Trash", view == NotesView.Trash, Modifier.weight(1f)) { view = NotesView.Trash; drawer = false }
             }
-            Text("Labels", style = MaterialTheme.typography.titleMedium)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("All", on = label == null) { label = null; drawer = false }
-                labels.forEach { (l, count) -> Chip("$l  $count", on = label == l) { label = l; drawer = false } }
+            // The labels, one under another in their own panel (the user's sketch, 2026-09-26).
+            Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
+                    LabelRow("All notes", null, label == null) { label = null; drawer = false }
+                    labels.forEach { (l, count) -> LabelRow(l, count, label == l) { label = l; drawer = false } }
+                }
             }
         }
+    }
+}
+
+@Composable private fun LabelRow(name: String, count: Int?, on: Boolean, click: () -> Unit) = Row(
+    Modifier.fillMaxWidth().clickable(onClick = click).background(if (on) Color.White.copy(alpha = 0.14f) else Color.Transparent).padding(horizontal = 18.dp, vertical = 12.dp),
+    horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
+) {
+    Icon(painterResource(R.drawable.ic_label), contentDescription = null, modifier = Modifier.size(20.dp))
+    Text(name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    if (count != null) Text("$count", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.6f))
+}
+
+@Composable private fun DrawerButton(icon: Int, label: String, on: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
+    color = if (on) driveNavigationSelectedColor() else Color.White.copy(alpha = 0.10f),
+    contentColor = if (on) driveNavigationSelectedContentColor() else islandContentColor(),
+    shape = MaterialTheme.shapes.large, modifier = modifier.clickable(onClick = click),
+) {
+    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(painterResource(icon), contentDescription = null); Text(label, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -226,14 +283,16 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     shape = CircleShape, modifier = Modifier.clickable(onClick = click),
 ) { Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge) }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable private fun NoteCard(n: Note, small: Boolean = false, open: () -> Unit) {
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable private fun NoteCard(n: Note, small: Boolean = false, selected: Boolean = false, longPress: (() -> Unit)? = null, open: () -> Unit) {
     val tint = noteColor(n.color)
     Surface(
         color = tint ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         contentColor = if (tint != null) InkOnColor else MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = open),
+        modifier = Modifier.fillMaxWidth()
+            .then(if (selected) Modifier.border(3.dp, Color.White, MaterialTheme.shapes.large) else Modifier)
+            .combinedClickable(onClick = open, onLongClick = longPress),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.Top) {
@@ -292,7 +351,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
     fun edit(t: String = title, b: TextFieldValue = body, i: List<CheckItem> = items, step: Boolean = false) {
         val snap = Snap(t, b.text, i)
-        if (step) undo.step(snap) else if (snap != Snap(title, body.text, items)) undo.push(snap)
+        val done = NoteUndo.endsWord(title, t, t.length) || NoteUndo.endsWord(body.text, b.text, b.selection.start)
+        if (step) undo.step(snap) else if (snap != Snap(title, body.text, items)) undo.push(snap, wordDone = done)
         title = t; body = b; items = i; changed = true; undoTick++
     }
     fun apply(s: Snap?) { if (s == null) return; title = s.title; body = TextFieldValue(s.body, TextRange(s.body.length)); items = s.items; changed = true; undoTick++ }

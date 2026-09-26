@@ -1,3 +1,22 @@
+# 27 September, past midnight — motion photos built, to test in the morning
+
+Both apps (SYNC_PLAN: the rule is library.pairMotion / MotionRules, the same stem rule as the importer):
+- **Show as one** (default): a picture and its seconds of video in the same folder are one photo; the video half
+  never shows as an item. **Remove**: PC — import leaves the half out (the old behaviour); phone — Gallery tools
+  shows "Move N motion videos to Trash" (Android's Trash, 30 days). The 23 halves in the purgatory stay there
+  (user: "don't bring them back, save space").
+- **Video inside the file** (Pixel/Samsung/Xiaomi, ~8% of the library on T7): found by `ftyp` after the picture
+  (embeddedVideoOffset), served as media://motion/<id> on the PC, cut into cache/motion on the phone. HEVC plays in
+  Electron here (checked).
+- Viewer: a Motion button at the top right (PC: right end of the island) plays/stops it. **Autoplay motion photos**
+  is a Gallery/Settings switch, **off by default**. No badge on thumbnails (asked).
+- Notes on a phone: Tags left the island; solid black chips over it with **Tag +**; hidden while typing.
+
+Tested on demo files only (hidden desktop copy, emulator). Not yet on the real devices: install the new .deb
+(`desktop/release/`) and the debug APK; the phone and tablet had the build before the Autoplay switch.
+
+---
+
 # 26 September night — 0.3.0 Beta 1 published
 
 Both repos merged into `main`; releases `v0.3.0-beta.1` (APK) and `desktop-v0.3.0-beta.1` (.deb, AppImage), both

@@ -130,7 +130,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         refreshing = true
         val got = NotesSync.now(context) // what arrives reloads the list through NotesSync.changed
         refreshing = false
-        if (got == null) message = "Could not reach the computer"
+        got.exceptionOrNull()?.let { message = "Notes did not sync: ${it.message ?: it.javaClass.simpleName}" }
     }
     LaunchedEffect(hasAccess) { if (hasAccess) NotesSync.now(context) }
     fun create(checklist: Boolean) = scope.launch {

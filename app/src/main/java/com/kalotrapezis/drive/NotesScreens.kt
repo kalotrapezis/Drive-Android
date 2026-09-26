@@ -337,6 +337,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     var tools by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<NoteVersion>?>(null) }
     var changed by remember { mutableStateOf(false) }
+    var snapped by remember { mutableStateOf(false) }
     var undoTick by remember { mutableIntStateOf(0) }
     val undo = remember { NoteUndo(Snap(title, body.text, items)) }
     val trashed = initial.trashedAt != null
@@ -347,7 +348,11 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     LaunchedEffect(title, body.text, items) {
         if (!changed) return@LaunchedEffect
         delay(400)
-        withContext(Dispatchers.IO) { store.setText(initial.id, title, body.text, if (initial.checklist) items else null) }
+        withContext(Dispatchers.IO) {
+            // The note as it was when opened goes to its history before the first change is written over it.
+            if (!snapped) { store.snapshot(initial.id); snapped = true }
+            store.setText(initial.id, title, body.text, if (initial.checklist) items else null)
+        }
     }
     fun edit(t: String = title, b: TextFieldValue = body, i: List<CheckItem> = items, step: Boolean = false) {
         val snap = Snap(t, b.text, i)
@@ -360,7 +365,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     // Leaving: what is pending is saved, and the note as it now is goes to its history, if anything changed.
     fun leave(said: String? = null, last: ((org.json.JSONObject) -> Unit)? = null) = scope.launch {
         val saved = withContext(Dispatchers.IO) {
-            if (changed) store.setText(initial.id, title, body.text, if (initial.checklist) items else null)
+            if (changed) { if (!snapped) { store.snapshot(initial.id); snapped = true }; store.setText(initial.id, title, body.text, if (initial.checklist) items else null) }
             last?.let { store.update(initial.id, it) }
             if (changed) store.snapshot(initial.id)
             store.get(initial.id)
@@ -474,7 +479,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             title = { Text("History") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("A version is kept each time you leave the note with changes. Restoring keeps the current one too.", style = MaterialTheme.typography.bodySmall)
+                    Text("The note as it was before you last changed it, and as you left it — the newest three. Restoring keeps the current one too.", style = MaterialTheme.typography.bodySmall)
                     if (versions.isEmpty()) Text("No versions yet.")
                     versions.forEach { v ->
                         Row(verticalAlignment = Alignment.CenterVertically) {

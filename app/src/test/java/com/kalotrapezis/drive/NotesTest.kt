@@ -19,11 +19,14 @@ class NotesTest {
         assertTrue(s.snapshot(n.id)!!.matches(Regex("Shopping-\\d{4}-\\d\\d-\\d\\d-\\d\\d-\\d\\d-1\\.json")))
         s.setText(n.id, "Shopping", "milk, eggs", null)
         s.snapshot(n.id)
+        assertNull("the same text is not kept twice", s.snapshot(n.id))
         val first = s.history(n.id).first { it.content == "milk" }
         s.restoreVersion(n.id, first.name)
         assertEquals("milk", s.get(n.id)!!.content)
         assertEquals("kept", s.json(n.id)!!.getString("future"))
-        assertEquals(3, s.history(n.id).size)
+        s.snapshot(n.id)
+        s.setText(n.id, "Shopping", "bread", null); s.snapshot(n.id)
+        assertEquals(listOf("bread", "milk", "milk, eggs"), s.history(n.id).map { it.content })
     }
 
     @Test fun `checklist items keep their other fields by id`() {

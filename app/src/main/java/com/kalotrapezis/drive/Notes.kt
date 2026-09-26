@@ -27,7 +27,7 @@ internal data class Note(
     val empty get() = title.isBlank() && content.isBlank() && items.none { it.text.isNotBlank() }
 }
 
-internal data class NoteVersion(val name: String, val at: Long, val title: String, val content: String, val items: List<CheckItem>)
+internal data class NoteVersion(val name: String, val at: Long, val title: String, val content: String, val items: List<CheckItem>, val n: Int = 0)
 
 internal class NotesStore(val root: File, private val deviceId: String = "tetra-android") {
     private fun isId(id: String) = id.isNotEmpty() && id.length <= 64 && id.all { it.isLetterOrDigit() || it == '-' }
@@ -73,21 +73,28 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
         if (items != null) o.put("checklistItems", itemsJson(items, o.optJSONArray("checklistItems")))
     }
 
-    /** The editor closed with changes: the note as it now is goes to its history, numbered. */
+    /**
+     * A copy of the note as it is now, in its history: taken before the first change of an opened note and when it is
+     * left (asked 2026-09-26: "when I change stuff I can still see my old note before the edits"). The same text as
+     * the newest copy is not kept twice, and only the newest [KEEP] copies stay.
+     */
     fun snapshot(id: String, now: Long = System.currentTimeMillis()): String? {
         val o = json(id) ?: return null
+        val note = parse(o)
+        history(id).firstOrNull()?.let { if (it.title == note.title && it.content == note.content && it.items == note.items) return null }
         val dir = versions(id).apply { mkdirs() }
-        val n = dir.listFiles { f -> f.name.endsWith(".json") }.orEmpty().size + 1
+        val n = (dir.listFiles().orEmpty().mapNotNull { Regex("-(\\d+)\\.json$").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
         val c = Calendar.getInstance().apply { timeInMillis = now }
         val stamp = "%04d-%02d-%02d-%02d-%02d".format(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
         val name = "${safeTitle(o.optString("title"))}-$stamp-$n.json"
-        File(dir, name).writeText(o.toString(2))
+        File(dir, name).writeText(JSONObject(o.toString()).put("savedAt", now).put("version", n).toString(2))
+        history(id).drop(KEEP).forEach { File(dir, it.name).delete() }
         return name
     }
 
     fun history(id: String): List<NoteVersion> = versions(id).listFiles { f -> f.name.endsWith(".json") }.orEmpty().mapNotNull { f ->
-        runCatching { parse(JSONObject(f.readText())).let { NoteVersion(f.name, it.updatedAt, it.title, it.content, it.items) } }.getOrNull()
-    }.sortedByDescending { it.at }
+        runCatching { JSONObject(f.readText()).let { o -> parse(o).let { NoteVersion(f.name, it.updatedAt, it.title, it.content, it.items, o.optInt("version")) } } }.getOrNull()
+    }.sortedWith(compareByDescending<NoteVersion> { it.n }.thenByDescending { it.at })
 
     /** A version comes back as a new edit; what it replaces is kept in the history first. */
     fun restoreVersion(id: String, name: String): Note {
@@ -148,6 +155,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     }
 
     companion object {
+        const val KEEP = 3 // copies of a note in its history
         fun safeTitle(t: String) = t.replace(Regex("[/\\\\\u0000:*?\"<>|]"), " ").replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { "Untitled" }
 
         fun parse(o: JSONObject): Note {

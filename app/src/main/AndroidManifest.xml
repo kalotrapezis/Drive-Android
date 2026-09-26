@@ -24,7 +24,7 @@
         <receiver android:name=".DriveOpenerReceiver" android:exported="false" />
         <service android:name=".SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".PhotoAnalysisService" android:exported="false" android:foregroundServiceType="dataSync" />
-        <activity android:name=".MainActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="true">
+        <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

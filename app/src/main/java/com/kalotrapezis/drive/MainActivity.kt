@@ -2529,6 +2529,7 @@ private fun PhotoTab(
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var motionMode by remember { mutableStateOf(metadataStore.motionPhotos()) }
+    var motionAutoplay by remember { mutableStateOf(metadataStore.motionPlays()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
     var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
     val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
@@ -3038,6 +3039,8 @@ private fun PhotoTab(
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromGallery(hide); hideDocuments = hide },
         motionMode = motionMode,
         setMotionMode = { mode -> metadataStore.setMotionPhotos(mode); motionMode = mode },
+        motionAutoplay = motionAutoplay,
+        setMotionAutoplay = { on -> metadataStore.setMotionPlays(on); motionAutoplay = on },
         motionHalves = allEntries.count { it.motion != null },
         removeMotionHalves = { moveToTrash(allEntries.mapNotNullTo(HashSet()) { it.motion }); toolsOpen = false },
         albums = collections,
@@ -3782,6 +3785,8 @@ private fun GalleryToolsSheet(
     setHideDocuments: (Boolean) -> Unit,
     motionMode: String,
     setMotionMode: (String) -> Unit,
+    motionAutoplay: Boolean,
+    setMotionAutoplay: (Boolean) -> Unit,
     motionHalves: Int,
     removeMotionHalves: () -> Unit,
     albums: List<PhotoCollection>,
@@ -3832,6 +3837,10 @@ private fun GalleryToolsSheet(
             Text(if (motionMode == "remove") "The few seconds of video beside a picture (MVIMG_….MP4 next to MVIMG_….jpg) go to Android's Trash, where they stay 30 days."
                 else "A picture and its few seconds of video show as one photo; Motion in the viewer plays them. Pictures with the video inside play too.",
                 style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setMotionAutoplay(!motionAutoplay) }) {
+                Checkbox(checked = motionAutoplay, onCheckedChange = setMotionAutoplay, colors = neutralCheckboxColors())
+                Text("Autoplay motion photos")
+            }
             if (motionMode == "remove" && motionHalves > 0) DriveWideAction(R.drawable.ic_delete, "Move $motionHalves motion ${if (motionHalves == 1) "video" else "videos"} to Trash", removeMotionHalves)
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -4531,9 +4540,9 @@ private fun PhotoViewer(
         if (hasLocationAccess) locationsUpdated()
     }
     // Motion photos: the paired video (selected.motion) or the one inside the file, played in place of the picture.
-    // Motion on: a motion photo plays once by itself when it opens (asked 2026-09-27); off: the still. Remembered.
-    var motionOn by remember { mutableStateOf(metadataStore.motionPlays()) }
-    var motionEnded by remember(selectedUri) { mutableStateOf(false) }
+    // The Motion button plays it now; Gallery tools › Autoplay motion photos (off by default, asked 2026-09-27) on opening.
+    val autoplayMotion = remember { metadataStore.motionPlays() }
+    var motionPlaying by remember(selectedUri) { mutableStateOf(autoplayMotion) }
     val motionUri by produceState<Uri?>(initialValue = null, selected.photoKey) {
         value = if (selected.isVideo) null else selected.motion ?: withContext(Dispatchers.IO) { embeddedMotion(context, selected) }
     }
@@ -4588,8 +4597,8 @@ private fun PhotoViewer(
             background = if (fullscreen) Color.Black else MaterialTheme.colorScheme.surfaceVariant,
             toggleControls = { if (fullscreen && !zoomMode) controlsVisible = !controlsVisible },
             showDetails = { detailsOpen = true },
-            motion = motionUri.takeIf { motionOn && !motionEnded },
-            motionEnded = { motionEnded = true },
+            motion = motionUri.takeIf { motionPlaying },
+            motionEnded = { motionPlaying = false },
         )
     }
     val actions: @Composable (Modifier) -> Unit = { modifier ->
@@ -4608,7 +4617,7 @@ private fun PhotoViewer(
             modifier = modifier,
         )
     }
-    val toggleMotion: (() -> Unit)? = motionUri?.let { { motionOn = !motionOn; motionEnded = false; metadataStore.setMotionPlays(motionOn) } }
+    val toggleMotion: (() -> Unit)? = motionUri?.let { { motionPlaying = !motionPlaying } }
     if (fullscreen) Box(Modifier.fillMaxSize().background(Color.Black)) {
         pager(Modifier.fillMaxSize())
         AnimatedVisibility(controlsVisible && !zoomMode, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -4622,7 +4631,7 @@ private fun PhotoViewer(
                 toggleMotion?.let { toggle -> Surface(
                     color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
-                ) { MotionSwitch(motionOn, toggle) } }
+                ) { MotionSwitch(motionPlaying, toggle) } }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                     ViewerFilmstrip(entries, selectedUri, filmstripState, select)
                     actions(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
@@ -4630,7 +4639,7 @@ private fun PhotoViewer(
             }
         }
     } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        ViewerHeader(selected, close) { toggleMotion?.let { MotionSwitch(motionOn, it) } }
+        ViewerHeader(selected, close) { toggleMotion?.let { MotionSwitch(motionPlaying, it) } }
         pager(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp))
         ViewerFilmstrip(entries, selectedUri, filmstripState, select)
         actions(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
@@ -4659,8 +4668,8 @@ private fun PhotoViewer(
 
 @Composable
 private fun MotionSwitch(on: Boolean, toggle: () -> Unit) = IconButton(onClick = toggle) {
-    Icon(painterResource(R.drawable.ic_motion), contentDescription = if (on) "Motion on" else "Motion off",
-        tint = if (on) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.45f))
+    Icon(painterResource(R.drawable.ic_motion), contentDescription = if (on) "Stop the motion" else "Play the motion",
+        tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current)
 }
 
 @Composable

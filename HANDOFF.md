@@ -1,3 +1,19 @@
+# End of 26 September — the suite is complete; 0.3.0-beta.1 not published yet
+
+Since the morning's entry below: Notes in both apps (D7, sync on a pause, history of 3, labels only); Both ways trash
+(D6: declined → the phone's Trash, the phone's Trash → `/trashed` → the PC's Trash); Import photos/files on the PC,
+straight to T7 in checked 1 GB batches; Offload by itself (T7 `auto`); Notifications and Settings (Appearance) pages;
+a right-click menu; the sidebar as one entry each with bottom islands; Android sync every 30 min.
+
+Fixed today, with tests: `/have` crashed on the empty first question after a fresh start (every sync failed); the
+first notes import swept 85 trashed notes (the user later deleted them on purpose — **never restore without asking**).
+
+State: PC runs the latest beta .deb; the phone has the latest debug build (**Media management not granted** — the Sync
+page asks, or the "Allow Media management" button); the tablet has an older debug build (not connected since noon).
+Not yet: publishing the beta (ask first), the phone's own History view, Files showing a drive as a location.
+
+---
+
 # 26 September — 0.3.0-beta.1 built, not published
 
 Built today: **Notes** in both apps (SYNC_PLAN D7), a drive as a folder album with its own Screenshots/Documents and

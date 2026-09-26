@@ -29,6 +29,17 @@ class NotesTest {
         assertEquals(listOf("bread", "milk", "milk, eggs"), s.history(n.id).map { it.content })
     }
 
+    @Test fun `a new note is not saved or sent until something is written, and leaves no trace when left empty`() {
+        val s = store()
+        val n = s.create(checklist = false)
+        assertEquals(0, s.payload().getJSONArray("notes").length())
+        s.remove(n.id)
+        assertEquals(0, s.deletions().length())
+        val m = s.create(checklist = false)
+        s.setText(m.id, "Hi", "", null)
+        assertEquals(1, s.payload().getJSONArray("notes").length())
+    }
+
     @Test fun `checklist items keep their other fields by id`() {
         val s = store()
         val n = s.create(checklist = true)

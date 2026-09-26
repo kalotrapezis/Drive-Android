@@ -60,6 +60,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -492,39 +493,17 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                     TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, "Note deleted") } } }) { Text("Delete", color = Color(0xFFE35A4F)) }
                 } else {
                     swap()
-                    Row(Modifier.widthIn(max = screen - 150.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) { row() }
+                    // The note's controls fit as they are; the longer formatting row scrolls sideways.
+                    if (formatting && canFormat) Row(Modifier.widthIn(max = screen - 150.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) { row() }
+                    else row()
                 }
             }
         }
     }
 
     if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
-        // Big tiles, as in Files' tools sheet (asked 2026-09-26: the small ones were too small on a phone).
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!initial.checklist && !reading) {
-                Text("Text", style = MaterialTheme.typography.titleSmall)
-                val textTools: List<Triple<Int, String, () -> Unit>> = listOf(
-                    Triple(R.drawable.ic_title, "Heading") { format { NoteFormat.prefix(it, "# ") } },
-                    Triple(R.drawable.ic_format_bold, "Bold") { format { NoteFormat.wrap(it, "**") } },
-                    Triple(R.drawable.ic_format_italic, "Italic") { format { NoteFormat.wrap(it, "*") } },
-                    Triple(R.drawable.ic_format_strikethrough, "Strikethrough") { format { NoteFormat.wrap(it, "~~") } },
-                    Triple(R.drawable.ic_code, "Code") { format { NoteFormat.wrap(it, "`") } },
-                    Triple(R.drawable.ic_format_list_bulleted, "Bulleted list") { format { NoteFormat.prefix(it, "- ") } },
-                    Triple(R.drawable.ic_format_list_numbered, "Numbered list") { format { NoteFormat.prefix(it, "1. ") } },
-                    Triple(R.drawable.ic_check_box, "Checkbox list") { format { NoteFormat.prefix(it, "- [ ] ") } },
-                    Triple(R.drawable.ic_format_quote, "Quote") { format { NoteFormat.prefix(it, "> ") } },
-                    Triple(R.drawable.ic_link, "Link") { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { "link" }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } },
-                    Triple(R.drawable.ic_horizontal_rule, "Divider") { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } },
-                    Triple(R.drawable.ic_format_indent_increase, "Indent") { format { NoteFormat.indent(it, false) } },
-                    Triple(R.drawable.ic_format_indent_decrease, "Outdent") { format { NoteFormat.indent(it, true) } },
-                )
-                textTools.chunked(if (wide) 7 else 4).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { (icon, name, run) -> DriveActionTile(icon, name, run) }
-                        repeat((if (wide) 7 else 4) - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
+            // The formatting tools are on the island now (its swap button); the sheet keeps colour, and Archive and Trash on a phone.
             Text("Colour", style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 (listOf<String?>(null) + NOTE_COLORS).forEach { hex ->
@@ -576,10 +555,12 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
 }
 
-@Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) =
-    IconButton(onClick = click, enabled = enabled, modifier = Modifier.size(40.dp).then(if (on) Modifier.background(tint.copy(alpha = 0.15f), CircleShape) else Modifier)) {
-        Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(21.dp))
-    }
+// A plain 40 dp round button: an IconButton is always at least 48 dp, and eight of them did not fit a phone's island.
+@Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
+    Modifier.size(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
+        .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = description, onClick = click),
+    contentAlignment = Alignment.Center,
+) { Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(21.dp)) }
 
 /** Open items in their order, then the done ones under a line; Next on the keyboard makes the next item. */
 @Composable private fun ChecklistEditor(items: List<CheckItem>, ink: Color, readOnly: Boolean, focusFirst: Int, change: (List<CheckItem>, Boolean) -> Unit) {

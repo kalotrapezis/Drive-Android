@@ -42,7 +42,10 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     private fun file(id: String): File { require(isId(id)) { "Not a note." }; return File(root, "$id.json") }
     private fun versions(id: String): File { require(isId(id)) { "Not a note." }; return File(File(root, "history"), id) }
 
-    fun json(id: String): JSONObject? = runCatching { JSONObject(file(id).readText()) }.getOrNull()
+    // A new note lives here until something is written in it: an empty one is never saved, so never sent (asked 2026-09-26).
+    private val drafts = mutableMapOf<String, JSONObject>()
+
+    fun json(id: String): JSONObject? = runCatching { JSONObject(file(id).readText()) }.getOrNull() ?: drafts[id]?.let { JSONObject(it.toString()) }
     fun get(id: String): Note? = json(id)?.let(::parse)
 
     fun list(): List<Note> = root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
@@ -51,6 +54,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     /** Whole, through a temporary file, so a crash never leaves half a note. */
     fun write(o: JSONObject) {
         root.mkdirs()
+        drafts.remove(o.getString("id"))
         val target = file(o.getString("id"))
         val tmp = File(root, "${target.name}.tmp")
         tmp.writeText(o.toString(2))
@@ -63,7 +67,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
             .put("createdAt", now).put("updatedAt", now).put("deviceId", deviceId).put("syncStatus", "LOCAL_ONLY")
             .put("noteType", if (checklist) "CHECKLIST" else "TEXT").put("isPinned", false).put("labels", JSONArray(labels))
         if (checklist) o.put("checklistItems", JSONArray())
-        write(o)
+        drafts[o.getString("id")] = o
         return parse(o)
     }
 
@@ -89,6 +93,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     fun snapshot(id: String, now: Long = System.currentTimeMillis()): String? {
         val o = json(id) ?: return null
         val note = parse(o)
+        if (note.empty) return null // nothing to go back to
         history(id).firstOrNull()?.let { if (it.title == note.title && it.content == note.content && it.items == note.items) return null }
         val dir = versions(id).apply { mkdirs() }
         val n = (dir.listFiles().orEmpty().mapNotNull { Regex("-(\\d+)\\.json$").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
@@ -120,6 +125,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
 
     /** For good: the file goes and the id is remembered. Its history stays, so it can still be read back. */
     fun remove(id: String, at: Long = System.currentTimeMillis()) {
+        if (drafts.remove(id) != null && !file(id).exists()) return // never saved: nothing to tell anyone
         file(id).delete()
         val old = deletions()
         val list = JSONArray()

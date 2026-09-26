@@ -1994,7 +1994,7 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
 
 private val DriveTrashAccent = Color(0xFFE3685F)
 
-@Composable private fun RowScope.DriveActionTile(icon: Int, description: String, click: () -> Unit) = Surface(
+@Composable internal fun RowScope.DriveActionTile(icon: Int, description: String, click: () -> Unit) = Surface(
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
     modifier = Modifier.weight(1f).height(64.dp),
 ) { IconButton(onClick = click, modifier = Modifier.fillMaxWidth().height(64.dp)) { Icon(painterResource(icon), contentDescription = description, modifier = Modifier.size(26.dp)) } }

@@ -374,6 +374,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         }
         onClose(saved, said)
     }
+    fun archive() { if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave("Note archived") { it.put("archivedAt", System.currentTimeMillis()) } }
+    fun toTrash() { leave("Note moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }
     fun format(f: (NoteFormat.Edit) -> NoteFormat.Edit) {
         val r = f(NoteFormat.Edit(body.text, body.selection.min, body.selection.max))
         edit(b = TextFieldValue(r.text, TextRange(r.start, r.end)), step = true)
@@ -403,7 +405,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).
         val w = islandContentColor()
         Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
-            IslandBottomBar(expand = { if (!trashed) tools = true }, visible = true) {
+            // Out of the way while a sheet or dialog is up, back when it closes.
+            IslandBottomBar(expand = { if (!trashed) tools = true }, visible = !tools && !tagsOpen && history == null) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 if (trashed) {
                     TextButton(onClick = { leave("Note restored") { it.remove("trashedAt") } }) { Text("Restore", color = w) }
@@ -421,48 +424,54 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                     Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
                     if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
                     Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
+                    if (wide) {
+                        Tool(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive", w) { archive() }
+                        Tool(R.drawable.ic_delete, "Move to Trash", w) { toTrash() }
+                    }
                 }
             }
         }
     }
 
     if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = islandColor(), contentColor = islandContentColor()) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Big tiles, as in Files' tools sheet (asked 2026-09-26: the small ones were too small on a phone).
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!initial.checklist && !reading) {
                 Text("Text", style = MaterialTheme.typography.titleSmall)
-                FlowRow {
-                    val w = Color.White
-                    Tool(R.drawable.ic_title, "Heading", w) { format { NoteFormat.prefix(it, "# ") } }
-                    Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
-                    Tool(R.drawable.ic_format_italic, "Italic", w) { format { NoteFormat.wrap(it, "*") } }
-                    Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w) { format { NoteFormat.wrap(it, "~~") } }
-                    Tool(R.drawable.ic_code, "Code", w) { format { NoteFormat.wrap(it, "`") } }
-                    Tool(R.drawable.ic_format_list_bulleted, "Bulleted list", w) { format { NoteFormat.prefix(it, "- ") } }
-                    Tool(R.drawable.ic_format_list_numbered, "Numbered list", w) { format { NoteFormat.prefix(it, "1. ") } }
-                    Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
-                    Tool(R.drawable.ic_format_quote, "Quote", w) { format { NoteFormat.prefix(it, "> ") } }
-                    Tool(R.drawable.ic_link, "Link", w) { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { "link" }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } }
-                    Tool(R.drawable.ic_horizontal_rule, "Divider", w) { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } }
-                    Tool(R.drawable.ic_format_indent_increase, "Indent", w) { format { NoteFormat.indent(it, false) } }
-                    Tool(R.drawable.ic_format_indent_decrease, "Outdent", w) { format { NoteFormat.indent(it, true) } }
+                val textTools: List<Triple<Int, String, () -> Unit>> = listOf(
+                    Triple(R.drawable.ic_title, "Heading") { format { NoteFormat.prefix(it, "# ") } },
+                    Triple(R.drawable.ic_format_bold, "Bold") { format { NoteFormat.wrap(it, "**") } },
+                    Triple(R.drawable.ic_format_italic, "Italic") { format { NoteFormat.wrap(it, "*") } },
+                    Triple(R.drawable.ic_format_strikethrough, "Strikethrough") { format { NoteFormat.wrap(it, "~~") } },
+                    Triple(R.drawable.ic_code, "Code") { format { NoteFormat.wrap(it, "`") } },
+                    Triple(R.drawable.ic_format_list_bulleted, "Bulleted list") { format { NoteFormat.prefix(it, "- ") } },
+                    Triple(R.drawable.ic_format_list_numbered, "Numbered list") { format { NoteFormat.prefix(it, "1. ") } },
+                    Triple(R.drawable.ic_check_box, "Checkbox list") { format { NoteFormat.prefix(it, "- [ ] ") } },
+                    Triple(R.drawable.ic_format_quote, "Quote") { format { NoteFormat.prefix(it, "> ") } },
+                    Triple(R.drawable.ic_link, "Link") { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { "link" }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } },
+                    Triple(R.drawable.ic_horizontal_rule, "Divider") { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } },
+                    Triple(R.drawable.ic_format_indent_increase, "Indent") { format { NoteFormat.indent(it, false) } },
+                    Triple(R.drawable.ic_format_indent_decrease, "Outdent") { format { NoteFormat.indent(it, true) } },
+                )
+                textTools.chunked(if (wide) 7 else 4).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (icon, name, run) -> DriveActionTile(icon, name, run) }
+                        repeat((if (wide) 7 else 4) - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
             }
             Text("Colour", style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 (listOf<String?>(null) + NOTE_COLORS).forEach { hex ->
-                    Box(Modifier.size(34.dp).background(noteColor(hex) ?: Color(0xFF3A3F43), CircleShape)
+                    Box(Modifier.size(44.dp).background(noteColor(hex) ?: Color(0xFF3A3F43), CircleShape)
                         .then(if (color == hex) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
                         .clickable { color = hex; meta { if (hex == null) it.remove("color") else it.put("color", hex) } })
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = {
-                    tools = false
-                    if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave("Note archived") { it.put("archivedAt", System.currentTimeMillis()) }
-                }) { Icon(painterResource(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive), null, tint = Color.White); Text(if (archived) "  Unarchive" else "  Archive", color = Color.White) }
-                TextButton(onClick = { tools = false; leave("Note moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }) {
-                    Icon(painterResource(R.drawable.ic_delete), null, tint = Color.White); Text("  Trash", color = Color.White)
-                }
+            // A tablet has Archive and Trash on the island; a phone has them here.
+            if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { DriveWideAction(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive") { tools = false; archive() } }
+                Box(Modifier.weight(1f)) { DriveWideAction(R.drawable.ic_delete, "Trash") { tools = false; toTrash() } }
             }
         }
     }
@@ -503,8 +512,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 }
 
 @Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) =
-    IconButton(onClick = click, enabled = enabled, modifier = Modifier.size(44.dp).then(if (on) Modifier.background(tint.copy(alpha = 0.15f), CircleShape) else Modifier)) {
-        Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(22.dp))
+    IconButton(onClick = click, enabled = enabled, modifier = Modifier.size(48.dp).then(if (on) Modifier.background(tint.copy(alpha = 0.15f), CircleShape) else Modifier)) {
+        Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(24.dp))
     }
 
 /** Open items in their order, then the done ones under a line; Next on the keyboard makes the next item. */

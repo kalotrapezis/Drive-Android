@@ -521,7 +521,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
 
     if (tagsOpen) NoteTagsSheet(store, labels, dismiss = { tagsOpen = false }) { chosen ->
-        labels = chosen; tagsOpen = false; meta { it.put("labels", org.json.JSONArray(chosen)) }
+        labels = chosen; meta { it.put("labels", org.json.JSONArray(chosen)) }
     }
 
     history?.let { versions ->
@@ -600,37 +600,35 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     }
 }
 
-/** Tags for a note, chosen or created: the same sheet as a file's tags in Files (asked 2026-09-26). */
+/**
+ * Tags for a note (asked 2026-09-26): the box for a new one on top, where the keyboard leaves it in view; Enter or +
+ * adds it to the note. A tap on a tag puts it on or takes it off. Each change is saved at once — no Save button.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable private fun NoteTagsSheet(store: NotesStore, initial: List<String>, dismiss: () -> Unit, save: (List<String>) -> Unit) {
+@Composable private fun NoteTagsSheet(store: NotesStore, initial: List<String>, dismiss: () -> Unit, change: (List<String>) -> Unit) {
     var selected by remember { mutableStateOf(initial) }
     var newTag by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
     val known = remember { store.list().flatMap { it.labels } }
     val all = (known + selected).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
+    fun set(next: List<String>) { selected = next; change(next) }
+    fun add() {
+        val t = newTag.trim().removePrefix("#").trim().take(60)
+        if (t.isEmpty()) return
+        val tag = all.firstOrNull { it.equals(t, ignoreCase = true) } ?: t
+        if (tag !in selected) set(selected + tag)
+        newTag = ""
+    }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
-        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Tags", style = MaterialTheme.typography.titleLarge)
-            Text("Select existing tags, or create one for this note.")
-            if (all.isNotEmpty()) FlowRow(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                all.forEach { tag ->
-                    Surface(
-                        color = if (tag in selected) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (tag in selected) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                        shape = CircleShape,
-                        modifier = Modifier.clickable { selected = if (tag in selected) selected - tag else selected + tag },
-                    ) { Text("#$tag", modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(newTag, { newTag = it }, modifier = Modifier.weight(1f), placeholder = { Text("New tag") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }))
+                RoundIsland(R.drawable.ic_add, "Add tag") { add() }
             }
-            androidx.compose.material3.OutlinedTextField(newTag, { newTag = it; error = null }, modifier = Modifier.fillMaxWidth(), label = { Text("New tag") }, singleLine = true,
-                isError = error != null, supportingText = error?.let { { Text(it) } })
-            DriveWideAction(R.drawable.ic_tag, "Add tag") {
-                val t = newTag.trim()
-                if (t.isEmpty() || t.length > 60) error = "A tag is 1 to 60 characters." else {
-                    selected = selected + (all.firstOrNull { it.equals(t, ignoreCase = true) } ?: t); newTag = ""
-                }
+            if (all.isNotEmpty()) FlowRow(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                all.forEach { tag -> Chip(tag, on = tag in selected) { set(if (tag in selected) selected - tag else selected + tag) } }
             }
-            DriveWideAction(R.drawable.ic_check, "Save tags") { save(selected.distinct()) }
         }
     }
 }

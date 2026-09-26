@@ -71,6 +71,12 @@ class DriveFilesTest {
         assertFalse(DriveRules.destinations(root).any { it.relativePath.startsWith(".") })
     }
 
+    @Test fun theFileProviderCoversTheTetraFolder() {
+        // Open and Open with failed for every file after the folder became Tetra (26 September): the provider named Drive/.
+        val paths = File("src/main/res/xml/local_drive_paths.xml").readText()
+        assertTrue(paths.contains("path=\"Tetra/\""))
+    }
+
     @Test fun containmentRejectsSiblingPrefixAndTraversal() {
         val base = Files.createTempDirectory("drive-root").toFile()
         val root = File(base, "Drive").apply { mkdirs() }

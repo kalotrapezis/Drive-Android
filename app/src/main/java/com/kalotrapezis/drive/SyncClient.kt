@@ -654,6 +654,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
+        // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
+        runCatching { received += syncNotes(host, p) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
         // Trash items about to be deleted by Android (or past their days in Files' Trash) go to the purgatory on the
         // computer's drive instead (SYNC_PLAN.md D6).
         runCatching { handOverTrash(host, p, failed) }
@@ -878,6 +881,14 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * computer moves its own copy of anything that only changed place — a rename, or a move into Drive/Trash/ —
      * and asks for the rest. Nothing on the phone is changed, and nothing is ever deleted on either side.
      */
+    // ponytail: sends every note each sync; a since-cursor if the notes ever grow past a few megabytes.
+    private fun syncNotes(host: String, p: Pairing): Int {
+        val store = notesStore()
+        if (store.root.parentFile?.isDirectory != true) return 0
+        val answer = postJson(host, p, "/notes", store.payload())
+        return if (answer.optBoolean("off")) 0 else store.apply(answer)
+    }
+
     private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {
         val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
         if (!root.isDirectory) return 0

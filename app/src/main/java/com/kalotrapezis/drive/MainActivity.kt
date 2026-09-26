@@ -275,6 +275,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
+    var notesStart by remember { mutableStateOf<Boolean?>(null) } // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
@@ -542,6 +543,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Scanner -> Unit
                 Screen.ScanDocument -> Unit
                 Screen.Codes -> Unit
+                Screen.Notes -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -580,6 +582,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openSettings = { screen = Screen.Settings },
                     openScanner = { lockScannerPortrait(); clearScanPages(); scannerError = null; screen = Screen.Scanner },
                     openCodes = { screen = Screen.Codes },
+                    openNotes = { notesStart = null; screen = Screen.Notes },
+                    newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -620,6 +624,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
+                Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                })
                 Screen.Scanner -> CameraScanTab(
                     back = ::leaveScanner,
                     error = scannerError,
@@ -686,7 +693,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -719,7 +726,47 @@ private fun Home(
     openSettings: () -> Unit,
     openScanner: () -> Unit,
     openCodes: () -> Unit,
+    openNotes: () -> Unit,
+    newNote: (checklist: Boolean) -> Unit,
 ) {
+    // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
+    val wide = LocalConfiguration.current.screenWidthDp >= 700
+    val groups: List<@Composable () -> Unit> = listOf(
+        {
+            HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("Screenshots", R.drawable.ic_screenshot, openScreenshots)
+                        HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
+                    }
+                }
+            }
+        },
+        {
+            HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeFilesCard(openFiles, Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("Favorites", R.drawable.ic_favorite_border, openFavorites)
+                        HomeCompactCard("Recent", R.drawable.ic_home, openRecent)
+                    }
+                }
+            }
+        },
+        {
+            HomeGroup(Color(0xFFF2B705)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeNotesCard(openNotes, Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("Checklist", R.drawable.ic_checklist) { newNote(true) }
+                        HomeCompactCard("New note", R.drawable.ic_note_add) { newNote(false) }
+                    }
+                }
+            }
+        },
+        { HomePdfToolsCard(openScanner, openCodes) },
+    )
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 28.dp),
@@ -738,29 +785,12 @@ private fun Home(
             val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
             HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
         }
-        item {
-            HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Screenshots", R.drawable.ic_screenshot, openScreenshots)
-                        HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
-                    }
-                }
+        if (wide) items(groups.chunked(2)) { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { Box(Modifier.weight(1f)) { it() } }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
-        }
-        item {
-            HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeFilesCard(openFiles, Modifier.weight(1f))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Favorites", R.drawable.ic_favorite_border, openFavorites)
-                        HomeCompactCard("Recent", R.drawable.ic_home, openRecent)
-                    }
-                }
-            }
-        }
-        item { HomePdfToolsCard(openScanner, openCodes) }
+        } else items(groups) { it() }
         item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
@@ -817,6 +847,17 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         Icon(painterResource(R.drawable.ic_folder), contentDescription = "Files", modifier = Modifier.size(28.dp))
         Text("Files", style = MaterialTheme.typography.titleLarge)
     }
+} }
+
+@Composable private fun HomeNotesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
+    shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+    modifier = modifier.height(156.dp).clickable(onClick = click),
+) { Box(Modifier.fillMaxSize().padding(18.dp)) {
+    Image(
+        painter = painterResource(R.drawable.notes_art), contentDescription = null, contentScale = ContentScale.Fit,
+        modifier = Modifier.align(Alignment.TopEnd).size(100.dp),
+    )
+    Text("Notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
 @Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Color(0xFFD32F2F)) {
@@ -2054,7 +2095,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
     }
 }
 
-@Composable private fun IslandBottomBar(expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+@Composable internal fun IslandBottomBar(expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     val dragThreshold = with(LocalDensity.current) { 24.dp.toPx() }
     IslandVisibility(visible) {
         Surface(
@@ -2085,7 +2126,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
 
 @Composable private fun driveSelectionContentColor(): Color = Color(0xFF1B1D1F)
 
-@Composable private fun IslandVisibility(visible: Boolean, content: @Composable () -> Unit) {
+@Composable internal fun IslandVisibility(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(90)) + slideInVertically(tween(120)) { -it / 3 },
@@ -2204,7 +2245,7 @@ private fun driveSpaceColor(type: String): Color = when (type) {
     else -> Color(0xFFB0B8B8)
 }
 
-@Composable private fun IslandNavigationItem(label: String, selected: Boolean, icon: Int, click: () -> Unit) = Surface(
+@Composable internal fun IslandNavigationItem(label: String, selected: Boolean, icon: Int, click: () -> Unit) = Surface(
     color = if (selected) driveNavigationSelectedColor() else Color.Transparent,
     contentColor = if (selected) driveNavigationSelectedContentColor() else islandContentColor(),
     shape = MaterialTheme.shapes.extraLarge,

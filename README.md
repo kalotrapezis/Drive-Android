@@ -17,9 +17,16 @@ on the device.
     <td><img src="Assets/screenshots/android-notes.png" alt="Notes" width="200"></td>
   </tr>
   <tr align="center"><td>Home</td><td>Photos</td><td>Files</td><td>Notes</td></tr>
+  <tr>
+    <td><img src="Assets/screenshots/android-scanner.png" alt="Scanner finding a page" width="200"></td>
+    <td><img src="Assets/screenshots/android-scanner-filters.png" alt="Scanner filters" width="200"></td>
+    <td><img src="Assets/screenshots/android-codes.png" alt="Codes reading text" width="200"></td>
+    <td><img src="Assets/screenshots/android-text-editor.png" alt="Text editor" width="200"></td>
+  </tr>
+  <tr align="center"><td>Scanner</td><td>Scanner filters</td><td>Codes (text)</td><td>Text editor</td></tr>
 </table>
 
-<sub>Screenshots use demo content, not a real library.</sub>
+<sub>Screenshots use demo content, not a real library; the scanned page and the label are blurred.</sub>
 
 ## What it does
 
@@ -28,8 +35,9 @@ on the device.
 | **Photos** | Your camera photos and videos by week, month or year, with collections, favorites and folder albums. **People** (faces grouped on the phone), **Documents** (receipts and papers found for you), a map, search by place, date or label, an editor, and a **Hidden** vault that is encrypted. It can be the phone's default gallery. |
 | **Files** | A file manager for `/sdcard/Tetra`, with search, tags, favorites, folder colours, copy, move, rename and share. Deleting goes to a Trash you can restore from. |
 | **Notes** | Text notes and checklists, with colours, labels, pins and a short history of each note. They sync with the desktop. |
-| **Scanner** | Scan documents to PDF with automatic cropping, filters, retake and reorder. |
-| **Codes** | QR and barcode scanner, text recognition, and copying payment codes. |
+| **Scanner** | Scan paper documents to PDF. The page is found live in the camera (with an optional **auto capture**), straightened and cropped for you, with the letters deciding where each edge is cut. Then retake, crop and rotate, filters (fix lighting, sharpen ink, black and white, match pages), reorder, and paint over marks. Saves one multi-page PDF at 300 or 200 dpi into *Scanned Documents*. |
+| **Codes** | Point at a **QR code or barcode**: open it, copy it or share it. **Text** mode reads the text in a photo so you can copy it. Greek **RF payment codes** are recognised and checked, ready to paste into your bank's app. |
+| **Text editor** | A notepad for any text file: `.txt`, `.md`, `.html`, code. **Tabs** for the files open at once, which come back with their unsaved text. A **symbols row** for the characters a phone keyboard hides, and `</>` closes the last open HTML tag. Word wrap, and Windows line endings kept. Other apps can open text files in it with *Open with*. |
 | **Sync** | Pair once with the desktop by QR code. Each photo and file is checked by SHA-256 on arrival. Favorites, collections, people, tags and notes travel both ways. Rules per device: send only, both ways, or **Move** (keep a month on the phone, the rest lives on the computer). |
 
 The full, authoritative list is in [FEATURES.md](FEATURES.md).

@@ -34,7 +34,19 @@ tracked changes, footnotes, fields); (c) keep the original's paragraph formattin
 4. The ribbon, from the user's Word screenshots (27 Sep): tabs **Home · Insert · Layout · View** (File first), tools
    B I U, highlighter, text colour, bullets, numbers, indent −/+, alignment; with the keyboard up, one strip of the
    most used (B I U highlighter …) on the keyboard, like Word's phone bar. Start from commit `1b8d17e`'s ribbon.
-5. Emulator check of each step (temporary `"x86_64"` in `splits.abi.include`, reverted before committing).
+5. Later, from the user's Word screenshots (asked 27 Sep: "add these to the plan"), in rough order:
+   - **Top bar** like Word's: back, file/save state, undo, redo, **Find** (search in the document), **Share**, more (⋯).
+   - **Home**: font name and size box, B I U, more text effects (A…), highlighter, text colour, bullets, numbering,
+     indent −/+, styles (Normal, Heading 1–3…).
+   - **Insert**: Table, Pictures, Shapes, Text box (each means Writer must then *keep* that part — today they are
+     copy-only), link, page break.
+   - **Draw**: draw with the finger — pen, highlighter, stroke eraser (ink over the page).
+   - **Layout**: margins, orientation, page size, columns; **Review**: comments, track changes; **View**: page / reading
+     view, zoom.
+   - **History**: earlier versions of a document with time and who changed it, open or restore one (Tetra keeps a copy
+     on each save, like Notes' history of 3).
+   - Phone keyboard strip: B · I · U · highlighter · ⋯ · hide keyboard (first screenshot).
+6. Emulator check of each step (temporary `"x86_64"` in `splits.abi.include`, reverted before committing).
 
 ---
 

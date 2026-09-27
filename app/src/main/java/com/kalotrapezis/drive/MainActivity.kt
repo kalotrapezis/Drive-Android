@@ -4668,7 +4668,7 @@ private fun PhotoViewer(
 
 @Composable
 private fun MotionSwitch(on: Boolean, toggle: () -> Unit) = IconButton(onClick = toggle) {
-    Icon(painterResource(R.drawable.ic_motion), contentDescription = if (on) "Stop the motion" else "Play the motion",
+    Icon(painterResource(if (on) R.drawable.ic_motion else R.drawable.ic_motion_off), contentDescription = if (on) "Stop the motion" else "Play the motion",
         tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current)
 }
 

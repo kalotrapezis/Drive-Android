@@ -1,3 +1,18 @@
+# 27 September — Android 0.3.0 Beta 3 released (the computer stays on Beta 2); on to Office
+
+Beta 3 adds only: a new photo or video starts a sync ~10 s later (`SyncJob` NEW_PHOTO, a MediaStore trigger job, Wi-Fi,
+re-armed each run and on app open). Small things left, none blocking:
+- `deleted_here` keeps rows for photos that came back to the library on a drive (the /have cleanup only looks at
+  `here_now`) — harmless (have() wins), one line: `DELETE FROM deleted_here WHERE sha256 IN (SELECT sha256 FROM media)`.
+- 163 imported photos in "Φωτογραφίες από YYYY" folders still dated 21 Aug 2026 (the copy day): the user was asked
+  whether to give them the folder's year — no answer.
+- 4 photos loose at the top of /mnt/T7/Sync/Phone-Camera were never imported (IMG_20260726_144507/144514,
+  IMG_20260804_213828, MVIMG_20260804_124520) — the user can Import them straight to T7.
+- A favorite deleted on the phone and emptied from its Trash is gone there; one was put back by hand (MVIMG_20260827).
+  A "favorites cannot be deleted" rule was discussed, not asked for.
+
+---
+
 # Next: the Office applet (Writer first) — start here, on branch `writer-library`
 
 **Branch:** `writer-library` (Drive-Android only), made from `bidirectional-sync` after Beta 2. It carries the

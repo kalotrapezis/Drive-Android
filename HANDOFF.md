@@ -1,3 +1,37 @@
+# Next: the Office applet (Writer first) — start here, on branch `writer-library`
+
+**Branch:** `writer-library` (Drive-Android only), made from `bidirectional-sync` after Beta 2. It carries the
+toolchain the rich-text library needs, and nothing else yet:
+AGP **9.4.1** (built-in Kotlin: the `kotlin-android` plugin is gone), Gradle **9.8.0**, Kotlin **2.4.20**,
+compileSdk **37** (`platforms;android-37.0`, installed from sdkmanager's channel 3), Compose BOM **2026.09.00**
+(Compose 1.12, **Material 3 1.5.0-alpha22** pulled in by the library), and
+`com.mohamedrejeb.richeditor:richeditor-compose:1.2.0` (Apache 2.0). Checked: 117 unit tests pass, and every screen
+(Home, Photos, viewer, Files, Notes, Text editor, Settings, Sync, Scanner, Codes) opened on the emulator with no
+crash. **Not yet installed on the real phone** — do that first and have the user use it for a while before building
+on it. If it misbehaves, the fallback agreed with the user is Android's own EditText with spans, on
+`bidirectional-sync`, without the upgrade.
+
+**What the user asked for (27 September), in order:**
+1. **Office group on Home, orange**, with his icon `Assets/Office.png` (not yet in res/ — crop and add like
+   `text_editor_art.png`). Two groups: Office (orange) and Text editor (purple) stay separate. `Category` in
+   MainActivity has Office purple today — Office becomes orange (desktop `--cat-office` too); the text editor keeps
+   purple (a new Category entry, e.g. `Text`).
+2. **Office home**: at the top **New Word · New Excel · New PowerPoint**; below, the documents found in Tetra's
+   Files (.docx/.odt, and later .xlsx/.ods, .pptx/.odp). Excel and PowerPoint can show as coming later.
+3. **Writer**: opens and saves **.docx and .odt** (new documents .docx by default). What-you-see editing (bold looks
+   bold — no Markdown marks). **A file with parts Writer cannot handle (images, tables, comments, tracked changes)
+   opens, says so, and saves only as a copy — the original is never overwritten.**
+4. **A ribbon like Word's, at the bottom on the phone**: one line of tabs (File, Home, Insert, Layout/View…) and one
+   line of that tab's tools, full width, scrolling sideways when needed; a floating island with the keyboard down,
+   a strip on it when up — Tetra's own look (islandColor, driveNavigationSelectedColor pill). Commit `1b8d17e` (reverted
+   on the text editor) is a working ribbon to start from.
+5. Later: Excel/Calc and PowerPoint/Presentation. Android only — the computer has its own office apps.
+
+Build: `./gradlew testDebugUnitTest assembleDebug` as before (JDK 17). The emulator (`notes_phone`, x86_64) needs a
+temporary `"x86_64"` in `splits.abi.include` — revert it before committing.
+
+---
+
 # 27 September afternoon — 0.3.0 Beta 2 released
 
 Both repos merged into `main`; `v0.3.0-beta.2` (APK) and `desktop-v0.3.0-beta.2` (.deb, AppImage). PC runs Beta 2.

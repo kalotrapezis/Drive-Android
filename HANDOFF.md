@@ -2,10 +2,17 @@
 
 The user's choice for tomorrow: **pictures first**. Where they stand: a file's pictures show on the page and are saved
 back untouched; Insert › Picture works (checked on the emulator + LibreOffice). Still to do, in order:
-1. **Picture tab** (asked): when a picture is selected, a Picture tab appears in the ribbon — size (smaller/bigger,
-   width in cm), placement and **text wrapping** (in line, square, top and bottom, behind / in front of text), delete.
-   Resizing a file's own picture means editing its raw XML (docx wp:extent + a:ext; ODT svg:width/height); wrapping
-   means docx wp:inline ⇄ wp:anchor (wrapSquare/wrapTopAndBottom/wrapNone behindDoc), ODT style:wrap on its graphic style.
+1. **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
+   - **Resize** (drag the corners, and a width in cm), **Crop**, **Save picture as…** (take a picture out of a document
+     someone sent, into the phone's photos/Files), **Delete**.
+   - **Wrapping**: in line with text (standard) · square / around text · top and bottom (nothing at its sides) ·
+     behind text · in front of text.
+   - **Moving**: in line — drag it and it lands where it fits in the text (left, centre, right, between lines), not
+     exactly where the finger lets go; free placement — drag it exactly where you want, no snapping, the text re-flowing
+     around it live as you drag (Word's "fix position on page" with wrapping); in front of / behind text for overlays.
+   - Files: docx wp:inline ⇄ wp:anchor (positionH/positionV offsets, wrapSquare / wrapTopAndBottom / wrapNone +
+     behindDoc), a:srcRect for crop, wp:extent + a:ext for size; ODT draw:frame svg:x/y, text:anchor-type,
+     style:wrap / style:run-through on its graphic style, fo:clip for crop.
 2. Floating pictures (docx wp:anchor, ODT anchored frames) are drawn in line with the text for now — show them where
    they are anchored.
 3. Charts and shapes are grey boxes — a label ("Chart", "Shape") at least.

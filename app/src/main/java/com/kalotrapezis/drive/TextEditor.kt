@@ -18,8 +18,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -194,7 +198,7 @@ private fun displayName(context: Context, uri: Uri): String =
     runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } }.getOrNull()
         ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Text"
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String? = null) {
     val context = LocalContext.current
@@ -352,21 +356,37 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             }
         }
         // One island, fewer buttons than Notes (asked 2026-09-27): back, undo, redo, save, open. Pulled up: the rest.
-        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
-            IslandBottomBar(expand = { tools = true }, visible = !tools) {
-                undoTick
-                val u = tab?.let { undo[it.id] }
-                if (!symbols) Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
-                Tool(R.drawable.ic_swap_horiz, if (symbols) "Controls" else "Symbols", w, on = symbols) { symbols = !symbols }
-                if (symbols) Row(Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp - 110.dp).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CodeKeys.keys.forEach { k -> KeyButton(k, w) { press(k) } }
-                } else {
-                    Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
-                    Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
-                    Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
-                    Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+        // The swap button turns it into the symbols, in two fixed rows — no scrolling. With the keyboard up it is one
+        // thin full-width strip on the keyboard, as in Notes.
+        val imeOpen = WindowInsets.isImeVisible
+        val u = tab?.let { undo[it.id] }
+        val swap: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
+            Tool(R.drawable.ic_swap_horiz, if (symbols) "Controls" else "Symbols", w, on = symbols) { symbols = !symbols } } }
+        val controls: @Composable () -> Unit = {
+            undoTick
+            Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
+            swap(Modifier)
+            Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
+            Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
+            Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
+            Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+        }
+        // The swap key and the 31 symbols: two rows of 16, each key an equal share of the width.
+        val keys: @Composable () -> Unit = {
+            Column(Modifier.fillMaxWidth()) {
+                (listOf<String?>(null) + CodeKeys.keys).chunked(16).forEach { line ->
+                    Row(Modifier.fillMaxWidth()) {
+                        line.forEach { k -> if (k == null) swap(Modifier.weight(1f)) else KeyButton(k, w, Modifier.weight(1f)) { press(k) } }
+                        repeat(16 - line.size) { Box(Modifier.weight(1f)) }
+                    }
                 }
+            }
+        }
+        if (imeOpen) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black).padding(horizontal = 4.dp, vertical = 2.dp)) {
+            if (symbols) keys() else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { controls() }
+        } else Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
+            IslandBottomBar(expand = { tools = true }, visible = !tools) {
+                if (symbols) Box(Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp - 44.dp)) { keys() } else controls()
             }
         }
         message?.let { m ->
@@ -425,7 +445,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
 }
 
 /** A key of the symbols row: its character, the size of a Tool. */
-@Composable private fun KeyButton(key: String, tint: Color, click: () -> Unit) = Box(
-    Modifier.size(width = if (key.length > 1) 48.dp else 40.dp, height = 40.dp).clip(CircleShape).clickable(onClickLabel = key, onClick = click),
+@Composable private fun KeyButton(key: String, tint: Color, modifier: Modifier = Modifier, click: () -> Unit) = Box(
+    modifier.height(40.dp).clip(CircleShape).clickable(onClickLabel = key, onClick = click),
     contentAlignment = Alignment.Center,
-) { Text(key, color = tint, fontFamily = FontFamily.Monospace, fontSize = if (key.length > 1) 14.sp else 18.sp) }
+) { Text(key, color = tint, fontFamily = FontFamily.Monospace, fontSize = if (key.length > 1) 11.sp else 17.sp, maxLines = 1) }

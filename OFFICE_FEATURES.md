@@ -40,6 +40,18 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [ ] Format painter (copy formatting)
 - [ ] More styles: Title, Subtitle, Quote, Heading 4–6
 
+### Formatting pages (asked 2026-09-27: "set everything once, then type" — for big work like a thesis)
+- [ ] **Styles**: long press a style (Normal, Heading 1–3, Title, Quote…) → its page: font, size, bold/italic, colour,
+      alignment, line spacing (single · 1.15 · 1.5 · double), space before/after, first-line indent — changes the
+      document's own style, so every paragraph with it changes, in Word/LibreOffice too
+- [ ] **Line spacing** quick button on Home (1 · 1.15 · 1.5 · 2)
+- [ ] **⋯ at the end of Home → Paragraph page**: the same settings for this paragraph only, and "Edit its style"
+- [ ] **Page format**: margins, orientation, paper size (Layout)
+- [ ] **Table format** (with tables)
+- [ ] **Bibliography / citations** (references list, citation style — APA etc.)
+- [ ] The editor cannot show space between paragraphs (library limit); what is set is saved and shows in Word,
+      LibreOffice and Export PDF
+
 ### Insert
 - [x] Link
 - [ ] Table (insert, add/remove rows and columns, cell text)

@@ -292,7 +292,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
-    var notesStart by remember { mutableStateOf<Boolean?>(null) } // the home card: true a checklist, false a note, null the list
+    var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
@@ -594,7 +595,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openCodes = { screen = Screen.Codes },
                     openNotes = { notesStart = null; screen = Screen.Notes },
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
-                    openTextEditor = { screen = Screen.TextEditor },
+                    openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -635,7 +636,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
-                Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home })
+                Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home }, start = editorStart)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -739,7 +740,7 @@ private fun Home(
     openScanner: () -> Unit,
     openCodes: () -> Unit,
     openNotes: () -> Unit,
-    openTextEditor: () -> Unit,
+    openTextEditor: (String?) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -770,7 +771,7 @@ private fun Home(
         {
             HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeNotesCard(openNotes, Modifier.weight(1f))
+                    HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Checklist", R.drawable.ic_checklist) { newNote(true) }
                         HomeCompactCard("New note", R.drawable.ic_note_add) { newNote(false) }
@@ -782,7 +783,13 @@ private fun Home(
         // Office (asked 2026-09-27): the text editor first; Writer, Presentation and Calc to come.
         {
             HomeGroup(Category.Office.color) {
-                HomeCompactCard("Text editor", R.drawable.ic_file_text, openTextEditor)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("New file", R.drawable.ic_note_add) { openTextEditor("new") }
+                        HomeCompactCard("Open file", R.drawable.ic_folder) { openTextEditor("open") }
+                    }
+                }
             }
         },
     )
@@ -868,15 +875,16 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     }
 } }
 
-@Composable private fun HomeNotesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
+/** A part's own card on Home: its art at the top, its name at the bottom (Notes, Text editor). */
+@Composable private fun HomeArtCard(title: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier, artSize: Int = 100) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
     modifier = modifier.height(156.dp).clickable(onClick = click),
 ) { Box(Modifier.fillMaxSize().padding(18.dp)) {
     Image(
-        painter = painterResource(R.drawable.notes_art), contentDescription = null, contentScale = ContentScale.Fit,
-        modifier = Modifier.align(Alignment.TopEnd).size(100.dp),
+        painter = painterResource(art), contentDescription = null, contentScale = ContentScale.Fit,
+        modifier = Modifier.align(Alignment.TopEnd).size(artSize.dp),
     )
-    Text("Notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
+    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
 @Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {

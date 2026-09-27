@@ -159,7 +159,7 @@ private fun displayName(context: Context, uri: Uri): String =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null) {
+internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { TextEditorStore(context) }
@@ -195,6 +195,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null) {
         tabs.add(t); text[t.id] = TextFieldValue(file.text); saved[t.id] = file.text; current = t.id; persist()
     }
 
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) scope.launch { openUri(uri) } }
     // The open tabs come back as they were: the file's text, or the unsaved draft over it.
     LaunchedEffect(Unit) {
         for (t in tabs.toList()) {
@@ -204,8 +205,10 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null) {
         }
         loaded = true
         if (open != null) openUri(open)
+        if (start == "new") newTab()
         if (tabs.isEmpty()) newTab()
         if (tabs.none { it.id == current }) current = tabs.first().id
+        if (start == "open") picker.launch(arrayOf("*/*"))
     }
     val tab = tabs.firstOrNull { it.id == current }
     val value = tab?.let { text[it.id] } ?: TextFieldValue("")
@@ -268,7 +271,6 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null) {
         persist()
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) scope.launch { openUri(uri) } }
     BackHandler { if (tools) tools = false else back() }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {

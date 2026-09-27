@@ -32,7 +32,7 @@ starts a Normal line like Word; a trailing space in ODT paragraphs is kept; empt
 2. Line breaks inside a paragraph (Shift+Enter) are the commonest copy-only reason in his files — support them.
 3. Heading sizes: the editor's H1–H3 are bigger than the document's own heading styles — show the document's.
 4. Paragraph spacing: the page has none between paragraphs; Word shows space after each.
-5. Then the Word features list below (Find, Share, Insert table/picture, Draw, Layout, Review, History).
+5. Then OFFICE_FEATURES.md, one item at a time (the full checklist: Word, Excel, PowerPoint).
 
 ---
 

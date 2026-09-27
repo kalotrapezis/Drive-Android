@@ -758,7 +758,7 @@ private fun Home(
             }
         },
         {
-            HomeGroup(Color(0xFFF2B705)) {
+            HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeNotesCard(openNotes, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -863,7 +863,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     Text("Notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
-@Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Color(0xFFD32F2F)) {
+@Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         PdfToolCard("Scanner", R.drawable.ic_document_scanner, Modifier.weight(1f), openScanner)
         PdfToolCard("Codes", R.drawable.ic_qr_code, Modifier.weight(1f), openCodes)
@@ -1349,7 +1349,7 @@ private fun SettingsTab(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
         item {
-            SettingsCard("Storage locations") {
+            SettingsCard("Storage locations", Category.Files) {
                 Text("Drive workspace", style = MaterialTheme.typography.titleMedium)
                 Text(DRIVE_PATH, style = MaterialTheme.typography.bodyMedium)
                 Text("Camera photos stay in DCIM/Camera. Screenshots stay in Pictures/Screenshots. These paths are fixed so sync never needs to guess or duplicate photos.", style = MaterialTheme.typography.bodySmall)
@@ -1366,7 +1366,7 @@ private fun SettingsTab(
             }
         }
         item {
-            SettingsCard("Gallery") {
+            SettingsCard("Gallery", Category.Gallery) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Photo on Home", style = MaterialTheme.typography.titleMedium)
@@ -1419,7 +1419,7 @@ private fun SettingsTab(
             val settingsContext = LocalContext.current
             val scannerPreferences = remember(settingsContext) { settingsContext.getSharedPreferences("scanner", Context.MODE_PRIVATE) }
             var dpi by remember { mutableStateOf(scannerPreferences.getInt(SCANNER_DPI, 300)) }
-            SettingsCard("PDF scanner") {
+            SettingsCard("PDF scanner", Category.Scanner) {
                 Text("Resolution", style = MaterialTheme.typography.titleMedium)
                 Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1481,15 +1481,31 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) = Surface(
+private fun SettingsCard(title: String, category: Category? = null, content: @Composable ColumnScope.() -> Unit) = Surface(
     shape = MaterialTheme.shapes.large,
     color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = Modifier.fillMaxWidth(),
 ) {
     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            category?.let { Icon(painterResource(it.icon), contentDescription = null, tint = it.color, modifier = Modifier.size(24.dp)) }
+            Text(title, style = MaterialTheme.typography.titleLarge)
+        }
         content()
     }
+}
+
+/**
+ * The parts of Tetra, each with its colour and symbol (asked 2026-09-27). The app stays black and white; a category's
+ * colour is a label — its icon beside a title, its group on Home — the same in light and dark. The desktop has the same
+ * five (styles.css --cat-*).
+ */
+internal enum class Category(val color: Color, val icon: Int) {
+    Gallery(Color(0xFF3DA35D), R.drawable.ic_gallery),
+    Files(Color(0xFF4F86E8), R.drawable.ic_folder),
+    Notes(Color(0xFFF2B705), R.drawable.ic_edit_note),
+    Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
+    Office(Color(0xFF8E5BD8), R.drawable.ic_edit_note),
 }
 
 @Composable

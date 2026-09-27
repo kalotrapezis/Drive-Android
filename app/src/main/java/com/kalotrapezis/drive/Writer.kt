@@ -244,11 +244,17 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
 private fun draftFile(context: Context, key: String, kind: OfficeKind) =
     File(File(context.filesDir, "writer-drafts"), "${key.hashCode().toUInt()}.${kind.extension}")
 
-/** Before Writer first saves over a document, the file as it was is kept (the last 3), so a save can be undone. */
+/** A document's earlier versions: a folder per document (by its path), a file per version named by its time. */
+private fun versionsDir(context: Context, file: File) = File(File(context.filesDir, "writer-history"), file.absolutePath.hashCode().toUInt().toString())
+
+internal fun versions(context: Context, file: File): List<File> =
+    versionsDir(context, file).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name.substringBefore('.').toLongOrNull() ?: 0 }.orEmpty()
+
+/** Before Writer saves over a document, the file as it was is kept (the last 3), so a save can be undone. */
 private fun keepPrevious(context: Context, file: File) {
-    val dir = File(context.filesDir, "writer-history").apply { mkdirs() }
-    file.copyTo(File(dir, "${file.nameWithoutExtension} ${System.currentTimeMillis()}.${file.extension}"), overwrite = true)
-    dir.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + " ") }?.sortedByDescending { it.lastModified() }?.drop(3)?.forEach { it.delete() }
+    val dir = versionsDir(context, file).apply { mkdirs() }
+    file.copyTo(File(dir, "${System.currentTimeMillis()}.${file.extension}"), overwrite = true)
+    versions(context, file).drop(3).forEach { it.delete() }
 }
 
 /** A name not yet taken in [dir]: "name (copy).docx", then "name (copy 2).docx"… */
@@ -284,10 +290,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var replacement by remember { mutableStateOf("") }
     var replacing by remember { mutableStateOf(false) }
     val draftKey = open ?: "new"
+    var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
+    var showVersions by remember { mutableStateOf(false) }
 
     fun current() = meta.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reload) {
+        loaded = false
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = file?.readBytes()
@@ -305,6 +314,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val same = shown == WriterBridge.comparable(doc.paras)
             if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
             meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting Writer shows differently")
+            dirty = false
             if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt))); dirty = true; message = "Your unsaved changes are back" }
             state.history.clear()
             loaded = true
@@ -380,6 +390,40 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             result.onSuccess { bytes -> naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes); message = "Saved in ${TextEditorStore(context).saveFolder}" }
                 .onFailure { message = it.message }
+        }
+    }
+    /** Export › PDF: beside the document (or in the save folder for a new one), never over another file. */
+    fun exportPdf() {
+        scope.launch {
+            val doc = current()
+            val dir = file?.parentFile ?: TextEditorStore(context).saveDirectory()
+            val stem = name.substringBeforeLast('.')
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
+                    val target = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
+                    target.outputStream().use { OfficePdf.write(doc, it) }
+                    target
+                }
+            }
+            result.onSuccess { message = "Saved ${it.name} in ${dir.name}" }.onFailure { message = it.message ?: "Could not make the PDF." }
+        }
+    }
+    /** A version comes back: the document as it is now is kept as a version first, so restoring is undone the same way. */
+    fun restore(version: File) {
+        val f = file ?: return
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val temp = File(f.parentFile, ".${f.name}.tetra-saving")
+                    version.copyTo(temp, overwrite = true)
+                    keepPrevious(context, f)
+                    check(temp.renameTo(f))
+                    draftFile(context, draftKey, kind).delete()
+                }.isSuccess
+            }
+            if (ok) { reload++; message = "Restored the file as it was before ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(version.name.substringBefore('.').toLong()))}" }
+            else message = "Could not restore it."
         }
     }
     fun leave() { if (dirty) leaving = true else back() }
@@ -471,6 +515,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.File -> listOf({
                     RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null)) { save() }
                     RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { save(asCopy = true) }
+                }, {
+                    RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
+                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
                 }, {
                     RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
                         file?.let { shareDriveFile(context, it) }
@@ -601,6 +648,31 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     TextButton(onClick = { linking = false }) { Text("Cancel") }
                 }
             },
+        )
+    }
+    if (showVersions) {
+        val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }
+        val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+        AlertDialog(
+            onDismissRequest = { showVersions = false },
+            title = { Text("Versions") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (list.isEmpty()) "Writer keeps the file as it was before each save — the last 3. None yet: this document has not been saved over here."
+                        else "The file as it was before each of Writer's saves. Restoring one keeps the document as it is now as a version too.", style = MaterialTheme.typography.bodySmall)
+                    list.forEach { v ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Before the save at " + format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())), style = MaterialTheme.typography.titleSmall)
+                                Text("${(v.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { showVersions = false; restore(v) }, enabled = !dirty) { Text("Restore") }
+                        }
+                    }
+                    if (dirty && list.isNotEmpty()) Text("Save or undo your changes first.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Close") } },
         )
     }
     if (details) AlertDialog(

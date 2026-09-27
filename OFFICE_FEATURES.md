@@ -21,8 +21,8 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [x] Save over the file when nothing is lost; else a copy beside it
 - [x] New documents: .docx (or .odt); Save as with a name, in Tetra/Documents
 - [x] Unsaved changes kept as a draft; leaving asks Save / Don't save
-- [x] The previous version kept before each save (last 3) — **next: a History screen to open or restore one**
-- [ ] Export as PDF
+- [x] Versions (File): the file as it was before each of the last 3 saves; Restore keeps the current one as a version too
+- [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 - [ ] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only
 - [ ] Open .doc / .rtf (read; save as .docx)
 
@@ -99,7 +99,7 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [ ] Transitions and animations (show; later edit)
 - [ ] Present: full screen, swipe to advance, pen and laser on the slide, blank screen, speaker notes
 - [ ] Present to a TV (Android's cast / HDMI)
-- [ ] Export as PDF
+- [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 
 ## To test on the phone, with the user
 
@@ -114,6 +114,7 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count)
 - [ ] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
 - [ ] Text size −/+ and zoom; undo/redo
+- [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
 
 ## Sources
 

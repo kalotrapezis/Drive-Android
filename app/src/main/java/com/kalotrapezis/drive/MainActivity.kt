@@ -216,6 +216,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+internal val TetraColors = darkColorScheme(
+    primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
+    primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
+    tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
+    background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
+    surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
+    surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
+)
+
+/** Tetra's look, for a screen outside the main app (the text editor opened from another app). */
+@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraColors) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) { content() }
+}
+
 /** A photo or video another app asked us to show. */
 internal data class ExternalMedia(val uri: Uri, val mimeType: String?)
 private val EXTERNAL_VIEW_ACTIONS = setOf(Intent.ACTION_VIEW, "android.provider.action.REVIEW", "com.android.camera.action.REVIEW")
@@ -547,6 +561,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.ScanDocument -> Unit
                 Screen.Codes -> Unit
                 Screen.Notes -> Unit
+                Screen.TextEditor -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -557,15 +572,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
     // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
     // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
-    val colors = darkColorScheme(
-        primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
-        primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
-        tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
-        background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
-        surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
-        surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
-    )
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = TetraColors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
@@ -587,6 +594,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openCodes = { screen = Screen.Codes },
                     openNotes = { notesStart = null; screen = Screen.Notes },
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
+                    openTextEditor = { screen = Screen.TextEditor },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -627,6 +635,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
+                Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home })
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -696,7 +705,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -730,6 +739,7 @@ private fun Home(
     openScanner: () -> Unit,
     openCodes: () -> Unit,
     openNotes: () -> Unit,
+    openTextEditor: () -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -769,6 +779,12 @@ private fun Home(
             }
         },
         { HomePdfToolsCard(openScanner, openCodes) },
+        // Office (asked 2026-09-27): the text editor first; Writer, Presentation and Calc to come.
+        {
+            HomeGroup(Category.Office.color) {
+                HomeCompactCard("Text editor", R.drawable.ic_file_text, openTextEditor)
+            }
+        },
     )
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -1441,6 +1457,23 @@ private fun SettingsTab(
             }
         }
         item {
+            val editorContext = LocalContext.current
+            val editor = remember { TextEditorStore(editorContext) }
+            var wrap by remember { mutableStateOf(editor.wordWrap) }
+            var folder by remember { mutableStateOf(editor.saveFolder) }
+            SettingsCard("Office", Category.Office) {
+                Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; editor.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Word wrap", style = MaterialTheme.typography.titleSmall)
+                        Text(if (wrap) "Long lines continue on the next line." else "Long lines keep going; scroll sideways, like code.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = wrap, onCheckedChange = { wrap = it; editor.wordWrap = it })
+                }
+                Text("Save new files in", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        item {
             SettingsCard("Appearance") {
                 Text("Follow system", style = MaterialTheme.typography.titleMedium)
                 Text("Tetra is a dark app, and the same one on every device: it does not follow the system light theme or the wallpaper's colours.", style = MaterialTheme.typography.bodyMedium)
@@ -1505,7 +1538,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Files(Color(0xFF4F86E8), R.drawable.ic_folder),
     Notes(Color(0xFFF2B705), R.drawable.ic_edit_note),
     Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
-    Office(Color(0xFF8E5BD8), R.drawable.ic_edit_note),
+    Office(Color(0xFF8E5BD8), R.drawable.ic_file_text),
 }
 
 @Composable

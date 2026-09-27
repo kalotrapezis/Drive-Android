@@ -567,7 +567,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 }
 
 // A plain 40 dp round button: an IconButton is always at least 48 dp, and eight of them did not fit a phone's island.
-@Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
+@Composable internal fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
     Modifier.size(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
         .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = description, onClick = click),
     contentAlignment = Alignment.Center,

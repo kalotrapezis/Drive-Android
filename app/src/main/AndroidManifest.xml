@@ -49,6 +49,18 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+        <!-- Office › Text editor: "Open with Tetra" for text files from any app (asked 2026-09-27). -->
+        <activity android:name=".TextEditorActivity" android:exported="true" android:label="Tetra Text editor" android:windowSoftInputMode="adjustResize"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+            </intent-filter>
+        </activity>
         <receiver android:name=".SyncActionReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="com.kalotrapezis.drive.PAUSE" />

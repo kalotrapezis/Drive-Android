@@ -34,7 +34,9 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [x] Alignment: left, centre, right, justify
 - [ ] Font name (the document's fonts, kept on save)
 - [ ] Superscript, subscript; small caps; clear formatting
-- [ ] Line and paragraph spacing (space after each paragraph, as Word shows) — the editor library has no paragraph spacing; needs a workaround
+- [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
+- [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
+- [ ] Fonts that change inside a paragraph (still simplified)
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
 - [ ] Format painter (copy formatting)
 - [ ] More styles: Title, Subtitle, Quote, Heading 4–6
@@ -115,6 +117,7 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
 - [ ] Text size −/+ and zoom; undo/redo
 - [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
+- [ ] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
 
 ## Sources
 

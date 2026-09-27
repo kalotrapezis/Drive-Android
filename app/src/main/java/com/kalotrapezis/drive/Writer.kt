@@ -167,10 +167,24 @@ internal object WriterBridge {
         else -> null
     }
 
-    /** Paragraphs as they compare: a list's start number counts only where a list begins. */
+    /**
+     * The editor draws every heading bold, so it cannot say which words of a heading the file has bold. A heading left
+     * as it was keeps the file's own runs; an edited one takes its heading style's weight.
+     */
+    fun keepHeadingRuns(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
+        val unused = old.filter { it.heading > 0 }.groupBy { it.text }.mapValues { ArrayDeque(it.value) }
+        return new.map { p ->
+            if (p.heading == 0) return@map p
+            val o = unused[p.text]?.removeFirstOrNull() ?: return@map p
+            if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
+        }
+    }
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false) })
+
+    /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = OfficeFormats.tidy(p.runs), list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -293,7 +307,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
 
-    fun current() = meta.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))
+    // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
+    fun current() = meta.copy(paras = WriterBridge.keepHeadingRuns(meta.paras,
+        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))))
 
     LaunchedEffect(reload) {
         loaded = false
@@ -313,7 +329,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val shown = WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
             val same = shown == WriterBridge.comparable(doc.paras)
             if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
-            meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting Writer shows differently")
+            meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting it cannot show exactly")
             dirty = false
             if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt))); dirty = true; message = "Your unsaved changes are back" }
             state.history.clear()
@@ -477,7 +493,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val copyOnly = meta.blocking.isNotEmpty()
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
-                    Text(if (copyOnly) "This document has ${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}, which Writer does not show. Saving makes a copy; the original stays as it is."
+                    Text(if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
                         else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }

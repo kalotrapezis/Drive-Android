@@ -44,7 +44,17 @@ internal const val LINE_BREAK = '\u2028'
 /** A list item: bulleted or numbered, how deep (0 = top), and the number it starts at when that is not 1. */
 internal data class DocList(val ordered: Boolean, val level: Int, val start: Int? = null)
 
-internal data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val list: DocList? = null, val align: DocAlign = DocAlign.Start) {
+/**
+ * A paragraph's own formatting that Writer does not edit — spacing, indents, tab stops, borders, a page break before it,
+ * a style such as Title or Quote, one font for the whole paragraph — carried through as the file had it (asked
+ * 2026-09-27), raw: [style] is the file's own style name, [parts] its other properties as (name, XML) in the file's own
+ * words, [list] the file's own list it belongs to ("id|pattern", the pattern "n"/"b" for each level).
+ */
+internal data class DocKeep(val style: String? = null, val parts: List<Pair<String, String>> = emptyList(), val list: String? = null) {
+    val isEmpty get() = style == null && parts.isEmpty() && list == null
+}
+
+internal data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val list: DocList? = null, val align: DocAlign = DocAlign.Start, val keep: DocKeep? = null) {
     val text: String get() = runs.joinToString("") { it.text }
 }
 
@@ -103,7 +113,58 @@ internal object OfficeFormats {
         return out
     }
 
+    /**
+     * What the editor gives back has lost each paragraph's [DocKeep]; it is put back from [old] (as read from the file).
+     * Paragraphs whose text is unchanged are matched first (longest common run); between two matches, changed
+     * paragraphs pair up in order; a new paragraph takes the formatting of the one before it, as Enter does in Word —
+     * except a page break before it.
+     */
+    fun carryKeep(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
+        val n = old.size; val m = new.size
+        val lcs = Array(n + 1) { IntArray(m + 1) }
+        for (i in n - 1 downTo 0) for (j in m - 1 downTo 0)
+            lcs[i][j] = if (old[i].text == new[j].text) lcs[i + 1][j + 1] + 1 else maxOf(lcs[i + 1][j], lcs[i][j + 1])
+        val source = arrayOfNulls<DocKeep>(m)
+        val matched = BooleanArray(m)
+        var i = 0; var j = 0
+        val gapOld = ArrayList<Int>(); val gapNew = ArrayList<Int>()
+        fun flush() { gapNew.forEachIndexed { k, jj -> gapOld.getOrNull(k)?.let { source[jj] = old[it].keep; matched[jj] = true } }; gapOld.clear(); gapNew.clear() }
+        while (i < n && j < m) {
+            when {
+                old[i].text == new[j].text && lcs[i][j] == lcs[i + 1][j + 1] + 1 -> { flush(); source[j] = old[i].keep; matched[j] = true; i++; j++ }
+                lcs[i + 1][j] >= lcs[i][j + 1] -> gapOld += i++
+                else -> gapNew += j++
+            }
+        }
+        while (i < n) gapOld += i++
+        while (j < m) gapNew += j++
+        flush()
+        return new.mapIndexed { k, p ->
+            val keep = if (matched[k]) source[k] else (k - 1 downTo 0).firstOrNull { matched[it] }?.let { source[it] }?.let { inherited ->
+                inherited.copy(parts = inherited.parts.filter { (name, xml) -> name != "pageBreakBefore" && name != "master" && !("break-before" in xml && "page" in xml) })
+            } ?: (k + 1 until m).firstOrNull { matched[it] }?.let { source[it] }?.copy(parts = emptyList())
+            p.copy(keep = keep?.takeIf { !it.isEmpty })
+        }
+    }
+
     // --- shared helpers ---
+
+    /** An element as XML, with the prefixes the file uses (the file's root declares them, and it is kept). */
+    internal fun xml(e: Node): String = when (e.nodeType) {
+        Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> esc(e.nodeValue)
+        Node.ELEMENT_NODE -> buildString {
+            append('<').append(e.nodeName)
+            val a = e.attributes
+            for (k in 0 until a.length) a.item(k).let { if (!it.nodeName.startsWith("xmlns")) append(' ').append(it.nodeName).append("=\"").append(esc(it.nodeValue)).append('"') }
+            if (!e.hasChildNodes()) append("/>") else {
+                append('>')
+                var c = e.firstChild
+                while (c != null) { append(xml(c)); c = c.nextSibling }
+                append("</").append(e.nodeName).append('>')
+            }
+        }
+        else -> ""
+    }
 
     internal fun unzip(bytes: ByteArray): LinkedHashMap<String, ByteArray> {
         val parts = LinkedHashMap<String, ByteArray>()
@@ -275,34 +336,37 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         var heading = 0
         var list: DocList? = null
         var align = DocAlign.Start
+        var keepStyle: String? = null
+        val keepParts = ArrayList<Pair<String, String>>()
         p.kid(W, "pPr")?.let { pPr ->
             for (e in pPr.kids()) when (e.localName) {
-                "pStyle" -> heading = paragraphStyle(e.attr(W, "val") ?: "")
+                "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
                 "numPr" -> list = listItem(e)
                 "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
-                "rPr", "widowControl", "keepNext", "keepLines", "snapToGrid", "autoSpaceDE", "autoSpaceDN", "adjustRightInd", "contextualSpacing",
-                "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "textAlignment", "outlineLvl", "divId", "cnfStyle",
-                "suppressLineNumbers", "mirrorIndents", "bidi", "textDirection", "textboxTightWrap" -> Unit
-                "spacing", "ind" -> if (e.attributes.length > 0) notes += "paragraph spacing and indents" // an empty one changes nothing
-                "pageBreakBefore" -> if (e.attr(W, "val").let { it == null || it == "1" || it == "true" }) notes += "page breaks"
                 "sectPr" -> notes += "section breaks"
-                "tabs" -> if (e.kids().isNotEmpty()) notes += "tab stops"
-                "pBdr" -> if (e.kids().any { it.attr(W, "val").let { v -> v != null && v != "none" && v != "nil" } }) notes += "borders and shading"
-                "shd" -> if (e.attr(W, "fill").let { it != null && it != "auto" && it != "FFFFFF" }) notes += "borders and shading"
                 "framePr" -> notes += "shapes and text boxes"
                 "pPrChange" -> notes += "tracked changes"
-                else -> notes += "other paragraph formatting"
+                // The rest — spacing, indents, tab stops, borders, a page break before it… — goes back as it was.
+                else -> keepParts += e.localName to OfficeFormats.xml(e)
             }
         }
+        val listSource = lastListSource.takeIf { list != null }
         val runs = ArrayList<DocRun>()
+        val fonts = ArrayList<String?>() // each run's font, when it names one
+        // One font for the whole paragraph goes back as it was; a paragraph that mixes fonts is simplified.
+        fun keep(): DocKeep? {
+            val distinct = fonts.toSet()
+            val parts = if (distinct.size == 1 && distinct.first() != null) keepParts + ("runFonts" to distinct.first()!!) else keepParts.also { if (distinct.any { it != null }) notes += "fonts" }
+            return DocKeep(keepStyle, parts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
+        }
         val done = ArrayList<DocPara>()
-        fun breakLine() { done += DocPara(OfficeFormats.tidy(runs), heading, list, align); runs.clear(); list = list?.let { null } }
+        fun breakLine() { done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); fonts.clear(); list = list?.let { null } }
         fun content(parent: Element, link: String?) {
             for (e in parent.kids()) {
                 if (e.namespaceURI != W) { notes += if (e.localName == "oMath" || e.localName == "oMathPara") "equations" else "other content"; continue }
                 when (e.localName) {
                     "pPr" -> Unit
-                    "r" -> run(e, link, runs, ::breakLine)
+                    "r" -> { val font = run(e, link, runs, ::breakLine); while (fonts.size < runs.size) fonts += font }
                     "hyperlink" -> {
                         val url = e.attr(R, "id")?.let { links[it] }
                         if (url == null) notes += "links inside the document"
@@ -320,12 +384,14 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
         }
         content(p, null)
-        done += DocPara(OfficeFormats.tidy(runs), heading, list, align)
+        done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
         out += done
     }
 
-    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: () -> Unit) {
+    /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
+    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: () -> Unit): String? {
         var look = DocRun("", link = link)
+        var font: String? = null
         r.kid(W, "rPr")?.let { rPr ->
             for (e in rPr.kids()) {
                 val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
@@ -343,7 +409,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         "hyperlink", "internet link", "default paragraph font" -> Unit
                         else -> notes += "character styles"
                     }
-                    "rFonts" -> if (listOf("ascii", "hAnsi", "asciiTheme", "hAnsiTheme").any { e.hasAttributeNS(W, it) }) notes += "fonts"
+                    "rFonts" -> if (listOf("ascii", "hAnsi", "asciiTheme", "hAnsiTheme").any { e.hasAttributeNS(W, it) }) font = OfficeFormats.xml(e)
                     "bCs", "iCs", "szCs", "lang", "noProof", "webHidden", "kern", "rtl", "cs", "specVanish", "eastAsianLayout", "snapToGrid" -> Unit
                     "vertAlign" -> if (e.attr(W, "val") != "baseline") notes += "superscript and subscript"
                     "shd" -> if (e.attr(W, "fill").let { it != null && it != "auto" && it != "FFFFFF" }) notes += "borders and shading"
@@ -377,15 +443,19 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> notes += "other content"
             }
         }
+        return font
     }
 
     fun paragraphStyle(id: String): Int {
         val name = styleName[id] ?: id.lowercase()
         Regex("""heading ?([1-9])""").matchEntire(name)?.let { m -> return m.groupValues[1].toInt().coerceAtMost(6).also { if (m.groupValues[1].toInt() > 6) notes += "headings below level 6" } }
-        if (id == defaultParaStyle || name == "normal" || name == "list paragraph" || name == "default paragraph style") return 0
-        notes += "the paragraph style “${styleName[id]?.let { name.replaceFirstChar { it.uppercase() } } ?: id}”"
         return 0
     }
+
+    /** Normal text: the paragraph needs no style of its own to look as it did. */
+    fun plainStyle(id: String): Boolean = (styleName[id] ?: id.lowercase()).let { id == defaultParaStyle || it == "normal" || it == "list paragraph" || it == "default paragraph style" }
+
+    var lastListSource: String? = null
 
     fun listItem(numPr: Element): DocList? {
         val numId = numPr.kid(W, "numId")?.attr(W, "val") ?: return null
@@ -393,6 +463,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         val level = numPr.kid(W, "ilvl")?.attr(W, "val")?.toIntOrNull() ?: 0
         val abstract = numAbstract[numId] ?: return null
         val (fmt, start) = levels[abstract to level] ?: ("decimal" to 1)
+        lastListSource = numId + "|" + (0..8).joinToString("") { l -> if ((levels[abstract to l]?.first ?: "decimal") == "bullet") "b" else "n" }
         val ordered = when (fmt) {
             "bullet" -> false
             "decimal" -> true
@@ -407,6 +478,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         return DocList(ordered, level.coerceIn(0, 8), c[level.coerceIn(0, 8)].takeIf { ordered })
     }
 }
+
+/** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
+private val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
+    "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
+    "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
+    "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange")
 
 private object DocxWriter {
     fun canReuse(parts: Map<String, ByteArray>): Boolean = runCatching {
@@ -509,8 +586,14 @@ private object DocxWriter {
                 var end = i
                 while (end < doc.paras.size && doc.paras[end].list != null) end++
                 val start = doc.paras.subList(i, end).firstOrNull { it.list!!.ordered && it.list.level == 0 }?.list?.start
-                val orderedNum = if (doc.paras.subList(i, end).any { it.list!!.ordered }) num(orderedAbstract, start) else null
-                for (k in i until end) numIds[k] = if (doc.paras[k].list!!.ordered) orderedNum!! else bulletNum
+                // Each item keeps the file's own list when it is still of that list's kind at its level (Word then numbers
+                // it as before); any other item gets Writer's own list.
+                fun own(k: Int): String? = doc.paras[k].keep?.list?.takeIf { src ->
+                    val l = doc.paras[k].list!!
+                    src.substringAfter('|').getOrNull(l.level)?.let { c -> (c == 'n') == l.ordered } == true
+                }?.substringBefore('|')
+                val orderedNum = if ((i until end).any { doc.paras[it].list!!.ordered && own(it) == null }) num(orderedAbstract, start) else null
+                for (k in i until end) numIds[k] = own(k) ?: if (doc.paras[k].list!!.ordered) orderedNum!! else bulletNum
                 i = end
             }
             val abstracts = abstractNum(bulletAbstract, false) + abstractNum(orderedAbstract, true)
@@ -531,16 +614,22 @@ private object DocxWriter {
         val body = StringBuilder()
         doc.paras.forEachIndexed { index, p ->
             body.append("<w:p>")
-            val pPr = StringBuilder()
-            if (p.heading > 0) pPr.append("""<w:pStyle w:val="${headingIds.getValue(p.heading)}"/>""")
-            p.list?.let { pPr.append("""<w:numPr><w:ilvl w:val="${it.level}"/><w:numId w:val="${numIds.getValue(index)}"/></w:numPr>""") }
+            // Writer's own properties and the ones carried from the file, in the order Word requires.
+            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first != "runFonts" })
+            val font = p.keep?.parts?.firstOrNull { it.first == "runFonts" }?.second
+            (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
+            p.list?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${it.level}"/><w:numId w:val="${numIds.getValue(index)}"/></w:numPr>""" }
             when (p.align) {
-                DocAlign.Center -> pPr.append("""<w:jc w:val="center"/>""")
-                DocAlign.End -> pPr.append("""<w:jc w:val="right"/>""")
-                DocAlign.Justify -> pPr.append("""<w:jc w:val="both"/>""")
+                DocAlign.Center -> props += "jc" to """<w:jc w:val="center"/>"""
+                DocAlign.End -> props += "jc" to """<w:jc w:val="right"/>"""
+                DocAlign.Justify -> props += "jc" to """<w:jc w:val="both"/>"""
                 DocAlign.Start -> Unit
             }
-            if (pPr.isNotEmpty()) body.append("<w:pPr>").append(pPr).append("</w:pPr>")
+            if (props.isNotEmpty()) {
+                body.append("<w:pPr>")
+                props.sortedBy { (name, _) -> PPR_ORDER.indexOf(name).let { if (it < 0) PPR_ORDER.indexOf("rPr") else it } }.forEach { body.append(it.second) }
+                body.append("</w:pPr>")
+            }
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
             while (k < runs.size) {
@@ -548,7 +637,7 @@ private object DocxWriter {
                 var end = k
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""")
-                for (r in runs.subList(k, end)) body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
+                for (r in runs.subList(k, end)) body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt, font))
                 if (link != null) body.append("</w:hyperlink>")
                 k = end
             }
@@ -562,9 +651,10 @@ private object DocxWriter {
         return OfficeFormats.zip(parts)
     }
 
-    private fun run(r: DocRun, style: String?, basePt: Float): String = buildString {
+    private fun run(r: DocRun, style: String?, basePt: Float, font: String?): String = buildString {
         val rPr = buildString {
             style?.let { append("""<w:rStyle w:val="$it"/>""") }
+            font?.let { append(it) }
             if (r.bold) append("<w:b/>")
             if (r.italic) append("<w:i/>")
             if (r.strike) append("<w:strike/>")
@@ -650,7 +740,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         || Regex("""^-?0+(\.0+)?(cm|mm|in|pt|pc|px)?$""").matches(v)
 
     /** Applies a style's text properties to [look]; what Writer cannot keep is named. */
-    fun textLook(props: Element?, look: DocRun, inLink: Boolean = false): DocRun {
+    fun textLook(props: Element?, look: DocRun, inLink: Boolean = false, fonts: MutableList<Pair<String, String>>? = null): DocRun {
         props ?: return look
         var l = look
         val a = props.attributes
@@ -658,7 +748,10 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             val n = a.item(i)
             val ns = n.namespaceURI ?: continue
             val local = n.localName; val v = n.nodeValue.trim()
-            if (local.endsWith("-asian") || local.endsWith("-complex") || !(ns == FO || ns == STYLE)) continue
+            if (local.endsWith("-asian") || local.endsWith("-complex") || !(ns == FO || ns == STYLE)) {
+                if (fonts != null && ns == STYLE && local.startsWith("font-name")) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\""
+                continue
+            }
             when (local) {
                 "font-weight" -> l = l.copy(bold = v == "bold" || (v.toIntOrNull() ?: 400) >= 600)
                 "font-style" -> l = l.copy(italic = v == "italic" || v == "oblique")
@@ -667,7 +760,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "font-size" -> size(v, basePt)?.let { l = l.copy(sizePt = it.takeIf { pt -> pt != basePt }) } ?: run { notes += "other text effects" }
                 "color" -> if (!inLink) l = l.copy(color = OfficeFormats.parseHex(v))
                 "background-color" -> l = l.copy(highlight = if (v == "transparent") null else OfficeFormats.parseHex(v))
-                "font-name", "font-family" -> notes += "fonts"
+                "font-name", "font-family" -> if (fonts != null) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\"" else notes += "fonts"
                 "text-position" -> if (!neutral(v)) notes += "superscript and subscript"
                 "display" -> if (v == "none") notes += "hidden text"
                 "language", "country", "script", "rfc-language-tag", "letter-kerning", "hyphenate", "hyphenation-remain-char-count",
@@ -688,39 +781,28 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         return chain.fold(look) { l, s -> textLook(s.text, l, inLink) }
     }
 
-    fun paragraphLook(p: OdtStyle?): DocAlign {
+    /** A paragraph's alignment; its other properties (spacing, indents, borders, breaks, tab stops…) are carried, raw. */
+    fun paragraphLook(p: OdtStyle?, parts: MutableList<Pair<String, String>>): DocAlign {
         val props = p?.paragraph ?: return DocAlign.Start
         var align = DocAlign.Start
         val a = props.attributes
         for (i in 0 until a.length) {
             val n = a.item(i)
-            if (n.namespaceURI != FO && n.namespaceURI != STYLE) continue
-            val v = n.nodeValue.trim()
-            when (n.localName) {
-                "text-align" -> align = when (v) { "center" -> DocAlign.Center; "end", "right" -> DocAlign.End; "justify" -> DocAlign.Justify; else -> DocAlign.Start }
-                "break-before", "break-after" -> when (v) { "page" -> notes += "page breaks"; "column" -> notes += "columns" }
-                "margin", "margin-left", "margin-right", "margin-top", "margin-bottom", "text-indent", "line-height", "line-spacing",
-                "line-height-at-least", "padding", "padding-left", "padding-right", "padding-top", "padding-bottom" -> if (!neutral(v)) notes += "paragraph spacing and indents"
-                "background-color", "border", "border-left", "border-right", "border-top", "border-bottom", "shadow" -> if (!neutral(v)) notes += "borders and shading"
-                "text-align-last", "justify-single-word", "auto-text-indent", "writing-mode", "keep-with-next", "keep-together", "widows", "orphans",
-                "hyphenation-ladder-count", "contextual-spacing", "page-number", "punctuation-wrap", "line-break", "vertical-align", "snap-to-layout-grid",
-                "number-lines", "line-number", "text-autospace", "font-independent-line-spacing", "join-border", "tab-stop-distance", "register-true" -> Unit
-                else -> if (!neutral(v)) notes += "other paragraph formatting"
-            }
+            if (n.nodeName.startsWith("xmlns")) continue
+            if (n.namespaceURI == FO && n.localName == "text-align") {
+                align = when (n.nodeValue.trim()) { "center" -> DocAlign.Center; "end", "right" -> DocAlign.End; "justify" -> DocAlign.Justify; else -> DocAlign.Start }
+            } else if (!(n.namespaceURI == STYLE && n.localName == "justify-single-word")) parts += "@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\""
         }
-        props.kid(STYLE, "tab-stops")?.let { if (it.kids().isNotEmpty()) notes += "tab stops" }
-        if (props.kid(STYLE, "drop-cap") != null || props.kid(STYLE, "background-image") != null) notes += "other paragraph formatting"
+        props.kids().forEach { parts += "child" to OfficeFormats.xml(it) }
         return align
     }
 
-    /** Whether a named paragraph style is plain body text, and if not, it is named. */
-    fun checkNamedParagraph(name: String?, isHeading: Boolean) {
-        name ?: return
-        val shown = odfDisplayName(name)
-        val n = shown.lowercase()
-        if (n in setOf("standard", "default", "default paragraph style", "text body", "body text", "list paragraph", "list contents", "list", "normal", "heading")) return
-        if (isHeading && Regex("""heading ?\d""").matches(n)) return
-        notes += "the paragraph style “$shown”"
+    /** Plain body text: a paragraph needs no style of its own to look as it did. */
+    fun plainParagraph(name: String?, isHeading: Boolean): Boolean {
+        name ?: return true
+        val n = odfDisplayName(name).lowercase()
+        if (n in setOf("standard", "default", "default paragraph style", "text body", "body text", "list paragraph", "list contents", "list", "normal", "heading")) return true
+        return isHeading && Regex("""heading ?\d""").matches(n)
     }
 
     fun block(parent: Element, out: MutableList<DocPara>, list: String?, level: Int) {
@@ -768,7 +850,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         numbered = true
                         counter[level]
                     } else null
-                    paragraph(c, out, if (value == null) null else DocList(ordered, level.coerceAtMost(8), value.takeIf { ordered }))
+                    val source = style?.let { st -> st + "|" + (0..9).joinToString("") { l -> if (levelStyle(st, l).first) "n" else "b" } }
+                    paragraph(c, out, if (value == null) null else DocList(ordered, level.coerceAtMost(8), value.takeIf { ordered }), source)
                     if (value == null) { notes += "paragraphs inside list items" }
                 }
                 "list" -> list(c, out, styleName, level + 1, counter)
@@ -792,19 +875,22 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         }
     }
 
-    fun paragraph(p: Element, out: MutableList<DocPara>, list: DocList?) {
+    fun paragraph(p: Element, out: MutableList<DocPara>, list: DocList?, listSource: String? = null) {
         val isHeading = p.localName == "h"
         val heading = if (isHeading) (p.attr(TEXT, "outline-level")?.toIntOrNull() ?: 1).also { if (it > 6) notes += "headings below level 6" }.coerceIn(1, 6) else 0
         val styleName = p.attr(TEXT, "style-name")
         val style = styleName?.let { styles["paragraph/$it"] }
         var base = DocRun("")
         var align = DocAlign.Start
+        val parts = ArrayList<Pair<String, String>>()
+        var keepStyle: String? = null
         if (style != null && style.automatic) {
-            align = paragraphLook(style)
-            base = textLook(style.text, base)
-            checkNamedParagraph(style.parent, isHeading)
-            style.masterPage?.let { if (it.isNotEmpty() && it != "Standard" && it != "Default_20_Page_20_Style") notes += "page styles" }
-        } else checkNamedParagraph(styleName, isHeading)
+            align = paragraphLook(style, parts)
+            base = textLook(style.text, base, fonts = parts)
+            if (!plainParagraph(style.parent, isHeading)) keepStyle = style.parent
+            style.masterPage?.let { if (it.isNotEmpty()) parts += "master" to it }
+        } else if (!plainParagraph(styleName, isHeading)) keepStyle = styleName
+        val keep = DocKeep(keepStyle, parts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
         if (isHeading && p.attr(TEXT, "is-list-header") == null && p.parentNode.let { it is Element && it.localName == "list-item" }) notes += "numbered headings"
         val runs = ArrayList<DocRun>()
         val currentList = list
@@ -843,7 +929,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         content(p, base, false)
         // Leading white space in an ODF paragraph is not shown; a trailing space is kept (LibreOffice keeps it).
         if (runs.isNotEmpty() && p.firstChild?.nodeType == Node.TEXT_NODE) runs[0] = runs[0].copy(text = runs[0].text.trimStart(' '))
-        out += DocPara(OfficeFormats.tidy(runs), heading, currentList, align)
+        out += DocPara(OfficeFormats.tidy(runs), heading, currentList, align, keep)
     }
 }
 
@@ -880,15 +966,25 @@ private object OdtWriter {
         }
 
         val auto = StringBuilder()
-        val paraStyles = HashMap<Pair<String, DocAlign>, String>()
+        val paraStyles = HashMap<Triple<String, DocAlign, List<Pair<String, String>>>, String>()
         val textStyles = HashMap<DocRun, String>()
         val listStyles = HashMap<String, String>()
-        fun paraStyle(parent: String, align: DocAlign): String {
-            if (align == DocAlign.Start) return parent
-            return paraStyles.getOrPut(parent to align) {
+        /** The paragraph's own style: its parent, its alignment, and what it carries from the file (spacing, indents…). */
+        fun paraStyle(parent: String, align: DocAlign, parts: List<Pair<String, String>>): String {
+            if (align == DocAlign.Start && parts.isEmpty()) return parent
+            return paraStyles.getOrPut(Triple(parent, align, parts)) {
                 val name = "TP${paraStyles.size + 1}"
-                val a = when (align) { DocAlign.Center -> "center"; DocAlign.End -> "end"; DocAlign.Justify -> "justify"; DocAlign.Start -> "start" }
-                auto.append("""<style:style style:name="$name" style:family="paragraph" style:parent-style-name="$parent"><style:paragraph-properties fo:text-align="$a"${if (align == DocAlign.Justify) " style:justify-single-word=\"false\"" else ""}/></style:style>""")
+                val master = parts.firstOrNull { it.first == "master" }?.let { " style:master-page-name=\"${OfficeFormats.esc(it.second)}\"" } ?: ""
+                val attrs = parts.filter { it.first == "@" }.joinToString("") { it.second }
+                val children = parts.filter { it.first == "child" }.joinToString("") { it.second }
+                val text = parts.filter { it.first == "text@" }.joinToString("") { it.second }.let { if (it.isEmpty()) "" else "<style:text-properties$it/>" }
+                val a = when (align) {
+                    DocAlign.Start -> ""
+                    DocAlign.Center -> " fo:text-align=\"center\""; DocAlign.End -> " fo:text-align=\"end\""
+                    DocAlign.Justify -> " fo:text-align=\"justify\" style:justify-single-word=\"false\""
+                }
+                val props = if (attrs.isEmpty() && a.isEmpty() && children.isEmpty()) "" else if (children.isEmpty()) "<style:paragraph-properties$attrs$a/>" else "<style:paragraph-properties$attrs$a>$children</style:paragraph-properties>"
+                auto.append("""<style:style style:name="$name" style:family="paragraph" style:parent-style-name="$parent"$master>$props$text</style:style>""")
                 name
             }
         }
@@ -929,7 +1025,8 @@ private object OdtWriter {
 
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
-            val style = paraStyle(if (p.heading > 0) "Heading_20_${p.heading}" else body, p.align)
+            val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
+            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty())
             append("<$tag text:style-name=\"$style\"")
             if (p.heading > 0) append(" text:outline-level=\"${p.heading}\"")
             append(">")
@@ -962,7 +1059,10 @@ private object OdtWriter {
             var end = i
             while (end < doc.paras.size && doc.paras[end].list != null) end++
             val items = doc.paras.subList(i, end)
-            text.append("<text:list text:style-name=\"${listStyle(items)}\">")
+            // The file's own list style, when every item still belongs to it and is still of its kind at its level.
+            val source = items.first().keep?.list
+            val reuse = source != null && items.all { it.keep?.list == source && source.substringAfterLast('|').getOrNull(it.list!!.level)?.let { c -> (c == 'n') == it.list.ordered } == true }
+            text.append("<text:list text:style-name=\"${if (reuse) OfficeFormats.esc(source!!.substringBeforeLast('|')) else listStyle(items)}\">")
             var depth = 0 // lists open below the top one
             var itemOpen = false
             for ((n, item) in items.withIndex()) {
@@ -995,12 +1095,18 @@ private object OdtWriter {
         }
         var out = content.substring(0, open.range.first) + "<office:text${open.groupValues[1]}>" + decls + text + "</office:text>" + rest
         val autoRe = Regex("""<office:automatic-styles\s*/>|<office:automatic-styles>[\s\S]*?</office:automatic-styles>""")
-        val autoXml = "<office:automatic-styles>$auto</office:automatic-styles>"
+        // The file's own list styles stay, for the lists that still use them.
+        val ownLists = Regex("""<office:automatic-styles>([\s\S]*?)</office:automatic-styles>""").find(content)?.groupValues?.get(1)
+            ?.let { a -> Regex("""<text:list-style[\s>][\s\S]*?</text:list-style>""").findAll(a).joinToString("") { it.value } } ?: ""
+        val autoXml = "<office:automatic-styles>$ownLists$auto</office:automatic-styles>"
         out = if (autoRe.containsMatchIn(out)) out.replaceFirst(autoRe, Regex.escapeReplacement(autoXml)) else out.replaceFirst("<office:body>", "$autoXml<office:body>")
         if ("xmlns:xlink=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:xlink=\"$XLINK\"")
         parts["content.xml"] = out.toByteArray()
         return OfficeFormats.zip(parts, stored = "mimetype")
     }
+
+    /** A style that is only plain text, which a heading must not take instead of its heading style. */
+    private fun plainNamed(name: String) = odfDisplayName(name).lowercase() in setOf("standard", "default", "text body", "body text", "normal")
 
     fun fmt(pt: Float): String = if (pt == pt.toInt().toFloat()) pt.toInt().toString() else "%.1f".format(java.util.Locale.ROOT, pt)
 

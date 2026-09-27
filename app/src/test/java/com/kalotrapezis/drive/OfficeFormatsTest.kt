@@ -23,10 +23,11 @@ class OfficeFormatsTest {
         val bytes = OfficeFormats.write(sample, kind)
         val back = OfficeFormats.read(bytes, kind)
         assertEquals(emptySet<String>(), back.unsupported)
-        assertEquals(sample.paras, back.paras)
+        // Read back, a list item also knows the file's own list it belongs to; that aside, the same.
+        assertEquals(sample.paras, back.paras.map { it.copy(keep = null) })
         // Written into itself again: nothing drifts.
         val again = OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind)
-        assertEquals(sample.paras, again.paras)
+        assertEquals(back.paras, again.paras)
     }
 
     @Test fun `a new docx reads back as written`() = roundTrip(OfficeKind.Docx)
@@ -52,6 +53,18 @@ class OfficeFormatsTest {
         assertEquals("application/vnd.oasis.opendocument.text", String(bytes, 38, 39))
     }
 
+    @Test fun `a paragraph's own formatting is carried through edits`() {
+        val keep = DocKeep("Quote", listOf("spacing" to "<w:spacing w:after=\"0\"/>"))
+        val old = listOf(DocPara(listOf(DocRun("A"))), DocPara(listOf(DocRun("B")), keep = keep), DocPara(listOf(DocRun("C"))))
+        // B edited, a paragraph typed after it, C unchanged.
+        val new = listOf(DocPara(listOf(DocRun("A"))), DocPara(listOf(DocRun("B, edited"))), DocPara(listOf(DocRun("new"))), DocPara(listOf(DocRun("C"))))
+        val carried = OfficeFormats.carryKeep(old, new)
+        assertEquals(listOf(null, keep, keep, null), carried.map { it.keep })
+        // A page break before a paragraph is not handed on to the next one.
+        val broken = DocKeep(null, listOf("pageBreakBefore" to "<w:pageBreakBefore/>"))
+        assertEquals(null, OfficeFormats.carryKeep(listOf(DocPara(listOf(DocRun("X")), keep = broken)), listOf(DocPara(listOf(DocRun("X"))), DocPara(listOf(DocRun("Y")))))[1].keep)
+    }
+
     /** The user's own documents on this computer, when they are here: each must read without an error. */
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
@@ -61,8 +74,13 @@ class OfficeFormatsTest {
             val doc = OfficeFormats.read(bytes, kind)
             println("${f.name}: ${doc.paras.size} paragraphs; not kept: ${doc.unsupported.ifEmpty { setOf("—") }.joinToString()}")
             // Written back (into memory only) and read again: the same text.
-            val again = OfficeFormats.read(OfficeFormats.write(doc, kind, bytes), kind)
+            val written = OfficeFormats.write(doc, kind, bytes)
+            // Kept for comparing by eye with LibreOffice (build/office-roundtrip); never beside the originals.
+            File("build/office-roundtrip").apply { mkdirs() }.resolve(f.name).writeBytes(written)
+            val again = OfficeFormats.read(written, kind)
             assertEquals(f.name, doc.paras.map { it.text }, again.paras.map { it.text })
+            // Each paragraph's own formatting comes back as it was read.
+            assertEquals(f.name, doc.paras.map { it.keep }, again.paras.map { it.keep })
         }
     }
 }

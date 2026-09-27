@@ -555,8 +555,15 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             ?: e.getElementsByTagNameNS("*", "imagedata").let { if (it.length > 0) (it.item(0) as Element).getAttributeNS(R, "id").takeIf { id -> id.isNotEmpty() } else null }
         val part = relId?.let { images[it] }
         val extent = e.getElementsByTagNameNS("*", "extent").let { if (it.length > 0) it.item(0) as Element else null }
-        val w = extent?.getAttribute("cx")?.toLongOrNull()?.let { it / 12700f } ?: 144f
-        val h = extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: 96f
+        // Word's older drawings (VML) give their size in a style: "width:120pt;height:1.5pt"; a horizontal rule spans the page.
+        val vml = e.getElementsByTagNameNS("*", "*").let { all -> (0 until all.length).map { all.item(it) as Element }.firstOrNull { it.hasAttribute("style") && "width" in it.getAttribute("style") } }
+        fun vmlLength(key: String): Float? = vml?.getAttribute("style")?.let { Regex("""(?:^|;)\s*$key\s*:\s*([\d.]+)(pt|in|px|cm|mm)?""").find(it) }?.let { m ->
+            val n = m.groupValues[1].toFloatOrNull() ?: return@let null
+            when (m.groupValues[2]) { "in" -> n * 72; "px" -> n * 0.75f; "cm" -> n * 28.3465f; "mm" -> n * 2.83465f; else -> n }
+        }
+        val rule = vml?.getAttributeNS("urn:schemas-microsoft-com:office:office", "hr") == "t"
+        val w = extent?.getAttribute("cx")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("width")?.takeIf { it > 0 && !rule } ?: if (rule) 450f else 144f
+        val h = extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("height")?.takeIf { it > 0 } ?: 96f
         return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e))
     }
     var imageCount = 0

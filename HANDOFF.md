@@ -27,21 +27,16 @@ those with `soffice --headless --convert-to pdf`, compare pages with PIL): of th
 Μελέτες, 610-Ασκηση7). Still copy-only: tables (3 files), page breaks inside text, fields/TOC/content controls,
 superscript/subscript.
 
-**UNFINISHED — pictures shown in the editor** (Writer.kt, the `Box` around `BasicRichTextEditor`):
-the library's editor cannot draw pictures (only its read-only `BasicRichText` uses inline content — checked in the
-bytecode). Plan in progress: each picture paragraph gets `lineHeight` = picture height (RichTextBlock), and Writer draws
-the pictures itself over the text at their character (from `onTextLayout`: getBoundingBox / getLineBottom). State:
-no crash (a `continue` inside the composable loop crashed it — fixed by placing first, drawing after), **but on the
-emulator the picture still shows as "�" and its line is not tall** — neither the lineHeight nor the overlay shows.
-Next: log `layout.layoutInput.text` around the picture (is the character there U+FFFC? are `keys` found?) and whether
-the block's lineHeight reaches the paragraph. Opening and saving such a file is safe meanwhile (the picture goes back
-untouched — the safety net compared it). **Insert › Picture** is wired (Photo Picker → `preparePicture` → insertHtml
-`<img>` → read back) but untested. The PDF export draws pictures (not yet checked on a device).
+**Pictures on the page — finished after the handoff (same night):** the editor holds a picture as U+FFFD (its own
+choice, not our U+FFFC — that was why nothing showed). Writer gives that character the picture's height as its size
+(×1.12, so the line makes room) and no colour, and draws the picture itself over it from `onTextLayout` (left of the
+character, standing on the line's baseline). Paragraph lineHeight does not work in the editor (tried). The editor-wide
+TextStyle lineHeight was removed (it capped every line). Word's older VML drawings (a horizontal rule) take their size
+from their style. Checked on the emulator: Το Ελληνικό πληκτρολόγιο.docx shows its pictures; Insert › Picture into a new
+document, text typed after it is normal, saved → LibreOffice shows it; a second save does not add it again.
+Asked next (user): a **Picture tab** when a picture is selected — size, placement, text wrapping.
 
-Test flow on the emulator (x86_64 split added temporarily; reverted — check `git diff app/build.gradle.kts` is empty):
-scratchpad scripts `shot.sh` (screenshot) and `tap.sh "text"` (tap by on-screen text, uiautomator) were throwaway.
-
-**Next, in order:** finish pictures on the page → Insert › Picture test → tables → header/footer/page numbers →
+**Next, in order:** Picture tab (size, placement, wrap) → tables → header/footer/page numbers →
 comments → table of contents (OFFICE_FEATURES.md has the whole list and the phone test list).
 
 ---

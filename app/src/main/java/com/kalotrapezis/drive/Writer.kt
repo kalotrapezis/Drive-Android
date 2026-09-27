@@ -91,6 +91,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.isSpecified
 import com.mohamedrejeb.richeditor.document.RichTextBlock
 import com.mohamedrejeb.richeditor.document.RichTextBlockType
 import com.mohamedrejeb.richeditor.document.RichTextDocument
@@ -123,6 +124,8 @@ private const val BASE_SP = 16f
 
 /** Pictures are drawn at most this wide (sp) — about the page's width on a phone; the file keeps their real size. */
 private const val MAX_PICTURE_SP = 300f
+/** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
+private const val EDITOR_PICTURE_CHAR = '\uFFFD'
 /** How the editor names a picture: this and the picture's key. */
 internal const val PICTURE_URL = "tetra-picture:"
 
@@ -159,19 +162,19 @@ internal object WriterBridge {
                     pictureRuns[img.key] = r
                     val (w, h) = shownSize(img, scale)
                     marks += RichTextSpanMark.Image(range, PICTURE_URL + img.key, w.sp, h.sp, "Picture")
+                    // The editor cannot draw it (Writer does, over the text): the character is made as tall as the
+                    // picture, so its line makes room, and invisible.
+                    marks += RichTextSpanMark.FontSize(range, (h * 1.12f).coerceAtLeast(4f).sp) // a letter's rise is ~0.9 of its size
+                    marks += RichTextSpanMark.TextColor(range, 0L)
                 }
                 at += r.text.length
             }
-            // The editor cannot draw pictures (only the library's read-only text can); Writer draws them over the text,
-            // and a paragraph with one gets lines tall enough for it.
-            val tallest = p.runs.mapNotNull { r -> r.image?.let { shownSize(it, scale).second } }.maxOrNull()
             RichTextBlock(
                 text = p.text,
                 type = p.list?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
                 spans = marks,
                 headingLevel = p.heading,
                 textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
-                lineHeight = tallest?.let { (it + 6).sp } ?: TextUnit.Unspecified,
             )
         })
     }
@@ -584,7 +587,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp, lineHeight = (BASE_SP * 1.4f * zoom / 100).sp),
+                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
@@ -594,13 +597,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 val density = LocalDensity.current
                                 val scale = BASE_SP / meta.basePt
                                 // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
-                                val placed = text.indices.filter { text[it] == OBJECT_MARK }.mapIndexedNotNull { n, i ->
-                                    keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(img, l.getBoundingBox(i).left, l.getLineBottom(l.getLineForOffset(i))) }
+                                val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
+                                    keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(img, l.getBoundingBox(i).left, l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 Box(Modifier.matchParentSize().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)) {
                                     placed.forEach { (img, left, bottom) ->
                                         val (w, h) = WriterBridge.shownSize(img, scale)
-                                        val y = with(density) { (bottom - h.sp.toPx() - 3.dp.toPx()).toInt() }
+                                        val y = with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         Image(picturePainter(img, packageParts), contentDescription = "Picture", contentScale = ContentScale.FillBounds,
                                             modifier = Modifier.offset { IntOffset(left.toInt(), y) }.then(size))
@@ -675,12 +678,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 })
                 WriterTab.Insert -> listOf({
+                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
+                }, {
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
                     RibbonButton("Line break", w) { state.addTextAfterSelection(LINE_BREAK.toString()) }
-                }, {
                     RibbonButton("Table · later", w, enabled = false) {}
-                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 })
                 WriterTab.View -> listOf({
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }

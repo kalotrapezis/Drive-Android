@@ -44,8 +44,9 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [x] Link
 - [ ] Table (insert, add/remove rows and columns, cell text)
 - [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
-- [ ] Pictures *shown* on the page — UNFINISHED (shows "�"; see HANDOFF)
-- [ ] Insert › Picture from the phone's photos — wired, untested; size, move, wrap later
+- [x] Pictures shown on the page (Writer draws them over the text; a chart or shape is a grey box; a floating picture shows in line for now)
+- [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt
+- [ ] **Picture tab** (asked 2026-09-27): when a picture is selected, a Picture tab appears in the ribbon — size, placement, text wrapping (in line, square, top and bottom, behind/in front of text), delete
 - [ ] Page break
 - [ ] Header and footer; page numbers
 - [ ] Footnotes and endnotes
@@ -118,6 +119,7 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
 - [ ] Text size −/+ and zoom; undo/redo
 - [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
+- [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer
 - [ ] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
 
 ## Sources

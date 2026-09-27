@@ -14,7 +14,7 @@ class OfficeFormatsTest {
         DocPara(listOf(DocRun("one")), list = DocList(true, 0, 1)),
         DocPara(listOf(DocRun("inner")), list = DocList(false, 1)),
         DocPara(listOf(DocRun("two")), list = DocList(true, 0, 2)),
-        DocPara(listOf(DocRun("Between"))),
+        DocPara(listOf(DocRun("Between"), DocRun("\u2028second line", bold = true))),
         DocPara(listOf(DocRun("five")), list = DocList(true, 0, 5)),
         DocPara(listOf(DocRun("Ελληνικά <&> \"quotes\"")), align = DocAlign.Justify),
     ))

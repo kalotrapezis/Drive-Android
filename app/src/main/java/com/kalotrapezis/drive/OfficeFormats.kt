@@ -38,6 +38,9 @@ internal data class DocRun(
     fun sameLook(o: DocRun) = copy(text = "") == o.copy(text = "")
 }
 
+/** A line break inside a paragraph (Shift+Enter in Word): Unicode's line separator, in a run's text. */
+internal const val LINE_BREAK = '\u2028'
+
 /** A list item: bulleted or numbered, how deep (0 = top), and the number it starts at when that is not 1. */
 internal data class DocList(val ordered: Boolean, val level: Int, val start: Int? = null)
 
@@ -362,7 +365,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "br", "cr" -> when (e.attr(W, "type")) {
                     "page" -> { notes += "page breaks"; breakLine() }
                     "column" -> { notes += "columns"; breakLine() }
-                    else -> { notes += "line breaks inside a paragraph"; breakLine() }
+                    else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict" -> notes += "images"
                 "object" -> notes += "embedded objects"
@@ -570,12 +573,14 @@ private object DocxWriter {
             r.highlight?.let { append("""<w:highlight w:val="${nearestHighlight(it)}"/>""") }
             if (r.underline) append("""<w:u w:val="single"/>""")
         }
-        val pieces = r.text.split('\t')
         append("<w:r>")
         if (rPr.isNotEmpty()) append("<w:rPr>").append(rPr).append("</w:rPr>")
-        pieces.forEachIndexed { i, s ->
-            if (i > 0) append("<w:tab/>")
-            if (s.isNotEmpty()) append("""<w:t xml:space="preserve">""").append(OfficeFormats.esc(s)).append("</w:t>")
+        Regex("""[\t$LINE_BREAK]|[^\t$LINE_BREAK]+""").findAll(r.text).forEach { m ->
+            when (m.value) {
+                "\t" -> append("<w:tab/>")
+                LINE_BREAK.toString() -> append("<w:br/>")
+                else -> append("""<w:t xml:space="preserve">""").append(OfficeFormats.esc(m.value)).append("</w:t>")
+            }
         }
         append("</w:r>")
     }
@@ -802,8 +807,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         } else checkNamedParagraph(styleName, isHeading)
         if (isHeading && p.attr(TEXT, "is-list-header") == null && p.parentNode.let { it is Element && it.localName == "list-item" }) notes += "numbered headings"
         val runs = ArrayList<DocRun>()
-        var currentList = list
-        fun breakLine() { out += DocPara(OfficeFormats.tidy(runs), heading, currentList, align); runs.clear(); currentList = null }
+        val currentList = list
         fun content(parent: Element, look: DocRun, inLink: Boolean) {
             var n: Node? = parent.firstChild
             while (n != null) {
@@ -822,7 +826,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         }
                         "s" -> runs += look.copy(text = " ".repeat(e.attr(TEXT, "c")?.toIntOrNull()?.coerceIn(1, 1000) ?: 1))
                         "tab" -> runs += look.copy(text = "\t")
-                        "line-break" -> { notes += "line breaks inside a paragraph"; breakLine() }
+                        "line-break" -> runs += look.copy(text = LINE_BREAK.toString())
                         "soft-page-break", "bookmark", "bookmark-start", "bookmark-end", "reference-mark", "reference-mark-start", "reference-mark-end", "alphabetical-index-mark", "toc-mark" -> Unit
                         "note" -> notes += "footnotes"
                         "change", "change-start", "change-end" -> notes += "tracked changes"
@@ -1010,7 +1014,11 @@ private object OdtWriter {
                 continue
             }
             flush()
-            if (c == '\t') append("<text:tab/>") else append(OfficeFormats.esc(c.toString()))
+            when (c) {
+                '\t' -> append("<text:tab/>")
+                LINE_BREAK -> append("<text:line-break/>")
+                else -> append(OfficeFormats.esc(c.toString()))
+            }
         }
         flush()
     }

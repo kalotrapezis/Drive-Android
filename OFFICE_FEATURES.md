@@ -12,8 +12,8 @@ such a part also moves it out of `OfficeDoc.blocking`.
 
 ### Top bar
 - [x] Back, name (• unsaved), Undo, Redo, Save
-- [ ] Find and Replace (match case, whole words)
-- [ ] Share (the file, or as PDF)
+- [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
+- [x] Share the file (as last saved) — as PDF with Export
 - [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
 - [ ] ⋯ menu: Save as, Rename, Print, Properties
 
@@ -29,13 +29,13 @@ such a part also moves it out of `OfficeDoc.blocking`.
 ### Home
 - [x] Bold, Italic, Underline, Strikethrough
 - [x] Text size −/+, text colour, highlight
-- [x] Styles: Normal, Heading 1–3 (**next: the document's own heading sizes**)
+- [x] Styles: Normal, Heading 1–3 (**the library fixes heading sizes (H1 = 2× text); show the document's own — workaround needed**)
 - [x] Bullets, numbering, indent −/+
 - [x] Alignment: left, centre, right, justify
 - [ ] Font name (the document's fonts, kept on save)
 - [ ] Superscript, subscript; small caps; clear formatting
-- [ ] Line and paragraph spacing (space after each paragraph, as Word shows)
-- [ ] Line break inside a paragraph (Shift+Enter) — the commonest copy-only reason in the user's files
+- [ ] Line and paragraph spacing (space after each paragraph, as Word shows) — the editor library has no paragraph spacing; needs a workaround
+- [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
 - [ ] Format painter (copy formatting)
 - [ ] More styles: Title, Subtitle, Quote, Heading 4–6
 
@@ -63,7 +63,7 @@ such a part also moves it out of `OfficeDoc.blocking`.
 
 ### Review
 - [ ] Spelling (Android's spell checker)
-- [ ] Word count (words, characters, paragraphs)
+- [x] Word count (File › About this file)
 - [ ] Comments: read, reply, delete
 - [ ] Track changes: show, accept, reject, record
 - [ ] Read aloud (Android text-to-speech)
@@ -75,7 +75,7 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [ ] Navigation pane: jump to a heading
 
 ### On the phone
-- [x] Ribbon at the bottom; a strip on the keyboard
+- [x] Ribbon at the bottom; a strip on the keyboard; the tools in pages with dots (asked 2026-09-27)
 - [ ] Keyboard strip like Word's phone bar: B · I · U · highlighter · ⋯ · hide keyboard
 - [ ] Dictation (Android voice typing into the page)
 
@@ -100,6 +100,20 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [ ] Present: full screen, swipe to advance, pen and laser on the slide, blank screen, speaker notes
 - [ ] Present to a TV (Android's cast / HDMI)
 - [ ] Export as PDF
+
+## To test on the phone, with the user
+
+Each is done on the emulator; tick when checked on the real phone.
+- [ ] Home: orange Office group (icon, New document, Documents), purple Text editor group, their Settings cards
+- [ ] Office home: header icon; Word blue, Excel green, PowerPoint deep orange; the documents list
+- [ ] Open a .docx and an .odt of his own; nothing looks different from Word/LibreOffice (bold, lists, headings)
+- [ ] Edit + Save over a file with no banner; open it on the computer in LibreOffice/Word
+- [ ] A file with tables or images: orange banner, Save makes "(copy)", the original untouched
+- [ ] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt
+- [ ] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches
+- [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count)
+- [ ] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
+- [ ] Text size −/+ and zoom; undo/redo
 
 ## Sources
 

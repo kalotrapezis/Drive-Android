@@ -1535,12 +1535,13 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 }
 
 @Composable
-internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null) {
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
             }
             Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(islandContentColor().copy(alpha = 0.35f)))
         }
@@ -5019,7 +5020,7 @@ private fun shareDriveFiles(context: Context, files: List<File>) {
     }, "Share ${real.size} files"))
 }
 
-private fun shareDriveFile(context: Context, file: File) {
+internal fun shareDriveFile(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
     val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase(Locale.ROOT)) ?: "application/octet-stream"
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {

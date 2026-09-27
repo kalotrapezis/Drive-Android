@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +56,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +95,11 @@ import kotlin.math.roundToInt
  * Office (asked 2026-09-27): an orange group of its own. Its home starts a new Word document (Excel and PowerPoint
  * come later) and lists the documents in Tetra's Files; Writer edits one, what you see is what the file holds.
  */
+
+/** Each app's own colour, as across Office and its look-alikes (asked 2026-09-27); the Office group stays orange. */
+internal val WORD_BLUE = Color(0xFF185ABD)
+internal val EXCEL_GREEN = Color(0xFF107C41)
+internal val POWERPOINT_ORANGE = Color(0xFFB7472A) // deeper than the Office group's orange (asked 2026-09-27)
 
 /** The editor's normal text size; the document's own normal size is shown at this size, the rest in proportion. */
 private const val BASE_SP = 16f
@@ -184,9 +194,9 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NewDocCard("Word", "New document", true, Modifier.weight(1f)) { open(null) }
-                    NewDocCard("Excel", "Coming later", false, Modifier.weight(1f)) {}
-                    NewDocCard("PowerPoint", "Coming later", false, Modifier.weight(1f)) {}
+                    NewDocCard("Word", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
+                    NewDocCard("Excel", "Coming later", EXCEL_GREEN, false, Modifier.weight(1f)) {}
+                    NewDocCard("PowerPoint", "Coming later", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
                 }
             }
             item { Text("Documents in Files", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
@@ -201,7 +211,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 else items(list, key = { it.relative }) { f ->
                     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { open(Uri.fromFile(f.file).toString()) }) {
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            Icon(painterResource(R.drawable.ic_file_text), contentDescription = null, tint = Category.Office.color, modifier = Modifier.size(28.dp))
+                            Icon(painterResource(R.drawable.ic_file_text), contentDescription = null, tint = WORD_BLUE, modifier = Modifier.size(28.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.file.lastModified())),
@@ -212,13 +222,13 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }
             }
         }
-        ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter))
+        ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter), art = R.drawable.office_art)
     }
 }
 
-@Composable private fun NewDocCard(app: String, label: String, enabled: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
-    shape = MaterialTheme.shapes.extraLarge, color = if (enabled) Category.Office.color else MaterialTheme.colorScheme.surfaceVariant,
-    contentColor = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+@Composable private fun NewDocCard(app: String, label: String, color: Color, enabled: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
+    shape = MaterialTheme.shapes.extraLarge, color = color,
+    contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.7f),
     modifier = modifier.height(104.dp).then(if (enabled) Modifier.clickable(onClick = click) else Modifier),
 ) {
     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
@@ -269,6 +279,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var linking by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var zoom by remember { mutableIntStateOf(100) }
+    var finding by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
+    var replacing by remember { mutableStateOf(false) }
     val draftKey = open ?: "new"
 
     fun current() = meta.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))
@@ -375,10 +389,42 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val w = islandContentColor()
     Box(Modifier.fillMaxSize().background(Color(0xFF1B1D1E)).statusBarsPadding().imePadding()) {
         Column(Modifier.fillMaxSize()) {
-            // Word's top bar: back, the name (a dot while unsaved), undo and redo.
+            // Find and Replace (Word's magnifier): the matches are found in the text as the editor holds it, so a
+            // match's place is where the editor selects it.
+            if (finding) {
+                val text = state.annotatedString.text
+                val matches = remember(text, query) { if (query.isEmpty()) emptyList() else Regex(Regex.escape(query), RegexOption.IGNORE_CASE).findAll(text).map { it.range }.toList() }
+                val at = matches.indexOfFirst { it.first >= state.selection.min }.let { if (it < 0) 0 else it }
+                fun go(i: Int) { matches.getOrNull(Math.floorMod(i, matches.size.coerceAtLeast(1)))?.let { state.selection = androidx.compose.ui.text.TextRange(it.first, it.last + 1) } }
+                Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Tool(R.drawable.ic_close, "Close find", w) { finding = false }
+                        val focus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { focus.requestFocus() }
+                        OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Find") }, modifier = Modifier.weight(1f).focusRequester(focus),
+                            suffix = { Text(if (query.isEmpty()) "" else if (matches.isEmpty()) "0" else "${at + 1}/${matches.size}") })
+                        Tool(R.drawable.ic_keyboard_arrow_up, "Previous", w, enabled = matches.isNotEmpty()) { go(at - 1) }
+                        Box(Modifier.graphicsLayer { rotationZ = 180f }) { Tool(R.drawable.ic_keyboard_arrow_up, "Next", w, enabled = matches.isNotEmpty()) { go(if (state.selection.collapsed) at else at + 1) } }
+                        Tool(R.drawable.ic_swap_horiz, "Replace", w, on = replacing) { replacing = !replacing }
+                    }
+                    if (replacing) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(replacement, { replacement = it }, singleLine = true, placeholder = { Text("Replace with") }, modifier = Modifier.weight(1f))
+                        RibbonButton("Replace", w, enabled = matches.isNotEmpty()) {
+                            val m = matches.getOrNull(at) ?: return@RibbonButton
+                            state.replaceTextRange(androidx.compose.ui.text.TextRange(m.first, m.last + 1), replacement)
+                        }
+                        RibbonButton("All", w, enabled = matches.isNotEmpty()) {
+                            state.history.group { matches.asReversed().forEach { m -> state.replaceTextRange(androidx.compose.ui.text.TextRange(m.first, m.last + 1), replacement) } }
+                            message = "Replaced ${matches.size}"
+                        }
+                    }
+                }
+            } else
+            // Word's top bar: back, the name (a dot while unsaved), find, undo and redo.
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
+                Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo) { state.history.undo() }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo) { state.history.redo() }
                 Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null)) { save() }
@@ -418,57 +464,73 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
                 }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                val span = state.currentSpanStyle
-                val para = state.currentParagraphStyle
-                when (tab) {
-                    WriterTab.File -> {
-                        RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null)) { save() }
-                        RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { save(asCopy = true) }
-                        RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
+            // The tools of a tab in pages that fit the width, swiped one page at a time (asked 2026-09-27), with dots.
+            val span = state.currentSpanStyle
+            val para = state.currentParagraphStyle
+            val pages: List<@Composable () -> Unit> = when (tab) {
+                WriterTab.File -> listOf({
+                    RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null)) { save() }
+                    RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { save(asCopy = true) }
+                }, {
+                    RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
+                        file?.let { shareDriveFile(context, it) }
+                        if (dirty) message = "Shared as last saved — your newest changes are not in it yet"
                     }
-                    WriterTab.Home -> {
-                        Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
-                        Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
-                        Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
-                        Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
-                        Divider(w)
-                        val size = WriterBridge.spOf(span.fontSize) ?: BASE_SP
-                        Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = (size - 2).coerceAtLeast(8f).sp)) }
-                        Text("${(size / BASE_SP * meta.basePt).roundToInt()}", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 2.dp))
-                        Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = (size + 2).coerceAtMost(72f).sp)) }
-                        Divider(w)
-                        Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
-                            if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))
-                        }
-                        Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
-                            if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
-                        }
-                        Divider(w)
-                        listOf(HeadingStyle.Normal to "Normal", HeadingStyle.H1 to "Heading 1", HeadingStyle.H2 to "Heading 2", HeadingStyle.H3 to "Heading 3").forEach { (h, label) ->
-                            RibbonButton(label, w, on = state.currentHeadingStyle == h) { state.setHeadingStyle(h) }
-                        }
-                        Divider(w)
-                        Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
-                        Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
-                        Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
-                        Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
-                        Divider(w)
-                        listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
-                            val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
-                            Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a)) }
-                        }
+                    RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
+                })
+                WriterTab.Home -> listOf({
+                    Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
+                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                    Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
+                    Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
+                    Divider(w)
+                    val size = WriterBridge.spOf(span.fontSize) ?: BASE_SP
+                    Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = (size - 2).coerceAtLeast(8f).sp)) }
+                    Text("${(size / BASE_SP * meta.basePt).roundToInt()}", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 2.dp))
+                    Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = (size + 2).coerceAtMost(72f).sp)) }
+                }, {
+                    Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                        if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))
                     }
-                    WriterTab.Insert -> {
-                        RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
-                        RibbonButton("Table · later", w, enabled = false) {}
-                        RibbonButton("Picture · later", w, enabled = false) {}
+                    Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+                        if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
-                    WriterTab.View -> {
-                        Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
-                        Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
-                        Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                }, {
+                    listOf(HeadingStyle.Normal to "Normal", HeadingStyle.H1 to "H1", HeadingStyle.H2 to "H2", HeadingStyle.H3 to "H3").forEach { (h, label) ->
+                        RibbonButton(label, w, on = state.currentHeadingStyle == h) { state.setHeadingStyle(h) }
                     }
+                }, {
+                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
+                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
+                    Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
+                    Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
+                }, {
+                    listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
+                        val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
+                        Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a)) }
+                    }
+                })
+                WriterTab.Insert -> listOf({
+                    RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
+                    // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
+                    RibbonButton("Line break", w) { state.addTextAfterSelection(LINE_BREAK.toString()) }
+                }, {
+                    RibbonButton("Table · later", w, enabled = false) {}
+                    RibbonButton("Picture · later", w, enabled = false) {}
+                })
+                WriterTab.View -> listOf({
+                    Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
+                    Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+                    Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                })
+            }
+            androidx.compose.runtime.key(tab) {
+                val pager = rememberPagerState { pages.size }
+                HorizontalPager(pager, Modifier.fillMaxWidth()) { page ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
+                }
+                if (pages.size > 1) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.Center) {
+                    repeat(pages.size) { i -> Box(Modifier.padding(horizontal = 3.dp).size(6.dp).clip(CircleShape).background(w.copy(alpha = if (i == pager.currentPage) 0.9f else 0.3f))) }
                 }
             }
         }
@@ -547,6 +609,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
+                val all = remember { current().paras.joinToString("\n") { it.text } }
+                val words = Regex("""[\p{L}\p{N}]+(['’-][\p{L}\p{N}]+)*""").findAll(all).count()
+                Text("$words words · ${all.count { !it.isWhitespace() }} characters (${all.count { it != '\n' && it != LINE_BREAK }} with spaces) · ${current().paras.count { it.text.isNotBlank() }} paragraphs", style = MaterialTheme.typography.bodyMedium)
                 if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.unsupported.isEmpty()) Text("Writer keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)

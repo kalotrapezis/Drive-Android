@@ -1,3 +1,22 @@
+# 27 September afternoon — 0.3.0 Beta 2 released
+
+Both repos merged into `main`; `v0.3.0-beta.2` (APK) and `desktop-v0.3.0-beta.2` (.deb, AppImage). PC runs Beta 2.
+Since Beta 1: motion photos (both; Autoplay off by default, crossed-out Motion button), the Android **Text editor**
+(TextEditor.kt: tabs + drafts in `office_editor` prefs / `files/editor-drafts`, CodeKeys symbols row, TextFileRules
+keeps CRLF/BOM, TextEditorActivity for Open with), category symbols in Settings, Notes' Tag + chip.
+
+**Writer (docx/odt) is on hold** (user: "don't move forward if we can't do it correctly"). Agreed so far: .docx and
+.odt, a file with parts Writer can't handle saves only as a copy, a Word-like ribbon at the bottom (tabs line + tools
+line; the reverted commit 1b8d17e has a working ribbon to start from), an orange **Office** group (Assets/Office.png)
+separate from the purple Text editor group, an Office home listing New Word/Excel/PowerPoint and the documents in
+Files. compose-rich-editor needs compileSdk 37 and Kotlin 2.4 — not usable on this toolchain; the plan was Android's
+own EditText with spans.
+
+Assets/Screenshot_*.jpg are the user's raw phone shots: they show a Wi-Fi printout (SSID, router MAC) — never commit
+them; the README uses blurred copies.
+
+---
+
 # 27 September, past midnight — motion photos built, to test in the morning
 
 Both apps (SYNC_PLAN: the rule is library.pairMotion / MotionRules, the same stem rule as the importer):

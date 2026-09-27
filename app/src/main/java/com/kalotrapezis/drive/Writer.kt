@@ -617,11 +617,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         }
         // The ribbon, like Word's, at the bottom: a line of tabs and a line of that tab's tools, scrolling sideways
-        // when they do not fit. A floating island with the keyboard down; a flat strip on the keyboard when it is up.
+        // when they do not fit. A floating island with the keyboard down; with it up, a flat strip on it on a phone, and on a
+        // tablet the same island as high above it (asked 2026-09-27: on a keyboard case the strip pressed against the word
+        // suggestions).
         val imeOpen = WindowInsets.isImeVisible
+        val island = !imeOpen || LocalConfiguration.current.screenWidthDp >= 700
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
-            if (imeOpen) Modifier.background(Color(0xFF16191A))
-            else Modifier.navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            if (!island) Modifier.background(Color(0xFF16191A))
+            else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
+                .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 WriterTab.entries.forEach { t ->
                     Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,

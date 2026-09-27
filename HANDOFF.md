@@ -1,3 +1,43 @@
+# 27 September evening — Writer's file formats built; the screen next (after the usage reset)
+
+The user OK'd the `writer-library` build on the phone ("everything is in order"; backup of its data first:
+`Drive-Android-backups/2026-09-27-before-writer-library/app-data.tar`). Then asked: carry on, check on the emulator,
+review together later; keep this file current (usage was at 80 %).
+
+**Done — `OfficeFormats.kt`** (pure Kotlin, tested on the computer, `OfficeFormatsTest`):
+- `OfficeFormats.read(bytes, kind)` → `OfficeDoc` (paragraphs of runs: bold, italic, underline, strike, size, colour,
+  highlight, link; headings 1–6, bullet/numbered lists with start numbers, alignment) and `unsupported`: plain-word
+  names of what the file has that Writer cannot keep.
+- `OfficeFormats.write(doc, kind, original)` writes the body **into the original package** (styles, headers, footers,
+  page setup untouched), or into a blank .docx/.odt when there is none. Lists get new numbering definitions; missing
+  heading/Hyperlink styles are added.
+- Tests: round trip for both formats, a docx with a table (named, other parts kept), the ODT mimetype, and **every
+  .docx/.odt under ~/Έγγραφα read and written back with the same text** (29 files, in memory only).
+
+**Open question for the user (ask before building the save rule on it):** the strict rule makes most real files
+"save as a copy" — of the 29, only 1 had nothing to report. The usual reasons are *paragraph spacing and indents*,
+*fonts*, *borders and shading*; tables, images, page breaks come next. Options: (a) stay strict; (b) treat spacing,
+indents and fonts as "simplified" (warn, still allow Save) and keep copy-only for content (images, tables, comments,
+tracked changes, footnotes, fields); (c) keep the original's paragraph formatting for paragraphs the user did not touch
+(more work, best result). Recommend (b) now, (c) later.
+
+**Next, in order:**
+1. `Assets/Office.png` → `res/drawable-nodpi/office_art.png` (crop the disc: its ragged red fringe must go — a circle
+   mask a little inside the orange). `Category.Office` → orange (desktop `--cat-office` too); a new `Category.Text`
+   keeps purple for the Text editor; two Home groups.
+2. Office home screen: New Word · New Excel (later) · New PowerPoint (later); the .docx/.odt found under /sdcard/Tetra.
+3. Writer screen (`Writer.kt`): `RichTextState` + `BasicRichTextEditor`; OfficeDoc ↔ `RichTextDocument`
+   (`state.toRichTextDocument()` / `setRichTextDocument`; blocks, `RichTextBlockType.ListItem(ordered, indent,
+   startNumber)`, marks `Bold/Italic/Underline/Strikethrough/FontSize/TextColor/Highlight/Link(range)`; ranges are
+   `start until end`). A white page (document colours must show). Banner + Save-as-copy when `unsupported` is not
+   empty; saving writes a temp file then renames (never a half-written original).
+4. The ribbon, from the user's Word screenshots (27 Sep): tabs **Home · Insert · Layout · View** (File first), tools
+   B I U, highlighter, text colour, bullets, numbers, indent −/+, alignment; with the keyboard up, one strip of the
+   most used (B I U highlighter …) on the keyboard, like Word's phone bar. Start from commit `1b8d17e`'s ribbon.
+5. Emulator check of each step (temporary `"x86_64"` in `splits.abi.include`, reverted before committing).
+
+---
+
 # 27 September — Android 0.3.0 Beta 3 released (the computer stays on Beta 2); on to Office
 
 Beta 3 adds only: a new photo or video starts a sync ~10 s later (`SyncJob` NEW_PHOTO, a MediaStore trigger job, Wi-Fi,

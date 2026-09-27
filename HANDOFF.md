@@ -1,3 +1,41 @@
+# 27 September night — Office and Writer built, checked on the emulator; not yet on the phone
+
+**Save rule, option (b)** (the user did not choose; recommended, say so when reviewing): `OfficeDoc.blocking` (content
+Writer does not show — images, tables, comments, tracked changes, footnotes, fields, page/line breaks, other styles…)
+→ saving makes "name (copy).ext" beside it and Writer switches to the copy; `OfficeDoc.simplified` (spacing and
+indents, fonts, tab stops) → a note, Save goes over the file. Also copy-only: any file whose paragraphs, read back from
+the editor, differ from the file ("formatting Writer shows differently" — a safety net for bridge bugs).
+
+Built (`Writer.kt`, `OfficeFormats.kt`):
+- Home: an **orange Office group** (office_art.png from Assets/Office.png, cropped to the disc; Office · New document ·
+  Documents) and the **purple Text editor group**. `Category.Office` orange #F76002 with `ic_office`, new
+  `Category.Text` purple; Settings' editor card is "Text editor"; desktop `--cat-office`/`--cat-text` changed too
+  (Drive repo, styles.css).
+- **Office home**: Word · New document, Excel and PowerPoint "Coming later", the .docx/.odt under /sdcard/Tetra (not
+  Trash or hidden folders), newest first.
+- **Writer**: a white page, `BasicRichTextEditor`; top bar back · name (• unsaved) · undo · redo · save; the banner
+  (orange: copy-only; grey: simplified); the ribbon at the bottom — File (Save, Save a copy, About this file), Home
+  (B I U S, size −/+, text colour, highlight, Normal/Heading 1–3, bullets, numbering, indent −/+, alignment), Insert
+  (Link; Table and Picture "later"), View (zoom). Floating solid island with the keyboard down, a strip on it when up.
+- Safety: saves write a temp file then rename; before overwriting, the old file goes to `files/writer-history` (last 3
+  per name); unsaved changes are a draft in `files/writer-drafts` and come back on reopening; leaving asks Save /
+  Don't save.
+
+Checked on the emulator (then with LibreOffice on the pulled files): the user's Αξιολόγηση τριμήνου.odt opens with its
+numbered list and bold, no banner; an edit + Bold saved over it — LibreOffice shows only that change. Τούρκικα (tables)
+→ banner → Save made "(copy)", the original untouched. New document → Heading 1 + bullets → Shopping.docx, clean XML.
+Fixed on the way: sizes the editor gives in em (after a heading) were written as tiny sizes; Enter after a heading now
+starts a Normal line like Word; a trailing space in ODT paragraphs is kept; empty borders/spacing no longer count.
+
+**Next:**
+1. Install on the phone (not plugged in tonight) and go through it with the user.
+2. Line breaks inside a paragraph (Shift+Enter) are the commonest copy-only reason in his files — support them.
+3. Heading sizes: the editor's H1–H3 are bigger than the document's own heading styles — show the document's.
+4. Paragraph spacing: the page has none between paragraphs; Word shows space after each.
+5. Then the Word features list below (Find, Share, Insert table/picture, Draw, Layout, Review, History).
+
+---
+
 # 27 September evening — Writer's file formats built; the screen next (after the usage reset)
 
 The user OK'd the `writer-library` build on the phone ("everything is in order"; backup of its data first:

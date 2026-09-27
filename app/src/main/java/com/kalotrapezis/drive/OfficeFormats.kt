@@ -53,7 +53,16 @@ internal data class OfficeDoc(
     val paras: List<DocPara>,
     val unsupported: Set<String> = emptySet(),
     val basePt: Float = 11f,
-)
+) {
+    /** What would go missing on saving over the file: content, not just its look. Any of it → Save as a copy only. */
+    val blocking: Set<String> get() = unsupported - SIMPLIFIED
+    /** What saving over the file simplifies to Writer's own (agreed 2026-09-27, option b): said, not a reason for a copy. */
+    val simplified: Set<String> get() = unsupported intersect SIMPLIFIED
+
+    companion object {
+        val SIMPLIFIED = setOf("paragraph spacing and indents", "fonts", "tab stops")
+    }
+}
 
 internal enum class OfficeKind(val extension: String, val mime: String) {
     Docx("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
@@ -271,11 +280,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "rPr", "widowControl", "keepNext", "keepLines", "snapToGrid", "autoSpaceDE", "autoSpaceDN", "adjustRightInd", "contextualSpacing",
                 "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "textAlignment", "outlineLvl", "divId", "cnfStyle",
                 "suppressLineNumbers", "mirrorIndents", "bidi", "textDirection", "textboxTightWrap" -> Unit
-                "spacing", "ind" -> notes += "paragraph spacing and indents"
+                "spacing", "ind" -> if (e.attributes.length > 0) notes += "paragraph spacing and indents" // an empty one changes nothing
                 "pageBreakBefore" -> if (e.attr(W, "val").let { it == null || it == "1" || it == "true" }) notes += "page breaks"
                 "sectPr" -> notes += "section breaks"
-                "tabs" -> notes += "tab stops"
-                "pBdr", "shd" -> notes += "borders and shading"
+                "tabs" -> if (e.kids().isNotEmpty()) notes += "tab stops"
+                "pBdr" -> if (e.kids().any { it.attr(W, "val").let { v -> v != null && v != "none" && v != "nil" } }) notes += "borders and shading"
+                "shd" -> if (e.attr(W, "fill").let { it != null && it != "auto" && it != "FFFFFF" }) notes += "borders and shading"
                 "framePr" -> notes += "shapes and text boxes"
                 "pPrChange" -> notes += "tracked changes"
                 else -> notes += "other paragraph formatting"
@@ -827,11 +837,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             }
         }
         content(p, base, false)
-        // Leading and trailing white space in an ODF paragraph is not shown; the editor should not show it either.
-        if (runs.isNotEmpty()) {
-            runs[0] = runs[0].copy(text = runs[0].text.trimStart(' ').takeIf { p.firstChild?.nodeType == Node.TEXT_NODE } ?: runs[0].text)
-            runs[runs.size - 1] = runs.last().copy(text = runs.last().text.trimEnd(' ').takeIf { p.lastChild?.nodeType == Node.TEXT_NODE } ?: runs.last().text)
-        }
+        // Leading white space in an ODF paragraph is not shown; a trailing space is kept (LibreOffice keeps it).
+        if (runs.isNotEmpty() && p.firstChild?.nodeType == Node.TEXT_NODE) runs[0] = runs[0].copy(text = runs[0].text.trimStart(' '))
         out += DocPara(OfficeFormats.tidy(runs), heading, currentList, align)
     }
 }

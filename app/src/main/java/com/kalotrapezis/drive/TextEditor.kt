@@ -420,7 +420,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") })
-                    Text("In ${store.saveFolder} (Settings › Office). No extension adds .txt.", style = MaterialTheme.typography.bodySmall)
+                    Text("In ${store.saveFolder} (Settings › Text editor). No extension adds .txt.", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { saveAs(id, typed) }) { Text("Save") } },

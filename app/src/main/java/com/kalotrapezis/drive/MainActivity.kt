@@ -293,6 +293,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
+    var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
@@ -563,6 +565,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Codes -> Unit
                 Screen.Notes -> Unit
                 Screen.TextEditor -> Unit
+                Screen.Office -> Unit
+                Screen.Writer -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -596,6 +600,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openNotes = { notesStart = null; screen = Screen.Notes },
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
+                    openOffice = { screen = Screen.Office },
+                    newDocument = { writerOpen = null; screen = Screen.Writer },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -637,6 +643,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
                 Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home }, start = editorStart)
+                Screen.Office -> androidx.compose.runtime.key(officeVersion) {
+                    OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                    }, open = { writerOpen = it; screen = Screen.Writer })
+                }
+                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = Screen.Office }, open = writerOpen)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -706,7 +718,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -741,6 +753,8 @@ private fun Home(
     openCodes: () -> Unit,
     openNotes: () -> Unit,
     openTextEditor: (String?) -> Unit,
+    openOffice: () -> Unit,
+    newDocument: () -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -780,9 +794,21 @@ private fun Home(
             }
         },
         { HomePdfToolsCard(openScanner, openCodes) },
-        // Office (asked 2026-09-27): the text editor first; Writer, Presentation and Calc to come.
+        // Office (asked 2026-09-27): orange, Writer first; Excel and PowerPoint to come.
         {
             HomeGroup(Category.Office.color) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("New document", R.drawable.ic_note_add, newDocument)
+                        HomeCompactCard("Documents", R.drawable.ic_file_text, openOffice)
+                    }
+                }
+            }
+        },
+        // The text editor: a group of its own, purple (asked 2026-09-27).
+        {
+            HomeGroup(Category.Text.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1469,7 +1495,7 @@ private fun SettingsTab(
             val editor = remember { TextEditorStore(editorContext) }
             var wrap by remember { mutableStateOf(editor.wordWrap) }
             var folder by remember { mutableStateOf(editor.saveFolder) }
-            SettingsCard("Office", Category.Office) {
+            SettingsCard("Text editor", Category.Text) {
                 Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; editor.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Word wrap", style = MaterialTheme.typography.titleSmall)
@@ -1539,14 +1565,15 @@ private fun SettingsCard(title: String, category: Category? = null, content: @Co
 /**
  * The parts of Tetra, each with its colour and symbol (asked 2026-09-27). The app stays black and white; a category's
  * colour is a label — its icon beside a title, its group on Home — the same in light and dark. The desktop has the same
- * five (styles.css --cat-*).
+ * six (styles.css --cat-*).
  */
 internal enum class Category(val color: Color, val icon: Int) {
     Gallery(Color(0xFF3DA35D), R.drawable.ic_gallery),
     Files(Color(0xFF4F86E8), R.drawable.ic_folder),
     Notes(Color(0xFFF2B705), R.drawable.ic_edit_note),
     Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
-    Office(Color(0xFF8E5BD8), R.drawable.ic_file_text),
+    Office(Color(0xFFF76002), R.drawable.ic_office),
+    Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
 }
 
 @Composable

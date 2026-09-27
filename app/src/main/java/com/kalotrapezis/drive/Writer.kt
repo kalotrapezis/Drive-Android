@@ -1,0 +1,587 @@
+package com.kalotrapezis.drive
+
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.util.Log
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mohamedrejeb.richeditor.document.RichTextBlock
+import com.mohamedrejeb.richeditor.document.RichTextBlockType
+import com.mohamedrejeb.richeditor.document.RichTextDocument
+import com.mohamedrejeb.richeditor.document.RichTextSpanMark
+import com.mohamedrejeb.richeditor.model.HeadingStyle
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.ui.BasicRichTextEditor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
+import kotlin.math.roundToInt
+
+/*
+ * Office (asked 2026-09-27): an orange group of its own. Its home starts a new Word document (Excel and PowerPoint
+ * come later) and lists the documents in Tetra's Files; Writer edits one, what you see is what the file holds.
+ */
+
+/** The editor's normal text size; the document's own normal size is shown at this size, the rest in proportion. */
+private const val BASE_SP = 16f
+
+/** OfficeDoc ↔ the editor's document. Kept apart from the screen so the two directions are easy to compare. */
+internal object WriterBridge {
+    fun toEditor(doc: OfficeDoc): RichTextDocument {
+        val scale = BASE_SP / doc.basePt
+        return RichTextDocument(doc.paras.map { p ->
+            val marks = ArrayList<RichTextSpanMark>()
+            var at = 0
+            for (r in OfficeFormats.tidy(p.runs)) {
+                val range = at until at + r.text.length
+                if (r.bold) marks += RichTextSpanMark.Bold(range)
+                if (r.italic) marks += RichTextSpanMark.Italic(range)
+                if (r.underline) marks += RichTextSpanMark.Underline(range)
+                if (r.strike) marks += RichTextSpanMark.Strikethrough(range)
+                r.sizePt?.let { marks += RichTextSpanMark.FontSize(range, (it * scale).sp) }
+                r.color?.let { marks += RichTextSpanMark.TextColor(range, 0xFF000000L or it.toLong()) }
+                r.highlight?.let { marks += RichTextSpanMark.Highlight(range, 0xFF000000L or it.toLong()) }
+                r.link?.let { marks += RichTextSpanMark.Link(range, it) }
+                at += r.text.length
+            }
+            RichTextBlock(
+                p.text,
+                p.list?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
+                marks,
+                p.heading,
+                when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+            )
+        })
+    }
+
+    fun fromEditor(rich: RichTextDocument, basePt: Float): List<DocPara> {
+        val scale = BASE_SP / basePt
+        return rich.blocks.map { b ->
+            val cuts = sortedSetOf(0, b.text.length)
+            b.spans.forEach { cuts += it.range.first.coerceIn(0, b.text.length); cuts += (it.range.last + 1).coerceIn(0, b.text.length) }
+            val runs = cuts.toList().zipWithNext().filter { (a, z) -> z > a }.map { (a, z) ->
+                var r = DocRun(b.text.substring(a, z))
+                for (m in b.spans) if (a in m.range) r = when (m) {
+                    is RichTextSpanMark.Bold -> r.copy(bold = true)
+                    is RichTextSpanMark.FontWeight -> r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.Italic -> r.copy(italic = true)
+                    is RichTextSpanMark.Underline -> r.copy(underline = true)
+                    is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
+                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { ((it / scale) * 2).roundToInt() / 2f }?.takeIf { it != basePt })
+                    is RichTextSpanMark.TextColor -> r.copy(color = (m.argb and 0xFFFFFF).toInt())
+                    is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
+                    is RichTextSpanMark.Link -> r.copy(link = m.url)
+                    else -> r
+                }
+                r
+            }
+            val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
+            val align = when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
+            DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align)
+        }
+    }
+
+    /** A size in sp: the editor gives some (a heading's, carried on to the next line) relative to the text, in em. */
+    fun spOf(size: TextUnit): Float? = when {
+        size.isSp -> size.value
+        size.isEm -> size.value * BASE_SP
+        else -> null
+    }
+
+    /** Paragraphs as they compare: a list's start number counts only where a list begins. */
+    fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
+        val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
+        p.copy(runs = OfficeFormats.tidy(p.runs), list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+    }
+}
+
+/** A document in Tetra's Files, for the Office home. */
+internal data class OfficeFile(val file: File, val relative: String)
+
+internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
+    .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
+    .filter { it.isFile && OfficeKind.of(it.name) != null && !it.name.startsWith("~$") }
+    .map { OfficeFile(it, it.relativeTo(root).path) }
+    .sortedByDescending { it.file.lastModified() }
+    .toList()
+
+@Composable
+internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit) {
+    val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
+    var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
+    LaunchedEffect(hasAccess) { if (hasAccess) files = withContext(Dispatchers.IO) { officeFiles(root) } }
+    BackHandler { back() }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NewDocCard("Word", "New document", true, Modifier.weight(1f)) { open(null) }
+                    NewDocCard("Excel", "Coming later", false, Modifier.weight(1f)) {}
+                    NewDocCard("PowerPoint", "Coming later", false, Modifier.weight(1f)) {}
+                }
+            }
+            item { Text("Documents in Files", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
+            if (!hasAccess) item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Tetra needs access to all files to list your documents.", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = grant) { Text("Allow access") }
+                }
+            } else when (val list = files) {
+                null -> item { Text("Looking…", style = MaterialTheme.typography.bodyMedium) }
+                else -> if (list.isEmpty()) item { Text("No Word or OpenDocument files in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
+                else items(list, key = { it.relative }) { f ->
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { open(Uri.fromFile(f.file).toString()) }) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Icon(painterResource(R.drawable.ic_file_text), contentDescription = null, tint = Category.Office.color, modifier = Modifier.size(28.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.file.lastModified())),
+                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+@Composable private fun NewDocCard(app: String, label: String, enabled: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
+    shape = MaterialTheme.shapes.extraLarge, color = if (enabled) Category.Office.color else MaterialTheme.colorScheme.surfaceVariant,
+    contentColor = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+    modifier = modifier.height(104.dp).then(if (enabled) Modifier.clickable(onClick = click) else Modifier),
+) {
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Icon(painterResource(if (enabled) R.drawable.ic_note_add else R.drawable.ic_office), contentDescription = null, modifier = Modifier.size(24.dp))
+        Column {
+            Text(app, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+    }
+}
+
+/** Unsaved changes are kept as a file in the app's storage while typing, so closing the app never loses them. */
+private fun draftFile(context: Context, key: String, kind: OfficeKind) =
+    File(File(context.filesDir, "writer-drafts"), "${key.hashCode().toUInt()}.${kind.extension}")
+
+/** Before Writer first saves over a document, the file as it was is kept (the last 3), so a save can be undone. */
+private fun keepPrevious(context: Context, file: File) {
+    val dir = File(context.filesDir, "writer-history").apply { mkdirs() }
+    file.copyTo(File(dir, "${file.nameWithoutExtension} ${System.currentTimeMillis()}.${file.extension}"), overwrite = true)
+    dir.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + " ") }?.sortedByDescending { it.lastModified() }?.drop(3)?.forEach { it.delete() }
+}
+
+/** A name not yet taken in [dir]: "name (copy).docx", then "name (copy 2).docx"… */
+internal fun freeCopyName(dir: File, stem: String, ext: String): File =
+    generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
+
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), View("View") }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun WriterScreen(back: () -> Unit, open: String?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val state = remember { RichTextState() }
+    var uri by remember { mutableStateOf(open) }
+    val file: File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
+    var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
+    var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
+    var original by remember { mutableStateOf<ByteArray?>(null) }
+    var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
+    var loaded by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    var dirty by remember { mutableStateOf(false) }
+    var tab by remember { mutableStateOf(WriterTab.Home) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var naming by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    var linking by remember { mutableStateOf(false) }
+    var details by remember { mutableStateOf(false) }
+    var zoom by remember { mutableIntStateOf(100) }
+    val draftKey = open ?: "new"
+
+    fun current() = meta.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))
+
+    LaunchedEffect(Unit) {
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val bytes = file?.readBytes()
+                val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 11f)
+                val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching { OfficeFormats.read(d.readBytes(), kind) }.getOrNull() }
+                Triple(bytes, doc, draft)
+            }
+        }
+        result.onSuccess { (bytes, doc, draft) ->
+            original = bytes
+            state.setRichTextDocument(WriterBridge.toEditor(doc))
+            // What the editor shows, read back, must be what the file holds; if not, saving over it could change
+            // what was not touched — so that file too is saved only as a copy.
+            val shown = WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
+            val same = shown == WriterBridge.comparable(doc.paras)
+            if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
+            meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting Writer shows differently")
+            if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt))); dirty = true; message = "Your unsaved changes are back" }
+            state.history.clear()
+            loaded = true
+        }.onFailure { failed = it.message ?: "This file could not be read." }
+    }
+    // Any change marks the document unsaved, and is kept as a draft after a short pause.
+    LaunchedEffect(loaded) {
+        if (!loaded) return@LaunchedEffect
+        snapshotFlow { state.annotatedString }.drop(1).collectLatest {
+            dirty = true
+            delay(1500)
+            val doc = current()
+            withContext(Dispatchers.IO) { runCatching { draftFile(context, draftKey, kind).apply { parentFile?.mkdirs() }.writeBytes(OfficeFormats.write(doc, kind, original)) } }
+        }
+    }
+    // Enter after a heading starts a Normal paragraph, as in Word: the editor carries the heading's look on as a size
+    // relative to the text (em), which only a heading gives — so that look is taken off at once.
+    LaunchedEffect(loaded) {
+        if (!loaded) return@LaunchedEffect
+        snapshotFlow { state.annotatedString to state.selection }.collect {
+            val carried = state.currentSpanStyle.fontSize
+            if (state.currentHeadingStyle == HeadingStyle.Normal && carried.isEm) state.removeSpanStyle(SpanStyle(fontSize = carried, fontWeight = FontWeight.Bold))
+        }
+    }
+
+    fun finishSave(target: File, bytes: ByteArray) {
+        draftFile(context, draftKey, kind).delete()
+        original = bytes
+        uri = Uri.fromFile(target).toString()
+        name = target.name
+        meta = OfficeFormats.read(bytes, kind).let { meta.copy(unsupported = it.unsupported) }
+        dirty = false
+    }
+    /** Save over the file — only when nothing in it would be lost; otherwise a copy beside it. */
+    fun save(asCopy: Boolean = false, then: () -> Unit = {}) {
+        val f = file
+        if (f == null) { naming = true; return }
+        scope.launch {
+            val doc = current()
+            val copy = asCopy || meta.blocking.isNotEmpty()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = OfficeFormats.write(doc, kind, original)
+                    val target = if (copy) freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension) else f
+                    // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
+                    val temp = File(target.parentFile, ".${target.name}.tetra-saving")
+                    temp.writeBytes(bytes)
+                    if (!copy) keepPrevious(context, f)
+                    check(temp.renameTo(target)) { "Could not save ${target.name}." }
+                    target to bytes
+                }
+            }
+            result.onSuccess { (target, bytes) ->
+                finishSave(target, bytes)
+                message = if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
+                then()
+            }.onFailure { message = it.message ?: "Could not save." }
+        }
+    }
+    fun saveNew(typed: String) {
+        val clean = typed.trim().removeSuffix(".${kind.extension}")
+        if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
+        scope.launch {
+            val dir = TextEditorStore(context).saveDirectory()
+            val target = File(dir, "$clean.${kind.extension}")
+            val doc = current()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
+                    check(!target.exists()) { "${target.name} is already there. Choose another name." }
+                    OfficeFormats.write(doc, kind).also { target.writeBytes(it) }
+                }
+            }
+            result.onSuccess { bytes -> naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes); message = "Saved in ${TextEditorStore(context).saveFolder}" }
+                .onFailure { message = it.message }
+        }
+    }
+    fun leave() { if (dirty) leaving = true else back() }
+    BackHandler { leave() }
+
+    val ink = Color.Black
+    val w = islandContentColor()
+    Box(Modifier.fillMaxSize().background(Color(0xFF1B1D1E)).statusBarsPadding().imePadding()) {
+        Column(Modifier.fillMaxSize()) {
+            // Word's top bar: back, the name (a dot while unsaved), undo and redo.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
+                Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
+                Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo) { state.history.undo() }
+                Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo) { state.history.redo() }
+                Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null)) { save() }
+            }
+            if (loaded && meta.unsupported.isNotEmpty()) {
+                val copyOnly = meta.blocking.isNotEmpty()
+                Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
+                    shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
+                    Text(if (copyOnly) "This document has ${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}, which Writer does not show. Saving makes a copy; the original stays as it is."
+                        else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
+            // The page: white, as the document will print — its own colours must show as they are.
+            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Surface(color = Color.White, shape = RoundedCornerShape(6.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp)) {
+                    when {
+                        failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
+                        !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
+                        else -> BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp, lineHeight = (BASE_SP * 1.4f * zoom / 100).sp),
+                            cursorBrush = SolidColor(Color(0xFF1A73E8)),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
+                    }
+                }
+            }
+        }
+        // The ribbon, like Word's, at the bottom: a line of tabs and a line of that tab's tools, scrolling sideways
+        // when they do not fit. A floating island with the keyboard down; a flat strip on the keyboard when it is up.
+        val imeOpen = WindowInsets.isImeVisible
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+            if (imeOpen) Modifier.background(Color(0xFF16191A))
+            else Modifier.navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                WriterTab.entries.forEach { t ->
+                    Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
+                            .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
+                }
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                val span = state.currentSpanStyle
+                val para = state.currentParagraphStyle
+                when (tab) {
+                    WriterTab.File -> {
+                        RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null)) { save() }
+                        RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { save(asCopy = true) }
+                        RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
+                    }
+                    WriterTab.Home -> {
+                        Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
+                        Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                        Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
+                        Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
+                        Divider(w)
+                        val size = WriterBridge.spOf(span.fontSize) ?: BASE_SP
+                        Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = (size - 2).coerceAtLeast(8f).sp)) }
+                        Text("${(size / BASE_SP * meta.basePt).roundToInt()}", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 2.dp))
+                        Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = (size + 2).coerceAtMost(72f).sp)) }
+                        Divider(w)
+                        Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                            if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))
+                        }
+                        Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+                            if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
+                        }
+                        Divider(w)
+                        listOf(HeadingStyle.Normal to "Normal", HeadingStyle.H1 to "Heading 1", HeadingStyle.H2 to "Heading 2", HeadingStyle.H3 to "Heading 3").forEach { (h, label) ->
+                            RibbonButton(label, w, on = state.currentHeadingStyle == h) { state.setHeadingStyle(h) }
+                        }
+                        Divider(w)
+                        Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
+                        Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
+                        Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
+                        Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
+                        Divider(w)
+                        listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
+                            val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
+                            Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a)) }
+                        }
+                    }
+                    WriterTab.Insert -> {
+                        RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
+                        RibbonButton("Table · later", w, enabled = false) {}
+                        RibbonButton("Picture · later", w, enabled = false) {}
+                    }
+                    WriterTab.View -> {
+                        Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
+                        Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+                        Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                    }
+                }
+            }
+        }
+        message?.let { m ->
+            LaunchedEffect(m) { delay(2800); message = null }
+            Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {
+                Text(m, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
+    }
+
+    if (naming) {
+        var typed by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { naming = false },
+            title = { Text("Save as") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OfficeKind.entries.forEach { k -> RibbonButton(if (k == OfficeKind.Docx) "Word (.docx)" else "OpenDocument (.odt)", MaterialTheme.colorScheme.onSurface, on = kind == k) { kind = k } }
+                    }
+                    Text("In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
+        )
+    }
+    if (leaving) AlertDialog(
+        onDismissRequest = { leaving = false },
+        title = { Text("Save $name?") },
+        text = { Text(if (meta.blocking.isNotEmpty() && file != null) "It has changes that are not saved. Saving makes a copy; the original stays as it is." else "It has changes that are not saved.") },
+        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { back() } }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { leaving = false }) { Text("Cancel") }
+                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); back() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
+            }
+        },
+    )
+    if (linking) {
+        var url by remember { mutableStateOf(state.selectedLinkUrl ?: "https://") }
+        var text by remember { mutableStateOf(state.selectedLinkText ?: "") }
+        val selection = state.selection
+        AlertDialog(
+            onDismissRequest = { linking = false },
+            title = { Text("Link") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (selection.collapsed && !state.isLink) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
+                    OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    linking = false
+                    when {
+                        state.isLink -> state.updateLink(url)
+                        !selection.collapsed -> state.addLinkToSelection(url)
+                        else -> state.addLink(text.ifBlank { url }, url)
+                    }
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                Row {
+                    if (state.isLink) TextButton(onClick = { linking = false; state.removeLink() }) { Text("Remove link") }
+                    TextButton(onClick = { linking = false }) { Text("Cancel") }
+                }
+            },
+        )
+    }
+    if (details) AlertDialog(
+        onDismissRequest = { details = false },
+        title = { Text(name) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
+                if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
+                if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
+                if (meta.unsupported.isEmpty()) Text("Writer keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)
+                Text("Page size, margins, headers and footers are kept as the file has them.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
+    )
+}
+
+@Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
+
+/** A named tool of the ribbon (Save, Heading 1…). */
+@Composable private fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
+    Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+        .clickable(enabled = enabled, onClick = click).padding(horizontal = 12.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+) {
+    val c = if (enabled) tint else tint.copy(alpha = 0.35f)
+    icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
+    Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+}
+
+/** A colour tool: tapped, its swatches open beside it on the same line; the crossed-out one removes the colour. */
+@Composable private fun Swatches(tint: Color, icon: Int, label: String, colors: List<Color>, choose: (Color?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Tool(icon, label, tint, on = open) { open = !open }
+    if (open) {
+        Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClickLabel = "No $label") { choose(null); open = false }, contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No ${label.lowercase(Locale.ROOT)}", tint = tint, modifier = Modifier.size(22.dp))
+        }
+        colors.forEach { c ->
+            Box(Modifier.padding(3.dp).size(28.dp).clip(CircleShape).background(c).border(1.dp, tint.copy(alpha = 0.5f), CircleShape)
+                .clickable(onClickLabel = label) { choose(c); open = false })
+        }
+        Spacer(Modifier.width(4.dp))
+    }
+}

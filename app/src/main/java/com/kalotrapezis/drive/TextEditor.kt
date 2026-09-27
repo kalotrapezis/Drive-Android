@@ -105,6 +105,43 @@ internal object TextFileRules {
     }
 }
 
+/**
+ * The symbols row (asked 2026-09-27: "all the </> weird stuff easily accessible"): what a phone keyboard hides.
+ * A bracket or quote around a selection wraps it; </> closes the last HTML tag still open before the cursor.
+ */
+internal object CodeKeys {
+    val keys = listOf("Tab", "</>", "<", ">", "/", "=", "\"", "'", "{", "}", "[", "]", "(", ")", ";", ":", "&", "#", "$", "_", "-", "|", "\\", "`", "!", "?", "@", "%", "*", "+", "~")
+    private val pairs = mapOf("(" to ")", "[" to "]", "{" to "}", "\"" to "\"", "'" to "'", "`" to "`", "<" to ">")
+    private val void = setOf("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr")
+
+    /** The tag to close at [at]: the last one opened before it and not closed since. Null when all are closed. */
+    fun openTag(text: String, at: Int): String? {
+        val stack = ArrayDeque<String>()
+        Regex("""<(/?)([A-Za-z][\w:-]*)[^<>]*?(/?)>""").findAll(text.substring(0, at)).forEach { m ->
+            val name = m.groupValues[2].lowercase()
+            when {
+                m.groupValues[1] == "/" -> stack.indexOfLast { it == name }.takeIf { it >= 0 }?.let { while (stack.size > it) stack.removeLast() }
+                m.groupValues[3] != "/" && name !in void -> stack.addLast(name)
+            }
+        }
+        return stack.lastOrNull()
+    }
+
+    /** The text and selection after pressing [key]. */
+    fun press(key: String, e: NoteFormat.Edit): NoteFormat.Edit {
+        val insert = when (key) {
+            "Tab" -> "    "
+            "</>" -> openTag(e.text, e.start)?.let { "</$it>" } ?: return e
+            else -> key
+        }
+        val close = pairs[key]
+        if (close != null && e.end > e.start) // wrap the selection, and keep it selected
+            return NoteFormat.Edit(e.text.substring(0, e.start) + key + e.text.substring(e.start, e.end) + close + e.text.substring(e.end), e.start + 1, e.end + 1)
+        val at = e.start + insert.length
+        return NoteFormat.Edit(e.text.substring(0, e.start) + insert + e.text.substring(e.end), at, at)
+    }
+}
+
 /** The editor's settings, and its tabs: which files are open, and the unsaved text of each, kept until saved. */
 internal class TextEditorStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("office_editor", Context.MODE_PRIVATE)
@@ -172,6 +209,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
     var loaded by remember { mutableStateOf(false) }
     var wrap by remember { mutableStateOf(store.wordWrap) }
     var tools by remember { mutableStateOf(false) }
+    var symbols by remember { mutableStateOf(false) } // the bar shows the symbols row instead of the controls
     var naming by remember { mutableStateOf<String?>(null) } // a tab being saved under a new name
     var closing by remember { mutableStateOf<String?>(null) } // a tab with unsaved changes being closed
     var message by remember { mutableStateOf<String?>(null) }
@@ -226,6 +264,13 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         val before = text[t.id]?.text ?: ""
         if (next.text != before) undo.getOrPut(t.id) { NoteUndo(before) }.push(next.text, wordDone = NoteUndo.endsWord(before, next.text, next.selection.start))
         text[t.id] = next; undoTick++
+    }
+    fun press(key: String) {
+        val t = tab ?: return
+        val before = text[t.id] ?: return
+        val r = CodeKeys.press(key, NoteFormat.Edit(before.text, before.selection.min, before.selection.max))
+        if (r.text != before.text) undo.getOrPut(t.id) { NoteUndo(before.text) }.step(r.text)
+        text[t.id] = TextFieldValue(r.text, androidx.compose.ui.text.TextRange(r.start, r.end)); undoTick++
     }
     fun restore(s: String?) { val t = tab ?: return; if (s != null) { text[t.id] = TextFieldValue(s, androidx.compose.ui.text.TextRange(s.length)); undoTick++ } }
 
@@ -311,11 +356,17 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             IslandBottomBar(expand = { tools = true }, visible = !tools) {
                 undoTick
                 val u = tab?.let { undo[it.id] }
-                Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
-                Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
-                Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
-                Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
-                Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+                if (!symbols) Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
+                Tool(R.drawable.ic_swap_horiz, if (symbols) "Controls" else "Symbols", w, on = symbols) { symbols = !symbols }
+                if (symbols) Row(Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp - 110.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CodeKeys.keys.forEach { k -> KeyButton(k, w) { press(k) } }
+                } else {
+                    Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
+                    Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
+                    Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
+                    Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+                }
             }
         }
         message?.let { m ->
@@ -372,3 +423,9 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         )
     }
 }
+
+/** A key of the symbols row: its character, the size of a Tool. */
+@Composable private fun KeyButton(key: String, tint: Color, click: () -> Unit) = Box(
+    Modifier.size(width = if (key.length > 1) 48.dp else 40.dp, height = 40.dp).clip(CircleShape).clickable(onClickLabel = key, onClick = click),
+    contentAlignment = Alignment.Center,
+) { Text(key, color = tint, fontFamily = FontFamily.Monospace, fontSize = if (key.length > 1) 14.sp else 18.sp) }

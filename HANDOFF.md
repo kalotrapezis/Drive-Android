@@ -36,7 +36,7 @@ from their style. Checked on the emulator: Το Ελληνικό πληκτρο�
 document, text typed after it is normal, saved → LibreOffice shows it; a second save does not add it again.
 Asked next (user): a **Picture tab** when a picture is selected — size, placement, text wrapping.
 
-**Next, in order:** Picture tab (size, placement, wrap) → tables → header/footer/page numbers →
+**Next, in order (user, 27 Sep night):** PROPER PAGES FIRST — the document opens as pages (Print layout, from OfficePdf's layout), viewing before editing; see OFFICE_FEATURES.md top → then Picture tab → styles/line spacing → tables → header/footer/page numbers →
 comments → table of contents (OFFICE_FEATURES.md has the whole list and the phone test list).
 
 ---

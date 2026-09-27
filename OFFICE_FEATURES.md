@@ -10,6 +10,15 @@ such a part also moves it out of `OfficeDoc.blocking`.
 
 ## Word (Writer)
 
+### FIRST — proper pages, viewing before editing (asked 2026-09-27)
+- [ ] A document opens as **pages** (Print layout): the file's page size and margins, a gap between pages, scroll and
+      pinch-zoom, "Page 3 of 12"; **Edit** switches to the editor and back
+- [ ] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
+      fonts as close as the phone has them
+- [ ] Then: header and footer, page numbers, tables
+- [ ] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
+      LibreOffice on the user's documents
+
 ### Top bar
 - [x] Back, name (• unsaved), Undo, Redo, Save
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**

@@ -377,8 +377,15 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     val tint = noteColor(color)
     val ink = if (tint != null) InkOnColor else MaterialTheme.colorScheme.onSurface
     val noteLabels: @Composable (Modifier) -> Unit = { modifier ->
-        if (labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
-            labels.forEach { Text(it, color = ink, style = MaterialTheme.typography.labelMedium, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp)) }
+        // The tags, and a + that opens them (asked 2026-09-27: on a phone the island had no room left for Pin).
+        if (!trashed) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
+            // Solid, so text scrolled under them never shows through (asked 2026-09-27).
+            labels.forEach { Text(it, color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color.Black).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp)) }
+            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = "Tags") { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Tag ", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Tags", tint = Color.White, modifier = Modifier.size(16.dp))
+            }
         }
     }
 
@@ -421,7 +428,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     BackHandler { if (tools) tools = false else leave() }
 
     Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (labels.isNotEmpty()) 170.dp else 120.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (!trashed) 170.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->
                 if ('\n' in t) { if (initial.checklist) toBody++ else bodyFocus.requestFocus() } else edit(t = t)
@@ -439,9 +446,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                     decorationBox = { inner -> Box { if (body.text.isEmpty()) Text("Write here. **bold**, - [ ] a checkbox…", color = ink.copy(alpha = 0.45f)); inner() } },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp).focusRequester(bodyFocus))
             }
-            if (imeOpen) noteLabels(Modifier.padding(bottom = 24.dp))
         }
-        // The note's tags sit at the bottom, over the island, when the keyboard is down; under the text while typing.
+        // The note's tags float at the bottom, over the island, when the keyboard is down; while typing they are out of the way.
         if (!imeOpen) noteLabels(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 96.dp))
         // The tools are an island at the bottom, like the rest of Tetra: one line of the basics, pulled up (or its grip
         // tapped) for everything else (asked 2026-09-26: not a bar at the top with the rest at the bottom).
@@ -471,7 +477,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             } else if (!trashed) {
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-                Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true }
+                if (wide) Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
                 Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
                 if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
                 Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
@@ -561,7 +567,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 }
 
 // A plain 40 dp round button: an IconButton is always at least 48 dp, and eight of them did not fit a phone's island.
-@Composable private fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
+@Composable internal fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
     Modifier.size(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
         .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = description, onClick = click),
     contentAlignment = Alignment.Center,

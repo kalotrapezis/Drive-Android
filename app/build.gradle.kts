@@ -22,8 +22,8 @@ android {
         minSdk = 30
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 4
-        versionName = "0.3.0-beta.1"
+        versionCode = 5
+        versionName = "0.3.0-beta.2"
     }
     signingConfigs {
         signing?.let { properties ->

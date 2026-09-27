@@ -108,6 +108,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -215,6 +216,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+internal val TetraColors = darkColorScheme(
+    primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
+    primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
+    tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
+    background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
+    surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
+    surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
+)
+
+/** Tetra's look, for a screen outside the main app (the text editor opened from another app). */
+@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraColors) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) { content() }
+}
+
 /** A photo or video another app asked us to show. */
 internal data class ExternalMedia(val uri: Uri, val mimeType: String?)
 private val EXTERNAL_VIEW_ACTIONS = setOf(Intent.ACTION_VIEW, "android.provider.action.REVIEW", "com.android.camera.action.REVIEW")
@@ -251,6 +266,8 @@ internal data class Entry(
     // Pixel size of the upright photo. Sync turns face boxes into fractions with it.
     val width: Int = 0,
     val height: Int = 0,
+    /** A motion photo's video half (MotionRules): played by the viewer's Motion button; never an item of its own. */
+    val motion: Uri? = null,
 )
 private sealed interface ListState {
     data object Idle : ListState
@@ -275,7 +292,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
-    var notesStart by remember { mutableStateOf<Boolean?>(null) } // the home card: true a checklist, false a note, null the list
+    var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
@@ -379,7 +397,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     folders.filter { it.included == true }.forEach { photoMetadata.fillFolderAlbum(it.name, it.entries.map(Entry::photoKey)) }
                     (context as MainActivity).runOnUiThread { photoFolders = folders }
                 }
-                all.filter { FolderRules.isIncluded(it.relativePath, choices) }
+                showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })
             }
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
@@ -544,6 +562,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.ScanDocument -> Unit
                 Screen.Codes -> Unit
                 Screen.Notes -> Unit
+                Screen.TextEditor -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -554,15 +573,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
     // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
     // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
-    val colors = darkColorScheme(
-        primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
-        primaryContainer = Color(0xFF3A3A3A), onPrimaryContainer = Color.White,
-        tertiaryContainer = Color(0xFF2B4A5E), onTertiaryContainer = Color(0xFFE3E4E6),
-        background = Color(0xFF0F1312), onBackground = Color(0xFFE3E4E6),
-        surface = Color(0xFF0F1312), onSurface = Color(0xFFE3E4E6),
-        surfaceVariant = Color(0xFF3E4945), onSurfaceVariant = Color(0xFFE3E4E6),
-    )
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = TetraColors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
@@ -584,6 +595,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openCodes = { screen = Screen.Codes },
                     openNotes = { notesStart = null; screen = Screen.Notes },
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
+                    openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -624,6 +636,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
+                Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home }, start = editorStart)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -693,7 +706,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -727,6 +740,7 @@ private fun Home(
     openScanner: () -> Unit,
     openCodes: () -> Unit,
     openNotes: () -> Unit,
+    openTextEditor: (String?) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -755,9 +769,9 @@ private fun Home(
             }
         },
         {
-            HomeGroup(Color(0xFFF2B705)) {
+            HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeNotesCard(openNotes, Modifier.weight(1f))
+                    HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Checklist", R.drawable.ic_checklist) { newNote(true) }
                         HomeCompactCard("New note", R.drawable.ic_note_add) { newNote(false) }
@@ -766,6 +780,18 @@ private fun Home(
             }
         },
         { HomePdfToolsCard(openScanner, openCodes) },
+        // Office (asked 2026-09-27): the text editor first; Writer, Presentation and Calc to come.
+        {
+            HomeGroup(Category.Office.color) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("New file", R.drawable.ic_note_add) { openTextEditor("new") }
+                        HomeCompactCard("Open file", R.drawable.ic_folder) { openTextEditor("open") }
+                    }
+                }
+            }
+        },
     )
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -849,18 +875,19 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     }
 } }
 
-@Composable private fun HomeNotesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
+/** A part's own card on Home: its art at the top, its name at the bottom (Notes, Text editor). */
+@Composable private fun HomeArtCard(title: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier, artSize: Int = 100) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
     modifier = modifier.height(156.dp).clickable(onClick = click),
 ) { Box(Modifier.fillMaxSize().padding(18.dp)) {
     Image(
-        painter = painterResource(R.drawable.notes_art), contentDescription = null, contentScale = ContentScale.Fit,
-        modifier = Modifier.align(Alignment.TopEnd).size(100.dp),
+        painter = painterResource(art), contentDescription = null, contentScale = ContentScale.Fit,
+        modifier = Modifier.align(Alignment.TopEnd).size(artSize.dp),
     )
-    Text("Notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
+    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
-@Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Color(0xFFD32F2F)) {
+@Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         PdfToolCard("Scanner", R.drawable.ic_document_scanner, Modifier.weight(1f), openScanner)
         PdfToolCard("Codes", R.drawable.ic_qr_code, Modifier.weight(1f), openCodes)
@@ -1346,7 +1373,7 @@ private fun SettingsTab(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
         item {
-            SettingsCard("Storage locations") {
+            SettingsCard("Storage locations", Category.Files) {
                 Text("Drive workspace", style = MaterialTheme.typography.titleMedium)
                 Text(DRIVE_PATH, style = MaterialTheme.typography.bodyMedium)
                 Text("Camera photos stay in DCIM/Camera. Screenshots stay in Pictures/Screenshots. These paths are fixed so sync never needs to guess or duplicate photos.", style = MaterialTheme.typography.bodySmall)
@@ -1363,7 +1390,7 @@ private fun SettingsTab(
             }
         }
         item {
-            SettingsCard("Gallery") {
+            SettingsCard("Gallery", Category.Gallery) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Photo on Home", style = MaterialTheme.typography.titleMedium)
@@ -1416,7 +1443,7 @@ private fun SettingsTab(
             val settingsContext = LocalContext.current
             val scannerPreferences = remember(settingsContext) { settingsContext.getSharedPreferences("scanner", Context.MODE_PRIVATE) }
             var dpi by remember { mutableStateOf(scannerPreferences.getInt(SCANNER_DPI, 300)) }
-            SettingsCard("PDF scanner") {
+            SettingsCard("PDF scanner", Category.Scanner) {
                 Text("Resolution", style = MaterialTheme.typography.titleMedium)
                 Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1435,6 +1462,23 @@ private fun SettingsTab(
                         }
                     }
                 }
+            }
+        }
+        item {
+            val editorContext = LocalContext.current
+            val editor = remember { TextEditorStore(editorContext) }
+            var wrap by remember { mutableStateOf(editor.wordWrap) }
+            var folder by remember { mutableStateOf(editor.saveFolder) }
+            SettingsCard("Office", Category.Office) {
+                Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; editor.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Word wrap", style = MaterialTheme.typography.titleSmall)
+                        Text(if (wrap) "Long lines continue on the next line." else "Long lines keep going; scroll sideways, like code.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = wrap, onCheckedChange = { wrap = it; editor.wordWrap = it })
+                }
+                Text("Save new files in", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
             }
         }
         item {
@@ -1478,15 +1522,31 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) = Surface(
+private fun SettingsCard(title: String, category: Category? = null, content: @Composable ColumnScope.() -> Unit) = Surface(
     shape = MaterialTheme.shapes.large,
     color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = Modifier.fillMaxWidth(),
 ) {
     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            category?.let { Icon(painterResource(it.icon), contentDescription = null, tint = it.color, modifier = Modifier.size(24.dp)) }
+            Text(title, style = MaterialTheme.typography.titleLarge)
+        }
         content()
     }
+}
+
+/**
+ * The parts of Tetra, each with its colour and symbol (asked 2026-09-27). The app stays black and white; a category's
+ * colour is a label — its icon beside a title, its group on Home — the same in light and dark. The desktop has the same
+ * five (styles.css --cat-*).
+ */
+internal enum class Category(val color: Color, val icon: Int) {
+    Gallery(Color(0xFF3DA35D), R.drawable.ic_gallery),
+    Files(Color(0xFF4F86E8), R.drawable.ic_folder),
+    Notes(Color(0xFFF2B705), R.drawable.ic_edit_note),
+    Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
+    Office(Color(0xFF8E5BD8), R.drawable.ic_file_text),
 }
 
 @Composable
@@ -2525,6 +2585,8 @@ private fun PhotoTab(
     val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
+    var motionMode by remember { mutableStateOf(metadataStore.motionPhotos()) }
+    var motionAutoplay by remember { mutableStateOf(metadataStore.motionPlays()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
     var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
     val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
@@ -3032,6 +3094,12 @@ private fun PhotoTab(
         hideDocuments = hideDocuments,
         setHideScreenshots = { hide -> metadataStore.setHidesScreenshotsFromGallery(hide); hideScreenshots = hide },
         setHideDocuments = { hide -> metadataStore.setHidesDocumentsFromGallery(hide); hideDocuments = hide },
+        motionMode = motionMode,
+        setMotionMode = { mode -> metadataStore.setMotionPhotos(mode); motionMode = mode },
+        motionAutoplay = motionAutoplay,
+        setMotionAutoplay = { on -> metadataStore.setMotionPlays(on); motionAutoplay = on },
+        motionHalves = allEntries.count { it.motion != null },
+        removeMotionHalves = { moveToTrash(allEntries.mapNotNullTo(HashSet()) { it.motion }); toolsOpen = false },
         albums = collections,
         hiddenAlbums = hiddenAlbums,
         setAlbumHidden = { album, hide -> album.uuid?.let { metadataStore.setAlbumHiddenFromGallery(it, hide) }; hiddenAlbums = metadataStore.albumsHiddenFromGallery() },
@@ -3772,6 +3840,12 @@ private fun GalleryToolsSheet(
     hideDocuments: Boolean,
     setHideScreenshots: (Boolean) -> Unit,
     setHideDocuments: (Boolean) -> Unit,
+    motionMode: String,
+    setMotionMode: (String) -> Unit,
+    motionAutoplay: Boolean,
+    setMotionAutoplay: (Boolean) -> Unit,
+    motionHalves: Int,
+    removeMotionHalves: () -> Unit,
     albums: List<PhotoCollection>,
     hiddenAlbums: Set<String>,
     setAlbumHidden: (PhotoCollection, Boolean) -> Unit,
@@ -3806,6 +3880,25 @@ private fun GalleryToolsSheet(
                     Text("${album.here}", style = MaterialTheme.typography.bodySmall)
                 }
             }
+            Text("Motion photos", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("one" to "Show as one", "remove" to "Remove").forEach { (mode, label) ->
+                    Surface(
+                        color = if (motionMode == mode) driveNavigationSelectedColor() else islandColor(),
+                        contentColor = if (motionMode == mode) driveNavigationSelectedContentColor() else islandContentColor(),
+                        shape = CircleShape,
+                        modifier = Modifier.weight(1f).clickable { setMotionMode(mode) },
+                    ) { Text(label, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
+                }
+            }
+            Text(if (motionMode == "remove") "The few seconds of video beside a picture (MVIMG_….MP4 next to MVIMG_….jpg) go to Android's Trash, where they stay 30 days."
+                else "A picture and its few seconds of video show as one photo; Motion in the viewer plays them. Pictures with the video inside play too.",
+                style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setMotionAutoplay(!motionAutoplay) }) {
+                Checkbox(checked = motionAutoplay, onCheckedChange = setMotionAutoplay, colors = neutralCheckboxColors())
+                Text("Autoplay motion photos")
+            }
+            if (motionMode == "remove" && motionHalves > 0) DriveWideAction(R.drawable.ic_delete, "Move $motionHalves motion ${if (motionHalves == 1) "video" else "videos"} to Trash", removeMotionHalves)
             Text("Timeline size", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimelineScale.entries.forEach { option ->
@@ -4503,6 +4596,13 @@ private fun PhotoViewer(
         value = if (hasLocationAccess) withContext(Dispatchers.IO) { loadPhotoLocation(context, selected, metadataStore) } else null
         if (hasLocationAccess) locationsUpdated()
     }
+    // Motion photos: the paired video (selected.motion) or the one inside the file, played in place of the picture.
+    // The Motion button plays it now; Gallery tools › Autoplay motion photos (off by default, asked 2026-09-27) on opening.
+    val autoplayMotion = remember { metadataStore.motionPlays() }
+    var motionPlaying by remember(selectedUri) { mutableStateOf(autoplayMotion) }
+    val motionUri by produceState<Uri?>(initialValue = null, selected.photoKey) {
+        value = if (selected.isVideo) null else selected.motion ?: withContext(Dispatchers.IO) { embeddedMotion(context, selected) }
+    }
     val zoomMode = !selected.isVideo && selectedZoom.scale > 1f
     val rotatedLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val fullscreen = zoomMode || manualFullscreen || rotatedLandscape
@@ -4554,6 +4654,8 @@ private fun PhotoViewer(
             background = if (fullscreen) Color.Black else MaterialTheme.colorScheme.surfaceVariant,
             toggleControls = { if (fullscreen && !zoomMode) controlsVisible = !controlsVisible },
             showDetails = { detailsOpen = true },
+            motion = motionUri.takeIf { motionPlaying },
+            motionEnded = { motionPlaying = false },
         )
     }
     val actions: @Composable (Modifier) -> Unit = { modifier ->
@@ -4572,6 +4674,7 @@ private fun PhotoViewer(
             modifier = modifier,
         )
     }
+    val toggleMotion: (() -> Unit)? = motionUri?.let { { motionPlaying = !motionPlaying } }
     if (fullscreen) Box(Modifier.fillMaxSize().background(Color.Black)) {
         pager(Modifier.fillMaxSize())
         AnimatedVisibility(controlsVisible && !zoomMode, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -4582,6 +4685,10 @@ private fun PhotoViewer(
                 ) { IconButton(onClick = { if (manualFullscreen) manualFullscreen = false else close() }) {
                     Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back")
                 } }
+                toggleMotion?.let { toggle -> Surface(
+                    color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                ) { MotionSwitch(motionPlaying, toggle) } }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                     ViewerFilmstrip(entries, selectedUri, filmstripState, select)
                     actions(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
@@ -4589,7 +4696,7 @@ private fun PhotoViewer(
             }
         }
     } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        ViewerHeader(selected, close)
+        ViewerHeader(selected, close) { toggleMotion?.let { MotionSwitch(motionPlaying, it) } }
         pager(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp))
         ViewerFilmstrip(entries, selectedUri, filmstripState, select)
         actions(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
@@ -4617,7 +4724,13 @@ private fun PhotoViewer(
 }
 
 @Composable
-private fun ViewerHeader(entry: Entry, close: () -> Unit) = Surface(
+private fun MotionSwitch(on: Boolean, toggle: () -> Unit) = IconButton(onClick = toggle) {
+    Icon(painterResource(if (on) R.drawable.ic_motion else R.drawable.ic_motion_off), contentDescription = if (on) "Stop the motion" else "Play the motion",
+        tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+}
+
+@Composable
+private fun ViewerHeader(entry: Entry, close: () -> Unit, end: @Composable () -> Unit = {}) = Surface(
     color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge,
     modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp),
 ) {
@@ -4627,6 +4740,7 @@ private fun ViewerHeader(entry: Entry, close: () -> Unit) = Surface(
             Text(formatPhotoDateTime(entry.takenMillis), style = MaterialTheme.typography.titleSmall)
             Text(entry.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
+        end()
     }
 }
 
@@ -4648,6 +4762,7 @@ private fun ViewerPager(
     entries: List<Entry>, state: PagerState, playback: MutableMap<String, VideoPlaybackState>,
     imageZoom: MutableMap<String, ViewerZoomState>, zoomMode: Boolean, modifier: Modifier,
     background: Color, toggleControls: () -> Unit, showDetails: () -> Unit,
+    motion: Uri? = null, motionEnded: () -> Unit = {},
 ) {
     HorizontalPager(state = state, modifier = modifier, userScrollEnabled = !zoomMode, key = { entries[it].contentUri.toString() }) { page ->
         val entry = entries[page]
@@ -4656,7 +4771,8 @@ private fun ViewerPager(
             else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                 Icon(painterResource(R.drawable.ic_play), contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
             }
-        } else ViewerImage(entry, Modifier.fillMaxSize(), toggleControls, showDetails, background, imageZoom.getOrPut(entry.photoKey) { ViewerZoomState() })
+        } else if (motion != null && page == state.currentPage) MotionVideo(motion, Modifier.fillMaxSize(), motionEnded)
+        else ViewerImage(entry, Modifier.fillMaxSize(), toggleControls, showDetails, background, imageZoom.getOrPut(entry.photoKey) { ViewerZoomState() })
     }
 }
 
@@ -4765,6 +4881,41 @@ private fun ViewerImage(
         )
     }
 }
+
+/** A motion photo's few seconds, played once in place of the picture; a tap or the end brings the picture back. */
+@Composable
+private fun MotionVideo(uri: Uri, modifier: Modifier, ended: () -> Unit) {
+    key(uri) {
+        AndroidView(
+            factory = { viewContext ->
+                VideoView(viewContext).apply {
+                    setVideoURI(uri)
+                    setOnPreparedListener { start() }
+                    setOnCompletionListener { ended() }
+                    setOnErrorListener { _, _, _ -> ended(); true }
+                    setOnClickListener { ended() }
+                }
+            },
+            modifier = modifier.background(Color.Black),
+            onRelease = { it.stopPlayback() },
+        )
+    }
+}
+
+/**
+ * The video inside a motion photo (Pixel, Samsung, Xiaomi), cut from the end of the picture into the app's cache —
+ * one file at a time, replaced by the next photo's. Null when the picture has none.
+ */
+internal fun embeddedMotion(context: Context, entry: Entry): Uri? = runCatching {
+    if (!Regex("""\.(jpe?g|heic|heif)$""", RegexOption.IGNORE_CASE).containsMatchIn(entry.name)) return null
+    val bytes = context.contentResolver.openInputStream(entry.contentUri ?: return null)?.use { it.readBytes() } ?: return null
+    val at = MotionRules.embeddedVideoOffset(bytes)
+    if (at <= 0) return null
+    val dir = File(context.cacheDir, "motion").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+    val file = File(dir, "${entry.photoKey.hashCode()}.mp4")
+    file.outputStream().use { it.write(bytes, at, bytes.size - at) }
+    Uri.fromFile(file)
+}.getOrNull()
 
 private class VideoPlaybackState(var positionMs: Int = 0, var playWhenReady: Boolean = true)
 
@@ -4917,6 +5068,14 @@ internal fun listDeviceMedia(context: Context): List<Entry> = (
     listGalleryMedia(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false) +
         listGalleryMedia(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
 ).sortedByDescending { it.takenMillis }
+
+/** The Gallery's view: a motion photo's video half leaves the list and rides on its picture as `motion`. */
+internal fun showMotionAsOne(entries: List<Entry>): List<Entry> {
+    val pairs = MotionRules.pairs(entries.map { Triple(it.relativePath, it.name, it.isVideo) })
+    if (pairs.isEmpty()) return entries
+    val videoOf = pairs.entries.associate { (video, picture) -> picture to entries[video].contentUri }
+    return entries.mapIndexedNotNull { i, e -> if (i in pairs) null else videoOf[i]?.let { e.copy(motion = it) } ?: e }
+}
 
 /** The library: the default folders and the ones you said yes to. Gallery, backup and analysis all read this. */
 internal fun listPhotos(context: Context): List<Entry> = PhotoMetadataStore(context).use { it.folderChoices() }.let { choices ->

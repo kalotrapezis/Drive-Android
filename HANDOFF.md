@@ -1,3 +1,38 @@
+# 27 September, past midnight — motion photos built, to test in the morning
+
+Both apps (SYNC_PLAN: the rule is library.pairMotion / MotionRules, the same stem rule as the importer):
+- **Show as one** (default): a picture and its seconds of video in the same folder are one photo; the video half
+  never shows as an item. **Remove**: PC — import leaves the half out (the old behaviour); phone — Gallery tools
+  shows "Move N motion videos to Trash" (Android's Trash, 30 days). The 23 halves in the purgatory stay there
+  (user: "don't bring them back, save space").
+- **Video inside the file** (Pixel/Samsung/Xiaomi, ~8% of the library on T7): found by `ftyp` after the picture
+  (embeddedVideoOffset), served as media://motion/<id> on the PC, cut into cache/motion on the phone. HEVC plays in
+  Electron here (checked).
+- Viewer: a Motion button at the top right (PC: right end of the island) plays/stops it. **Autoplay motion photos**
+  is a Gallery/Settings switch, **off by default**. No badge on thumbnails (asked).
+- Notes on a phone: Tags left the island; solid black chips over it with **Tag +**; hidden while typing.
+
+Tested on demo files only (hidden desktop copy, emulator). Not yet on the real devices: install the new .deb
+(`desktop/release/`) and the debug APK; the phone and tablet had the build before the Autoplay switch.
+
+---
+
+# 26 September night — 0.3.0 Beta 1 published
+
+Both repos merged into `main`; releases `v0.3.0-beta.1` (APK) and `desktop-v0.3.0-beta.1` (.deb, AppImage), both
+pre-releases. READMEs lead with a showcase card from demo content (`Assets/screenshots/`; the demo generators were
+throwaway scripts: painted landscapes, a small Files tree, seven notes, shot hidden with `DRIVE_DATA/PHOTOS/FILES`
+and on the `notes_phone` emulator with a temporary x86_64 split). The old C++/Qt app is removed from `Drive`
+(history: `1b71025`); only `desktop/` is developed there.
+
+Fixed tonight: **Open / Open with failed for every file** since the Tetra rename — the FileProvider still named
+`Drive/` (test in DriveFilesTest). The opener is now remembered per file type too (`/type/<ext>` in drive_openers).
+Phone and tablet run the latest debug build; the PC runs the beta .deb.
+
+Next is still motion photos (below).
+
+---
+
 # 26 September evening — deleted files came back
 
 Files deleted on the PC came back from the phone: the PC had no "deleted here" memory for Files (photos do). Now

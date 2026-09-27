@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -15,7 +14,7 @@ val signing = File(System.getProperty("user.home"), ".android/tetra-release.prop
 
 android {
     namespace = "com.kalotrapezis.drive"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.kalotrapezis.drive"
@@ -77,6 +76,7 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraX")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("com.google.zxing:core:3.5.3") // drawing a QR code; ML Kit only reads them
+    implementation("com.mohamedrejeb.richeditor:richeditor-compose:1.2.0") // Writer: bold, lists, headings as you type (Apache 2.0)
     implementation("org.opencv:opencv:4.12.0")
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")

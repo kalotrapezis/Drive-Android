@@ -146,7 +146,7 @@ internal object WriterBridge {
                     is RichTextSpanMark.Italic -> r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
-                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { ((it / scale) * 2).roundToInt() / 2f }?.takeIf { it != basePt })
+                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { ((it / scale) * 2).roundToInt() / 2f })
                     is RichTextSpanMark.TextColor -> r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Link -> r.copy(link = m.url)
@@ -179,12 +179,12 @@ internal object WriterBridge {
             if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
         }
     }
-    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false) })
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null) })
 
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null) }), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -308,8 +308,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var showVersions by remember { mutableStateOf(false) }
 
     // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
-    fun current() = meta.copy(paras = WriterBridge.keepHeadingRuns(meta.paras,
-        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt))))
+    fun current() = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
+        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt)))))
 
     LaunchedEffect(reload) {
         loaded = false

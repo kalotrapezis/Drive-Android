@@ -65,6 +65,35 @@ class OfficeFormatsTest {
         assertEquals(null, OfficeFormats.carryKeep(listOf(DocPara(listOf(DocRun("X")), keep = broken)), listOf(DocPara(listOf(DocRun("X"))), DocPara(listOf(DocRun("Y")))))[1].keep)
     }
 
+    @Test fun `a picture added in Writer is saved into the file`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(4, 2, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        for (kind in OfficeKind.entries) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Before "), DocRun(OBJECT_MARK.toString(), image = DocImage("n1", null, 120f, 60f, bytes = png)), DocRun(" after")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, emptySet<String>(), back.unsupported)
+            assertEquals(kind.name, "Before $OBJECT_MARK after", back.paras.single().text)
+            val img = back.paras.single().runs.single { it.image != null }.image!!
+            assertTrue(kind.name, img.part!!.endsWith("tetra-1.png"))
+            assertTrue(kind.name, png.contentEquals(OfficeFormats.unzip(bytes).getValue(img.part!!)))
+            assertEquals(kind.name, 120f, img.widthPt, 0.1f)
+            assertEquals(kind.name, 60f, img.heightPt, 0.1f)
+            // Saved again, the picture goes back as the file now has it.
+            assertEquals(kind.name, back.paras, OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind).paras)
+        }
+    }
+
+    @Test fun `each letter keeps its font through edits`() {
+        val f = "<w:rFonts w:ascii=\"Arial\"/>"
+        val old = listOf(DocPara(listOf(DocRun("Hello wo"), DocRun("rld", font = f))))
+        // Typed inside the word in another font: the new letters take the font of the letter before them.
+        val typed = OfficeFormats.carryFonts(old, listOf(DocPara(listOf(DocRun("Hello big worlds")))))
+        assertEquals(listOf(DocRun("Hello big wo"), DocRun("rlds", font = f)), typed.single().runs)
+        // A paragraph added after it starts in the font the previous one ended with.
+        val added = OfficeFormats.carryFonts(old, listOf(DocPara(listOf(DocRun("Hello world"))), DocPara(listOf(DocRun("next")))))
+        assertEquals(listOf(DocRun("next", font = f)), added[1].runs)
+    }
+
     /** The user's own documents on this computer, when they are here: each must read without an error. */
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")

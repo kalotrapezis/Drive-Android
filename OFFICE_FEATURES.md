@@ -32,11 +32,10 @@ such a part also moves it out of `OfficeDoc.blocking`.
 - [x] Styles: Normal, Heading 1–3 (**the library fixes heading sizes (H1 = 2× text); show the document's own — workaround needed**)
 - [x] Bullets, numbering, indent −/+
 - [x] Alignment: left, centre, right, justify
-- [ ] Font name (the document's fonts, kept on save)
+- [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
 - [ ] Superscript, subscript; small caps; clear formatting
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
 - [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
-- [ ] Fonts that change inside a paragraph (still simplified)
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
 - [ ] Format painter (copy formatting)
 - [ ] More styles: Title, Subtitle, Quote, Heading 4–6
@@ -44,7 +43,9 @@ such a part also moves it out of `OfficeDoc.blocking`.
 ### Insert
 - [x] Link
 - [ ] Table (insert, add/remove rows and columns, cell text)
-- [ ] Picture (from Gallery or camera; size, move, wrap)
+- [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
+- [ ] Pictures *shown* on the page — UNFINISHED (shows "�"; see HANDOFF)
+- [ ] Insert › Picture from the phone's photos — wired, untested; size, move, wrap later
 - [ ] Page break
 - [ ] Header and footer; page numbers
 - [ ] Footnotes and endnotes

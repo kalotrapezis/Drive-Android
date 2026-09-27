@@ -8,7 +8,10 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.ImageSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
@@ -27,7 +30,7 @@ internal object OfficePdf {
     private const val MARGIN = 57 // 2 cm
     private val HEADING_SCALE = floatArrayOf(1f, 1.8f, 1.5f, 1.3f, 1.15f, 1.05f, 1f)
 
-    fun write(doc: OfficeDoc, out: OutputStream) {
+    fun write(doc: OfficeDoc, out: OutputStream, pictureBytes: (DocImage) -> ByteArray? = { null }) {
         val width = PAGE_W - 2 * MARGIN
         val pdf = PdfDocument()
         var pageNumber = 0
@@ -49,7 +52,7 @@ internal object OfficePdf {
                 counters[list.level]++
                 for (d in list.level + 1 until 9) counters[d] = 0
             }
-            val layout = layout(doc, p, if (list == null) null else if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3], width)
+            val layout = layout(doc, p, pictureBytes, if (list == null) null else if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3], width)
             val space = doc.basePt * if (p.heading > 0) 0.9f else 0.5f
             for (line in 0 until layout.lineCount) {
                 val top = layout.getLineTop(line)
@@ -70,7 +73,7 @@ internal object OfficePdf {
         pdf.close()
     }
 
-    private fun layout(doc: OfficeDoc, p: DocPara, marker: String?, width: Int): StaticLayout {
+    private fun layout(doc: OfficeDoc, p: DocPara, pictureBytes: (DocImage) -> ByteArray?, marker: String?, width: Int): StaticLayout {
         val text = SpannableStringBuilder()
         val scale = HEADING_SCALE[p.heading.coerceIn(0, 6)]
         val indent = (p.list?.level ?: 0) * 18 + if (p.list != null) 18 else 0
@@ -80,6 +83,15 @@ internal object OfficePdf {
             text.append(r.text.replace(LINE_BREAK, '\n'))
             val end = text.length
             fun span(s: Any) = text.setSpan(s, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            // A picture at its size in points (the PDF counts in points), never wider than the text; a chart or shape, a grey box.
+            r.image?.let { img ->
+                val fit = minOf(width.toFloat() / img.widthPt, (PAGE_H - 2 * MARGIN - 40f) / img.heightPt, 1f)
+                val w = (img.widthPt * fit).toInt().coerceAtLeast(1); val h = (img.heightPt * fit).toInt().coerceAtLeast(1)
+                val drawable = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+                drawable.setBounds(0, 0, w, h)
+                span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
+                continue
+            }
             when {
                 r.bold && r.italic -> span(StyleSpan(Typeface.BOLD_ITALIC))
                 r.bold -> span(StyleSpan(Typeface.BOLD))

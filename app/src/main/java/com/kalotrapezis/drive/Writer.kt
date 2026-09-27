@@ -56,6 +56,23 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.runtime.produceState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.BitmapFactory
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
@@ -104,9 +121,25 @@ internal val POWERPOINT_ORANGE = Color(0xFFB7472A) // deeper than the Office gro
 /** The editor's normal text size; the document's own normal size is shown at this size, the rest in proportion. */
 private const val BASE_SP = 16f
 
+/** Pictures are drawn at most this wide (sp) — about the page's width on a phone; the file keeps their real size. */
+private const val MAX_PICTURE_SP = 300f
+/** How the editor names a picture: this and the picture's key. */
+internal const val PICTURE_URL = "tetra-picture:"
+
 /** OfficeDoc ↔ the editor's document. Kept apart from the screen so the two directions are easy to compare. */
 internal object WriterBridge {
-    fun toEditor(doc: OfficeDoc): RichTextDocument {
+    /** How a picture shows in the editor: its size, scaled with the text, and never wider than the page. */
+    fun shownSize(img: DocImage, scale: Float): Pair<Float, Float> {
+        val w = img.widthPt * scale
+        val fit = (MAX_PICTURE_SP / w).coerceAtMost(1f)
+        return w * fit to img.heightPt * scale * fit
+    }
+
+    /** A picture's own run as the file had it (its letter formatting), by the picture's key. */
+    val pictureRuns = HashMap<String, DocRun>()
+
+    /** [pictures] learns every picture shown, by the key the editor knows it by. */
+    fun toEditor(doc: OfficeDoc, pictures: MutableMap<String, DocImage> = HashMap()): RichTextDocument {
         val scale = BASE_SP / doc.basePt
         return RichTextDocument(doc.paras.map { p ->
             val marks = ArrayList<RichTextSpanMark>()
@@ -121,19 +154,29 @@ internal object WriterBridge {
                 r.color?.let { marks += RichTextSpanMark.TextColor(range, 0xFF000000L or it.toLong()) }
                 r.highlight?.let { marks += RichTextSpanMark.Highlight(range, 0xFF000000L or it.toLong()) }
                 r.link?.let { marks += RichTextSpanMark.Link(range, it) }
+                r.image?.let { img ->
+                    pictures[img.key] = img
+                    pictureRuns[img.key] = r
+                    val (w, h) = shownSize(img, scale)
+                    marks += RichTextSpanMark.Image(range, PICTURE_URL + img.key, w.sp, h.sp, "Picture")
+                }
                 at += r.text.length
             }
+            // The editor cannot draw pictures (only the library's read-only text can); Writer draws them over the text,
+            // and a paragraph with one gets lines tall enough for it.
+            val tallest = p.runs.mapNotNull { r -> r.image?.let { shownSize(it, scale).second } }.maxOrNull()
             RichTextBlock(
-                p.text,
-                p.list?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
-                marks,
-                p.heading,
-                when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                text = p.text,
+                type = p.list?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
+                spans = marks,
+                headingLevel = p.heading,
+                textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                lineHeight = tallest?.let { (it + 6).sp } ?: TextUnit.Unspecified,
             )
         })
     }
 
-    fun fromEditor(rich: RichTextDocument, basePt: Float): List<DocPara> {
+    fun fromEditor(rich: RichTextDocument, basePt: Float, pictures: Map<String, DocImage> = emptyMap()): List<DocPara> {
         val scale = BASE_SP / basePt
         return rich.blocks.map { b ->
             val cuts = sortedSetOf(0, b.text.length)
@@ -150,6 +193,9 @@ internal object WriterBridge {
                     is RichTextSpanMark.TextColor -> r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Link -> r.copy(link = m.url)
+                    is RichTextSpanMark.Image -> pictures[m.url.removePrefix(PICTURE_URL)]?.let { img ->
+                        return@map (pictureRuns[img.key] ?: DocRun(OBJECT_MARK.toString())).copy(text = OBJECT_MARK.toString(), image = img)
+                    } ?: r
                     else -> r
                 }
                 r
@@ -306,10 +352,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val draftKey = open ?: "new"
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
+    val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
+    var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
 
     // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
     fun current() = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
-        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt)))))
+        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt, pictures)))))
 
     LaunchedEffect(reload) {
         loaded = false
@@ -317,21 +365,32 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             runCatching {
                 val bytes = file?.readBytes()
                 val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 11f)
-                val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching { OfficeFormats.read(d.readBytes(), kind) }.getOrNull() }
+                val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
+                    val draftBytes = d.readBytes()
+                    val draftParts = OfficeFormats.unzip(draftBytes)
+                    val originalParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
+                    // A picture added before the app closed lives only in the draft: it is new again, with its bytes.
+                    OfficeFormats.read(draftBytes, kind).let { dd -> dd.copy(paras = dd.paras.map { p -> p.copy(runs = p.runs.map { r ->
+                        val img = r.image
+                        if (img?.part != null && img.part !in originalParts) r.copy(image = DocImage("d" + img.key, null, img.widthPt, img.heightPt, null, draftParts[img.part], img.part.substringAfterLast('.'))) else r
+                    }) }) }
+                }.getOrNull() }
+                packageParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
                 Triple(bytes, doc, draft)
             }
         }
         result.onSuccess { (bytes, doc, draft) ->
             original = bytes
-            state.setRichTextDocument(WriterBridge.toEditor(doc))
+            pictures.clear()
+            state.setRichTextDocument(WriterBridge.toEditor(doc, pictures))
             // What the editor shows, read back, must be what the file holds; if not, saving over it could change
             // what was not touched — so that file too is saved only as a copy.
-            val shown = WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
+            val shown = WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt, pictures))
             val same = shown == WriterBridge.comparable(doc.paras)
             if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
             meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting it cannot show exactly")
             dirty = false
-            if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt))); dirty = true; message = "Your unsaved changes are back" }
+            if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures)); dirty = true; message = "Your unsaved changes are back" }
             state.history.clear()
             loaded = true
         }.onFailure { failed = it.message ?: "This file could not be read." }
@@ -356,12 +415,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
 
-    fun finishSave(target: File, bytes: ByteArray) {
+    fun finishSave(target: File, bytes: ByteArray, saved: OfficeDoc) {
         draftFile(context, draftKey, kind).delete()
         original = bytes
         uri = Uri.fromFile(target).toString()
         name = target.name
-        meta = OfficeFormats.read(bytes, kind).let { meta.copy(unsupported = it.unsupported) }
+        val back = OfficeFormats.read(bytes, kind)
+        // A picture added in Writer is in the file now: from here on it goes back as the file has it, not added again.
+        val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
+        val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
+        if (before.size == after.size) before.zip(after).forEach { (b, a) -> if (b.raw == null) pictures[b.key] = DocImage(b.key, a.part, a.widthPt, a.heightPt, a.raw) }
+        packageParts = OfficeFormats.unzip(bytes)
+        meta = meta.copy(unsupported = back.unsupported)
         dirty = false
     }
     /** Save over the file — only when nothing in it would be lost; otherwise a copy beside it. */
@@ -384,7 +449,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             result.onSuccess { (target, bytes) ->
-                finishSave(target, bytes)
+                finishSave(target, bytes, doc)
                 message = if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
                 then()
             }.onFailure { message = it.message ?: "Could not save." }
@@ -404,7 +469,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     OfficeFormats.write(doc, kind).also { target.writeBytes(it) }
                 }
             }
-            result.onSuccess { bytes -> naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes); message = "Saved in ${TextEditorStore(context).saveFolder}" }
+            result.onSuccess { bytes -> naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes, doc); message = "Saved in ${TextEditorStore(context).saveFolder}" }
                 .onFailure { message = it.message }
         }
     }
@@ -418,7 +483,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 runCatching {
                     check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
                     val target = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
-                    target.outputStream().use { OfficePdf.write(doc, it) }
+                    target.outputStream().use { OfficePdf.write(doc, it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } }
                     target
                 }
             }
@@ -440,6 +505,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             if (ok) { reload++; message = "Restored the file as it was before ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(version.name.substringBefore('.').toLong()))}" }
             else message = "Could not restore it."
+        }
+    }
+    // Insert › Picture: from the phone's photos, at the cursor.
+    val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
+        if (picked != null) scope.launch {
+            val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
+            if (img == null) { message = "Could not add that picture."; return@launch }
+            pictures[img.key] = img
+            val (w, h) = WriterBridge.shownSize(img, BASE_SP / meta.basePt)
+            state.insertHtmlAfterSelection("""<img src="$PICTURE_URL${img.key}" width="${w.roundToInt()}" height="${h.roundToInt()}">""")
+            // Read back in, so its paragraph gets lines tall enough for it (as a file's pictures do); the cursor stays.
+            val at = state.selection
+            state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at)
         }
     }
     fun leave() { if (dirty) leaving = true else back() }
@@ -504,9 +582,32 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
-                        else -> BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp, lineHeight = (BASE_SP * 1.4f * zoom / 100).sp),
-                            cursorBrush = SolidColor(Color(0xFF1A73E8)),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
+                        else -> Box(Modifier.fillMaxWidth()) {
+                            var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp, lineHeight = (BASE_SP * 1.4f * zoom / 100).sp),
+                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
+                            // The pictures, drawn where their character sits: its left, standing on its line's bottom.
+                            val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
+                            layout?.let { l ->
+                                val text = l.layoutInput.text.text
+                                val density = LocalDensity.current
+                                val scale = BASE_SP / meta.basePt
+                                // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
+                                val placed = text.indices.filter { text[it] == OBJECT_MARK }.mapIndexedNotNull { n, i ->
+                                    keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(img, l.getBoundingBox(i).left, l.getLineBottom(l.getLineForOffset(i))) }
+                                }
+                                Box(Modifier.matchParentSize().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)) {
+                                    placed.forEach { (img, left, bottom) ->
+                                        val (w, h) = WriterBridge.shownSize(img, scale)
+                                        val y = with(density) { (bottom - h.sp.toPx() - 3.dp.toPx()).toInt() }
+                                        val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
+                                        Image(picturePainter(img, packageParts), contentDescription = "Picture", contentScale = ContentScale.FillBounds,
+                                            modifier = Modifier.offset { IntOffset(left.toInt(), y) }.then(size))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -579,7 +680,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Line break", w) { state.addTextAfterSelection(LINE_BREAK.toString()) }
                 }, {
                     RibbonButton("Table · later", w, enabled = false) {}
-                    RibbonButton("Picture · later", w, enabled = false) {}
+                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 })
                 WriterTab.View -> listOf({
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
@@ -708,6 +809,48 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
         confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
     )
+}
+
+/** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
+@Composable
+private fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Painter {
+    val bitmap by produceState<ImageBitmap?>(null, img, parts) {
+        val bytes = img.bytes ?: img.part?.let { parts[it] }
+        value = bytes?.let { withContext(Dispatchers.IO) { runCatching { decodePicture(it, 1400)?.asImageBitmap() }.getOrNull() } }
+    }
+    return bitmap?.let { BitmapPainter(it) } ?: ColorPainter(Color(0xFFE3E3E3))
+}
+
+/** A picture's bytes as a bitmap no wider or taller than [max] pixels (a phone photo is far bigger than the page needs). */
+internal fun decodePicture(bytes: ByteArray, max: Int): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= max) sample *= 2
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
+/**
+ * A picture from the phone, ready to go into a document: a JPEG or PNG no bigger than 2400 pixels is kept as it is;
+ * anything bigger (or of another kind) is made a JPEG of that size. As wide as it is (96 dpi), at most the page's width.
+ */
+private fun preparePicture(context: Context, uri: Uri): DocImage {
+    val raw = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
+    val mime = bounds.outMimeType ?: ""
+    val keep = (mime == "image/jpeg" || mime == "image/png") && maxOf(bounds.outWidth, bounds.outHeight) <= 2400
+    val bytes: ByteArray; val w: Int; val h: Int; val ext: String
+    if (keep) { bytes = raw; w = bounds.outWidth; h = bounds.outHeight; ext = if (mime == "image/png") "png" else "jpg" }
+    else {
+        val b = decodePicture(raw, 2400) ?: error("Not a picture.")
+        val scale = (2400f / maxOf(b.width, b.height)).coerceAtMost(1f)
+        val s = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(b, (b.width * scale).toInt(), (b.height * scale).toInt(), true) else b
+        bytes = java.io.ByteArrayOutputStream().also { s.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+        w = s.width; h = s.height; ext = "jpg"
+    }
+    val widthPt = (w * 0.75f).coerceAtMost(450f)
+    return DocImage("n" + java.util.UUID.randomUUID(), null, widthPt, widthPt * h / w, null, bytes, ext)
 }
 
 @Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))

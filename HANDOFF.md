@@ -1,3 +1,51 @@
+# 27 September, late night — Writer keeps what a file has; pictures on the page UNFINISHED (stop asked here)
+
+Branch `writer-library`. Everything below is committed; 125 unit tests pass. **Not on the phone yet** (never plugged in
+today) — install first, then go through OFFICE_FEATURES.md › "To test on the phone" with the user.
+
+**Done since the last entry** (OfficeFormats.kt, Writer.kt, OfficePdf.kt; checked with LibreOffice, see below):
+- Writer carries what it does not edit through edits, raw, as the file had it (`DocKeep` per paragraph): spacing,
+  indents, tab stops, borders, page break before, the exact paragraph style (ODT: Standard vs Text body matter), the
+  paragraph's own text settings, the file's own lists (docx numId / ODT list style, when still of that kind), an empty
+  line's height. New paragraphs take the one before (as Enter in Word). `OfficeFormats.pairParagraphs` matches
+  paragraphs old→new (LCS on text, gaps paired in order).
+- Fonts letter by letter (`DocRun.font`, raw rFonts / ODF font attributes), carried by `carryFonts` (per-character
+  LCS inside a paragraph; typed letters take the font before them). User asked: "a font may change even in half a word".
+- Sizes set on purpose are kept (even the normal size — inside a heading it matters).
+- Pictures, charts, shapes, text boxes, OLE objects: `DocImage`, one OBJECT_MARK (U+FFFC) character in the text, the
+  file's own XML kept (`raw`) and written back as is; new pictures (`bytes`) written into word/media or Pictures/ with
+  rels/content types/manifest. ODT keeps its own automatic styles that the text still refers to (frames' position and
+  wrap). Tests: new picture in both formats; every real document round trip keeps text, DocKeep and pictures.
+- Headings: the editor draws them all bold; an unchanged heading keeps the file's exact runs (`keepHeadingRuns`).
+- Also today: Versions (File; last 3 per document, Restore), Export PDF (File; A4; pictures drawn), Find and Replace,
+  Share, word count, Insert › Line break, ribbon tools in pages with dots, Word blue / Excel green / PowerPoint deep
+  orange, Office icon by the title.
+
+**LibreOffice check** (tools: the "real documents read" test writes app/build/office-roundtrip/; convert originals and
+those with `soffice --headless --convert-to pdf`, compare pages with PIL): of the user's 21 documents in ~/Έγγραφα,
+14 have nothing Writer cannot keep; those come back pixel-identical (a few dozen pixels on Απαντήσεις, ασχαμπ,
+Μελέτες, 610-Ασκηση7). Still copy-only: tables (3 files), page breaks inside text, fields/TOC/content controls,
+superscript/subscript.
+
+**UNFINISHED — pictures shown in the editor** (Writer.kt, the `Box` around `BasicRichTextEditor`):
+the library's editor cannot draw pictures (only its read-only `BasicRichText` uses inline content — checked in the
+bytecode). Plan in progress: each picture paragraph gets `lineHeight` = picture height (RichTextBlock), and Writer draws
+the pictures itself over the text at their character (from `onTextLayout`: getBoundingBox / getLineBottom). State:
+no crash (a `continue` inside the composable loop crashed it — fixed by placing first, drawing after), **but on the
+emulator the picture still shows as "�" and its line is not tall** — neither the lineHeight nor the overlay shows.
+Next: log `layout.layoutInput.text` around the picture (is the character there U+FFFC? are `keys` found?) and whether
+the block's lineHeight reaches the paragraph. Opening and saving such a file is safe meanwhile (the picture goes back
+untouched — the safety net compared it). **Insert › Picture** is wired (Photo Picker → `preparePicture` → insertHtml
+`<img>` → read back) but untested. The PDF export draws pictures (not yet checked on a device).
+
+Test flow on the emulator (x86_64 split added temporarily; reverted — check `git diff app/build.gradle.kts` is empty):
+scratchpad scripts `shot.sh` (screenshot) and `tap.sh "text"` (tap by on-screen text, uiautomator) were throwaway.
+
+**Next, in order:** finish pictures on the page → Insert › Picture test → tables → header/footer/page numbers →
+comments → table of contents (OFFICE_FEATURES.md has the whole list and the phone test list).
+
+---
+
 # 27 September night — Office and Writer built, checked on the emulator; not yet on the phone
 
 **Save rule, option (b)** (the user did not choose; recommended, say so when reviewing): `OfficeDoc.blocking` (content

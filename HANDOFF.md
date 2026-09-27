@@ -97,6 +97,16 @@ on it. If it misbehaves, the fallback agreed with the user is Android's own Edit
 Build: `./gradlew testDebugUnitTest assembleDebug` as before (JDK 17). The emulator (`notes_phone`, x86_64) needs a
 temporary `"x86_64"` in `splits.abi.include` — revert it before committing.
 
+**Backlog the user added (27 Sep evening), not yet ordered, ask before starting each:**
+- Text editor: an option to be the **default app for .txt** ("Open with" → always Tetra).
+- Settings: **Reset to defaults** for each category separately (Gallery, Files, Notes, Scanner, Office…).
+- Notes: **Search and tag filters show every note** — archived, pinned or on Home — all but the Trash.
+- Office: Tetra as the **default app for Word, Excel, PowerPoint** files (.docx/.odt, later .xlsx/.ods, .pptx/.odp).
+- **Import from Google Takeout**: notes (Keep), photos and videos, Drive files, Maps locations — a guided import modal.
+- A **Windows** app (the desktop is Linux-only today).
+- A proper **light theme** on Android (Roadmap F; today dark only, see TetraColors in MainActivity).
+- **Map of disability parking spots**, with the route exported to Google Maps.
+
 ---
 
 # 27 September afternoon — 0.3.0 Beta 2 released

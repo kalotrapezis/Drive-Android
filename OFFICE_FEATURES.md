@@ -15,6 +15,9 @@ such a part also moves it out of `OfficeDoc.blocking`.
       pinch-zoom, "Page 3 of 12"; **Edit** switches to the editor and back
 - [ ] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
       fonts as close as the phone has them
+- [ ] **Tablet view** (asked 2026-09-27): the text must not stretch across the whole screen — a page of its real width,
+      centred, zoomable (landscape tablet: one page, or two side by side); the editor too keeps the page's width
+- [x] Tablet ribbon: a tab's tools in one line, close together and centred (no pages, which spread them apart)
 - [ ] Then: header and footer, page numbers, tables
 - [ ] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
       LibreOffice on the user's documents

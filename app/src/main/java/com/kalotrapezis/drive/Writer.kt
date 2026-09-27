@@ -78,6 +78,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.ParagraphStyle
@@ -691,7 +692,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
                 })
             }
-            androidx.compose.runtime.key(tab) {
+            // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
+            // spread over the width they were too far apart). A phone swipes them page by page.
+            if (LocalConfiguration.current.screenWidthDp >= 700) Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
+            ) { pages.forEachIndexed { i, page -> if (i > 0) Divider(w); page() } }
+            else androidx.compose.runtime.key(tab) {
                 val pager = rememberPagerState { pages.size }
                 HorizontalPager(pager, Modifier.fillMaxWidth()) { page ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }

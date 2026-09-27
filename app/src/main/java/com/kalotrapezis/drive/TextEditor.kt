@@ -39,6 +39,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -152,10 +153,6 @@ internal class TextEditorStore(context: Context) {
 
     data class Tab(val id: String, val uri: String?, val name: String, val crlf: Boolean = false, val bom: Boolean = false)
 
-    var textSize: Int
-        get() = prefs.getInt("text_size", 15)
-        set(sp) { prefs.edit().putInt("text_size", sp.coerceIn(11, 28)).apply() }
-
     var wordWrap: Boolean
         get() = prefs.getBoolean("word_wrap", true)
         set(on) { prefs.edit().putBoolean("word_wrap", on).apply() }
@@ -215,9 +212,8 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
     var undoTick by remember { mutableIntStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
     var wrap by remember { mutableStateOf(store.wordWrap) }
-    var ribbon by remember { mutableStateOf(Ribbon.File) }
-    var size by remember { mutableIntStateOf(store.textSize) }
-    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    var tools by remember { mutableStateOf(false) }
+    var symbols by remember { mutableStateOf(false) } // the bar shows the symbols row instead of the controls
     var naming by remember { mutableStateOf<String?>(null) } // a tab being saved under a new name
     var closing by remember { mutableStateOf<String?>(null) } // a tab with unsaved changes being closed
     var message by remember { mutableStateOf<String?>(null) }
@@ -324,14 +320,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         persist()
     }
 
-    fun clipboard(cut: Boolean) {
-        val t = tab ?: return
-        val v = text[t.id] ?: return
-        clip.setText(androidx.compose.ui.text.AnnotatedString(v.text.substring(v.selection.min, v.selection.max)))
-        if (cut) press("")
-    }
-    fun paste() { clip.getText()?.text?.let { press(it) } }
-    BackHandler { back() }
+    BackHandler { if (tools) tools = false else back() }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
         Column(Modifier.fillMaxSize()) {
@@ -356,7 +345,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             }
             // Word wrap off: the text is laid out as wide as its longest line and scrolls sideways, like code.
             val ink = MaterialTheme.colorScheme.onSurface
-            val style = TextStyle(color = ink, fontSize = size.sp, lineHeight = (size * 1.45f).sp, fontFamily = FontFamily.Monospace)
+            val style = TextStyle(color = ink, fontSize = 15.sp, lineHeight = 22.sp, fontFamily = FontFamily.Monospace)
             val screen = LocalConfiguration.current.screenWidthDp.dp
             if (tab != null) Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))) {
                 BasicTextField(value, ::edit, textStyle = style, cursorBrush = SolidColor(ink),
@@ -366,51 +355,38 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
                         .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp))
             }
         }
-        // A ribbon, like Word's, at the bottom (asked 2026-09-27): one line of tabs — File, Edit, Insert, View — and one
-        // of that tab's tools, full width, scrolling sideways when they do not fit. On the keyboard when it is up.
+        // One island, fewer buttons than Notes (asked 2026-09-27): back, undo, redo, save, open. Pulled up: the rest.
+        // The swap button turns it into the symbols, in two fixed rows — no scrolling. With the keyboard up it is one
+        // thin full-width strip on the keyboard, as in Notes.
         val imeOpen = WindowInsets.isImeVisible
         val u = tab?.let { undo[it.id] }
-        // Tetra's own look: a floating island with the keyboard down; a flat strip on the keyboard when it is up.
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
-            if (imeOpen) Modifier.background(islandColor())
-            else Modifier.navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge).background(islandColor()).padding(vertical = 4.dp))) {
+        val swap: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
+            Tool(R.drawable.ic_swap_horiz, if (symbols) "Controls" else "Symbols", w, on = symbols) { symbols = !symbols } } }
+        val controls: @Composable () -> Unit = {
             undoTick
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
-                Ribbon.entries.forEach { r ->
-                    Text(r.label, color = if (ribbon == r) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 2.dp).clip(CircleShape).background(if (ribbon == r) driveNavigationSelectedColor() else Color.Transparent)
-                            .clickable { ribbon = r }.padding(horizontal = 14.dp, vertical = 8.dp))
+            Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
+            swap(Modifier)
+            Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
+            Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
+            Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
+            Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+        }
+        // The swap key and the 31 symbols: two rows of 16, each key an equal share of the width.
+        val keys: @Composable () -> Unit = {
+            Column(Modifier.fillMaxWidth()) {
+                (listOf<String?>(null) + CodeKeys.keys).chunked(16).forEach { line ->
+                    Row(Modifier.fillMaxWidth()) {
+                        line.forEach { k -> if (k == null) swap(Modifier.weight(1f)) else KeyButton(k, w, Modifier.weight(1f)) { press(k) } }
+                        repeat(16 - line.size) { Box(Modifier.weight(1f)) }
+                    }
                 }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                val t = tab
-                when (ribbon) {
-                    Ribbon.File -> {
-                        RibbonTool("New", w, R.drawable.ic_note_add) { newTab() }
-                        RibbonTool("Open", w, R.drawable.ic_folder) { picker.launch(arrayOf("*/*")) }
-                        RibbonTool("Save", w, R.drawable.ic_save, enabled = t != null && (t.uri == null || dirty(t.id))) { t?.let { save(it) } }
-                        RibbonTool("Save as…", w) { t?.let { naming = it.id } }
-                        RibbonTool("Close tab", w, R.drawable.ic_close) { t?.let { close(it.id) } }
-                    }
-                    Ribbon.Edit -> {
-                        RibbonTool("Undo", w, R.drawable.ic_undo, enabled = u?.canUndo == true) { restore(u?.undo()) }
-                        RibbonTool("Redo", w, R.drawable.ic_redo, enabled = u?.canRedo == true) { restore(u?.redo()) }
-                        RibbonTool("Cut", w, enabled = !value.selection.collapsed) { clipboard(cut = true) }
-                        RibbonTool("Copy", w, R.drawable.ic_copy, enabled = !value.selection.collapsed) { clipboard(cut = false) }
-                        RibbonTool("Paste", w) { paste() }
-                        RibbonTool("Select all", w) { t?.let { text[it.id] = value.copy(selection = androidx.compose.ui.text.TextRange(0, value.text.length)) } }
-                    }
-                    Ribbon.Insert -> CodeKeys.keys.forEach { k -> KeyButton(k, w, Modifier.widthIn(min = 38.dp)) { press(k) } }
-                    Ribbon.View -> {
-                        RibbonTool(if (wrap) "Word wrap: on" else "Word wrap: off", w, on = wrap) { wrap = !wrap; store.wordWrap = wrap }
-                        RibbonTool("A−", w, enabled = size > 11) { size -= 1; store.textSize = size }
-                        Text("$size", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                        RibbonTool("A+", w, enabled = size < 28) { size += 1; store.textSize = size }
-                        t?.let { Text(if (it.uri == null) "Not saved yet" else if (it.crlf) "Windows line endings, kept" else "LF line endings",
-                            color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 10.dp)) }
-                    }
-                }
+        }
+        if (imeOpen) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black).padding(horizontal = 4.dp, vertical = 2.dp)) {
+            if (symbols) keys() else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { controls() }
+        } else Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
+            IslandBottomBar(expand = { tools = true }, visible = !tools) {
+                if (symbols) Box(Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp - 44.dp)) { keys() } else controls()
             }
         }
         message?.let { m ->
@@ -418,6 +394,21 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp)) {
                 Text(m, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
+        }
+    }
+
+    if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = Color(0xFF16191A), contentColor = w) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            tab?.let { t -> DriveWideAction(R.drawable.ic_save, "Save as…") { tools = false; naming = t.id } }
+            Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; store.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Word wrap", style = MaterialTheme.typography.titleSmall)
+                    Text(if (wrap) "Long lines continue on the next line." else "Long lines keep going; scroll sideways.", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = wrap, onCheckedChange = { wrap = it; store.wordWrap = it })
+            }
+            tab?.let { t -> Text(if (t.uri == null) "Not saved yet · Save puts it in ${store.saveFolder}"
+                else (if (t.crlf) "Windows line endings (CRLF), kept" else "Line endings: LF"), style = MaterialTheme.typography.bodySmall) }
         }
     }
 
@@ -458,16 +449,3 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
     modifier.height(40.dp).clip(CircleShape).clickable(onClickLabel = key, onClick = click),
     contentAlignment = Alignment.Center,
 ) { Text(key, color = tint, fontFamily = FontFamily.Monospace, fontSize = if (key.length > 1) 11.sp else 17.sp, maxLines = 1) }
-
-internal enum class Ribbon(val label: String) { File("File"), Edit("Edit"), Insert("Insert"), View("View") }
-
-/** A tool of the ribbon: its icon when it has one, and its name, like Word's "Track Changes". */
-@Composable private fun RibbonTool(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
-    Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
-        .clickable(enabled = enabled, onClick = click).padding(horizontal = 12.dp),
-    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-) {
-    val c = if (enabled) tint else tint.copy(alpha = 0.35f)
-    icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
-    Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-}

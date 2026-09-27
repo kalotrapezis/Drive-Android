@@ -75,7 +75,7 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [x] Pictures shown on the page (Writer draws them over the text; a chart or shape is a grey box; a floating picture shows in line for now)
 - [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt
 - [ ] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
-      - **Resize** (drag the corners, and a width in cm), **Crop**, **Save picture as…** (take a picture out of a document
+      - **Resize** in a window: horizontal xx px · vertical xx px (not by hand), **Crop** in a window (Photos' crop), **Save picture as…** (take a picture out of a document
      someone sent, into the phone's photos/Files), **Delete**.
       - **Wrapping**: in line with text (standard) · square / around text · top and bottom (nothing at its sides) ·
      behind text · in front of text.

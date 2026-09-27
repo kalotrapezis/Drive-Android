@@ -1,9 +1,11 @@
 # Next session (28 Sep) — continue the picture work, then proper pages
 
 **Budget (user, 27 Sep):** ~10% of the week left until the reset on 28 Sep at 22:00. Tomorrow: only the quick,
-certain part of the Picture tab — the tab itself, Delete, Save picture as…, resize (−/+ and width in cm), and the
-wrapping choices written correctly to .docx/.odt. After the reset: crop, drag-corner resize, drag to move (snapping
-and free placement with live re-flow), floating pictures shown in place.
+certain part of the Picture tab — the tab itself, Delete, Save picture as…, **Resize in a window: horizontal xx px ·
+vertical xx px** (not by dragging — the user, 27 Sep), and the wrapping choices written correctly to .docx/.odt.
+**Crop in a window, reusing Photos' crop** (`CornerEditor` in ScanScreens.kt, as PhotoEditor.kt uses it: a
+DocumentQuad over the picture; for a document picture a plain rectangle → docx a:srcRect, ODT fo:clip). After the
+reset: drag to move (snapping, and free placement with live re-flow), floating pictures shown in place.
 
 The user's choice for tomorrow: **pictures first**. Where they stand: a file's pictures show on the page and are saved
 back untouched; Insert › Picture works (checked on the emulator + LibreOffice). Still to do, in order:

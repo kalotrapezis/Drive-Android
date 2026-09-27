@@ -1,3 +1,24 @@
+# Next session (28 Sep) — continue the picture work, then proper pages
+
+The user's choice for tomorrow: **pictures first**. Where they stand: a file's pictures show on the page and are saved
+back untouched; Insert › Picture works (checked on the emulator + LibreOffice). Still to do, in order:
+1. **Picture tab** (asked): when a picture is selected, a Picture tab appears in the ribbon — size (smaller/bigger,
+   width in cm), placement and **text wrapping** (in line, square, top and bottom, behind / in front of text), delete.
+   Resizing a file's own picture means editing its raw XML (docx wp:extent + a:ext; ODT svg:width/height); wrapping
+   means docx wp:inline ⇄ wp:anchor (wrapSquare/wrapTopAndBottom/wrapNone behindDoc), ODT style:wrap on its graphic style.
+2. Floating pictures (docx wp:anchor, ODT anchored frames) are drawn in line with the text for now — show them where
+   they are anchored.
+3. Charts and shapes are grey boxes — a label ("Chart", "Shape") at least.
+4. Check on the **tablet** (971f6b37) and the phone (208c8192): both have today's build except the keyboard-island
+   change, which only the tablet has (the phone was not plugged in).
+
+Then, as agreed: **proper pages** — documents open view only as pages, Edit at the top (OFFICE_FEATURES.md top).
+Decided today: every feature goes on both tablet and phone (phone layout is Claude's call); the ribbon on a tablet is
+one centred line; with a physical keyboard (the user's keyboard case) the ribbon stays a floating island, a flat strip
+only on the screen's keyboard.
+
+---
+
 # 27 September, late night — Writer keeps what a file has; pictures on the page UNFINISHED (stop asked here)
 
 Branch `writer-library`. Everything below is committed; 125 unit tests pass. **Not on the phone yet** (never plugged in

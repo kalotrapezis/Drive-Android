@@ -617,11 +617,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         }
         // The ribbon, like Word's, at the bottom: a line of tabs and a line of that tab's tools, scrolling sideways
-        // when they do not fit. A floating island with the keyboard down; with it up, a flat strip on it on a phone, and on a
-        // tablet the same island as high above it (asked 2026-09-27: on a keyboard case the strip pressed against the word
-        // suggestions).
+        // when they do not fit. A floating island; typing on the screen's keyboard, a flat strip on it. With a physical
+        // keyboard (a keyboard case) the island stays, as high above its suggestions bar as above the screen's bottom
+        // (asked 2026-09-27: the strip pressed against them).
         val imeOpen = WindowInsets.isImeVisible
-        val island = !imeOpen || LocalConfiguration.current.screenWidthDp >= 700
+        val config = LocalConfiguration.current
+        val physicalKeyboard = config.keyboard == android.content.res.Configuration.KEYBOARD_QWERTY &&
+            config.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
+        val island = !imeOpen || physicalKeyboard
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)

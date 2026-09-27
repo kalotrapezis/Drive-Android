@@ -10,6 +10,11 @@ such a part also moves it out of `OfficeDoc.blocking`.
 
 ## Word (Writer)
 
+**Tablet and phone (decided by the user, 27 Sep 2026):** the tablet is where documents are really worked on — the full
+Writer. The phone is for quick edits: the basics, done well, within what Android allows; the user leaves the phone's
+details to Claude ("whatever you do it's cramped"). Build every feature for the tablet first; on the phone, keep only
+what a quick edit needs (read the pages, fix a word, bold/italic, a list, save, share).
+
 ### FIRST — proper pages, viewing before editing (asked 2026-09-27)
 - [ ] A document opens as **pages** (Print layout): the file's page size and margins, a gap between pages, scroll and
       pinch-zoom, "Page 3 of 12"; **Edit** switches to the editor and back

@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -576,6 +577,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 // A plain 40 dp round button: an IconButton is always at least 48 dp, and eight of them did not fit a phone's island.
 @Composable internal fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
     Modifier.size(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
+        .focusProperties { canFocus = false } // tapped, it leaves the focus (and the keyboard) where the typing is
         .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = description, onClick = click),
     contentAlignment = Alignment.Center,
 ) { Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(21.dp)) }

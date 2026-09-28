@@ -42,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -234,4 +236,100 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
     OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it in 0.1f..60f }?.let { set(it * CM) } },
         label = { Text(label) }, suffix = { Text("cm") }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 240.dp))
+}
+
+/**
+ * Formatting the text of a cell being typed in (asked 2026-09-28: "text format" in tables): the runs from [start] to
+ * [end] changed by [f]; nothing chosen, the whole cell (on a phone, choosing letters in a small box is fiddly).
+ */
+internal fun formatCell(cell: DocCell, start: Int, end: Int, f: (DocRun) -> DocRun): DocCell {
+    val length = WriterBridge.cellText(cell).length
+    val (a, b) = if (start == end) 0 to length else minOf(start, end) to maxOf(start, end)
+    var at = 0
+    return cell.copy(paras = cell.paras.map { p ->
+        val from = at; at += p.text.length + 1
+        val lo = (a - from).coerceIn(0, p.text.length); val hi = (b - from).coerceIn(0, p.text.length)
+        if (lo >= hi || p.table != null) p else {
+            var x = 0
+            p.copy(runs = OfficeFormats.tidy(p.runs.flatMap { r ->
+                val s = x; x += r.text.length
+                if (r.image != null || hi <= s || lo >= x) listOf(r) else listOfNotNull(
+                    r.copy(text = r.text.substring(0, (lo - s).coerceAtLeast(0))).takeIf { it.text.isNotEmpty() },
+                    f(r.copy(text = r.text.substring((lo - s).coerceAtLeast(0), (hi - s).coerceAtMost(r.text.length)))),
+                    r.copy(text = r.text.substring((hi - s).coerceAtMost(r.text.length))).takeIf { it.text.isNotEmpty() })
+            }).ifEmpty { p.runs })
+        }
+    })
+}
+
+/** The paragraphs from [start] to [end] (or the whole cell) aligned. */
+internal fun alignCell(cell: DocCell, start: Int, end: Int, align: DocAlign): DocCell {
+    val all = start == end
+    var at = 0
+    return cell.copy(paras = cell.paras.map { p ->
+        val from = at; at += p.text.length + 1
+        if (all || (minOf(start, end) <= from + p.text.length && maxOf(start, end) >= from)) p.copy(align = align) else p
+    })
+}
+
+/** The look of the letter at [pos] (the one before it, at the end of a stretch). */
+internal fun cellRunAt(cell: DocCell, pos: Int): DocRun? {
+    var at = 0
+    for (p in cell.paras) {
+        var x = at
+        for (r in p.runs) { if (r.image == null && pos >= x && pos <= x + r.text.length && r.text.isNotEmpty()) return r; x += r.text.length }
+        at += p.text.length + 1
+    }
+    return cell.paras.firstOrNull()?.runs?.firstOrNull()
+}
+
+/** The cell's text as the box shows it: each run's look, sizes at the table's scale ([spPerPt]). */
+internal fun cellAnnotated(cell: DocCell, spPerPt: Float, sizeOf: (DocPara, DocRun) -> Float): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        cell.paras.forEachIndexed { i, p ->
+            if (i > 0) append('\n')
+            p.runs.forEach { r ->
+                val deco = listOfNotNull(androidx.compose.ui.text.style.TextDecoration.Underline.takeIf { r.underline || r.link != null },
+                    androidx.compose.ui.text.style.TextDecoration.LineThrough.takeIf { r.strike })
+                withStyle(androidx.compose.ui.text.SpanStyle(
+                    fontWeight = if (r.bold) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                    fontStyle = if (r.italic) androidx.compose.ui.text.font.FontStyle.Italic else null,
+                    textDecoration = if (deco.isEmpty()) null else androidx.compose.ui.text.style.TextDecoration.combine(deco),
+                    color = r.color?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified,
+                    background = r.highlight?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified,
+                    fontSize = androidx.compose.ui.unit.TextUnit(sizeOf(p, r) * spPerPt, androidx.compose.ui.unit.TextUnitType.Sp),
+                )) { append(r.text) }
+            }
+        }
+    }
+
+/** Home's tools for the text of a cell being typed in: its looks, sizes, colours and alignment. */
+internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.text.TextRange, sizeOf: (DocPara, DocRun) -> Float,
+    change: (DocCell) -> Unit): List<@Composable () -> Unit> {
+    val look = cellRunAt(cell, if (sel.collapsed) sel.min else sel.min + 1) ?: DocRun("")
+    fun apply(f: (DocRun) -> DocRun) = change(formatCell(cell, sel.min, sel.max, f))
+    val para = cell.paras.firstOrNull() ?: DocPara(emptyList())
+    val pt = sizeOf(para, look).let { kotlin.math.round(it).toInt() }
+    return listOf({
+        Tool(R.drawable.ic_format_bold, "Bold", tint, on = look.bold) { apply { it.copy(bold = !look.bold) } }
+        Tool(R.drawable.ic_format_italic, "Italic", tint, on = look.italic) { apply { it.copy(italic = !look.italic) } }
+        Tool(R.drawable.ic_format_underlined, "Underline", tint, on = look.underline) { apply { it.copy(underline = !look.underline) } }
+        Tool(R.drawable.ic_format_strikethrough, "Strikethrough", tint, on = look.strike) { apply { it.copy(strike = !look.strike) } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Tool(R.drawable.ic_remove, "Smaller text", tint, enabled = pt > 6) { apply { it.copy(sizePt = (pt - 1).toFloat()) } }
+            Text("$pt", color = tint, style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
+            Tool(R.drawable.ic_add, "Bigger text", tint, enabled = pt < 72) { apply { it.copy(sizePt = (pt + 1).toFloat()) } }
+        }
+    }, {
+        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31), Color.White)) { c ->
+            apply { it.copy(color = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
+        }
+        Swatches(tint, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+            apply { it.copy(highlight = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
+        }
+    }, {
+        listOf(DocAlign.Start to R.drawable.ic_align_left, DocAlign.Center to R.drawable.ic_align_center, DocAlign.End to R.drawable.ic_align_right, DocAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
+            Tool(icon, "Align ${a.name.lowercase(Locale.ROOT)}", tint, on = para.align == a) { change(alignCell(cell, sel.min, sel.max, a)) }
+        }
+    })
 }

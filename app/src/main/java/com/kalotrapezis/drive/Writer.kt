@@ -493,7 +493,8 @@ internal fun freeCopyName(dir: File, stem: String, ext: String): File =
 
 private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
-private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue)
+/** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
+private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -771,10 +772,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val table = img.table ?: run { cellEdit = null; return }
         val row = table.rows.getOrNull(edit.ref.row) ?: run { cellEdit = null; return }
         val cell = row.cells.getOrNull(edit.ref.cell) ?: run { cellEdit = null; return }
-        if (WriterBridge.cellText(cell) != edit.value.text) {
+        val typed = WriterBridge.withCellText(edit.cell, edit.value.text)
+        if (typed != cell) {
             val rows = table.rows.toMutableList()
             val cells = row.cells.toMutableList()
-            cells[edit.ref.cell] = WriterBridge.withCellText(cell, edit.value.text)
+            cells[edit.ref.cell] = typed
             rows[edit.ref.row] = row.copy(cells = cells)
             changeTable(edit.ref.key, img, table.copy(rows = rows))
         }
@@ -918,7 +920,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     selectedCell = ref
                                                     val cell = table.rows[area.row].cells[area.cell]
                                                     if (cell.paras.any { p -> p.table != null || p.runs.any { it.image != null } }) message = "This cell has nested content; its text is kept."
-                                                    else WriterBridge.cellText(cell).let { text -> cellEdit = TableCellEdit(ref, TextFieldValue(text, androidx.compose.ui.text.TextRange(text.length))) }
+                                                    else WriterBridge.cellText(cell).let { text -> cellEdit = TableCellEdit(ref, TextFieldValue(text, androidx.compose.ui.text.TextRange(text.length)), cell) }
                                                 }
                                             }
                                             true
@@ -974,18 +976,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     value = edit.value,
                                                     onValueChange = { cellEdit = edit.copy(value = it) },
                                                     // As big as the cell's text is drawn: its size in points, at the table's scale.
-                                                    textStyle = TextStyle(color = Color.Black, fontSize = with(density) {
+                                                    textStyle = TextStyle(color = Color.Black, textAlign = when (edit.cell.paras.firstOrNull()?.align) {
+                                                        DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify; else -> TextAlign.Start },
+                                                        fontSize = with(density) {
                                                         val para = table!!.rows[area.row].cells[area.cell].paras.firstOrNull()
                                                         ((para?.let { documentStyles.look(it).sizePt } ?: meta.basePt) * shownWidth / img.widthPt).toSp()
                                                     }),
                                                     cursorBrush = SolidColor(WORD_BLUE),
+                                                    // Its looks shown as they are typed and changed: each run's, from the working cell.
+                                                    visualTransformation = { typed ->
+                                                        val spPerPt = with(density) { (shownWidth / img.widthPt).toSp().value }
+                                                        androidx.compose.ui.text.input.TransformedText(cellAnnotated(WriterBridge.withCellText(edit.cell, typed.text), spPerPt) { p, r ->
+                                                            r.sizePt ?: documentStyles.look(p).sizePt ?: meta.basePt }, androidx.compose.ui.text.input.OffsetMapping.Identity)
+                                                    },
                                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                                     keyboardActions = KeyboardActions(onDone = { commitCell(); keyboard?.hide() }),
+                                                    // Where the cell's own text sits: its margins, and its vertical alignment.
+                                                    decorationBox = { inner ->
+                                                        val m = documentStyles.tableSpec(table!!).rows.getOrNull(area.row)?.cells?.getOrNull(area.cell)?.margin
+                                                        val px = { pt: Float -> with(density) { (pt * shownWidth / img.widthPt).toDp() } }
+                                                        Box(Modifier.fillMaxSize().padding(start = px(m?.get(0) ?: 5.4f), top = px(m?.get(1) ?: 0f), end = px(m?.get(2) ?: 5.4f), bottom = px(m?.get(3) ?: 0f)),
+                                                            contentAlignment = when (TableEdit.vAlign(edit.cell.props)) { "center" -> Alignment.CenterStart; "bottom" -> Alignment.BottomStart; else -> Alignment.TopStart }) { inner() }
+                                                    },
                                                     modifier = Modifier.align(Alignment.TopStart) // the box centres its content; the cell is placed from the corner
                                                         .offset { IntOffset((area.x / img.widthPt * shownWidth).roundToInt(), (area.y / img.heightPt * shownHeight).roundToInt()) }
                                                         .size(with(density) { (area.width / img.widthPt * shownWidth).toDp() }, with(density) { (area.height / img.heightPt * shownHeight).toDp() })
-                                                        .background(Color.White).border(2.dp, WORD_BLUE)
-                                                        .padding(horizontal = 2.dp).focusRequester(focus).onFocusChanged { f ->
+                                                        .background(TableEdit.shading(edit.cell.props)?.let { Color(0xFF000000 or it.toLong()) } ?: Color.White).border(2.dp, WORD_BLUE)
+                                                        .focusRequester(focus).onFocusChanged { f ->
                                                             if (f.isFocused) hadFocus = true else if (hadFocus) commitCell()
                                                         },
                                                 )
@@ -1041,7 +1058,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
                 })
-                WriterTab.Home -> listOf({
+                // Typing in a table cell: Home formats the cell's text.
+                WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
+                    { p, r -> r.sizePt ?: documentStyles.look(p).sizePt ?: meta.basePt }) { c -> cellEdit = e.copy(cell = c) } } ?: listOf({
                     Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
                     Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
                     Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
@@ -1522,7 +1541,7 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 @Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
 
 /** A named tool of the ribbon (Save, Heading 1…). */
-@Composable private fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
+@Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
     Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
@@ -1536,7 +1555,7 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 }
 
 /** A colour tool: tapped, its swatches open beside it on the same line; the crossed-out one removes the colour. */
-@Composable private fun Swatches(tint: Color, icon: Int, label: String, colors: List<Color>, choose: (Color?) -> Unit) {
+@Composable internal fun Swatches(tint: Color, icon: Int, label: String, colors: List<Color>, choose: (Color?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Tool(icon, label, tint, on = open) { open = !open }
     if (open) {

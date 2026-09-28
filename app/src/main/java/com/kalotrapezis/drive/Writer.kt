@@ -433,6 +433,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
+    remember { OfficeFonts.assets = context.applicationContext.assets }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.

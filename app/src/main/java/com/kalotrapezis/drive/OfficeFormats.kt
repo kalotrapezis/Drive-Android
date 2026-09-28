@@ -86,6 +86,34 @@ internal object PictureXml {
         }
     }
 
+    /**
+     * Where a floating picture stands, from what (page, margin — a column counts as the margin — or its paragraph),
+     * in points or by alignment ("left", "center", "right", "top", "bottom"). Null: it stands in the line of text.
+     */
+    data class Place(val fromH: String, val x: Float?, val alignH: String?, val fromV: String, val y: Float?, val alignV: String?, val wrap: PictureWrap)
+
+    fun placeOf(img: DocImage): Place? {
+        val raw = img.raw ?: return null
+        val wrap = wrapOf(img) ?: PictureWrap.Square
+        if (wrap == PictureWrap.InLine) return null
+        if (raw.startsWith("<draw:frame")) {
+            val head = raw.substring(0, raw.indexOf('>'))
+            fun attr(n: String) = Regex("""\s$n="([^"]*)"""").find(head)?.groupValues?.get(1)
+            val from = if (attr("text:anchor-type") == "page") "page" else "paragraph"
+            return Place(if (from == "page") "page" else "margin", odfLength(attr("svg:x")) ?: 0f, null, from, odfLength(attr("svg:y")) ?: 0f, null, wrap)
+        }
+        if ("<wp:anchor" !in raw) return null
+        fun axis(tag: String): Triple<String, Float?, String?> {
+            val m = Regex("""<wp:$tag relativeFrom="([^"]*)"[^>]*>([\s\S]*?)</wp:$tag>""").find(raw) ?: return Triple("margin", 0f, null)
+            val from = when (m.groupValues[1]) { "page" -> "page"; "paragraph", "line", "character" -> "paragraph"; else -> "margin" }
+            val off = Regex("""<wp:posOffset>(-?\d+)</wp:posOffset>""").find(m.groupValues[2])?.groupValues?.get(1)?.toFloatOrNull()?.div(12700f)
+            val align = Regex("""<wp:align>(\w+)</wp:align>""").find(m.groupValues[2])?.groupValues?.get(1)
+            return Triple(from, off, align)
+        }
+        val (fh, x, ah) = axis("positionH"); val (fv, y, av) = axis("positionV")
+        return Place(if (fh == "paragraph") "margin" else fh, x, ah, fv, y, av, wrap)
+    }
+
     /** Its wrapping as the file has it (null: an ODT frame's, which lives in a style Writer does not look up). */
     fun wrapOf(img: DocImage): PictureWrap? {
         img.wrap?.let { return it }

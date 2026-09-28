@@ -119,7 +119,9 @@ class OfficeFormatsTest {
     /** The user's own documents on this computer, when they are here: each must read without an error. */
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
-        home.walkTopDown().maxDepth(3).filter { OfficeKind.of(it.name) != null }.take(40).forEach { f ->
+        // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.
+        val suite = File(home, "Claude/Projects/Defaulty/Word App Test Suite").listFiles().orEmpty().filter { OfficeKind.of(it.name) != null }
+        (home.walkTopDown().maxDepth(3).filter { OfficeKind.of(it.name) != null }.take(40) + suite).forEach { f ->
             val kind = OfficeKind.of(f.name)!!
             val bytes = f.readBytes()
             val doc = OfficeFormats.read(bytes, kind)

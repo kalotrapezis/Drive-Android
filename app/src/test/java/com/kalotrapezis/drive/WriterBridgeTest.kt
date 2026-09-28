@@ -27,4 +27,13 @@ class WriterBridgeTest {
         val odd = listOf(DocPara(listOf(DocRun("a"), DocRun(br, italic = true), DocRun("b"))))
         assertEquals(WriterBridge.comparable(odd), WriterBridge.comparable(WriterBridge.fromEditor(WriterBridge.toEditor(OfficeDoc(odd, basePt = 11f)), 11f)))
     }
+
+    @Test fun `a picture goes where the mark was typed, and nothing else moves`() {
+        val img = DocImage("k", "word/media/a.png", 10f, 10f)
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("ab"))), DocPara(listOf(DocRun("cd$PICTURE_SPOT", bold = true), DocRun("ef"))), DocPara(listOf(DocRun("gh")))))
+        val put = WriterBridge.putPicture(doc, img)
+        assertEquals(listOf("ab", "cd${OBJECT_MARK}ef", "gh"), put.paras.map { it.text })
+        assertEquals(img, put.paras[1].runs[1].image)
+        assertEquals(DocRun("ef"), put.paras[1].runs[2])
+    }
 }

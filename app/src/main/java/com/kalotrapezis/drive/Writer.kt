@@ -80,6 +80,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.BitmapFactory
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -137,6 +138,9 @@ private const val SCRIPT_SIZE_OWN = 0.69f
 
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
+/** Typed where a picture is to go, then replaced by it (a private-use character: never in a document). */
+internal const val PICTURE_SPOT = '\uE000'
+
 /** How the editor names a picture: this and the picture's key. */
 internal const val PICTURE_URL = "tetra-picture:"
 
@@ -148,6 +152,18 @@ internal object WriterBridge {
         val fit = (MAX_PICTURE_SP / w).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
     }
+
+    /** [img] where [PICTURE_SPOT] was typed, in the look of its own run (or of the text it was typed in). */
+    fun putPicture(doc: OfficeDoc, img: DocImage): OfficeDoc = doc.copy(paras = doc.paras.map { p ->
+        if (p.runs.none { PICTURE_SPOT in it.text }) p else p.copy(runs = OfficeFormats.tidy(p.runs.flatMap { r ->
+            if (PICTURE_SPOT !in r.text) listOf(r) else r.text.split(PICTURE_SPOT).flatMapIndexed { k, t -> listOfNotNull(
+                if (k > 0) (pictureRuns[img.key] ?: r.copy(link = null)).copy(text = OBJECT_MARK.toString(), image = img) else null,
+                r.copy(text = t).takeIf { t.isNotEmpty() }) }
+        }))
+    })
+
+    /** How wide the editor's picture character is, for its size (measured by the screen; about 1 elsewhere). */
+    var pictureGlyph = 1f
 
     /** A picture's own run as the file had it (its letter formatting), by the picture's key. */
     val pictureRuns = HashMap<String, DocRun>()
@@ -179,8 +195,12 @@ internal object WriterBridge {
                     marks += RichTextSpanMark.Image(range, PICTURE_URL + img.key, w.sp, h.sp, "Picture")
                     // The editor cannot draw it (Writer does, over the text): the character is made as tall as the
                     // picture, so its line makes room, and invisible.
-                    marks += RichTextSpanMark.FontSize(range, (h * 1.12f).coerceAtLeast(4f).sp) // a letter's rise is ~0.9 of its size
+                    val size = (h * 1.12f).coerceAtLeast(4f) // a letter's rise is ~0.9 of its size
+                    marks += RichTextSpanMark.FontSize(range, size.sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
+                    // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
+                    // half the spacing before a letter and half after, and none before the first of a line: there, twice.
+                    marks += RichTextSpanMark.LetterSpacing(range, ((w - pictureGlyph * size) * (if (at == 0) 2 else 1)).sp)
                 }
                 at += r.text.length
             }
@@ -408,6 +428,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
+    remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var sizing by remember { mutableStateOf(false) }
     var wrapping by remember { mutableStateOf(false) }
@@ -575,17 +596,34 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             else message = "Could not restore it."
         }
     }
+    /**
+     * Puts [img] at the cursor and reads the document back in (so its line makes room for it); returns where it is.
+     * A mark is typed there and the picture put in its place in Writer's own document — the editor's own way of adding
+     * a picture (insertHtml) mixed up the text after it (found 2026-09-28).
+     */
+    fun placePicture(img: DocImage): Int {
+        state.addTextAfterSelection(PICTURE_SPOT.toString())
+        val at = state.selection.min - 1
+        state.setRichTextDocument(WriterBridge.toEditor(WriterBridge.putPicture(current(), img), pictures), androidx.compose.ui.text.TextRange(at, at + 1))
+        dirty = true
+        return at
+    }
+    /** A picture dragged from [from] to [to] in the text: taken out and put in again there; it stays selected. */
+    fun movePicture(from: Int, to: Int, key: String) {
+        val img = pictures[key] ?: return
+        if (to == from || to == from + 1) return
+        state.removeTextRange(androidx.compose.ui.text.TextRange(from, from + 1))
+        state.selection = androidx.compose.ui.text.TextRange(if (to > from) to - 1 else to)
+        placePicture(img)
+    }
     // Insert › Picture: from the phone's photos, at the cursor.
     val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
         if (picked != null) scope.launch {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
             if (img == null) { message = "Could not add that picture."; return@launch }
             pictures[img.key] = img
-            val (w, h) = WriterBridge.shownSize(img, BASE_SP / meta.basePt)
-            state.insertHtmlAfterSelection("""<img src="$PICTURE_URL${img.key}" width="${w.roundToInt()}" height="${h.roundToInt()}">""")
-            // Read back in, so its paragraph gets lines tall enough for it (as a file's pictures do); the cursor stays.
-            val at = state.selection
-            state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at)
+            val at = placePicture(img)
+            state.selection = androidx.compose.ui.text.TextRange(at + 1) // the cursor after it
         }
     }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
@@ -689,14 +727,30 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
+                                var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
                                 Box(Modifier.matchParentSize().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)) {
                                     placed.forEach { (i, img, at) ->
                                         val (left, bottom) = at
                                         val (w, h) = WriterBridge.shownSize(img, scale)
                                         val y = with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
+                                        val selected = selectedPicture?.first == i
                                         Box(Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
-                                            .then(if (selectedPicture?.first == i) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
+                                            .then(if (selected) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
+                                            // A selected picture is dragged (an unselected one lets the page scroll): let go, it lands in
+                                            // the text where it was let go — between the letters nearest its middle (asked 2026-09-27).
+                                            .then(if (!selected) Modifier else Modifier.graphicsLayer { translationX = drag.x; translationY = drag.y; alpha = if (drag == Offset.Zero) 1f else 0.7f }
+                                                .pointerInput(i, img.key) {
+                                                    detectDragGestures(
+                                                        onDrag = { change, delta -> change.consume(); drag += delta },
+                                                        onDragEnd = {
+                                                            val middle = Offset(left + drag.x, y + drag.y + with(density) { h.sp.toPx() } / 2)
+                                                            drag = Offset.Zero
+                                                            movePicture(i, l.getOffsetForPosition(middle), img.key)
+                                                        },
+                                                        onDragCancel = { drag = Offset.Zero },
+                                                    )
+                                                })
                                             .clickable { state.selection = androidx.compose.ui.text.TextRange(i, i + 1); tab = WriterTab.Picture },
                                             contentAlignment = Alignment.Center) {
                                             Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())

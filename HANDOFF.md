@@ -33,7 +33,17 @@ Later the same day:
   paragraph is written `numId 0` (else the style numbers it still). Test with suite file 01. Nested level shown at 0
   (List Bullet 2 indents by its style).
 
-Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages. Suggested to the user
+- **Drag to move (snap)**: a selected picture drags; let go, it goes into the text between the letters nearest its
+  middle. Moving and Insert › Picture no longer use the editor's insertHtml (it scrambled the text after it — spaces in,
+  letters lost): a mark (`PICTURE_SPOT`, U+E000) is typed and replaced by the picture in Writer's own document
+  (`WriterBridge.putPicture`), then read back in.
+- **The picture character is now exactly as wide as the picture** (LetterSpacing; doubled at a line's start, where
+  Android drops the half before a letter) — the text after a picture no longer runs under it or leaves a gap.
+  Known: a picture followed by a word with no space is one "word" to Android's line breaker (U+FFFD is a letter to it):
+  a too-long line breaks inside that word.
+
+Next: proper pages (view only, from OfficePdf's layout) — floating pictures shown in place there, free placement
+(Word's positionH/V offsets, ODT svg:x/y) with the text wrapping around them (LeadingMarginSpan2 or own layout). Suggested to the user
 (not yet decided): tables and page breaks first — they are what makes most real files copy-only.
 
 ---

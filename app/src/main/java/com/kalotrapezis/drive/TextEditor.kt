@@ -157,6 +157,11 @@ internal class TextEditorStore(context: Context) {
         get() = prefs.getBoolean("word_wrap", true)
         set(on) { prefs.edit().putBoolean("word_wrap", on).apply() }
 
+    /** Files opens a .txt here rather than in the app last chosen for it (asked 2026-09-28). */
+    var opensTxt: Boolean
+        get() = prefs.getBoolean("opens_txt", true)
+        set(on) { prefs.edit().putBoolean("opens_txt", on).apply() }
+
     /** Where Save puts a new file, under the phone's storage (default Tetra/Documents). */
     var saveFolder: String
         get() = prefs.getString("save_folder", "Tetra/Documents") ?: "Tetra/Documents"

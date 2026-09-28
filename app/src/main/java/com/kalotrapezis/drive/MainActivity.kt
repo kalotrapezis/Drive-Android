@@ -5,6 +5,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.Intent
@@ -480,7 +481,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             )
             context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
         }
-        val opener = driveOpeners.component(relative)
+        val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
+            else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
             context.startActivity(Intent(viewIntent).setComponent(opener))
         }.getOrElse {
@@ -1495,7 +1497,15 @@ private fun SettingsTab(
             val editor = remember { TextEditorStore(editorContext) }
             var wrap by remember { mutableStateOf(editor.wordWrap) }
             var folder by remember { mutableStateOf(editor.saveFolder) }
+            var txt by remember { mutableStateOf(editor.opensTxt) }
             SettingsCard("Text editor", Category.Text) {
+                Row(Modifier.fillMaxWidth().clickable { txt = !txt; editor.opensTxt = txt }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open .txt files here", style = MaterialTheme.typography.titleSmall)
+                        Text(if (txt) "Files opens a .txt in the Text editor. Open with… still offers other apps." else "Files opens a .txt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = txt, onCheckedChange = { txt = it; editor.opensTxt = it })
+                }
                 Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; editor.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Word wrap", style = MaterialTheme.typography.titleSmall)

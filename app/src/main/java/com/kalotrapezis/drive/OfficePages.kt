@@ -86,7 +86,8 @@ internal data class DocSection(val page: DocPage, val headers: Map<String, List<
 internal class TableSpec(val cols: List<Float>, val indent: Float, val align: DocAlign, val rows: List<RowSpec>)
 internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boolean, val cells: List<CellSpec>)
 internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>,
-    val turn: Int = 0 /* its text read upwards (-90, Word's btLr) or downwards (90, tbRl) */)
+    val turn: Int = 0 /* its text read upwards (-90, Word's btLr) or downwards (90, tbRl) */,
+    val text: ParaLook? = null /* the table style's look for its text here (header bold…), under the paragraphs' own */)
 internal class Border(val width: Float, val color: Int)
 internal data class TableCellArea(val row: Int, val cell: Int, val x: Float, val y: Float, val width: Float, val height: Float)
 
@@ -249,7 +250,31 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         }
         val cols = el(t.grid)?.kid(W, "tblGrid")?.kids()?.filter { it.localName == "gridCol" }?.mapNotNull { tw(it) }.orEmpty()
         val align = when (tblPr?.kid(W, "jc")?.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; else -> DocAlign.Start }
-        val gridCount = cols.size.coerceAtLeast(t.rows.maxOfOrNull { r -> r.cells.size } ?: 1)
+        val gridCount = cols.size.coerceAtLeast(t.rows.maxOfOrNull { r -> r.cells.sumOf { c -> el(c.props)?.kid(W, "tcPr")?.kid(W, "gridSpan")?.attr(W, "val")?.toIntOrNull() ?: 1 } } ?: 1)
+        // The style's parts for some cells only (Word's conditional formatting): which the table turns on (tblLook),
+        // and how many rows or columns make a band.
+        val look = tblPr?.kid(W, "tblLook")
+        fun flag(name: String, bit: Int) = look?.attr(W, name)?.let { it == "1" || it == "true" } ?: ((look?.attr(W, "val")?.toIntOrNull(16) ?: 0x04A0) and bit != 0)
+        val firstRow = flag("firstRow", 0x20); val lastRow = flag("lastRow", 0x40); val firstCol = flag("firstColumn", 0x80); val lastCol = flag("lastColumn", 0x100)
+        val hBand = !flag("noHBand", 0x200); val vBand = !flag("noVBand", 0x400)
+        fun band(name: String) = prs.firstNotNullOfOrNull { it.kid(W, name)?.attr(W, "val")?.toIntOrNull() }?.coerceAtLeast(1) ?: 1
+        val rowBand = band("tblStyleRowBandSize"); val colBand = band("tblStyleColBandSize")
+        fun part(type: String) = chain.flatMap { st -> st.kids().filter { it.localName == "tblStylePr" && it.attr(W, "type") == type } }
+        val parts = listOf("wholeTable", "band1Vert", "band2Vert", "band1Horz", "band2Horz", "firstCol", "lastCol", "firstRow", "lastRow", "neCell", "nwCell", "seCell", "swCell")
+            .associateWith { part(it) }.filterValues { it.isNotEmpty() }
+        val headerRows = if (firstRow) 1 else 0
+        fun partsFor(ri: Int, g: Int, span: Int): List<Element> {
+            val top = firstRow && ri == 0; val bottom = lastRow && ri == t.rows.size - 1
+            val left = firstCol && g == 0; val right = lastCol && g + span >= gridCount
+            val types = ArrayList<String>().apply {
+                add("wholeTable")
+                if (vBand && !left && !right) add(if (((g - (if (firstCol) 1 else 0)) / colBand) % 2 == 0) "band1Vert" else "band2Vert")
+                if (hBand && !top && !bottom) add(if (((ri - headerRows) / rowBand) % 2 == 0) "band1Horz" else "band2Horz")
+                if (left) add("firstCol"); if (right) add("lastCol"); if (top) add("firstRow"); if (bottom) add("lastRow")
+                if (top && right) add("neCell"); if (top && left) add("nwCell"); if (bottom && right) add("seCell"); if (bottom && left) add("swCell")
+            }
+            return types.flatMap { parts[it].orEmpty() }
+        }
         val rows = t.rows.mapIndexed { ri, row ->
             val trPr = el(row.props)?.kid(W, "trPr")
             val h = trPr?.kid(W, "trHeight")
@@ -258,18 +283,30 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 val tcPr = el(c.props)?.kid(W, "tcPr")
                 val span = tcPr?.kid(W, "gridSpan")?.attr(W, "val")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
                 val merge = tcPr?.kid(W, "vMerge")?.let { if (it.attr(W, "val") == "restart") 'r' else 'c' } ?: 'n'
-                val fill = tcPr?.kid(W, "shd")?.attr(W, "fill")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) }
+                val cond = partsFor(ri, g, span)
+                fun shdOf(pr: Element?) = pr?.kid(W, "shd")?.attr(W, "fill")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) }
+                // The cell's own shading wins, even "none" (fill auto); else the style's part for this cell, else its whole.
+                val fill = if (tcPr?.kid(W, "shd") != null) shdOf(tcPr)
+                    else (cond + chain).lastOrNull { it.kid(W, "tcPr")?.kid(W, "shd") != null }?.let { shdOf(it.kid(W, "tcPr")) }
+                // Its text's look from those parts: bold, italic, colour, size (the paragraph's own style still wins).
+                val text = cond.mapNotNull { it.kid(W, "rPr") }.fold(null as ParaLook?) { l, rPr ->
+                    fun on(n: String) = rPr.kid(W, n)?.attr(W, "val").let { v -> if (rPr.kid(W, n) == null) null else v == null || v == "1" || v == "true" }
+                    (l ?: ParaLook()).let { x -> x.copy(bold = on("b") ?: x.bold, italic = on("i") ?: x.italic,
+                        color = rPr.kid(W, "color")?.attr(W, "val")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: x.color,
+                        sizePt = rPr.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.div(2) ?: x.sizePt) }
+                }
                 val m = margin.copyOf().also { margins(tcPr?.kid(W, "tcMar"), it) }
                 // Each edge: the table's outer border on the outside, its inner one inside; the cell's own over both.
                 val b = arrayOf(
                     borders[if (ri == 0) "top" else "insideH"], borders[if (g == 0) "left" else "insideV"],
                     borders[if (ri == t.rows.size - 1) "bottom" else "insideH"], borders[if (g + span >= gridCount) "right" else "insideV"])
-                tcPr?.kid(W, "tcBorders")?.kids()?.forEach { e ->
+                // The style's parts' lines for this cell, then the cell's own.
+                (cond.mapNotNull { it.kid(W, "tcPr")?.kid(W, "tcBorders") } + listOfNotNull(tcPr?.kid(W, "tcBorders"))).forEach { bs -> bs.kids().forEach { e ->
                     when (edge(e.localName)) { "top" -> b[0] = border(e); "left" -> b[1] = border(e); "bottom" -> b[2] = border(e); "right" -> b[3] = border(e) }
-                }
+                } }
                 g += span
                 CellSpec(span, merge, fill, when (tcPr?.kid(W, "vAlign")?.attr(W, "val")) { "center" -> 'c'; "bottom" -> 'b'; else -> 't' }, m, b,
-                    when (tcPr?.kid(W, "textDirection")?.attr(W, "val")) { "btLr" -> -90; "tbRl", "tbRlV" -> 90; else -> 0 })
+                    when (tcPr?.kid(W, "textDirection")?.attr(W, "val")) { "btLr" -> -90; "tbRl", "tbRlV" -> 90; else -> 0 }, text)
             }
             RowSpec(tw(h, "val"), h?.attr(W, "hRule") == "exact", trPr?.kid(W, "tblHeader").let { it != null && it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } }, cells)
         }
@@ -716,7 +753,7 @@ internal object OfficePages {
      * pictures go to [floats] placed from ([left], [top]) when given; else (in a cell) they are left out.
      */
     private fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
-        floats: MutableList<LaidPage.Floating>?, left: Float, top: Float, tableExtraWidth: Float = 0f): Block {
+        floats: MutableList<LaidPage.Floating>?, left: Float, top: Float, tableExtraWidth: Float = 0f, under: ParaLook? = null): Block {
         val area = page.copy(width = width, left = 0f, right = 0f)
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
         var y = 0f
@@ -726,7 +763,7 @@ internal object OfficePages {
                 tableRows(doc, t, styles, page, width + tableExtraWidth, pictureBytes).forEach { (row, _) -> val b = row.moved(0f, y); pieces += b.pieces; boxes += b.boxes; lines += b.lines; y += row.height }
                 return@forEachIndexed
             }
-            val look = styles.look(p)
+            val look = styles.look(p).let { l -> under?.let { u -> l.copy(bold = l.bold ?: u.bold, italic = l.italic ?: u.italic, color = l.color ?: u.color, sizePt = l.sizePt ?: u.sizePt) } ?: l }
             val marker = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, area, marker, pictureBytes, floating)
@@ -787,7 +824,7 @@ internal object OfficePages {
                 val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@mapIndexedNotNull null
                 val w = cols.subList(g.coerceAtMost(cols.size), (g + cs.span).coerceAtMost(cols.size)).sum()
                 val content = if (cs.merge == 'c') null else if (cs.turn != 0) turned(doc, cell.paras, styles, page, spec.rows.getOrNull(ri), cs, pictureBytes)
-                    else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f, cs.margin[2])
+                    else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f, cs.margin[2], cs.text)
                 Laid(ri, ci, g, cs, content).also { g += cs.span }
             }
         }

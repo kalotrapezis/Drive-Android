@@ -42,8 +42,23 @@ Later the same day:
   Known: a picture followed by a word with no space is one "word" to Android's line breaker (U+FFFD is a letter to it):
   a too-long line breaks inside that word.
 
-Next: proper pages (view only, from OfficePdf's layout) — floating pictures shown in place there, free placement
-(Word's positionH/V offsets, ODT svg:x/y) with the text wrapping around them (LeadingMarginSpan2 or own layout). Suggested to the user
+**Proper pages — built (28 Sep afternoon), `OfficePages.kt`:** a document opens view only as its pages (Edit at the
+top; the eye button in the editor goes back); Export PDF uses the same layout. Read from the file (`DocStyles`:
+DocxStyles / OdtStyles, resolved at layout time from the package + each paragraph's raw DocKeep): sections (page size,
+margins, headers/footers per type with Word's link-to-previous, title page, even pages, page-number start/format),
+spacing before/after (contextual), line spacing (Word spaces the last line too), indents in Word's order
+(style → list level → paragraph), negative indents, tab stops (right/centre, dot leaders — laid out by hand), each list
+level's numbering (%1.%2., roman, letters; Symbol bullets), heading/style fonts, sizes, colours; floating pictures in
+place (page/margin/paragraph; behind/front; top-and-bottom pushes text — **square wrap does not flow text beside
+yet**). Laid out in twentieths of a point (`U`) — whole points broke lines/tabs. **Fonts bundled** (assets/fonts, OFL):
+Liberation Serif/Sans, Carlito, Caladea = Times/Arial/Calibri/Cambria metrics → DPSYC610 gives 20 pages like LO.
+Checked on the emulator against LibreOffice: DPSYC610 (cover, TOC line for line), suite 01/04/06.
+Also now kept on save (no longer copy-only): page breaks (as pageBreakBefore; at a paragraph's end → the next one),
+section breaks (sectPr carried raw, not handed on by Enter), List Paragraph style (was dropped: lost TOC gaps).
+Office home: the 50 newest documents (asked). Today's build is **on the phone** (208c8192), not on the tablet.
+
+Not yet: tables (the biggest copy-only reason left), square-wrap text flow, columns, footnotes, ODT headers/footers,
+two pages side by side on a landscape tablet, show page breaks in the editor. Suggested to the user
 (not yet decided): tables and page breaks first — they are what makes most real files copy-only.
 
 ---

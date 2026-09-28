@@ -475,6 +475,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         return OfficeDoc(paras.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt)
     }
 
+    /** Paragraph styles that number their paragraphs themselves (Word's List Bullet, List Number…): styleId → numPr. */
+    val styleLists: Map<String, Element> by lazy { docxStyleLists(parts, dir) }
+
     fun readStyles() {
         val root = parts[dir + "styles.xml"]?.let { OfficeFormats.parse(it).documentElement } ?: return
         root.kid(W, "docDefaults")?.kid(W, "rPrDefault")?.kid(W, "rPr")?.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.let { basePt = it / 2 }
@@ -535,11 +538,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         var list: DocList? = null
         var align = DocAlign.Start
         var keepStyle: String? = null
+        var ownNumbering = false // the paragraph says itself whether it is a list item (numId 0: it is not)
         val keepParts = ArrayList<Pair<String, String>>()
         p.kid(W, "pPr")?.let { pPr ->
             for (e in pPr.kids()) when (e.localName) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
-                "numPr" -> list = listItem(e)
+                "numPr" -> { list = listItem(e); ownNumbering = true }
                 "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
                 "sectPr" -> notes += "section breaks"
                 "framePr" -> notes += "shapes and text boxes"
@@ -548,6 +552,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> keepParts += e.localName to OfficeFormats.xml(e)
             }
         }
+        // A list numbered by its style shows as the list it is (asked 2026-09-28: the test suite's bullets did not show).
+        if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
         val runs = ArrayList<DocRun>()
         fun keep(): DocKeep? = DocKeep(keepStyle, keepParts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
@@ -696,6 +702,17 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     }
 }
 
+/** Paragraph styles that number their paragraphs (their own numPr, or one they are based on): styleId → numPr. */
+private fun docxStyleLists(parts: Map<String, ByteArray>, dir: String): Map<String, Element> {
+    val root = parts[dir + "styles.xml"]?.let { runCatching { OfficeFormats.parse(it).documentElement }.getOrNull() } ?: return emptyMap()
+    val styles = root.kids().filter { it.localName == "style" && it.attr(W, "type") == "paragraph" }.associateBy { it.attr(W, "styleId") }
+    fun numPr(id: String?, depth: Int = 0): Element? {
+        val s = styles[id] ?: return null
+        return s.kid(W, "pPr")?.kid(W, "numPr") ?: if (depth < 10) numPr(s.kid(W, "basedOn")?.attr(W, "val"), depth + 1) else null
+    }
+    return styles.keys.filterNotNull().mapNotNull { id -> numPr(id)?.takeIf { it.kid(W, "numId")?.attr(W, "val").let { n -> n != null && n != "0" } }?.let { id to it } }.toMap()
+}
+
 /** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
 private val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
@@ -740,6 +757,7 @@ private object DocxWriter {
         val parts = LinkedHashMap(source)
         val docPath = documentPath(parts)
         val dir = docPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+        val styleLists = docxStyleLists(parts, dir)
         val relsPath = relsPath(docPath)
         var rels = parts[relsPath]?.let { String(it, Charsets.UTF_8) }
             ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
@@ -864,6 +882,8 @@ private object DocxWriter {
             val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first != "runFonts" })
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
             p.list?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${it.level}"/><w:numId w:val="${numIds.getValue(index)}"/></w:numPr>""" }
+            // A list taken off a paragraph whose style numbers it: said so, or its style would number it still.
+                ?: p.keep?.style?.takeIf { it in styleLists }?.let { props += "numPr" to """<w:numPr><w:numId w:val="0"/></w:numPr>""" }
             when (p.align) {
                 DocAlign.Center -> props += "jc" to """<w:jc w:val="center"/>"""
                 DocAlign.End -> props += "jc" to """<w:jc w:val="right"/>"""

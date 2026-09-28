@@ -117,6 +117,23 @@ class OfficeFormatsTest {
         assertEquals(listOf(DocRun("next", font = f)), added[1].runs)
     }
 
+    /** Word's List Bullet / List Number styles number their paragraphs themselves (the user's test suite, file 01). */
+    @Test fun `a list numbered by its paragraph style reads as a list, and taking it off stays off`() {
+        val f = File(System.getProperty("user.home"), "Έγγραφα/Claude/Projects/Defaulty/Word App Test Suite/01_Text_and_Paragraphs.docx")
+        if (!f.isFile) return
+        val bytes = f.readBytes()
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        val bullet = doc.paras.indexOfFirst { it.text == "Bullet one" }
+        val numbered = doc.paras.indexOfFirst { it.text == "Numbered item two" }
+        assertEquals(DocList(false, 0), doc.paras[bullet].list)
+        assertEquals(true, doc.paras[numbered].list?.ordered)
+        assertEquals(doc.paras.map { it.list }, OfficeFormats.read(OfficeFormats.write(doc, OfficeKind.Docx, bytes), OfficeKind.Docx).paras.map { it.list })
+        val off = doc.copy(paras = doc.paras.mapIndexed { i, p -> if (i == bullet) p.copy(list = null) else p })
+        val back = OfficeFormats.read(OfficeFormats.write(off, OfficeKind.Docx, bytes), OfficeKind.Docx)
+        assertEquals(null, back.paras[bullet].list)
+        assertEquals(doc.paras[bullet + 1].list, back.paras[bullet + 1].list)
+    }
+
     /** The user's own documents on this computer, when they are here: each must read without an error. */
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")

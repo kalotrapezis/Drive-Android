@@ -28,8 +28,10 @@ Later the same day:
   `ODF_WRITTEN`. "Other text effects" no longer forces a copy (hidden text still does). LibreOffice check of all 27
   documents: nothing worse; Απαντήσεις, Μελέτες, Το Ελληνικό πληκτρολόγιο (both), DPSYC's last pages now pixel-identical;
   Το Ελληνικό πληκτρολόγιο.docx now saves in place.
-- **Found: lists numbered by their paragraph style** (docx pStyle ListNumber / ListBullet, no numPr — file 01) show no
-  bullets or numbers in the editor; they are kept in the file.
+- **Lists numbered by their paragraph style** (docx List Bullet / List Number: numPr in the style, `docxStyleLists`) are
+  read as the lists they are and show bullets/numbers; written back with the file's own numId; a list taken off such a
+  paragraph is written `numId 0` (else the style numbers it still). Test with suite file 01. Nested level shown at 0
+  (List Bullet 2 indents by its style).
 
 Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages. Suggested to the user
 (not yet decided): tables and page breaks first — they are what makes most real files copy-only.

@@ -851,7 +851,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo) { state.history.undo() }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo) { state.history.redo() }
-                Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null)) { save() }
+                Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                 }
             }
             if (loaded && meta.unsupported.isNotEmpty()) {
@@ -1150,13 +1150,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 WriterTab.Table -> {
                     val (at, _) = selectedPicture ?: (0 to "")
-                    val table = selectedPicture?.second?.let { pictures[it] }?.table
+                    // Rows, columns, merging and looks write Word's table XML: an OpenDocument table keeps its text tools only (for now).
+                    val table = selectedPicture?.second?.let { pictures[it] }?.table?.takeIf { kind == OfficeKind.Docx }
                     // The cell the tools act on: the one tapped, else the first.
                     fun here(): TableCellRef? = selectedPicture?.second?.let { key -> selectedCell?.takeIf { it.key == key } ?: TableCellRef(key, 0, 0) }
                     // The cell being typed in is put into the table first, and the change made to the table as it then is
                     // (made to the table from before it, the typing was lost); its key is read again after.
                     fun change(said: String? = null, f: (DocTable, TableCellRef) -> DocTable?) {
                         commitCell()
+                        if (kind != OfficeKind.Docx) { message = "In an .odt table, only the text can be changed for now."; return }
                         val ref = here() ?: return
                         val img = pictures[ref.key] ?: return
                         f(img.table ?: return, ref)?.let { changeTable(ref.key, img, it) } ?: run { message = said }
@@ -1183,7 +1185,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }, {
                         RibbonButton("Delete row", w, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
                         RibbonButton("Delete column", w, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
-                        RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = table != null) {
+                        RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = selectedPicture != null) {
                             commitCell()
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home
                         }

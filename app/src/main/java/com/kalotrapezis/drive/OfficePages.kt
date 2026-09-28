@@ -414,6 +414,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
 /** ODF: page from the master page's layout; looks from the default style, the named style chain and the paragraph's own. */
 private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val named = HashMap<String, Element>() // paragraph style name → style
+    private val tableStyles = HashMap<String, Element>() // "table-cell/A1" … → style
     private var defaults: Element? = null
     private val listLevels = HashMap<Pair<String, Int>, Element>() // (list style, level) → list-level-label-alignment
     private val listStyles = HashMap<Pair<String, Int>, Element>() // (list style, level) → the level's own style
@@ -428,7 +429,10 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             for (group in root.kids()) when (group.localName) {
                 "styles", "automatic-styles" -> for (s in group.kids()) when (s.localName) {
                     "default-style" -> if (s.attr(STYLE, "family") == "paragraph") defaults = s
-                    "style" -> if (s.attr(STYLE, "family") == "paragraph" && group.localName == "styles") s.attr(STYLE, "name")?.let { named[it] = s }
+                    "style" -> {
+                        if (s.attr(STYLE, "family") == "paragraph" && group.localName == "styles") s.attr(STYLE, "name")?.let { named[it] = s }
+                        s.attr(STYLE, "family")?.takeIf { it.startsWith("table") }?.let { f -> s.attr(STYLE, "name")?.let { tableStyles["$f/$it"] = s } }
+                    }
                     "page-layout" -> s.attr(STYLE, "name")?.let { layouts[it] = s }
                     "list-style" -> s.attr(STYLE, "name")?.let { name ->
                         s.kids().forEach { lvl -> lvl.attr(TEXT, "level")?.toIntOrNull()?.let { n ->
@@ -445,6 +449,71 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val d = DocPage()
         section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height, len("margin-top") ?: d.top, len("margin-bottom") ?: d.bottom,
             len("margin-left") ?: d.left, len("margin-right") ?: d.right))
+    }
+
+    /**
+     * An OpenDocument table (2026-09-28): its columns' widths, its rows' heights, each cell's background, lines,
+     * padding and vertical alignment, from their styles; spans and merged-away (covered) cells as Word's are drawn.
+     */
+    override fun tableSpec(t: DocTable): TableSpec {
+        fun a(xml: String, name: String) = Regex("""$name="([^"]*)"""").find(xml)?.groupValues?.get(1)
+        fun props(family: String, attrs: String, kind: String) = a(attrs, "table:style-name")?.let { tableStyles["$family/$it"] }?.kid(STYLE, kind)
+        val tp = props("table", t.props, "table-properties")
+        val width = odfLength(tp?.attr(STYLE, "width"))
+        val cols = ArrayList<Float>()
+        Regex("""<table:table-column\b([^>]*?)/?>""").findAll(t.grid).forEach { m ->
+            val cp = props("table-column", m.groupValues[1], "table-column-properties")
+            val n = a(m.groupValues[1], "table:number-columns-repeated")?.toIntOrNull()?.coerceIn(1, 64) ?: 1
+            val w = odfLength(cp?.attr(STYLE, "column-width")) ?: cp?.attr(STYLE, "rel-column-width")?.removeSuffix("*")?.toFloatOrNull()?.let { -it } ?: 0f
+            repeat(n) { cols += w }
+        }
+        // Relative widths (negative here) share the table's width.
+        if (cols.any { it < 0f }) { val rel = cols.filter { it < 0f }.sumOf { -it.toDouble() }.toFloat(); val w = width ?: section.page.textWidth; cols.replaceAll { if (it < 0f) -it / rel * w else it } }
+        fun border(v: String?): Border? {
+            if (v == null || v.startsWith("none") || v.startsWith("hidden")) return null
+            val parts = v.trim().split(Regex("\\s+"))
+            val w = parts.firstNotNullOfOrNull { odfLength(it) } ?: 0.5f
+            return Border(if ("double" in parts) w else w.coerceAtLeast(0.25f), parts.firstOrNull { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) } ?: 0)
+        }
+        val gridCount = cols.size.coerceAtLeast(1)
+        val vertical = IntArray(gridCount + 64) // rows still covered below a cell merged down, per grid column
+        val verticalSpan = IntArray(gridCount + 64)
+        val rows = t.rows.map { row ->
+            val rp = props("table-row", row.props, "table-row-properties")
+            var g = 0; var sideways = 0
+            val cells = row.cells.map { c ->
+                val covered = c.props.startsWith(ODT_COVERED)
+                val cp = props("table-cell", c.props, "table-cell-properties")
+                val pad = odfLength(cp?.attr(FO, "padding")) ?: 0f
+                fun padding(side: String) = odfLength(cp?.attr(FO, "padding-$side")) ?: pad
+                val all = cp?.attr(FO, "border")
+                fun edge(side: String) = border(cp?.attr(FO, "border-$side") ?: all)
+                val fill = cp?.attr(FO, "background-color")?.takeIf { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) }
+                val vAlign = when (cp?.attr(STYLE, "vertical-align")) { "middle" -> 'c'; "bottom" -> 'b'; else -> 't' }
+                val turn = when (cp?.attr(STYLE, "writing-mode")) { "tb-rl", "tb" -> 90; else -> 0 }
+                val spec = when {
+                    covered && sideways > 0 -> { sideways--; CellSpec(0, 'c', null, 't', FloatArray(4), arrayOfNulls(4)) }
+                    covered && vertical.getOrElse(g) { 0 } > 0 -> {
+                        val span = verticalSpan[g]; vertical[g]--; sideways = span - 1
+                        CellSpec(span, 'c', null, 't', FloatArray(4), arrayOfNulls(4)).also { g += span }
+                    }
+                    else -> {
+                        val span = a(c.props, "table:number-columns-spanned")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                        val down = a(c.props, "table:number-rows-spanned")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                        if (down > 1 && g < vertical.size) { vertical[g] = down - 1; verticalSpan[g] = span }
+                        sideways = span - 1
+                        CellSpec(span, if (down > 1) 'r' else if (covered) 'c' else 'n', fill, vAlign,
+                            floatArrayOf(padding("left"), padding("top"), padding("right"), padding("bottom")),
+                            arrayOf(edge("top"), edge("left"), edge("bottom"), edge("right")), turn).also { g += span }
+                    }
+                }
+                spec
+            }
+            val exact = odfLength(rp?.attr(STYLE, "row-height"))
+            RowSpec(exact ?: odfLength(rp?.attr(STYLE, "min-row-height")), exact != null, row.props.startsWith(ODT_HEADER), cells)
+        }
+        val align = when (tp?.attr(TABLE, "align")) { "center" -> DocAlign.Center; "right" -> DocAlign.End; else -> DocAlign.Start }
+        return TableSpec(cols, odfLength(tp?.attr(FO, "margin-left")) ?: 0f, align, rows)
     }
 
     private fun one(l: ParaLook, name: String, v: String, base: Float): ParaLook = when (name) {

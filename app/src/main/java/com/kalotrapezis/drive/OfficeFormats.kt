@@ -219,6 +219,9 @@ internal data class DocCell(val props: String, val paras: List<DocPara>)
 
 /** A table standing in the text as a paragraph of its own. */
 internal fun tablePara(t: DocTable) = DocPara(listOf(DocRun(OBJECT_MARK.toString())), table = t)
+/** An OpenDocument table's marks, before a row's or cell's own attributes: a header row, a merged-away cell. */
+internal const val ODT_HEADER = "<header/>"
+internal const val ODT_COVERED = "<covered/>"
 
 /**
  * A document as Writer holds it. [basePt] is the document's normal text size; [unsupported] names, in plain words,
@@ -1102,7 +1105,7 @@ internal const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
 internal const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
 internal const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
 private const val XLINK = "http://www.w3.org/1999/xlink"
-private const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+internal const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
 internal const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
 
 /** LibreOffice's name for a style ("Heading_20_1") as people see it ("Heading 1"). */
@@ -1242,15 +1245,50 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "numbered-paragraph" -> { notes += "other list formats"; block(e, out, list, level) }
                 else -> notes += "other content"
             }
-            e.namespaceURI == TABLE && e.localName == "table" -> { notes += "tables"; cells(e, out) }
+            e.namespaceURI == TABLE && e.localName == "table" -> out += tablePara(table(e))
             e.namespaceURI == OFFICE && e.localName == "forms" -> Unit
             e.localName == "frame" || e.namespaceURI?.contains("drawing") == true -> notes += "shapes and text boxes"
             else -> notes += "other content"
         }
     }
 
-    fun cells(e: Element, out: MutableList<DocPara>) {
-        for (c in e.kids()) if (c.localName == "table-cell") block(c, out, null, -1) else if (c.namespaceURI == TABLE) cells(c, out)
+    /** An element's attributes as the file wrote them (" table:style-name=\"A1\"…"), less [drop]. */
+    private fun attrs(e: Element, vararg drop: String): String {
+        val a = e.attributes
+        return (0 until a.length).map { a.item(it) }.filter { !it.nodeName.startsWith("xmlns") && it.nodeName !in drop }
+            .joinToString("") { " ${it.nodeName}=\"${OfficeFormats.esc(it.nodeValue)}\"" }
+    }
+
+    /**
+     * A table (2026-09-28): kept in the file's own words, as a Word table is — the table's, rows' and cells' attributes
+     * (their styles, spans) and its columns raw; each cell's paragraphs read as the body's. A merged-away cell
+     * (covered-table-cell) stays a cell, marked; a header row is marked; repeated rows and cells are written out.
+     */
+    fun table(e: Element): DocTable {
+        val rows = ArrayList<DocRow>()
+        val grid = StringBuilder()
+        fun rowsIn(parent: Element, header: Boolean) {
+            for (c in parent.kids()) when (c.localName) {
+                "table-column", "table-columns", "table-header-columns", "table-column-group" -> grid.append(OfficeFormats.xml(c))
+                "table-header-rows" -> rowsIn(c, true)
+                "table-rows", "table-row-group" -> rowsIn(c, header)
+                "table-row" -> {
+                    val cells = ArrayList<DocCell>()
+                    for (cell in c.kids()) {
+                        val covered = cell.localName == "covered-table-cell"
+                        if (!covered && cell.localName != "table-cell") continue
+                        val paras = ArrayList<DocPara>().also { block(cell, it, null, -1) }
+                        val n = cell.attr(TABLE, "number-columns-repeated")?.toIntOrNull()?.coerceIn(1, 64) ?: 1
+                        repeat(n) { cells += DocCell((if (covered) ODT_COVERED else "") + attrs(cell, "table:number-columns-repeated"), paras) }
+                    }
+                    val n = c.attr(TABLE, "number-rows-repeated")?.toIntOrNull()?.coerceIn(1, 1000) ?: 1
+                    repeat(n) { rows += DocRow((if (header) ODT_HEADER else "") + attrs(c, "table:number-rows-repeated"), cells) }
+                }
+                else -> if (c.namespaceURI == TABLE) notes += "other content"
+            }
+        }
+        rowsIn(e, false)
+        return DocTable(attrs(e), grid.toString(), rows)
     }
 
     fun list(e: Element, out: MutableList<DocPara>, inherited: String?, level: Int, parentCounter: IntArray?) {
@@ -1517,14 +1555,36 @@ private object OdtWriter {
             append("</$tag>")
         }
 
-        val text = StringBuilder()
+        /** Paragraphs, lists and tables as the body has them; a table's cells hold the same (a table in a cell too). */
+        fun blockXml(paras: List<DocPara>, text: StringBuilder) {
         var i = 0
-        while (i < doc.paras.size) {
-            val p = doc.paras[i]
+        while (i < paras.size) {
+            val p = paras[i]
+            p.table?.let { t ->
+                // A table as the file had it: its attributes and columns raw, header rows grouped, merged-away cells kept.
+                text.append("<table:table${t.props}>").append(t.grid)
+                var inHeader = false
+                for (row in t.rows) {
+                    val header = row.props.startsWith(ODT_HEADER)
+                    if (header != inHeader) { text.append(if (header) "<table:table-header-rows>" else "</table:table-header-rows>"); inHeader = header }
+                    text.append("<table:table-row${row.props.removePrefix(ODT_HEADER)}>")
+                    for (cell in row.cells) {
+                        val covered = cell.props.startsWith(ODT_COVERED)
+                        val tag = if (covered) "table:covered-table-cell" else "table:table-cell"
+                        val inner = StringBuilder().also { blockXml(cell.paras, it) }
+                        text.append("<$tag${cell.props.removePrefix(ODT_COVERED)}")
+                        if (inner.isEmpty()) text.append("/>") else text.append(">").append(inner).append("</$tag>")
+                    }
+                    text.append("</table:table-row>")
+                }
+                if (inHeader) text.append("</table:table-header-rows>")
+                text.append("</table:table>")
+                i++; continue
+            }
             if (p.list == null) { text.append(paragraphXml(p)); i++; continue }
             var end = i
-            while (end < doc.paras.size && doc.paras[end].list != null) end++
-            val items = doc.paras.subList(i, end)
+            while (end < paras.size && paras[end].list != null && paras[end].table == null) end++
+            val items = paras.subList(i, end)
             // The file's own list style, when every item still belongs to it and is still of its kind at its level.
             val source = items.first().keep?.list
             val reuse = source != null && items.all { it.keep?.list == source && source.substringAfterLast('|').getOrNull(it.list!!.level)?.let { c -> (c == 'n') == it.list.ordered } == true }
@@ -1546,6 +1606,8 @@ private object OdtWriter {
             text.append("</text:list>")
             i = end
         }
+        }
+        val text = StringBuilder().also { blockXml(doc.paras, it) }
 
         val open = Regex("""<office:text(\s[^>]*)?(/?)>""").find(content)!!
         val decls: String

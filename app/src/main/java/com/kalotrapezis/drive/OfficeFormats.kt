@@ -412,7 +412,7 @@ internal fun Element.attr(ns: String, name: String): String? = getAttributeNS(ns
 
 // ============================================================================================ Word (.docx)
 
-private const val W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+internal const val W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 private const val R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 private const val REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"
@@ -434,7 +434,7 @@ internal val WORD_HIGHLIGHTS = linkedMapOf(
     "darkRed" to 0x800000, "darkYellow" to 0x808000, "darkGray" to 0x808080, "lightGray" to 0xC0C0C0, "black" to 0x000000, "white" to 0xFFFFFF,
 )
 
-private fun documentPath(parts: Map<String, ByteArray>): String {
+internal fun documentPath(parts: Map<String, ByteArray>): String {
     val rels = parts["_rels/.rels"] ?: return "word/document.xml"
     val root = OfficeFormats.parse(rels).documentElement
     return root.kids().firstOrNull { it.getAttribute("Type").endsWith("/officeDocument") }?.getAttribute("Target")?.removePrefix("/") ?: "word/document.xml"
@@ -556,9 +556,24 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
         val runs = ArrayList<DocRun>()
-        fun keep(): DocKeep? = DocKeep(keepStyle, keepParts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
+        // A page break inside a paragraph: the paragraph is split there and the part after it starts a page — Word's
+        // own "page break before", which saves and shows the same (2026-09-28; it made files copy-only before).
+        // A break at the paragraph's start: the paragraph starts a page. At its end (or alone in it): the next paragraph
+        // does, nothing else is kept (LibreOffice shows nothing there either). In the middle: the part after it starts a
+        // page, with no space before it (it is the same paragraph going on, in the file).
+        var afterPageBreak = pageBreakPending.also { pageBreakPending = false }
         val done = ArrayList<DocPara>()
-        fun breakLine() { done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null } }
+        fun keep(): DocKeep? {
+            var parts: List<Pair<String, String>> = keepParts
+            if (afterPageBreak && parts.none { it.first == "pageBreakBefore" }) parts = parts + ("pageBreakBefore" to "<w:pageBreakBefore/>")
+            if (afterPageBreak && done.isNotEmpty()) parts = parts.filter { it.first != "spacing" } +
+                ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.replace(Regex("""\sw:before(Autospacing)?="[^"]*""""), "")?.replace("<w:spacing", "<w:spacing w:before=\"0\"") ?: "<w:spacing w:before=\"0\"/>"))
+            return DocKeep(keepStyle, parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } }, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
+        }
+        fun breakLine(page: Boolean = false) {
+            if (page && runs.isEmpty() && done.isEmpty()) { afterPageBreak = true; return }
+            done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null }; afterPageBreak = page
+        }
         fun content(parent: Element, link: String?) {
             for (e in parent.kids()) {
                 if (e.namespaceURI != W) { notes += if (e.localName == "oMath" || e.localName == "oMathPara") "equations" else "other content"; continue }
@@ -582,12 +597,15 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
         }
         content(p, null)
-        done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
+        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0)) pageBreakPending = true
+        else done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
         out += done
     }
+    /** A page break ended the paragraph before: this one starts a page. */
+    var pageBreakPending = false
 
     /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
-    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: () -> Unit) {
+    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: (page: Boolean) -> Unit) {
         var look = DocRun("", link = link)
         val kept = StringBuilder() // what Writer carries without editing, as the file has it
         r.kid(W, "rPr")?.let { rPr ->
@@ -634,8 +652,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "noBreakHyphen" -> runs += look.copy(text = "‑")
                 "softHyphen", "lastRenderedPageBreak" -> Unit
                 "br", "cr" -> when (e.attr(W, "type")) {
-                    "page" -> { notes += "page breaks"; breakLine() }
-                    "column" -> { notes += "columns"; breakLine() }
+                    "page" -> breakLine(true)
+                    "column" -> { notes += "columns"; breakLine(false) }
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
@@ -676,7 +694,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     var imageCount = 0
 
     /** Normal text: the paragraph needs no style of its own to look as it did. */
-    fun plainStyle(id: String): Boolean = (styleName[id] ?: id.lowercase()).let { id == defaultParaStyle || it == "normal" || it == "list paragraph" || it == "default paragraph style" }
+    // Not List Paragraph: it spaces and indents differently from Normal (lost, a table of contents lost its gaps — 2026-09-28).
+    fun plainStyle(id: String): Boolean = (styleName[id] ?: id.lowercase()).let { id == defaultParaStyle || it == "normal" || it == "default paragraph style" }
 
     var lastListSource: String? = null
 
@@ -954,13 +973,13 @@ private object DocxWriter {
 
 // ============================================================================================ OpenDocument (.odt)
 
-private const val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-private const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
-private const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
-private const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+internal const val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+internal const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+internal const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+internal const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
 private const val XLINK = "http://www.w3.org/1999/xlink"
 private const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
-private const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+internal const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
 
 /** LibreOffice's name for a style ("Heading_20_1") as people see it ("Heading 1"). */
 internal fun odfDisplayName(name: String) = Regex("""_([0-9a-fA-F]{2})_""").replace(name) { it.groupValues[1].toInt(16).toChar().toString() }

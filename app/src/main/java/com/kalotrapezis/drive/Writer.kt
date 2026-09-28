@@ -7,6 +7,11 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.runtime.mutableFloatStateOf
@@ -430,6 +435,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
+    // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
+    var viewing by remember { mutableStateOf(open != null) }
+    var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
     var sizing by remember { mutableStateOf(false) }
     var wrapping by remember { mutableStateOf(false) }
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -493,6 +501,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val doc = current()
             withContext(Dispatchers.IO) { runCatching { draftFile(context, draftKey, kind).apply { parentFile?.mkdirs() }.writeBytes(OfficeFormats.write(doc, kind, original)) } }
         }
+    }
+    // The pages, laid out again whenever they are shown (after editing, they show the edits).
+    LaunchedEffect(viewing, loaded) {
+        if (!viewing || !loaded) return@LaunchedEffect
+        pages = null
+        val doc = current()
+        val parts = packageParts
+        val styles = withContext(Dispatchers.IO) { DocStyles.of(kind, original) }
+        pages = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, styles) { img -> img.bytes ?: img.part?.let { parts[it] } } }.onFailure { Log.e("Writer", "pages", it) }.getOrNull() }
+        if (pages == null) viewing = false // could not lay it out: the editor still works
     }
     // Enter after a heading starts a Normal paragraph, as in Word: the editor carries the heading's look on as a size
     // relative to the text (em), which only a heading gives — so that look is taken off at once.
@@ -572,7 +590,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 runCatching {
                     check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
                     val target = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
-                    target.outputStream().use { OfficePdf.write(doc, it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } }
+                    target.outputStream().use { OfficePdf.write(doc, DocStyles.of(kind, original), it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } }
                     target
                 }
             }
@@ -693,10 +711,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
+                if (viewing) {
+                    Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
+                    if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
+                    RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
+                } else {
+                Tool(R.drawable.ic_visibility, "Pages", w, enabled = loaded) { viewing = true }
                 Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo) { state.history.undo() }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo) { state.history.redo() }
                 Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null)) { save() }
+                }
             }
             if (loaded && meta.unsupported.isNotEmpty()) {
                 val copyOnly = meta.blocking.isNotEmpty()
@@ -707,6 +732,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
+            if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
+                pages?.let { PagesView(it, Modifier.fillMaxSize()) }
+                    ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
+            } else
             // The page: white, as the document will print — its own colours must show as they are.
             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Surface(color = Color.White, shape = RoundedCornerShape(6.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp)) {
@@ -774,7 +803,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val physicalKeyboard = config.keyboard == android.content.res.Configuration.KEYBOARD_QWERTY &&
             config.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
         val island = !imeOpen || physicalKeyboard
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+        if (!viewing) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
@@ -1186,5 +1215,43 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
                 .clickable(onClickLabel = label) { choose(c); open = false })
         }
         Spacer(Modifier.width(4.dp))
+    }
+}
+
+/**
+ * The document's pages (Print layout): white pages of the file's own size on the dark background, fitted to the
+ * screen's width, pinch to zoom (sideways scrolling when wider), "Page n of N" at the bottom.
+ */
+@Composable
+private fun PagesView(pages: List<LaidPage>, modifier: Modifier) {
+    var zoom by remember { mutableFloatStateOf(1f) }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    BoxWithConstraints(modifier) {
+        val pageWidth = (maxWidth - 24.dp) * zoom
+        val sideways = rememberScrollState()
+        androidx.compose.foundation.lazy.LazyColumn(
+            state = list,
+            modifier = Modifier.fillMaxHeight().horizontalScroll(sideways).width(maxOf(maxWidth, pageWidth + 24.dp))
+                .transformable(androidx.compose.foundation.gestures.rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(0.5f, 4f) }, canPan = { false }),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 72.dp),
+        ) {
+            items(pages.size) { i ->
+                val laid = pages[i]
+                androidx.compose.foundation.Canvas(Modifier.width(pageWidth).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
+                    drawIntoCanvas { c ->
+                        val n = c.nativeCanvas
+                        val scale = size.width / laid.page.width
+                        n.save(); n.scale(scale, scale); laid.draw(n); n.restore()
+                    }
+                }
+            }
+        }
+        val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
+        Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
+            Text("Page ${(at + 1).coerceAtMost(pages.size)} of ${pages.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+        }
     }
 }

@@ -529,6 +529,12 @@ internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val bo
 }
 
 internal object OfficePages {
+    internal fun fittedTableColumns(columns: List<Float>, width: Float, indent: Float): List<Float> {
+        val limit = (width - indent.coerceAtLeast(0f)).coerceAtLeast(1f)
+        val ratio = (limit / columns.sum()).coerceAtMost(1f)
+        return columns.map { it * ratio }
+    }
+
     /** Word's default tab stops: every half inch. */
     private const val TAB = 36f
 
@@ -687,13 +693,14 @@ internal object OfficePages {
      * pictures go to [floats] placed from ([left], [top]) when given; else (in a cell) they are left out.
      */
     private fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
-        floats: MutableList<LaidPage.Floating>?, left: Float, top: Float): Block {
+        floats: MutableList<LaidPage.Floating>?, left: Float, top: Float, tableExtraWidth: Float = 0f): Block {
         val area = page.copy(width = width, left = 0f, right = 0f)
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
         var y = 0f
         paras.forEachIndexed { i, p ->
             p.table?.let { t ->
-                tableRows(doc, t, styles, page, width, pictureBytes).forEach { (row, _) -> val b = row.moved(0f, y); pieces += b.pieces; boxes += b.boxes; lines += b.lines; y += row.height }
+                // Word lets a nested table use the parent cell's right margin; ordinary text still stops before it.
+                tableRows(doc, t, styles, page, width + tableExtraWidth, pictureBytes).forEach { (row, _) -> val b = row.moved(0f, y); pieces += b.pieces; boxes += b.boxes; lines += b.lines; y += row.height }
                 return@forEachIndexed
             }
             val look = styles.look(p)
@@ -719,7 +726,8 @@ internal object OfficePages {
         areas: MutableList<TableCellArea>? = null): List<Pair<Block, Boolean>> {
         val spec = styles.tableSpec(t)
         val count = spec.rows.maxOfOrNull { r -> r.cells.sumOf { it.span } } ?: 1
-        val cols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
+        val rawCols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
+        val cols = fittedTableColumns(rawCols, width, spec.indent)
         val total = cols.sum()
         val x0 = spec.indent + when (spec.align) { DocAlign.Center -> (width - total) / 2; DocAlign.End -> width - total; else -> 0f }
         val colX = cols.runningFold(x0) { a, c -> a + c }
@@ -730,7 +738,7 @@ internal object OfficePages {
             row.cells.mapIndexedNotNull { ci, cell ->
                 val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@mapIndexedNotNull null
                 val w = cols.subList(g.coerceAtMost(cols.size), (g + cs.span).coerceAtMost(cols.size)).sum()
-                val content = if (cs.merge == 'c') null else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f)
+                val content = if (cs.merge == 'c') null else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f, cs.margin[2])
                 Laid(ri, ci, g, cs, content).also { g += cs.span }
             }
         }

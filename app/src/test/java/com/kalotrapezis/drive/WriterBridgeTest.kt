@@ -79,4 +79,11 @@ class WriterBridgeTest {
         assertEquals(listOf(3, 3, 4), back.rows.map { it.cells.size })
         assertEquals(listOf("0,1", "0,2", "1,1", "1,2"), back.rows[0].cells[1].paras.map { it.text })
     }
+
+    @Test fun `a nested table stays inside its parent cell`() {
+        // A 100 pt parent cell with 5 pt left/right margins lets its nested table end at the cell's right edge:
+        // 90 pt text width + the 5 pt right margin. Its original 160 pt grid must be fitted to those 95 pt.
+        assertEquals(listOf(47.5f, 47.5f), OfficePages.fittedTableColumns(listOf(80f, 80f), 95f, 0f))
+        assertEquals(listOf(40f, 60f), OfficePages.fittedTableColumns(listOf(40f, 60f), 120f, 0f))
+    }
 }

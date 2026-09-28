@@ -35,7 +35,7 @@ internal data class DocRun(
     val highlight: Int? = null, // 0xRRGGBB
     val link: String? = null,
     val image: DocImage? = null, // then [text] is OBJECT_MARK
-    val font: String? = null, // the file's own font setting, raw (Word's rFonts element; ODF's font attributes)
+    val font: String? = null, // the file's own letter settings Writer does not edit, raw: fonts, small caps, spacing, language… (Word's rPr elements; ODF's attributes)
     val script: Int = 0, // 1 superscript, -1 subscript
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
@@ -581,9 +581,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     }
 
     /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
-    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: () -> Unit): String? {
+    fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: () -> Unit) {
         var look = DocRun("", link = link)
-        var font: String? = null
+        val kept = StringBuilder() // what Writer carries without editing, as the file has it
         r.kid(W, "rPr")?.let { rPr ->
             for (e in rPr.kids()) {
                 val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
@@ -591,7 +591,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "b" -> look = look.copy(bold = on)
                     "i" -> look = look.copy(italic = on)
                     "strike" -> look = look.copy(strike = on)
-                    "u" -> look = look.copy(underline = e.attr(W, "val") != "none")
+                    "u" -> {
+                        look = look.copy(underline = e.attr(W, "val") != "none")
+                        if (e.attr(W, "val") !in setOf(null, "single", "none")) kept.append(OfficeFormats.xml(e)) // double, dotted, wavy…
+                    }
                     "sz" -> e.attr(W, "val")?.toFloatOrNull()?.let { look = look.copy(sizePt = it / 2) } // a size set on purpose stays, even the normal one (inside a heading it matters)
                     "color" -> look = look.copy(color = OfficeFormats.parseHex(e.attr(W, "val")))
                     "highlight" -> look = look.copy(highlight = WORD_HIGHLIGHTS[e.attr(W, "val")])
@@ -601,17 +604,17 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         "hyperlink", "internet link", "default paragraph font" -> Unit
                         else -> notes += "character styles"
                     }
-                    "rFonts" -> look = look.copy(font = OfficeFormats.xml(e)) // kept exactly, letter by letter
-                    "bCs", "iCs", "szCs", "lang", "noProof", "webHidden", "kern", "rtl", "cs", "specVanish", "eastAsianLayout", "snapToGrid" -> Unit
+                    // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
+                    in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
                     "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
-                    "shd" -> if (e.attr(W, "fill").let { it != null && it != "auto" && it != "FFFFFF" }) notes += "borders and shading"
-                    "bdr" -> notes += "borders and shading"
                     "vanish" -> if (on) notes += "hidden text"
                     "rPrChange" -> notes += "tracked changes"
-                    else -> if (on) notes += "other text effects"
+                    else -> if (e.namespaceURI != W) kept.append(OfficeFormats.xml(e)) // Word 2010's own (w14:ligatures…), last in the list
+                        else if (on) notes += "other text effects"
                 }
             }
         }
+        if (kept.isNotEmpty()) look = look.copy(font = kept.toString())
         for (e in r.kids()) {
             if (e.namespaceURI != W) {
                 // Word wraps newer drawings in mc:AlternateContent (a shape, and a fallback for older readers): kept whole.
@@ -638,7 +641,6 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> notes += "other content"
             }
         }
-        return font
     }
 
     fun paragraphStyle(id: String): Int {
@@ -699,6 +701,21 @@ private val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefo
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
     "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange")
+
+/** The text properties Writer writes itself in ODF (from bold, italic, underline, strike, size, colours, super/subscript). */
+private val ODF_WRITTEN = setOf("font-weight", "font-weight-asian", "font-weight-complex", "font-style", "font-style-asian", "font-style-complex",
+    "text-underline-style", "text-underline-width", "text-underline-color", "text-line-through-style", "text-line-through-type",
+    "font-size", "font-size-asian", "font-size-complex", "color", "background-color", "text-position")
+
+/** A run's properties in the order Word's schema requires. */
+private val RPR_ORDER = listOf("rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss",
+    "imprint", "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect",
+    "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish", "oMath")
+/** The run properties Writer carries as the file has them, without editing them. */
+private val RPR_CARRIED = setOf("rFonts", "bCs", "iCs", "caps", "smallCaps", "dstrike", "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid",
+    "webHidden", "spacing", "w", "kern", "position", "szCs", "effect", "bdr", "shd", "fitText", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish")
+/** One element of carried XML, with its children. */
+private val RAW_ELEMENT = Regex("""<(\w+:\w+)\b[^>]*?(?:/>|>[\s\S]*?</\1>)""")
 
 private object DocxWriter {
     fun canReuse(parts: Map<String, ByteArray>): Boolean = runCatching {
@@ -883,18 +900,19 @@ private object DocxWriter {
     var picture: (DocImage) -> String = { it.raw ?: "" }
 
     private fun run(r: DocRun, style: String?, basePt: Float): String = buildString {
-        val rPr = buildString {
-            style?.let { append("""<w:rStyle w:val="$it"/>""") }
-            r.font?.let { append(it) }
-            if (r.bold) append("<w:b/>")
-            if (r.italic) append("<w:i/>")
-            if (r.strike) append("<w:strike/>")
-            r.color?.let { append("""<w:color w:val="${OfficeFormats.hex(it)}"/>""") }
-            r.sizePt?.let { append("""<w:sz w:val="${(it * 2).roundToInt()}"/>""") }
-            r.highlight?.let { append("""<w:highlight w:val="${nearestHighlight(it)}"/>""") }
-            if (r.underline) append("""<w:u w:val="single"/>""")
-            if (r.script != 0) append("""<w:vertAlign w:val="${if (r.script > 0) "superscript" else "subscript"}"/>""")
-        }
+        // Writer's own settings and the ones carried from the file, in the order Word requires.
+        val props = ArrayList<Pair<String, String>>()
+        r.font?.let { raw -> RAW_ELEMENT.findAll(raw).forEach { m -> val name = m.groupValues[1].removePrefix("w:"); if (name != "u" || r.underline) props += name to m.value } }
+        style?.let { props += "rStyle" to """<w:rStyle w:val="$it"/>""" }
+        if (r.bold) props += "b" to "<w:b/>"
+        if (r.italic) props += "i" to "<w:i/>"
+        if (r.strike) props += "strike" to "<w:strike/>"
+        r.color?.let { props += "color" to """<w:color w:val="${OfficeFormats.hex(it)}"/>""" }
+        r.sizePt?.let { props += "sz" to """<w:sz w:val="${(it * 2).roundToInt()}"/>""" }
+        r.highlight?.let { props += "highlight" to """<w:highlight w:val="${nearestHighlight(it)}"/>""" }
+        if (r.underline && props.none { it.first == "u" }) props += "u" to """<w:u w:val="single"/>"""
+        if (r.script != 0) props += "vertAlign" to """<w:vertAlign w:val="${if (r.script > 0) "superscript" else "subscript"}"/>"""
+        val rPr = props.sortedBy { RPR_ORDER.indexOf(it.first).let { i -> if (i < 0) RPR_ORDER.size else i } }.joinToString("") { it.second } // extensions last
         append("<w:r>")
         if (rPr.isNotEmpty()) append("<w:rPr>").append(rPr).append("</w:rPr>")
         if (r.image != null) { append(picture(r.image)); append("</w:r>"); return@buildString }
@@ -982,12 +1000,14 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             val n = a.item(i)
             val ns = n.namespaceURI ?: continue
             val local = n.localName; val v = n.nodeValue.trim()
-            if (local.endsWith("-asian") || local.endsWith("-complex") || !(ns == FO || ns == STYLE)) {
-                if (ns == STYLE && local.startsWith("font-name")) {
-                    if (fonts != null) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\"" else l = l.copy(font = withFont(l.font, n.nodeName, n.nodeValue))
-                }
-                continue
+            // Carried as the file has it, letter by letter (fonts asked 2026-09-27; the rest 2026-09-28, from the
+            // user's test suite): small caps, letter spacing, language, a double underline… — never what Writer writes.
+            fun carry() {
+                if (local in ODF_WRITTEN) return
+                if (fonts != null) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\"" else l = l.copy(font = withFont(l.font, n.nodeName, n.nodeValue))
             }
+            if (!(ns == FO || ns == STYLE)) continue // another program's own (revision ids…)
+            if (local.endsWith("-asian") || local.endsWith("-complex")) { carry(); continue }
             when (local) {
                 "font-weight" -> l = l.copy(bold = v == "bold" || (v.toIntOrNull() ?: 400) >= 600)
                 "font-style" -> l = l.copy(italic = v == "italic" || v == "oblique")
@@ -996,15 +1016,11 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "font-size" -> size(v, basePt)?.let { l = l.copy(sizePt = it) } ?: run { notes += "other text effects" }
                 "color" -> if (!inLink) l = l.copy(color = OfficeFormats.parseHex(v))
                 "background-color" -> l = l.copy(highlight = if (v == "transparent") null else OfficeFormats.parseHex(v))
-                "font-name", "font-family" -> if (fonts != null) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\"" else l = l.copy(font = withFont(l.font, n.nodeName, n.nodeValue))
+                "font-name", "font-family" -> carry()
                 // "super 58%", "sub", "33% 58%", "-33% 58%", "0% 100%"
                 "text-position" -> v.substringBefore(' ').let { p -> l = l.copy(script = when { p == "super" -> 1; p == "sub" -> -1; else -> p.removeSuffix("%").toFloatOrNull()?.let { Math.signum(it).toInt() } ?: 0 }) }
                 "display" -> if (v == "none") notes += "hidden text"
-                "language", "country", "script", "rfc-language-tag", "letter-kerning", "hyphenate", "hyphenation-remain-char-count",
-                "hyphenation-push-char-count", "text-underline-type", "text-underline-width", "text-underline-color", "text-underline-mode",
-                "text-line-through-type", "text-line-through-width", "text-line-through-color", "text-line-through-mode", "use-window-font-color",
-                "font-style-name", "font-family-generic", "font-pitch", "font-charset" -> Unit
-                else -> if (!neutral(v)) notes += "other text effects"
+                else -> carry()
             }
         }
         return l

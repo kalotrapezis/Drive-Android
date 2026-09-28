@@ -22,6 +22,12 @@ Later the same day:
 - **Line breaks inside a paragraph now show as new lines**: each line after a break is the editor's own
   `isLineBreak` block, joined back by `fromEditor` (the break takes the look of the text after it; `comparable` ignores a
   break's look). Insert › Line break re-renders at once. Checked on the emulator with file 01 → saved `<w:br/>`.
+- **Letter settings Writer does not edit are carried, raw, letter by letter** (as fonts were): docx rPr elements in
+  `RPR_CARRIED` (small caps, caps, double strike, spacing, language, shading, borders, szCs/bCs…), a non-single
+  underline, and Word 2010 extensions (w14:ligatures); written back in `RPR_ORDER`. ODT: every text attribute not in
+  `ODF_WRITTEN`. "Other text effects" no longer forces a copy (hidden text still does). LibreOffice check of all 27
+  documents: nothing worse; Απαντήσεις, Μελέτες, Το Ελληνικό πληκτρολόγιο (both), DPSYC's last pages now pixel-identical;
+  Το Ελληνικό πληκτρολόγιο.docx now saves in place.
 - **Found: lists numbered by their paragraph style** (docx pStyle ListNumber / ListBullet, no numPr — file 01) show no
   bullets or numbers in the editor; they are kept in the file.
 

@@ -1,3 +1,20 @@
+# 28 September, evening — tables next (user: "make a handoff and try to complete the tables"; the viewer: "nice")
+
+State: everything up to here is committed on `writer-library`; 131 unit tests pass; today's build is on the phone
+(208c8192), not the tablet. The page view (OfficePages.kt) matches LibreOffice closely on the user's documents.
+
+**Plan for tables (in this order):**
+1. Model: `DocPara.table: DocTable` — rows (trPr raw) of cells (tcPr raw) holding ordinary DocParas (nested tables
+   too); tblPr/tblGrid raw. Reader builds it (no more flattening + "tables" note); writer writes it back from the
+   model (cell paragraphs through the normal paragraph writer) → tables are no longer copy-only. Word first, then ODT.
+   Check: the round-trip test + LibreOffice pixel compare (suite 02, 03, 06; the user's Τούρκικα, 610-ΤΕΛ, Πάτερ Ημών).
+2. Pages: column widths (tblGrid), gridSpan / vMerge, cell margins, borders (table style → tblBorders → tcBorders),
+   shading, row heights, vertical alignment, header rows repeated on each page, rows kept whole across pages.
+3. Editor: the table as one object (like a picture: a rendered image of it); tap → Table tab: edit cells (a grid of
+   fields), add/delete row and column, delete table.
+
+---
+
 # 28 September — the Picture tab built, checked on the emulator (not on the phone/tablet yet)
 
 Tap a picture → it is selected (blue frame) and a **Picture** tab appears: **Size** (a window: horizontal × vertical px,

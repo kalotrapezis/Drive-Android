@@ -52,8 +52,8 @@ internal const val OBJECT_MARK = '\uFFFC'
 internal class DocImage(val key: String, val part: String?, val widthPt: Float, val heightPt: Float, val raw: String? = null,
     val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */,
     val table: DocTable? = null /* the editor's stand-in for a table */) {
-    fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap) =
-        DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table)
+    fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
+        table: DocTable? = this.table) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -76,6 +76,7 @@ internal object PictureXml {
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
     fun kind(img: DocImage): String {
+        if (img.table != null) return "Table"
         val raw = img.raw ?: return "Picture"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
@@ -905,16 +906,22 @@ private object DocxWriter {
         val byName = styleRoot.kids().filter { it.localName == "style" }.associate { (it.kid(W, "name")?.attr(W, "val") ?: "").lowercase() to (it.attr(W, "styleId") ?: "") }
         val ids = byName.values.toMutableSet()
         val normal = styleRoot.kids().firstOrNull { it.localName == "style" && it.attr(W, "type") == "paragraph" && it.attr(W, "default").let { d -> d == "1" || d == "true" } }?.attr(W, "styleId")
+        val allParas = ArrayList<DocPara>().also { all ->
+            fun add(paras: List<DocPara>) {
+                paras.forEach { p -> all += p; p.table?.rows?.forEach { row -> row.cells.forEach { cell -> add(cell.paras) } } }
+            }
+            add(doc.paras)
+        }
         fun styleId(name: String, preferred: String, definition: (String) -> String): String = byName[name] ?: run {
             val id = if (preferred in ids) "Tetra$preferred" else preferred
             ids += id
             styles = styles.replace("</w:styles>", definition(id) + "</w:styles>")
             id
         }
-        val headingIds = (1..6).filter { n -> doc.paras.any { it.heading == n } }.associateWith { n ->
+        val headingIds = (1..6).filter { n -> allParas.any { it.heading == n } }.associateWith { n ->
             styleId("heading $n", "Heading$n") { id -> """<w:style w:type="paragraph" w:styleId="$id"><w:name w:val="heading $n"/>${normal?.let { "<w:basedOn w:val=\"$it\"/><w:next w:val=\"$it\"/>" } ?: ""}<w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="${n - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${listOf(36, 30, 26, 24, 22, 22)[n - 1]}"/></w:rPr></w:style>""" }
         }
-        val hyperlinkId = if (doc.paras.any { p -> p.runs.any { it.link != null } })
+        val hyperlinkId = if (allParas.any { p -> p.runs.any { it.link != null } })
             styleId("hyperlink", "Hyperlink") { id -> """<w:style w:type="character" w:styleId="$id"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style>""" } else null
         parts[dir + "styles.xml"] = styles.toByteArray()
 

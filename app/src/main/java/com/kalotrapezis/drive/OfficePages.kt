@@ -87,6 +87,7 @@ internal class TableSpec(val cols: List<Float>, val indent: Float, val align: Do
 internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boolean, val cells: List<CellSpec>)
 internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>)
 internal class Border(val width: Float, val color: Int)
+internal data class TableCellArea(val row: Int, val cell: Int, val x: Float, val y: Float, val width: Float, val height: Float)
 
 /** The document's styles, as far as laying it out needs them: its sections, and each paragraph's look. */
 internal abstract class DocStyles {
@@ -622,6 +623,43 @@ internal object OfficePages {
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 
+    /** The same table layout used on a page, as one block for the editor's preview. */
+    private fun tableBlock(doc: OfficeDoc, table: DocTable, styles: DocStyles, pictureBytes: (DocImage) -> ByteArray?,
+        areas: MutableList<TableCellArea>? = null): Block {
+        val width = styles.page.textWidth
+        val rows = tableRows(doc, table, styles, styles.page, width, pictureBytes, areas)
+        val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
+        var y = 0f
+        rows.forEach { (row, _) ->
+            val placed = row.moved(0f, y)
+            pieces += placed.pieces; boxes += placed.boxes; lines += placed.lines; y += row.height
+        }
+        return Block(y.coerceAtLeast(1f), pieces, boxes, lines)
+    }
+
+    /** A table's real page width and laid-out height, used for its one-character editor stand-in. */
+    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles): Pair<Float, Float> =
+        styles.page.textWidth to tableBlock(doc, table, styles, { null }).height
+
+    fun tableCells(doc: OfficeDoc, table: DocTable, styles: DocStyles): List<TableCellArea> =
+        ArrayList<TableCellArea>().also { tableBlock(doc, table, styles, { null }, it) }
+
+    /** Draws the table exactly as page view does, for the editor. */
+    fun tableBitmap(doc: OfficeDoc, table: DocTable, styles: DocStyles, maxPixels: Int,
+        pictureBytes: (DocImage) -> ByteArray?): android.graphics.Bitmap {
+        val width = styles.page.textWidth
+        val block = tableBlock(doc, table, styles, pictureBytes)
+        val longest = maxOf(width, block.height)
+        val scale = minOf(2f, maxPixels / longest).coerceAtLeast(1f / longest)
+        val bitmap = android.graphics.Bitmap.createBitmap((width * scale).toInt().coerceAtLeast(1), (block.height * scale).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        canvas.scale(scale, scale)
+        LaidPage(DocPage(width = width, height = block.height, top = 0f, bottom = 0f, left = 0f, right = 0f), block.pieces,
+            boxes = block.boxes, lines = block.lines).draw(canvas)
+        return bitmap
+    }
+
     /** The page's header (from the top edge, at its distance) and footer (ending at its distance from the bottom). */
     private fun withHeaderAndFooter(doc: OfficeDoc, styles: DocStyles, laid: LaidPage, index: Int, count: Int, pictureBytes: (DocImage) -> ByteArray?): LaidPage {
         val page = laid.page
@@ -677,7 +715,8 @@ internal object OfficePages {
      * A row is as tall as its tallest cell (or its set height); a cell merged down over rows makes the last of them
      * taller when it needs to.
      */
-    private fun tableRows(doc: OfficeDoc, t: DocTable, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?): List<Pair<Block, Boolean>> {
+    private fun tableRows(doc: OfficeDoc, t: DocTable, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
+        areas: MutableList<TableCellArea>? = null): List<Pair<Block, Boolean>> {
         val spec = styles.tableSpec(t)
         val count = spec.rows.maxOfOrNull { r -> r.cells.sumOf { it.span } } ?: 1
         val cols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
@@ -685,14 +724,14 @@ internal object OfficePages {
         val x0 = spec.indent + when (spec.align) { DocAlign.Center -> (width - total) / 2; DocAlign.End -> width - total; else -> 0f }
         val colX = cols.runningFold(x0) { a, c -> a + c }
         // Each cell's place in the grid and its contents.
-        class Laid(val row: Int, val g: Int, val spec: CellSpec, val content: Block?)
+        class Laid(val row: Int, val cell: Int, val g: Int, val spec: CellSpec, val content: Block?)
         val cells = t.rows.mapIndexed { ri, row ->
             var g = 0
             row.cells.mapIndexedNotNull { ci, cell ->
                 val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@mapIndexedNotNull null
                 val w = cols.subList(g.coerceAtMost(cols.size), (g + cs.span).coerceAtMost(cols.size)).sum()
                 val content = if (cs.merge == 'c') null else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f)
-                Laid(ri, g, cs, content).also { g += cs.span }
+                Laid(ri, ci, g, cs, content).also { g += cs.span }
             }
         }
         val heights = FloatArray(t.rows.size) { ri ->
@@ -710,12 +749,14 @@ internal object OfficePages {
             val need = c.content!!.height + c.spec.margin[1] + c.spec.margin[3]
             if (need > have) heights[c.row + k - 1] += need - have
         }
+        var rowY = 0f
         return t.rows.indices.map { ri ->
             val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
             for (c in cells[ri]) {
                 if (c.spec.merge == 'c') continue // drawn by the cell above that starts it
                 val x = colX[c.g.coerceAtMost(colX.size - 1)]; val w = colX[(c.g + c.spec.span).coerceAtMost(colX.size - 1)] - x
                 val h = if (c.spec.merge == 'r') (ri until ri + down(c)).sumOf { heights[it].toDouble() }.toFloat() else heights[ri]
+                areas?.add(TableCellArea(ri, c.cell, x, rowY, w, h))
                 c.spec.fill?.let { boxes += LaidPage.Box(x, 0f, w, h, it) }
                 val content = c.content!!
                 val free = h - content.height - c.spec.margin[1] - c.spec.margin[3]
@@ -728,7 +769,7 @@ internal object OfficePages {
                 b[2]?.let { lines += LaidPage.Line(x, h, x + w, h, it.width, it.color) }
                 b[3]?.let { lines += LaidPage.Line(x + w, 0f, x + w, h, it.width, it.color) }
             }
-            Block(heights[ri], pieces, boxes, lines) to (spec.rows.getOrNull(ri)?.header == true)
+            (Block(heights[ri], pieces, boxes, lines) to (spec.rows.getOrNull(ri)?.header == true)).also { rowY += heights[ri] }
         }
     }
 

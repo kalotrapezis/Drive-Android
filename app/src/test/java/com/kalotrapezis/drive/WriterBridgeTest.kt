@@ -36,4 +36,47 @@ class WriterBridgeTest {
         assertEquals(img, put.paras[1].runs[1].image)
         assertEquals(DocRun("ef"), put.paras[1].runs[2])
     }
+
+    @Test fun `table cell edits and new rows keep the existing look`() {
+        val keep = DocKeep(style = "CellText")
+        val first = DocPara(listOf(DocRun("old", bold = true, font = "<w:rFonts w:ascii=\"Arial\"/>")), heading = 2, keep = keep)
+        val cell = DocCell("<w:tcPr><w:vMerge w:val=\"continue\"/></w:tcPr>", listOf(first, DocPara(listOf(DocRun("second")))))
+        val table = DocTable("<w:tblPr/>", "<w:tblGrid/>", listOf(DocRow("<w:trPr><w:tblHeader/></w:trPr>", listOf(cell))))
+
+        val changed = WriterBridge.withCellText(cell, "new\nline")
+        assertEquals(listOf("new", "line"), changed.paras.map { it.text })
+        assertEquals(listOf(2, 2), changed.paras.map { it.heading })
+        assertEquals(listOf(keep, keep), changed.paras.map { it.keep })
+        assertEquals(listOf(true, true), changed.paras.map { it.runs.single().bold })
+
+        val added = WriterBridge.addRow(table).rows.last()
+        assertEquals(1, added.cells.size)
+        assertEquals("", added.cells.single().paras.single().text)
+        assertEquals(keep, added.cells.single().paras.single().keep)
+        assertEquals(true, added.cells.single().paras.single().runs.single().bold)
+        assertEquals(false, "tblHeader" in added.props)
+        assertEquals(false, "vMerge" in added.cells.single().props)
+
+        val edited = table.copy(rows = listOf(table.rows.single().copy(cells = listOf(changed))) + added)
+        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(edited))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
+        assertEquals(listOf("new", "line"), back.rows.first().cells.single().paras.map { it.text })
+        assertEquals(2, back.rows.size)
+        assertEquals("", back.rows.last().cells.single().paras.single().text)
+    }
+
+    @Test fun `a simple table can add columns and merge a rectangle`() {
+        val table = WriterBridge.addColumn(WriterBridge.newTable(3, 3))
+        assertEquals(listOf(4, 4, 4), table.rows.map { it.cells.size })
+        val filled = table.copy(rows = table.rows.mapIndexed { r, row -> row.copy(cells = row.cells.mapIndexed { c, cell -> WriterBridge.withCellText(cell, "$r,$c") }) })
+        val merged = WriterBridge.merge(filled, 0, 1, 2, 2)!!
+        assertEquals(listOf(3, 3, 4), merged.rows.map { it.cells.size })
+        assertEquals(true, "gridSpan" in merged.rows[0].cells[1].props)
+        assertEquals(true, "restart" in merged.rows[0].cells[1].props)
+        assertEquals(true, "vMerge" in merged.rows[1].cells[1].props)
+        assertEquals(listOf("0,1", "0,2", "1,1", "1,2"), merged.rows[0].cells[1].paras.map { it.text })
+
+        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(merged))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
+        assertEquals(listOf(3, 3, 4), back.rows.map { it.cells.size })
+        assertEquals(listOf("0,1", "0,2", "1,1", "1,2"), back.rows[0].cells[1].paras.map { it.text })
+    }
 }

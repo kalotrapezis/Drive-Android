@@ -1,3 +1,25 @@
+# 28 September, late evening — Word table editing complete
+
+State: branch `writer-library`; 132 unit tests pass; debug build installed on the phone (`208c8192`) and emulator.
+
+- A table is rendered in the editor with the same `OfficePages` geometry as page view. Tapping a cell now consumes
+  the touch before the rich-text layer, places an editor directly over that cell, focuses it, and opens the keyboard.
+  The cursor starts at the end; leaving the cell, saving, or opening Layout commits it while preserving the first
+  paragraph/run look. Cells containing nested tables or pictures are kept but not flattened.
+- Insert › Table opens the requested 5×5 picker. Tapping or dragging selects the rectangle and inserts a bordered
+  Word table of that size.
+- Table › Layout is structural only: its drag grid selects a rectangle starting at the tapped cell; it can merge
+  simple unmerged cells, add a row/column, or remove the last row/column. Existing complex merges are rejected rather
+  than guessed at. The Table ribbon also exposes the common row/column actions and Delete table.
+- Live emulator acceptance: edited a real cell, inserted a dragged 5×5, merged 2×2, added a row and a column, saved,
+  pulled the DOCX, verified its XML, and opened/converted it with LibreOffice (5 A4 pages). The original nested table
+  and vertical merges remained. Unit coverage writes/reads cell edits, new rows/columns, and a rectangular merge.
+
+Next table work: ODT table reader/writer. Word rotated cell text and conditional table-style formatting remain page
+rendering gaps, not editor data-loss issues.
+
+---
+
 # 28 September, evening — tables next (user: "make a handoff and try to complete the tables"; the viewer: "nice")
 
 State: everything up to here is committed on `writer-library`; 131 unit tests pass; today's build is on the phone

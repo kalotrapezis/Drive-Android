@@ -48,12 +48,20 @@ internal data class ParaLook(
     val listIndented: Boolean = false, // a list item's indent is already in left/firstLine
 )
 
+/**
+ * Paragraphs are laid out in twentieths of a point (Word's own unit): Android's layout takes whole numbers for widths
+ * and indents, and in points a line that fits by a quarter point broke, a number that ends on its tab stop overshot.
+ */
+private const val U = 20f
+private fun StaticLayout.topPt(line: Int) = getLineTop(line) / U
+private fun StaticLayout.bottomPt(line: Int) = getLineBottom(line) / U
+
 /** A tab stop: where (pt from the text's left edge), how the text after it lines up ('l', 'r', 'c'), what fills the gap. */
 internal data class TabStop(val pos: Float, val type: Char, val leader: Char? = null)
 
 /** A tab laid out: a gap of its own width, filled with its leader (the dots of a table of contents). */
 private class TabSpan(val width: Float, val leader: Char?) : android.text.style.ReplacementSpan() {
-    override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = width.toInt()
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = Math.round(width)
     override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
         val c = leader ?: return
         val dot = paint.measureText(c.toString()).takeIf { it > 0f } ?: return
@@ -62,18 +70,23 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
     }
 }
 
-/** The document's styles, as far as laying it out needs them: its page, and each paragraph's look. */
+/**
+ * A section of the document: its pages' size and margins, headers and footers ("default", "first" for a title page,
+ * "even"), where its page numbers start (null: they go on) and their style, and whether it starts a new page.
+ */
+internal data class DocSection(val page: DocPage, val headers: Map<String, List<DocPara>> = emptyMap(), val footers: Map<String, List<DocPara>> = emptyMap(),
+    val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false)
+
+/** The document's styles, as far as laying it out needs them: its sections, and each paragraph's look. */
 internal abstract class DocStyles {
-    open val page = DocPage()
+    /** The document's last section (a file without section breaks has only this one). */
+    open val section = DocSection(DocPage())
+    val page get() = section.page
     abstract fun look(p: DocPara): ParaLook
-    /** Headers and footers: "default", "first" (a title page), "even" (when even pages have their own). */
-    open val headers: Map<String, List<DocPara>> = emptyMap()
-    open val footers: Map<String, List<DocPara>> = emptyMap()
-    open val titlePage = false
+    /** Each paragraph's section: a paragraph that carries a section break ends one. */
+    open fun sections(paras: List<DocPara>): List<DocSection> = List(paras.size) { section }
+    /** Even pages have headers and footers of their own. */
     open val evenAndOdd = false
-    /** Page numbers: the first page's number, and their style ("decimal", "lowerRoman"…). */
-    open val pageStart = 1
-    open val pageFormat = "decimal"
     /** Where a list item's text starts and its number or bullet hangs (pt), by the file's own list when it has one. */
     open fun listIndent(p: DocPara): Pair<Float, Float> = (36f * (p.list!!.level + 1)) to 18f
     /** A run's font name from its raw settings (Word's rFonts, ODF's font attributes). */
@@ -124,16 +137,14 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val numInd = HashMap<Pair<String, Int>, Element>() // (numId, level) → the level's ind
     private val numLevels = HashMap<String, Array<Pair<String, String>?>>() // numId → each level's (numFmt, lvlText)
     private var minorFont: String? = null; private var majorFont: String? = null // the theme's body and heading fonts
-    override val headers = HashMap<String, List<DocPara>>()
-    override val footers = HashMap<String, List<DocPara>>()
-    override var titlePage = false
     override var evenAndOdd = false
-    override var pageStart = 1
-    override var pageFormat = "decimal"
+    private var bodySect: Element? = null
+    private val targets: Map<String, String> // relationship id → part (headers, footers)
+    private val parts = parts
     private fun theme(name: String?) = when { name == null -> null; name.startsWith("minor") -> minorFont; name.startsWith("major") -> majorFont; else -> null }
     override fun fontName(raw: String?): String? = super.fontName(raw)
         ?: raw?.let { Regex("""w:(?:ascii|hAnsi)Theme="([^"]+)"""").find(it)?.groupValues?.get(1) }?.let(::theme)
-    override val page: DocPage
+    override val section: DocSection
 
     init {
         val dir = documentPath(parts).substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
@@ -165,21 +176,43 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             minorFont = latin("minorFont"); majorFont = latin("majorFont")
         }
         val doc = OfficeFormats.parse(parts.getValue(documentPath(parts))).documentElement
-        val sect = doc.kid(W, "body")?.kid(W, "sectPr")
+        bodySect = doc.kid(W, "body")?.kid(W, "sectPr")
+        targets = parts[relsPath(documentPath(parts))]?.let { OfficeFormats.parse(it).documentElement.kids().associate { r -> r.getAttribute("Id") to resolve(dir, r.getAttribute("Target")) } }.orEmpty()
+        evenAndOdd = parts[dir + "settings.xml"]?.let { "<w:evenAndOddHeaders" in String(it, Charsets.UTF_8) } ?: false
+        section = section(bodySect, null)
+    }
+
+    /** A section from its sectPr; headers and footers it does not name are the section before's (Word's "link to previous"). */
+    private fun section(sect: Element?, before: DocSection?): DocSection {
         fun twips(e: Element?, name: String) = e?.attr(W, name)?.toFloatOrNull()?.div(20f)
         val size = sect?.kid(W, "pgSz"); val mar = sect?.kid(W, "pgMar")
         val d = DocPage()
-        page = DocPage(twips(size, "w") ?: d.width, twips(size, "h") ?: d.height, twips(mar, "top") ?: d.top, twips(mar, "bottom") ?: d.bottom,
+        val page = DocPage(twips(size, "w") ?: d.width, twips(size, "h") ?: d.height, twips(mar, "top") ?: d.top, twips(mar, "bottom") ?: d.bottom,
             twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right, twips(mar, "header") ?: d.header, twips(mar, "footer") ?: d.footer)
-        // Headers and footers (the last section's): each reference names its part through the document's relationships.
-        val targets = parts[relsPath(documentPath(parts))]?.let { OfficeFormats.parse(it).documentElement.kids().associate { r -> r.getAttribute("Id") to resolve(dir, r.getAttribute("Target")) } }.orEmpty()
+        val headers = HashMap(before?.headers.orEmpty()); val footers = HashMap(before?.footers.orEmpty())
         sect?.kids()?.forEach { e ->
             val into = when (e.localName) { "headerReference" -> headers; "footerReference" -> footers; else -> null } ?: return@forEach
             targets[e.attr(RELATIONSHIPS, "id")]?.let { into[e.attr(W, "type") ?: "default"] = OfficeFormats.docxPart(parts, it) }
         }
-        titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false
-        evenAndOdd = parts[dir + "settings.xml"]?.let { "<w:evenAndOddHeaders" in String(it, Charsets.UTF_8) } ?: false
-        sect?.kid(W, "pgNumType")?.let { n -> n.attr(W, "start")?.toIntOrNull()?.let { pageStart = it }; n.attr(W, "fmt")?.let { pageFormat = it } }
+        val numbers = sect?.kid(W, "pgNumType")
+        return DocSection(page, headers, footers,
+            titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false,
+            pageStart = numbers?.attr(W, "start")?.toIntOrNull(), pageFormat = numbers?.attr(W, "fmt") ?: "decimal",
+            continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous")
+    }
+
+    override fun sections(paras: List<DocPara>): List<DocSection> {
+        val out = arrayOfNulls<DocSection>(paras.size)
+        var start = 0; var before: DocSection? = null
+        for ((i, p) in paras.withIndex()) {
+            val xml = p.keep?.parts?.firstOrNull { it.first == "sectPr" }?.second ?: continue
+            val sect = runCatching { OfficeFormats.parse("<x xmlns:w=\"$W\" xmlns:r=\"$RELATIONSHIPS\">$xml</x>".toByteArray()).documentElement.kids().firstOrNull() }.getOrNull()
+            val s = section(sect, before)
+            for (k in start..i) out[k] = s
+            before = s; start = i + 1
+        }
+        val last = if (before == null) section else section(bodySect, before)
+        return out.map { it ?: last }
     }
 
     private fun chain(id: String?): List<Element> {
@@ -272,7 +305,7 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private var defaults: Element? = null
     private val listLevels = HashMap<Pair<String, Int>, Element>() // (list style, level) → list-level-label-alignment
     private val listStyles = HashMap<Pair<String, Int>, Element>() // (list style, level) → the level's own style
-    override val page: DocPage
+    override val section: DocSection
 
     init {
         val styles = parts["styles.xml"]?.let { OfficeFormats.parse(it).documentElement }
@@ -298,8 +331,8 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val props = master?.attr(STYLE, "page-layout-name")?.let { layouts[it] }?.kid(STYLE, "page-layout-properties")
         fun len(name: String) = odfLength(props?.attr(FO, name))
         val d = DocPage()
-        page = DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height, len("margin-top") ?: d.top, len("margin-bottom") ?: d.bottom,
-            len("margin-left") ?: d.left, len("margin-right") ?: d.right)
+        section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height, len("margin-top") ?: d.top, len("margin-bottom") ?: d.bottom,
+            len("margin-left") ?: d.left, len("margin-right") ?: d.right))
     }
 
     private fun one(l: ParaLook, name: String, v: String, base: Float): ParaLook = when (name) {
@@ -382,7 +415,8 @@ internal fun odfLength(v: String?): Float? = v?.let { Regex("""^(-?[\d.]+)(cm|mm
 }
 
 /** One page, laid out: pieces of paragraphs (some of their lines) and where they go, and floating pictures. */
-internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: List<Floating> = emptyList()) {
+internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: List<Floating> = emptyList(),
+    val section: DocSection = DocSection(page), val number: Int = 1, val firstOfSection: Boolean = false) {
     class Piece(val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float)
     class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean)
 
@@ -396,8 +430,10 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             val top = p.layout.getLineTop(p.firstLine).toFloat()
             val bottom = p.layout.getLineBottom(p.lastLine).toFloat()
             canvas.save()
-            canvas.translate(p.x, p.y - top)
-            canvas.clipRect(-p.x, top, p.layout.width + p.x + 1000f, bottom)
+            canvas.translate(p.x, p.y)
+            canvas.scale(1 / U, 1 / U) // the layout counts in twentieths of a point
+            canvas.translate(0f, -top)
+            canvas.clipRect(-p.x * U, top, p.layout.width + (p.x + 1000f) * U, bottom)
             p.layout.draw(canvas)
             canvas.restore()
         }
@@ -410,15 +446,30 @@ internal object OfficePages {
     private const val TAB = 36f
 
     fun layout(doc: OfficeDoc, styles: DocStyles, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
-        val page = styles.page
+        val sections = styles.sections(doc.paras)
+        var section = sections.firstOrNull() ?: styles.section
+        var page = section.page
+        var number = section.pageStart ?: 1
+        var firstOfSection = true
         val pages = ArrayList<LaidPage>()
         var pieces = ArrayList<LaidPage.Piece>()
         var floats = ArrayList<LaidPage.Floating>()
         var y = page.top
-        fun newPage() { pages += LaidPage(page, pieces, floats); pieces = ArrayList(); floats = ArrayList(); y = page.top }
+        fun newPage() {
+            pages += LaidPage(page, pieces, floats, section, number, firstOfSection)
+            pieces = ArrayList(); floats = ArrayList(); y = page.top; number++; firstOfSection = false
+        }
         val counters = IntArray(9)
         var prevLook: ParaLook? = null; var prevStyle: String? = null
         doc.paras.forEachIndexed { i, p ->
+            // A new section: a new page (unless it goes on on the same one) of its own size, numbered as it says.
+            sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
+                if (!next.continuous) {
+                    if (pieces.isNotEmpty() || floats.isNotEmpty()) newPage()
+                    section = next; page = next.page; y = page.top; firstOfSection = true
+                    next.pageStart?.let { number = it }
+                } else section = next
+            }
             val list = p.list
             if (list == null) counters.fill(0) else {
                 // A list begins after a paragraph that is not in one, or where a top-level item is of another list.
@@ -432,7 +483,7 @@ internal object OfficePages {
             val look = styles.look(p)
             val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
-            val layout = paragraph(doc, p, look, styles, marker, pictureBytes, floating)
+            val (layout, shift) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating)
             val style = p.keep?.style + "/" + p.heading
             // Space between paragraphs: after the one before, then before this one — none between two of the same
             // style that say so (contextual spacing).
@@ -443,40 +494,41 @@ internal object OfficePages {
             var line = 0
             while (line < layout.lineCount) {
                 // As many lines as fit on this page (a line never splits; one taller than a page goes on a page of its own).
-                val top = layout.getLineTop(line)
-                if (y + (layout.getLineBottom(line) - top) > limit && pieces.isNotEmpty()) { newPage(); continue }
+                val top = layout.topPt(line)
+                if (y + (layout.bottomPt(line) - top) > limit && pieces.isNotEmpty()) { newPage(); continue }
                 var last = line
-                while (last + 1 < layout.lineCount && y + (layout.getLineBottom(last + 1) - top) <= limit) last++
-                pieces += LaidPage.Piece(layout, line, last, page.left, y)
+                while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limit) last++
+                pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
                 // Floating pictures, placed where the paragraph starts: from the page, the margin, or the paragraph.
                 if (line == 0) for ((img, place) in floating) {
                     val f = floatAt(img, place, y, page, pictureBytes)
                     floats += f
                     // Top and bottom: the text goes on below it. ponytail: square wrap does not yet flow the text beside it.
-                    if (place.wrap == PictureWrap.TopBottom) y = maxOf(y, f.y + f.h - (layout.getLineBottom(last) - top))
+                    if (place.wrap == PictureWrap.TopBottom) y = maxOf(y, f.y + f.h - (layout.bottomPt(last) - top))
                 }
-                y += layout.getLineBottom(last) - top
+                y += layout.bottomPt(last) - top
                 line = last + 1
                 if (line < layout.lineCount) newPage()
             }
             // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
-            if (look.lineExact == null && layout.lineCount > 0) layout.lineCount.minus(1).let { last -> y += (look.lineMultiple.coerceIn(0.5f, 5f) - 1f) * (layout.getLineBottom(last) - layout.getLineTop(last)) }
+            if (look.lineExact == null && layout.lineCount > 0) layout.lineCount.minus(1).let { last -> y += (look.lineMultiple.coerceIn(0.5f, 5f) - 1f) * (layout.bottomPt(last) - layout.topPt(last)) }
             if (!same || i + 1 >= doc.paras.size) y += look.after
             prevLook = look; prevStyle = style
         }
-        pages += LaidPage(page, pieces, floats)
+        pages += LaidPage(page, pieces, floats, section, number, firstOfSection)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 
     /** The page's header (from the top edge, at its distance) and footer (ending at its distance from the bottom). */
     private fun withHeaderAndFooter(doc: OfficeDoc, styles: DocStyles, laid: LaidPage, index: Int, count: Int, pictureBytes: (DocImage) -> ByteArray?): LaidPage {
         val page = laid.page
+        val section = laid.section
         fun which(map: Map<String, List<DocPara>>) = when {
-            index == 0 && styles.titlePage -> map["first"] ?: emptyList() // a title page has its own (none, if the file has none)
-            styles.evenAndOdd && (index + styles.pageStart) % 2 == 0 -> map["even"] ?: map["default"]
+            laid.firstOfSection && section.titlePage -> map["first"] ?: emptyList() // a title page has its own (none, if the file has none)
+            styles.evenAndOdd && laid.number % 2 == 0 -> map["even"] ?: map["default"]
             else -> map["default"]
         }.orEmpty()
-        val number = styles.number(index + styles.pageStart, styles.pageFormat)
+        val number = styles.number(laid.number, section.pageFormat)
         fun filled(paras: List<DocPara>) = paras.map { p -> p.copy(runs = p.runs.map { r ->
             if (PAGE_FIELD in r.text || PAGES_FIELD in r.text) r.copy(text = r.text.replace(PAGE_FIELD.toString(), number).replace(PAGES_FIELD.toString(), count.toString())) else r
         }) }
@@ -486,16 +538,16 @@ internal object OfficePages {
             for (p in paras) {
                 val look = styles.look(p)
                 val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
-                val layout = paragraph(doc, p, look, styles, null, pictureBytes, floating)
+                val (layout, shift) = paragraph(doc, p, look, styles, page, null, pictureBytes, floating)
                 y += look.before
-                extra += LaidPage.Piece(layout, 0, layout.lineCount - 1, page.left, y)
+                extra += LaidPage.Piece(layout, 0, layout.lineCount - 1, page.left - shift, y)
                 floating.forEach { (img, place) -> extraFloats += floatAt(img, place, y, page, pictureBytes) }
-                y += layout.height + look.after
+                y += layout.height / U + look.after
             }
             return y - top
         }
-        stack(filled(which(styles.headers)), page.header)
-        val footer = filled(which(styles.footers))
+        stack(filled(which(section.headers)), page.header)
+        val footer = filled(which(section.footers))
         if (footer.isNotEmpty()) {
             // Laid out once to know its height, then again where it ends at its distance from the bottom.
             val mark = extra.size; val markF = extraFloats.size
@@ -503,7 +555,7 @@ internal object OfficePages {
             while (extra.size > mark) extra.removeAt(extra.size - 1); while (extraFloats.size > markF) extraFloats.removeAt(extraFloats.size - 1)
             stack(footer, page.height - page.footer - h)
         }
-        return LaidPage(page, extra + laid.pieces, laid.floats + extraFloats)
+        return LaidPage(page, extra + laid.pieces, laid.floats + extraFloats, section, laid.number, laid.firstOfSection)
     }
 
     /** A floating picture's place on the page: from the page, the margin, or its paragraph (at [paraTop]). */
@@ -525,9 +577,8 @@ internal object OfficePages {
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind)
     }
 
-    private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
-        floating: MutableList<Pair<DocImage, PictureXml.Place>>): StaticLayout {
-        val page = styles.page
+    private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, page: DocPage, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
+        floating: MutableList<Pair<DocImage, PictureXml.Place>>): Pair<StaticLayout, Float> {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
@@ -538,7 +589,7 @@ internal object OfficePages {
             p.runs.firstOrNull { it.image == null && it.text.isNotBlank() }?.let { r ->
                 fun mark(s: Any) = text.setSpan(s, 0, marker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 if (r.bold) mark(StyleSpan(Typeface.BOLD))
-                r.sizePt?.let { mark(AbsoluteSizeSpan(it.toInt().coerceAtLeast(1))) }
+                r.sizePt?.let { mark(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
                 OfficeFonts.typeface(styles.fontName(r.font))?.let { mark(TypefaceSpan(OfficeFonts.styled(it, r.bold, r.italic))) }
                 r.color?.let { mark(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             }
@@ -553,7 +604,7 @@ internal object OfficePages {
             r.image?.let { img ->
                 val width = page.textWidth - left.coerceAtLeast(0f)
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
-                val w = (img.widthPt * fit).toInt().coerceAtLeast(1); val h = (img.heightPt * fit).toInt().coerceAtLeast(1)
+                val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 val drawable = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
@@ -566,7 +617,7 @@ internal object OfficePages {
             }
             if (r.underline || r.link != null) span(UnderlineSpan())
             if (r.strike) span(StrikethroughSpan())
-            r.sizePt?.let { span(AbsoluteSizeSpan(it.toInt().coerceAtLeast(1))) }
+            r.sizePt?.let { span(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
             (r.color ?: if (r.link != null) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
@@ -574,15 +625,18 @@ internal object OfficePages {
         }
         if (text.isEmpty()) text.append(" ") // an empty paragraph is still a line
         fun whole(s: Any) = text.setSpan(s, 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-        if (left > 0f || first > 0f || first != left) whole(LeadingMarginSpan.Standard(first.coerceAtLeast(0f).toInt(), left.coerceAtLeast(0f).toInt()))
-        look.lineExact?.let { exact -> if (!look.lineAtLeast || exact > size * 1.17f) whole(LineHeightSpan.Standard(exact.toInt().coerceAtLeast(1))) }
+        // A paragraph may start left of the margin (a negative indent): it is laid out that much wider and drawn that much
+        // further left (the layout has nothing left of 0).
+        val shift = -minOf(0f, first, left)
+        if (left + shift > 0f || first + shift > 0f) whole(LeadingMarginSpan.Standard(Math.round((first + shift) * U), Math.round((left + shift) * U)))
+        look.lineExact?.let { exact -> if (!look.lineAtLeast || exact > size * 1.17f) whole(LineHeightSpan.Standard(Math.round(exact * U).coerceAtLeast(1))) }
         // Laid out in points and drawn scaled: linear, sub-pixel text, or letters snap to whole points and space unevenly.
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG or TextPaint.LINEAR_TEXT_FLAG or TextPaint.SUBPIXEL_TEXT_FLAG).apply {
             color = look.color?.let { 0xFF000000.toInt() or it } ?: Color.BLACK
-            textSize = size
+            textSize = size * U
             typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), look.bold == true, look.italic == true)
         }
-        val width = (page.textWidth - look.right.coerceAtLeast(0f)).toInt().coerceAtLeast(40)
+        val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)
         val align = when (p.align) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
         fun build() = StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setAlignment(align)
             .setLineSpacing(0f, if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f).setIncludePad(false)
@@ -593,14 +647,15 @@ internal object OfficePages {
         // the stop's side (a table of contents: page numbers right-aligned, dots before them).
         val stops = (look.tabs + if (first < left) listOf(TabStop(left, 'l')) else emptyList()).sortedBy { it.pos }
         for (k in text.indices.filter { text[it] == '\t' }) {
-            val x = build().getPrimaryHorizontal(k)
-            val stop = stops.firstOrNull { it.pos > x + 0.5f } ?: TabStop((kotlin.math.floor(x / TAB) + 1) * TAB, 'l')
+            val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
+            // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
+            val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / TAB) + 1) * TAB, 'l')
             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length
-            val after = Layout.getDesiredWidth(text, k + 1, end, paint)
+            val after = Layout.getDesiredWidth(text, k + 1, end, paint) / U
             val gap = when (stop.type) { 'r' -> stop.pos - x - after; 'c' -> stop.pos - x - after / 2; else -> stop.pos - x }
-            text.setSpan(TabSpan(gap.coerceAtLeast(1f), stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        return build()
+        return build() to shift
     }
 
 }

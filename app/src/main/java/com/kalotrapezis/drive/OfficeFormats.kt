@@ -278,7 +278,7 @@ internal object OfficeFormats {
         val source = Array(m) { k -> from[k].takeIf { it >= 0 }?.let { old[it].keep } }
         return new.mapIndexed { k, p ->
             val keep = if (matched[k]) source[k] else (k - 1 downTo 0).firstOrNull { matched[it] }?.let { source[it] }?.let { inherited ->
-                inherited.copy(parts = inherited.parts.filter { (name, xml) -> name != "pageBreakBefore" && name != "master" && !("break-before" in xml && "page" in xml) })
+                inherited.copy(parts = inherited.parts.filter { (name, xml) -> name != "pageBreakBefore" && name != "sectPr" && name != "master" && !("break-before" in xml && "page" in xml) })
             } ?: (k + 1 until m).firstOrNull { matched[it] }?.let { source[it] }?.copy(parts = emptyList())
             p.copy(keep = keep?.takeIf { !it.isEmpty })
         }
@@ -603,7 +603,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
                 "numPr" -> { list = listItem(e); ownNumbering = true }
                 "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
-                "sectPr" -> notes += "section breaks"
+                // A section break (page size, margins, headers of the part before it): kept as the file has it (2026-09-28).
+                "sectPr" -> keepParts += e.localName to OfficeFormats.xml(e)
                 "framePr" -> notes += "shapes and text boxes"
                 "pPrChange" -> notes += "tracked changes"
                 // The rest — spacing, indents, tab stops, borders, a page break before it… — goes back as it was.

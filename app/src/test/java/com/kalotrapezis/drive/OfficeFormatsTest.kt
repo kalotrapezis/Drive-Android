@@ -17,6 +17,7 @@ class OfficeFormatsTest {
         DocPara(listOf(DocRun("Between"), DocRun("\u2028second line", bold = true))),
         DocPara(listOf(DocRun("five")), list = DocList(true, 0, 5)),
         DocPara(listOf(DocRun("Ελληνικά <&> \"quotes\"")), align = DocAlign.Justify),
+        DocPara(listOf(DocRun("x"), DocRun("2", script = 1), DocRun(" H"), DocRun("2", script = -1, sizePt = 10f), DocRun("O"))),
     ))
 
     private fun roundTrip(kind: OfficeKind) {

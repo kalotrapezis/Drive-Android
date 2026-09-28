@@ -36,6 +36,7 @@ internal data class DocRun(
     val link: String? = null,
     val image: DocImage? = null, // then [text] is OBJECT_MARK
     val font: String? = null, // the file's own font setting, raw (Word's rFonts element; ODF's font attributes)
+    val script: Int = 0, // 1 superscript, -1 subscript
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
 }
@@ -70,6 +71,19 @@ internal object PictureXml {
     fun editable(img: DocImage): Boolean {
         val raw = img.raw ?: return img.bytes != null
         return if (raw.startsWith("<draw:frame")) "<draw:image" in raw else "<pic:pic" in raw && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
+    }
+
+    /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
+    fun kind(img: DocImage): String {
+        val raw = img.raw ?: return "Picture"
+        return when {
+            "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
+            "diagram" in raw -> "SmartArt"
+            "txbx" in raw || "<draw:text-box" in raw -> "Text box"
+            "OLEObject" in raw || "<draw:object" in raw -> "Embedded object"
+            "<wps:" in raw || "<v:" in raw || "<draw:custom-shape" in raw || "<draw:rect" in raw || "<draw:line" in raw -> "Shape"
+            else -> "Picture"
+        }
     }
 
     /** Its wrapping as the file has it (null: an ODT frame's, which lives in a style Writer does not look up). */
@@ -589,7 +603,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     }
                     "rFonts" -> look = look.copy(font = OfficeFormats.xml(e)) // kept exactly, letter by letter
                     "bCs", "iCs", "szCs", "lang", "noProof", "webHidden", "kern", "rtl", "cs", "specVanish", "eastAsianLayout", "snapToGrid" -> Unit
-                    "vertAlign" -> if (e.attr(W, "val") != "baseline") notes += "superscript and subscript"
+                    "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
                     "shd" -> if (e.attr(W, "fill").let { it != null && it != "auto" && it != "FFFFFF" }) notes += "borders and shading"
                     "bdr" -> notes += "borders and shading"
                     "vanish" -> if (on) notes += "hidden text"
@@ -879,6 +893,7 @@ private object DocxWriter {
             r.sizePt?.let { append("""<w:sz w:val="${(it * 2).roundToInt()}"/>""") }
             r.highlight?.let { append("""<w:highlight w:val="${nearestHighlight(it)}"/>""") }
             if (r.underline) append("""<w:u w:val="single"/>""")
+            if (r.script != 0) append("""<w:vertAlign w:val="${if (r.script > 0) "superscript" else "subscript"}"/>""")
         }
         append("<w:r>")
         if (rPr.isNotEmpty()) append("<w:rPr>").append(rPr).append("</w:rPr>")
@@ -982,7 +997,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "color" -> if (!inLink) l = l.copy(color = OfficeFormats.parseHex(v))
                 "background-color" -> l = l.copy(highlight = if (v == "transparent") null else OfficeFormats.parseHex(v))
                 "font-name", "font-family" -> if (fonts != null) fonts += "text@" to " ${n.nodeName}=\"${OfficeFormats.esc(n.nodeValue)}\"" else l = l.copy(font = withFont(l.font, n.nodeName, n.nodeValue))
-                "text-position" -> if (!neutral(v)) notes += "superscript and subscript"
+                // "super 58%", "sub", "33% 58%", "-33% 58%", "0% 100%"
+                "text-position" -> v.substringBefore(' ').let { p -> l = l.copy(script = when { p == "super" -> 1; p == "sub" -> -1; else -> p.removeSuffix("%").toFloatOrNull()?.let { Math.signum(it).toInt() } ?: 0 }) }
                 "display" -> if (v == "none") notes += "hidden text"
                 "language", "country", "script", "rfc-language-tag", "letter-kerning", "hyphenate", "hyphenation-remain-char-count",
                 "hyphenation-push-char-count", "text-underline-type", "text-underline-width", "text-underline-color", "text-underline-mode",
@@ -1256,6 +1272,7 @@ private object OdtWriter {
                     r.color?.let { append(""" fo:color="#${OfficeFormats.hex(it).lowercase()}"""") }
                     r.highlight?.let { append(""" fo:background-color="#${OfficeFormats.hex(it).lowercase()}"""") }
                     r.font?.let { append(it) }
+                    if (r.script != 0) append(""" style:text-position="${if (r.script > 0) "super" else "sub"} 58%"""")
                 }
                 auto.append("""<style:style style:name="$name" style:family="text"><style:text-properties$p/></style:style>""")
                 name

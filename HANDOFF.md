@@ -10,7 +10,20 @@ ODT anchor-type + a Tetra graphic style — `PictureXml` in OfficeFormats.kt, te
 Known: floating pictures still drawn in line; a cropped picture's old media part stays in the package (unused);
 the space after an inline picture can be wider than the picture (the placeholder glyph's width).
 
-Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages.
+Later the same day:
+- **Superscript / subscript** kept and shown (`DocRun.script`; docx w:vertAlign, ODT style:text-position), X² / X₂ on
+  Home. Shown at 0.7 of the size; a size the file sets vs the document's own are told apart by the factor (0.7 / 0.69,
+  `SCRIPT_SIZE*` in Writer.kt). WriterBridgeTest checks the round trip.
+- Charts, shapes, text boxes, SmartArt, embedded objects: the grey box says what it is (`PictureXml.kind`).
+- **The user's Word App Test Suite** (~/Έγγραφα/Claude/Projects/Defaulty/Word App Test Suite, 6 files) is in the
+  "real documents read" test; also on the emulator in Tetra/Documents. All six still save as a copy: tables (02, 03, 06),
+  page breaks, sections/columns (03), fields/footnotes/equations (04), comments/tracked changes/content controls (05),
+  small caps/caps/double strike/double underline + hidden text (01, "other text effects").
+- **Found: a line break inside a paragraph shows as a box** (the editor draws U+2028 as a glyph; a '\n' inside a block
+  becomes a space — tried). Fix: split such a paragraph into editor blocks and join them back on saving.
+
+Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages. Suggested to the user
+(not yet decided): tables and page breaks first — they are what makes most real files copy-only.
 
 ---
 

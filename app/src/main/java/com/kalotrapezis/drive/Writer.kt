@@ -130,6 +130,11 @@ private const val BASE_SP = 16f
 
 /** Pictures are drawn at most this wide (sp) — about the page's width on a phone; the file keeps their real size. */
 private const val MAX_PICTURE_SP = 300f
+/** Superscript and subscript are shown this much smaller; a size the file sets and the document's own are told apart by
+ *  the factor (the editor keeps only the size shown). */
+private const val SCRIPT_SIZE = 0.7f
+private const val SCRIPT_SIZE_OWN = 0.69f
+
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
 /** How the editor names a picture: this and the picture's key. */
@@ -159,7 +164,10 @@ internal object WriterBridge {
                 if (r.italic) marks += RichTextSpanMark.Italic(range)
                 if (r.underline) marks += RichTextSpanMark.Underline(range)
                 if (r.strike) marks += RichTextSpanMark.Strikethrough(range)
-                r.sizePt?.let { marks += RichTextSpanMark.FontSize(range, (it * scale).sp) }
+                if (r.script != 0) {
+                    marks += RichTextSpanMark.BaselineShift(range, if (r.script > 0) 0.4f else -0.15f) // about where Word puts them
+                    marks += RichTextSpanMark.FontSize(range, ((r.sizePt ?: doc.basePt) * scale * (if (r.sizePt != null) SCRIPT_SIZE else SCRIPT_SIZE_OWN)).sp)
+                } else r.sizePt?.let { marks += RichTextSpanMark.FontSize(range, (it * scale).sp) }
                 r.color?.let { marks += RichTextSpanMark.TextColor(range, 0xFF000000L or it.toLong()) }
                 r.highlight?.let { marks += RichTextSpanMark.Highlight(range, 0xFF000000L or it.toLong()) }
                 r.link?.let { marks += RichTextSpanMark.Link(range, it) }
@@ -198,7 +206,8 @@ internal object WriterBridge {
                     is RichTextSpanMark.Italic -> r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
-                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { ((it / scale) * 2).roundToInt() / 2f })
+                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }) // rounded below
+                    is RichTextSpanMark.BaselineShift -> r.copy(script = if (m.multiplier > 0) 1 else if (m.multiplier < 0) -1 else 0)
                     is RichTextSpanMark.TextColor -> r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Link -> r.copy(link = m.url)
@@ -207,7 +216,13 @@ internal object WriterBridge {
                     } ?: r
                     else -> r
                 }
-                r
+                val shown = r.sizePt
+                r.copy(sizePt = when {
+                    shown == null -> null
+                    r.script == 0 -> (shown * 2).roundToInt() / 2f
+                    kotlin.math.abs(shown - basePt * SCRIPT_SIZE_OWN) < 0.001f * shown -> null // the document's own size
+                    else -> ((shown / SCRIPT_SIZE) * 2).roundToInt() / 2f
+                })
             }
             val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
             val align = when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
@@ -649,10 +664,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val (w, h) = WriterBridge.shownSize(img, scale)
                                         val y = with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
-                                        Image(picturePainter(img, packageParts), contentDescription = "Picture", contentScale = ContentScale.FillBounds,
-                                            modifier = Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
-                                                .then(if (selectedPicture?.first == i) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
-                                                .clickable { state.selection = androidx.compose.ui.text.TextRange(i, i + 1); tab = WriterTab.Picture })
+                                        Box(Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
+                                            .then(if (selectedPicture?.first == i) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
+                                            .clickable { state.selection = androidx.compose.ui.text.TextRange(i, i + 1); tab = WriterTab.Picture },
+                                            contentAlignment = Alignment.Center) {
+                                            Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
+                                            // Not a picture (a chart, a shape): a grey box that says what it is, kept in the file as it was.
+                                            if (pictureBytes(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        }
                                     }
                                 }
                             }
@@ -703,11 +722,30 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
                     Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
                     Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
+                    // Superscript and subscript: read back in at once, so they show smaller as a file's do.
+                    listOf("X²" to androidx.compose.ui.text.style.BaselineShift.Superscript, "X₂" to androidx.compose.ui.text.style.BaselineShift.Subscript).forEach { (label, shift) ->
+                        val sign = Math.signum(span.baselineShift?.multiplier ?: 0f)
+                        RibbonButton(label, w, on = sign == Math.signum(shift.multiplier)) {
+                            val was = span.baselineShift?.takeIf { sign != 0f }
+                            // Off: the letters go back to the size they had (the file's own, or the one set on purpose).
+                            if (was != null) {
+                                WriterBridge.spOf(span.fontSize)?.let { shownSp ->
+                                    if (kotlin.math.abs(shownSp - BASE_SP * SCRIPT_SIZE_OWN) < 0.001f * shownSp) state.removeSpanStyle(SpanStyle(fontSize = span.fontSize))
+                                    else state.addSpanStyle(SpanStyle(fontSize = (shownSp / SCRIPT_SIZE).sp))
+                                }
+                                state.removeSpanStyle(SpanStyle(baselineShift = was))
+                            }
+                            if (sign != Math.signum(shift.multiplier)) state.addSpanStyle(SpanStyle(baselineShift = shift))
+                            if (!state.selection.collapsed) { val at = state.selection; state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at) }
+                        }
+                    }
                     Divider(w)
-                    val size = WriterBridge.spOf(span.fontSize) ?: BASE_SP
-                    Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = (size - 2).coerceAtLeast(8f).sp)) }
+                    // Superscript and subscript are shown smaller: the size told and changed is the letters' own.
+                    val shrink = if ((span.baselineShift?.multiplier ?: 0f) != 0f) SCRIPT_SIZE else 1f
+                    val size = (WriterBridge.spOf(span.fontSize) ?: BASE_SP) / shrink
+                    Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = ((size - 2).coerceAtLeast(8f) * shrink).sp)) }
                     Text("${(size / BASE_SP * meta.basePt).roundToInt()}", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 2.dp))
-                    Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = (size + 2).coerceAtMost(72f).sp)) }
+                    Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = ((size + 2).coerceAtMost(72f) * shrink).sp)) }
                 }, {
                     Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
                         if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))

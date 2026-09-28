@@ -7,6 +7,11 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -325,7 +330,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), View("View") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), View("View"), Picture("Picture") }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -358,6 +363,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
+    var sizing by remember { mutableStateOf(false) }
+    var wrapping by remember { mutableStateOf(false) }
+    var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    // The pictures' keys in the order they stand in the text.
+    val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
+    // The selected picture (a tap on it selects it): its place in the text and its key.
+    val selectedPicture by remember { derivedStateOf {
+        val text = state.annotatedString.text
+        val sel = state.selection
+        if (sel.collapsed) null else (sel.min until sel.max).firstOrNull { text.getOrNull(it) == EDITOR_PICTURE_CHAR }
+            ?.let { i -> keys.getOrNull(text.substring(0, i).count { it == EDITOR_PICTURE_CHAR })?.let { i to it } }
+    } }
+    LaunchedEffect(selectedPicture) { if (selectedPicture == null && tab == WriterTab.Picture) tab = WriterTab.Home }
 
     // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
     fun current() = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
@@ -524,6 +542,31 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at)
         }
     }
+    /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
+    fun changePicture(key: String, img: DocImage) {
+        pictures[key] = img
+        val at = state.selection
+        state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at)
+        dirty = true
+    }
+    fun pictureBytes(img: DocImage) = img.bytes ?: img.part?.let { packageParts[it] }
+    /** Save picture as…: into the phone's Pictures/Tetra, where Photos and Files find it. */
+    fun savePicture(img: DocImage) {
+        val bytes = pictureBytes(img) ?: return
+        scope.launch {
+            val ext = img.part?.substringAfterLast('.')?.lowercase(Locale.ROOT) ?: img.extension
+            val ok = withContext(Dispatchers.IO) { runCatching {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "${name.substringBeforeLast('.')} picture.$ext")
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "image/$ext")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Tetra")
+                }
+                val target = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+                context.contentResolver.openOutputStream(target)!!.use { it.write(bytes) }
+            }.isSuccess }
+            message = if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
+        }
+    }
     fun leave() { if (dirty) leaving = true else back() }
     BackHandler { leave() }
 
@@ -592,22 +635,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
-                            val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
                             layout?.let { l ->
                                 val text = l.layoutInput.text.text
                                 val density = LocalDensity.current
                                 val scale = BASE_SP / meta.basePt
                                 // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
                                 val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
-                                    keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(img, l.getBoundingBox(i).left, l.getLineBaseline(l.getLineForOffset(i))) }
+                                    keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 Box(Modifier.matchParentSize().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)) {
-                                    placed.forEach { (img, left, bottom) ->
+                                    placed.forEach { (i, img, at) ->
+                                        val (left, bottom) = at
                                         val (w, h) = WriterBridge.shownSize(img, scale)
                                         val y = with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         Image(picturePainter(img, packageParts), contentDescription = "Picture", contentScale = ContentScale.FillBounds,
-                                            modifier = Modifier.offset { IntOffset(left.toInt(), y) }.then(size))
+                                            modifier = Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
+                                                .then(if (selectedPicture?.first == i) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
+                                                .clickable { state.selection = androidx.compose.ui.text.TextRange(i, i + 1); tab = WriterTab.Picture })
                                     }
                                 }
                             }
@@ -630,7 +675,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                WriterTab.entries.forEach { t ->
+                WriterTab.entries.filter { it != WriterTab.Picture || selectedPicture != null }.forEach { t ->
                     Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
                             .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
@@ -693,6 +738,25 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Line break", w) { state.addTextAfterSelection(LINE_BREAK.toString()) }
                     RibbonButton("Table · later", w, enabled = false) {}
                 })
+                WriterTab.Picture -> {
+                    val (at, key) = selectedPicture ?: (0 to "")
+                    val img = pictures[key]
+                    val editable = img != null && PictureXml.editable(img)
+                    val hasBytes = img != null && pictureBytes(img) != null
+                    listOf({
+                        RibbonButton("Size", w, enabled = editable) { sizing = true }
+                        RibbonButton("Crop", w, enabled = hasBytes && editable) {
+                            scope.launch {
+                                cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { decodePicture(it, 2400) }.getOrNull() } }
+                                if (cropping == null) message = "Writer cannot crop this kind of picture."
+                            }
+                        }
+                        RibbonButton("Wrap text", w, enabled = editable) { wrapping = true }
+                    }, {
+                        RibbonButton("Save picture as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
+                        RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
+                    })
+                }
                 WriterTab.View -> listOf({
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
                     Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
@@ -719,6 +783,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             LaunchedEffect(m) { delay(2800); message = null }
             Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {
                 Text(m, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
+        cropping?.let { bitmap ->
+            BackHandler { cropping = null }
+            // Photos' crop, with straight cuts (90°) on at first (asked 2026-09-28); off, the corners move freely and the
+            // picture is straightened as Photos does. ponytail: the cut picture becomes a new one — Word's own crop
+            // (a:srcRect) would keep the rest.
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                CornerEditor(bitmap, DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), "Reset", straightOption = true, done = { quad ->
+                    cropping = null
+                    val (at, key) = selectedPicture ?: return@CornerEditor
+                    val img = pictures[key] ?: return@CornerEditor
+                    if (quad == DocumentQuad.fullFrame()) return@CornerEditor
+                    val cut = runCatching { cropScan(bitmap, quad, 2400f) }.getOrNull() ?: return@CornerEditor
+                    val png = img.extension == "png" || img.part?.endsWith(".png", ignoreCase = true) == true
+                    val bytes = java.io.ByteArrayOutputStream().also { cut.compress(if (png) android.graphics.Bitmap.CompressFormat.PNG else android.graphics.Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+                    // As big on the page, piece for piece, as it was.
+                    changePicture(key, DocImage(key, null, img.widthPt * cut.width / bitmap.width, img.heightPt * cut.height / bitmap.height, null, bytes, if (png) "png" else "jpg", PictureXml.wrapOf(img)))
+                    state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+                }, cancel = { cropping = null })
             }
         }
     }
@@ -783,6 +867,85 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             },
         )
+    }
+    selectedPicture?.let { (_, key) -> pictures[key] }?.let { img ->
+        val key = selectedPicture!!.second
+        if (sizing) {
+            // In pixels, horizontal × vertical (asked 2026-09-27), as Word counts them: 96 to the inch. Or dragged by
+            // its side or corner, the numbers following (asked 2026-09-28); the chain keeps its proportions.
+            val ratio = img.heightPt / img.widthPt
+            var a by remember { mutableFloatStateOf(img.widthPt / 0.75f) }
+            var d by remember { mutableFloatStateOf(img.heightPt / 0.75f) }
+            var across by remember { mutableStateOf(a.roundToInt().toString()) }
+            var down by remember { mutableStateOf(d.roundToInt().toString()) }
+            var chained by remember { mutableStateOf(true) }
+            fun setA(v: Float, typed: String? = null) { a = v.coerceIn(1f, 10000f); across = typed ?: a.roundToInt().toString(); if (chained) { d = (a * ratio).coerceAtLeast(1f); down = d.roundToInt().toString() } }
+            fun setD(v: Float, typed: String? = null) { d = v.coerceIn(1f, 10000f); down = typed ?: d.roundToInt().toString(); if (chained) { a = (d / ratio).coerceAtLeast(1f); across = a.roundToInt().toString() } }
+            val ok = across.toIntOrNull() in 1..10000 && down.toIntOrNull() in 1..10000
+            val painter = picturePainter(img, packageParts)
+            AlertDialog(
+                onDismissRequest = { sizing = false },
+                title = { Text("Picture size") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // The picture, its top left fixed; handles on its right side, bottom side and corner.
+                        BoxWithConstraints(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF303030)).padding(12.dp)) {
+                            val frameW = constraints.maxWidth.toFloat(); val frameH = constraints.maxHeight.toFloat()
+                            val shown = remember { minOf(frameW * 0.7f / a, frameH * 0.7f / d) } // screen px per picture px, at first
+                            fun fit() = minOf(shown, frameW / a, frameH / d)
+                            val density = LocalDensity.current
+                            val bw = a * fit(); val bh = d * fit()
+                            with(density) {
+                                Image(painter, contentDescription = "Picture", contentScale = ContentScale.FillBounds, modifier = Modifier.size(bw.toDp(), bh.toDp()).border(1.dp, Color(0xFF1A73E8)))
+                                @Composable fun Handle(x: Float, y: Float, drag: (Float, Float) -> Unit) = Box(
+                                    Modifier.offset { IntOffset((x - 22.dp.toPx()).roundToInt(), (y - 22.dp.toPx()).roundToInt()) }.size(44.dp)
+                                        .pointerInput(Unit) { detectDragGestures { change, delta -> change.consume(); drag(delta.x / fit(), delta.y / fit()) } },
+                                    contentAlignment = Alignment.Center,
+                                ) { Box(Modifier.size(14.dp).clip(CircleShape).background(Color(0xFF1A73E8)).border(2.dp, Color.White, CircleShape)) }
+                                Handle(bw, bh / 2) { dx, _ -> setA(a + dx) }
+                                Handle(bw / 2, bh) { _, dy -> setD(d + dy) }
+                                Handle(bw, bh) { dx, dy -> if (!chained) { setA(a + dx); setD(d + dy) } else if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) setA(a + dx) else setD(d + dy) }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(across, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setA(it.toFloat(), v) } ?: run { across = v } },
+                                    singleLine = true, label = { Text("Horizontal") }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                                OutlinedTextField(down, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setD(it.toFloat(), v) } ?: run { down = v } },
+                                    singleLine = true, label = { Text("Vertical") }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                            }
+                            // The chain: on, the two sides change together.
+                            Tool(R.drawable.ic_link, if (chained) "Proportions kept" else "Proportions free", MaterialTheme.colorScheme.onSurface, on = chained) {
+                                chained = !chained
+                                if (chained) setA(a) // back to the picture's own proportions
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(enabled = ok, onClick = { sizing = false; changePicture(key, PictureXml.resized(img, across.toInt() * 0.75f, down.toInt() * 0.75f)) }) { Text("OK") } },
+                dismissButton = { TextButton(onClick = { sizing = false }) { Text("Cancel") } },
+            )
+        }
+        if (wrapping) {
+            val now = PictureXml.wrapOf(img)
+            AlertDialog(
+                onDismissRequest = { wrapping = false },
+                title = { Text("Wrap text") },
+                text = {
+                    Column {
+                        PictureWrap.entries.forEach { wrap ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { wrapping = false; if (wrap != now) changePicture(key, img.with(wrap = wrap)) }) {
+                                RadioButton(wrap == now, null)
+                                Text(wrap.label, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
+                        // ponytail: floating pictures are drawn in line; showing them in place comes with dragging.
+                        Text("Writer shows it in line for now; Word and LibreOffice show it as chosen.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                    }
+                },
+                confirmButton = { TextButton(onClick = { wrapping = false }) { Text("Close") } },
+            )
+        }
     }
     if (showVersions) {
         val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }

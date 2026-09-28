@@ -83,6 +83,28 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a picture's size and wrapping are saved, and can go back in line`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(4, 2, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        for (kind in OfficeKind.entries) {
+            fun roundTrip(img: DocImage, original: ByteArray?): Pair<DocImage, ByteArray> {
+                val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("A "), DocRun(OBJECT_MARK.toString(), image = img))))), kind, original)
+                return OfficeFormats.read(bytes, kind).paras.single().runs.single { it.image != null }.image!! to bytes
+            }
+            val (first, bytes) = roundTrip(DocImage("n1", null, 120f, 60f, bytes = png), null)
+            assertTrue(PictureXml.editable(first))
+            for (wrap in PictureWrap.entries.reversed()) {
+                val (back, _) = roundTrip(PictureXml.resized(first, 200f, 100f).with(wrap = wrap), bytes)
+                assertEquals("$kind $wrap", 200f, back.widthPt, 0.1f)
+                assertEquals("$kind $wrap", 100f, back.heightPt, 0.1f)
+                if (kind == OfficeKind.Docx) assertEquals(wrap, PictureXml.wrapOf(back))
+                else assertTrue(back.raw!!.contains(PictureXml.odtStyleName(wrap)))
+                // A floating picture put back in line.
+                val (inline, _) = roundTrip(back.with(wrap = PictureWrap.InLine), bytes)
+                assertEquals("$kind $wrap", PictureWrap.InLine, PictureXml.wrapOf(inline))
+            }
+        }
+    }
+
     @Test fun `each letter keeps its font through edits`() {
         val f = "<w:rFonts w:ascii=\"Arial\"/>"
         val old = listOf(DocPara(listOf(DocRun("Hello wo"), DocRun("rld", font = f))))

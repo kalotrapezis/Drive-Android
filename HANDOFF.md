@@ -1,3 +1,19 @@
+# 28 September — the Picture tab built, checked on the emulator (not on the phone/tablet yet)
+
+Tap a picture → it is selected (blue frame) and a **Picture** tab appears: **Size** (a window: horizontal × vertical px,
+a preview with handles on the right side, bottom side and corner — dragging updates the numbers — and a chain toggle
+for proportions; user asks 28 Sep), **Crop** (Photos' CornerEditor with a new "Straight cuts (90°)" switch, on by
+default; off, free corners straighten as Photos does; the cut picture becomes a new picture, same scale, same wrap),
+**Wrap text** (in line · square · top and bottom · behind · in front, written to the file: docx wp:inline ⇄ wp:anchor,
+ODT anchor-type + a Tetra graphic style — `PictureXml` in OfficeFormats.kt, tested), **Save picture as** (Pictures/Tetra),
+**Delete**. Checked on the emulator + LibreOffice (square wrap shows). Charts, shapes and VML drawings: only Delete/Save.
+Known: floating pictures still drawn in line; a cropped picture's old media part stays in the package (unused);
+the space after an inline picture can be wider than the picture (the placeholder glyph's width).
+
+Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages.
+
+---
+
 # Next session (28 Sep) — continue the picture work, then proper pages
 
 **Budget (user, 27 Sep):** ~10% of the week left until the reset on 28 Sep at 22:00. Tomorrow: only the quick,

@@ -155,10 +155,11 @@ internal object WriterBridge {
     /** [pictures] learns every picture shown, by the key the editor knows it by. */
     fun toEditor(doc: OfficeDoc, pictures: MutableMap<String, DocImage> = HashMap()): RichTextDocument {
         val scale = BASE_SP / doc.basePt
-        return RichTextDocument(doc.paras.map { p ->
+        /** One line of the editor: a paragraph, or (after a line break inside it) the next line of one. */
+        fun block(p: DocPara, runs: List<DocRun>, afterBreak: Boolean): RichTextBlock {
             val marks = ArrayList<RichTextSpanMark>()
             var at = 0
-            for (r in OfficeFormats.tidy(p.runs)) {
+            for (r in runs) {
                 val range = at until at + r.text.length
                 if (r.bold) marks += RichTextSpanMark.Bold(range)
                 if (r.italic) marks += RichTextSpanMark.Italic(range)
@@ -183,13 +184,25 @@ internal object WriterBridge {
                 }
                 at += r.text.length
             }
-            RichTextBlock(
-                text = p.text,
-                type = p.list?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
+            return RichTextBlock(
+                text = runs.joinToString("") { it.text },
+                // The line after a break is not a new list item (no bullet of its own).
+                type = p.list?.takeIf { !afterBreak }?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
                 spans = marks,
                 headingLevel = p.heading,
                 textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                isLineBreak = afterBreak,
             )
+        }
+        // A line break inside a paragraph (the editor draws U+2028 as a box): the lines after it are the editor's own
+        // "from a line break" lines, joined back into the paragraph by fromEditor.
+        return RichTextDocument(doc.paras.flatMap { p ->
+            val lines = mutableListOf(mutableListOf<DocRun>())
+            for (r in OfficeFormats.tidy(p.runs)) r.text.split(LINE_BREAK).forEachIndexed { i, piece ->
+                if (i > 0) lines += mutableListOf<DocRun>()
+                if (piece.isNotEmpty()) lines.last() += r.copy(text = piece)
+            }
+            lines.mapIndexed { i, runs -> block(p, runs, i > 0) }
         })
     }
 
@@ -226,7 +239,25 @@ internal object WriterBridge {
             }
             val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
             val align = when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
-            DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align)
+            DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
+        }.fold(ArrayList<DocPara>()) { paras, (p, afterBreak) ->
+            val prev = paras.lastOrNull()
+            if (afterBreak && prev != null) paras[paras.size - 1] = prev.copy(runs = OfficeFormats.tidy(prev.runs + breakRun(prev.runs, p.runs) + p.runs))
+            else paras += p
+            paras
+        }
+    }
+
+    /** The line break itself takes the look of the text after it (or before it, at a paragraph's end). */
+    private fun breakRun(before: List<DocRun>, after: List<DocRun>) =
+        (after.firstOrNull() ?: before.lastOrNull() ?: DocRun("")).copy(text = LINE_BREAK.toString(), image = null)
+
+    /** Each line break with the look [breakRun] gives it — the look of an invisible character, so files are compared without it. */
+    fun breaksLookAround(runs: List<DocRun>): List<DocRun> {
+        val pieces = runs.flatMap { r -> if (LINE_BREAK !in r.text) listOf(r) else r.text.split(LINE_BREAK).flatMapIndexed { i, t -> listOfNotNull(if (i > 0) r.copy(text = LINE_BREAK.toString()) else null, r.copy(text = t).takeIf { t.isNotEmpty() }) } }
+        return pieces.mapIndexed { i, r ->
+            if (r.text != LINE_BREAK.toString()) r
+            else breakRun(pieces.subList(0, i).filter { it.text != LINE_BREAK.toString() }, pieces.subList(i + 1, pieces.size).takeWhile { it.text != LINE_BREAK.toString() })
         }
     }
 
@@ -254,7 +285,7 @@ internal object WriterBridge {
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null) }), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -773,7 +804,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                 }, {
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
-                    RibbonButton("Line break", w) { state.addTextAfterSelection(LINE_BREAK.toString()) }
+                    RibbonButton("Line break", w) {
+                        state.addTextAfterSelection(LINE_BREAK.toString())
+                        val at = state.selection
+                        state.setRichTextDocument(WriterBridge.toEditor(current(), pictures), at) // shown as a new line at once
+                    }
                     RibbonButton("Table · later", w, enabled = false) {}
                 })
                 WriterTab.Picture -> {

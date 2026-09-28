@@ -19,8 +19,11 @@ Later the same day:
   "real documents read" test; also on the emulator in Tetra/Documents. All six still save as a copy: tables (02, 03, 06),
   page breaks, sections/columns (03), fields/footnotes/equations (04), comments/tracked changes/content controls (05),
   small caps/caps/double strike/double underline + hidden text (01, "other text effects").
-- **Found: a line break inside a paragraph shows as a box** (the editor draws U+2028 as a glyph; a '\n' inside a block
-  becomes a space — tried). Fix: split such a paragraph into editor blocks and join them back on saving.
+- **Line breaks inside a paragraph now show as new lines**: each line after a break is the editor's own
+  `isLineBreak` block, joined back by `fromEditor` (the break takes the look of the text after it; `comparable` ignores a
+  break's look). Insert › Line break re-renders at once. Checked on the emulator with file 01 → saved `<w:br/>`.
+- **Found: lists numbered by their paragraph style** (docx pStyle ListNumber / ListBullet, no numPr — file 01) show no
+  bullets or numbers in the editor; they are kept in the file.
 
 Next: drag to move (snap / free placement), floating pictures shown in place, then proper pages. Suggested to the user
 (not yet decided): tables and page breaks first — they are what makes most real files copy-only.

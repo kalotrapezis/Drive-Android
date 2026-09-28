@@ -11,4 +11,20 @@ class WriterBridgeTest {
         val doc = OfficeDoc(paras, basePt = 11f)
         assertEquals(paras, WriterBridge.fromEditor(WriterBridge.toEditor(doc), doc.basePt))
     }
+
+    @Test fun `a line break inside a paragraph is a new line in the editor and one paragraph again in the file`() {
+        val br = LINE_BREAK.toString()
+        val paras = listOf(
+            DocPara(listOf(DocRun("Line one"), DocRun("${br}Line two", bold = true), DocRun(" end"))),
+            DocPara(listOf(DocRun("item${br}${br}after an empty line")), list = DocList(false, 0)),
+            DocPara(listOf(DocRun("ends with a break$br"))),
+            DocPara(listOf(DocRun("next paragraph"))),
+        )
+        val rich = WriterBridge.toEditor(OfficeDoc(paras, basePt = 11f))
+        assertEquals(listOf(false, true, false, true, true, false, true, false), rich.blocks.map { it.isLineBreak })
+        assertEquals(WriterBridge.comparable(paras), WriterBridge.comparable(WriterBridge.fromEditor(rich, 11f)))
+        // A break whose look differs from the text after it is compared by where it stands, not its look.
+        val odd = listOf(DocPara(listOf(DocRun("a"), DocRun(br, italic = true), DocRun("b"))))
+        assertEquals(WriterBridge.comparable(odd), WriterBridge.comparable(WriterBridge.fromEditor(WriterBridge.toEditor(OfficeDoc(odd, basePt = 11f)), 11f)))
+    }
 }

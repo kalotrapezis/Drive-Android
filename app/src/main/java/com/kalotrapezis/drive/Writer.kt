@@ -91,6 +91,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -162,6 +163,7 @@ internal object WriterBridge {
     /** How a picture shows in the editor: its size, scaled with the text, and never wider than the page. */
     fun shownSize(img: DocImage, scale: Float): Pair<Float, Float> {
         val w = img.widthPt * scale
+        if (img.table != null) return w to img.heightPt * scale // laid out for the editor's width already, at its text size
         val fit = (MAX_PICTURE_SP / w).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
     }
@@ -177,6 +179,8 @@ internal object WriterBridge {
 
     /** How wide the editor's picture character is, for its size (measured by the screen; about 1 elsewhere). */
     var pictureGlyph = 1f
+    /** A line of the editor's text, top to bottom, for each point of its size. */
+    var lineRatio = 1.17f
 
     /** A picture's own run as the file had it (its letter formatting), by the picture's key. */
     val pictureRuns = HashMap<String, DocRun>()
@@ -208,7 +212,9 @@ internal object WriterBridge {
                     marks += RichTextSpanMark.Image(range, PICTURE_URL + img.key, w.sp, h.sp, "Picture")
                     // The editor cannot draw it (Writer does, over the text): the character is made as tall as the
                     // picture, so its line makes room, and invisible.
-                    val size = (h * 1.12f).coerceAtLeast(4f) // a letter's rise is ~0.9 of its size
+                    // A table is a line of its own: its letter's whole line (rise and fall) is the table's height, and it is
+                    // drawn from the line's top — standing on the baseline, the fall left a gap a quarter of its height.
+                    val size = (if (img.table != null) h / lineRatio else h * 1.12f).coerceAtLeast(4f) // a letter's rise is ~0.9 of its size
                     marks += RichTextSpanMark.FontSize(range, size.sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
@@ -229,12 +235,14 @@ internal object WriterBridge {
         }
         // A line break inside a paragraph (the editor draws U+2028 as a box): the lines after it are the editor's own
         // "from a line break" lines, joined back into the paragraph by fromEditor.
-        return RichTextDocument(doc.paras.flatMap { p ->
+        return RichTextDocument(doc.paras.flatMapIndexed { index, p ->
             // A table: one character in the editor, standing for it (as a picture's does); it comes back as it went.
+            // Known by its place, not its contents: a cell's edit changed its key under the Table tab (the next change
+            // went to a table no longer shown), and two tables alike shared one.
             p.table?.let { t ->
                 val (width, height) = tableSize(doc, t, styles)
-                val img = DocImage("t" + t.hashCode().toUInt().toString(16), null, width, height, table = t)
-                return@flatMap listOf(block(p, listOf(DocRun(OBJECT_MARK.toString(), image = img)), false))
+                val img = DocImage("t$index", null, width, height, table = t)
+                return@flatMapIndexed listOf(block(p, listOf(DocRun(OBJECT_MARK.toString(), image = img)), false))
             }
             val lines = mutableListOf(mutableListOf<DocRun>())
             for (r in OfficeFormats.tidy(p.runs)) r.text.split(LINE_BREAK).forEachIndexed { i, piece ->
@@ -296,16 +304,52 @@ internal object WriterBridge {
     }
 
     /** How big a table stands in the editor: exactly the same layout as on its page. */
-    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles)
+    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles, editorWidthSp / (BASE_SP / doc.basePt))
+
+    /** How wide the editor's text is (sp), so a table is laid out to fit it; set by the screen. */
+    var editorWidthSp = 320f
 
     fun cellText(cell: DocCell) = cell.paras.joinToString("\n") { it.text }
 
-    /** A changed cell keeps its first paragraph and first run's look; the grid edits only its text. */
+    /**
+     * A cell's text edited in its box: only the stretch that changed is replaced, so every other word keeps its own
+     * look and every paragraph its own style (asked 2026-09-28: editing one letter made the whole cell look like its
+     * first word). Text typed over text takes the look of what it replaces, else of the letter before it; a new line is a new paragraph like the one it
+     * was typed in.
+     */
     fun withCellText(cell: DocCell, text: String): DocCell {
-        if (cellText(cell) == text) return cell
-        val para = cell.paras.firstOrNull { it.table == null } ?: DocPara(emptyList())
-        val run = para.runs.firstOrNull { it.image == null } ?: DocRun("")
-        return cell.copy(paras = text.split('\n').map { line -> para.copy(runs = listOf(run.copy(text = line, image = null)), table = null) })
+        val old = cellText(cell)
+        if (old == text) return cell
+        var pre = 0
+        while (pre < old.length && pre < text.length && old[pre] == text[pre]) pre++
+        var suf = 0
+        while (suf < old.length - pre && suf < text.length - pre && old[old.length - 1 - suf] == text[text.length - 1 - suf]) suf++
+        val paras = cell.paras.ifEmpty { listOf(DocPara(listOf(DocRun("")))) }
+        // Where a place in the cell's text falls: which paragraph, how far into it.
+        val starts = paras.runningFold(0) { at, p -> at + p.text.length + 1 }
+        fun locate(pos: Int) = paras.indices.first { pos <= starts[it] + paras[it].text.length }.let { it to pos - starts[it] }
+        fun cut(runs: List<DocRun>, from: Int, to: Int): List<DocRun> {
+            var at = 0
+            return runs.mapNotNull { r -> val s = at; at += r.text.length
+                val a = maxOf(from, s); val b = minOf(to, at)
+                if (a < b) r.copy(text = r.text.substring(a - s, b - s)) else null }
+        }
+        val (a, ao) = locate(pre)
+        val (b, bo) = locate(old.length - suf)
+        // The look of the letter replaced, or (only typed) of the letter before.
+        val runs = paras[a].runs
+        val letter = if (b > a || bo > ao) ao else ao - 1
+        var at = 0
+        val look = (runs.firstOrNull { r -> at += r.text.length; letter >= 0 && letter < at && r.image == null }
+            ?: runs.firstOrNull { it.image == null } ?: DocRun("")).copy(image = null)
+        fun para(p: DocPara, runs: List<DocRun>) = p.copy(runs = OfficeFormats.tidy(runs).ifEmpty { listOf(look.copy(text = "")) })
+        val lines = text.substring(pre, text.length - suf).split('\n')
+        val left = cut(paras[a].runs, 0, ao); val right = cut(paras[b].runs, bo, paras[b].text.length)
+        val middle = if (lines.size == 1) listOf(para(paras[a], left + look.copy(text = lines[0]) + right))
+            else listOf(para(paras[a], left + look.copy(text = lines[0]))) +
+                lines.subList(1, lines.size - 1).map { para(paras[a], listOf(look.copy(text = it))) } +
+                para(paras[b], listOf(look.copy(text = lines.last())) + right)
+        return cell.copy(paras = paras.subList(0, a) + middle + paras.subList(b + 1, paras.size))
     }
 
     /** Adds a plain row with the last row's cell geometry/look, but not its heading or vertical-merge flags. */
@@ -320,40 +364,116 @@ internal object WriterBridge {
         return table.copy(rows = table.rows + DocRow(props, cells))
     }
 
-    /** A plain Word table. The document's own page width determines the visible column widths. */
-    fun newTable(rows: Int, columns: Int): DocTable {
+    /** A plain Word table, [widthPt] wide in equal columns (Word needs the grid to lay it out). */
+    fun newTable(rows: Int, columns: Int, widthPt: Float): DocTable {
         val border = """<w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders>"""
+        val n = columns.coerceIn(1, 5)
         val cell = DocCell("<w:tcPr/>", listOf(DocPara(listOf(DocRun("")))))
-        return DocTable("<w:tblPr>$border</w:tblPr>", "<w:tblGrid/>", List(rows.coerceIn(1, 5)) { DocRow("", List(columns.coerceIn(1, 5)) { cell.copy() }) })
+        val table = DocTable("<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>$border<w:tblLook w:val=\"04A0\"/></w:tblPr>", "<w:tblGrid/>",
+            List(rows.coerceIn(1, 5)) { DocRow("", List(n) { cell.copy() }) })
+        return withGrid(table, List(n) { widthPt * 20 / n })
     }
 
-    fun addColumn(table: DocTable): DocTable = table.copy(rows = table.rows.map { row ->
-        val source = row.cells.lastOrNull() ?: DocCell("<w:tcPr/>", listOf(DocPara(listOf(DocRun("")))))
+    // Word's column grid: the table's column widths (twentieths of a point), each cell spanning one or more of them.
+    private val GRID_COL = Regex("""<w:gridCol\b[^>]*?w:w="(\d+)"[^>]*/>""")
+    private val GRID_SPAN = Regex("""<w:gridSpan\b[^>]*?w:val="(\d+)"[^>]*/>""")
+    private val V_MERGE = Regex("""<w:vMerge\b[^>]*/>""")
+    private val TC_W = Regex("""<w:tcW\b[^>]*/>""")
+    fun gridColumns(t: DocTable) = GRID_COL.findAll(t.grid).map { it.groupValues[1].toFloat() }.toList()
+    fun span(c: DocCell) = GRID_SPAN.find(c.props)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+    /** The grid column a row's [cell] starts at. */
+    fun gridStart(row: DocRow, cell: Int) = row.cells.take(cell).sumOf { span(it) }
+    fun gridCount(t: DocTable) = maxOf(gridColumns(t).size, t.rows.maxOfOrNull { r -> r.cells.sumOf { span(it) } } ?: 1)
+    // The order Word's schema keeps a cell's properties in; Word calls a file damaged when they are out of it.
+    private val TC_ORDER = listOf("cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar", "textDirection", "tcFitText", "vAlign", "hideMark")
+    /** [xml] (one property) put into a cell's properties in its place. */
+    private fun prop(raw: String, xml: String): String {
+        if ("</w:tcPr>" !in raw) return "<w:tcPr>$xml</w:tcPr>"
+        val name = Regex("""<w:(\w+)""").find(xml)!!.groupValues[1]
+        val later = TC_ORDER.drop(TC_ORDER.indexOf(name) + 1).mapNotNull { n -> Regex("""<w:$n[\s/>]""").find(raw)?.range?.first }.minOrNull()
+        val at = later ?: raw.lastIndexOf("</w:tcPr>")
+        return raw.substring(0, at) + xml + raw.substring(at)
+    }
+    private fun withSpan(props: String, n: Int) = GRID_SPAN.replace(props, "").let { if (n > 1) prop(it, "<w:gridSpan w:val=\"$n\"/>") else it }
+
+    /** [cols] as the table's grid, and every cell as wide as the columns it spans (Word reads both). */
+    private fun withGrid(t: DocTable, cols: List<Float>): DocTable {
+        val grid = "<w:tblGrid>" + cols.joinToString("") { "<w:gridCol w:w=\"${it.roundToInt()}\"/>" } + "</w:tblGrid>"
+        return t.copy(grid = grid, rows = t.rows.map { row ->
+            var g = 0
+            row.copy(cells = row.cells.map { c ->
+                val w = cols.subList(g.coerceAtMost(cols.size), (g + span(c)).coerceAtMost(cols.size)).sum().roundToInt()
+                g += span(c)
+                c.copy(props = prop(TC_W.replace(c.props, ""), "<w:tcW w:w=\"$w\" w:type=\"dxa\"/>"))
+            })
+        })
+    }
+
+    /** A plain cell after [source]: its look and borders, none of its merging, its text emptied. */
+    private fun emptyLike(source: DocCell): DocCell {
         val para = source.paras.firstOrNull { it.table == null } ?: DocPara(emptyList())
         val run = para.runs.firstOrNull { it.image == null } ?: DocRun("")
-        val props = source.props.replace(Regex("""<w:(?:gridSpan|vMerge)\b[^>]*/>"""), "")
-        row.copy(cells = row.cells + DocCell(props, listOf(para.copy(runs = listOf(run.copy(text = "", image = null)), table = null))))
-    })
+        return DocCell(withSpan(V_MERGE.replace(source.props, ""), 1), listOf(para.copy(runs = listOf(run.copy(text = "", image = null)), table = null)))
+    }
 
-    /** Merges a simple rectangular range. Existing merged cells are left untouched rather than guessed at. */
-    fun merge(table: DocTable, top: Int, left: Int, rows: Int, columns: Int): DocTable? {
-        if (rows * columns < 2 || top !in table.rows.indices) return null
-        val selected = table.rows.drop(top).take(rows)
-        if (selected.size != rows || selected.any { left < 0 || left + columns > it.cells.size }) return null
-        if (selected.flatMap { it.cells.subList(left, left + columns) }.any { "gridSpan" in it.props || "vMerge" in it.props }) return null
-        fun prop(raw: String, xml: String): String = if ("</w:tcPr>" in raw) raw.replace("</w:tcPr>", "$xml</w:tcPr>") else "<w:tcPr>$xml</w:tcPr>"
-        val joined = selected.flatMap { it.cells.subList(left, left + columns) }.flatMap { it.paras }.ifEmpty { listOf(DocPara(listOf(DocRun("")))) }
-        val out = table.rows.toMutableList()
-        repeat(rows) { r ->
-            val old = out[top + r]
-            val kept = old.cells.toMutableList().apply { repeat(columns) { removeAt(left) } }
-            var props = selected[r].cells[left].props
-            if (columns > 1) props = prop(props, "<w:gridSpan w:val=\"$columns\"/>")
-            if (rows > 1) props = prop(props, if (r == 0) "<w:vMerge w:val=\"restart\"/>" else "<w:vMerge/>")
-            kept.add(left, DocCell(props, if (r == 0) joined else listOf(DocPara(listOf(DocRun(""))))))
-            out[top + r] = old.copy(cells = kept)
+    /**
+     * A column added on the right, as wide as a share of the table: the others narrow so the table stays as wide
+     * as it was, as Word does.
+     */
+    fun addColumn(table: DocTable): DocTable {
+        val n = gridCount(table)
+        val rows = table.rows.map { row ->
+            row.copy(cells = row.cells + emptyLike(row.cells.lastOrNull() ?: DocCell("<w:tcPr/>", listOf(DocPara(listOf(DocRun("")))))))
         }
-        return table.copy(rows = out)
+        val cols = gridColumns(table).takeIf { it.size == n } ?: return table.copy(rows = rows)
+        val total = cols.sum()
+        return withGrid(table.copy(rows = rows), cols.map { it * n / (n + 1) } + total / (n + 1))
+    }
+
+    /** The right-hand column taken away (a cell spanning it narrows); the others widen to keep the table's width. */
+    fun deleteColumn(table: DocTable): DocTable? {
+        val n = gridCount(table)
+        if (n < 2) return null
+        val rows = table.rows.map { row ->
+            val last = row.cells.lastOrNull() ?: return@map row
+            if (gridStart(row, row.cells.lastIndex) + span(last) < n) row // this row stops short of the last column
+            else if (span(last) > 1) row.copy(cells = row.cells.dropLast(1) + last.copy(props = withSpan(last.props, span(last) - 1)))
+            else row.copy(cells = row.cells.dropLast(1))
+        }
+        if (rows.any { it.cells.isEmpty() }) return null
+        val cols = gridColumns(table).takeIf { it.size == n } ?: return table.copy(rows = rows)
+        val kept = cols.dropLast(1)
+        return withGrid(table.copy(rows = rows), kept.map { it * cols.sum() / kept.sum() })
+    }
+
+    /**
+     * Merges [rows] × [columns] grid columns from row [top], grid column [left]: each row's cells there become one
+     * spanning them, the first row's holding all their text and the rows below continuing it down. Refused (null)
+     * when the rectangle cuts through a cell, or holds cells already merged down.
+     */
+    fun merge(table: DocTable, top: Int, left: Int, rows: Int, columns: Int): DocTable? {
+        if (rows * columns < 2 || top < 0 || top + rows > table.rows.size) return null
+        val out = table.rows.toMutableList()
+        val joined = ArrayList<DocPara>()
+        for (r in 0 until rows) {
+            val row = table.rows[top + r]
+            val first = row.cells.indices.firstOrNull { gridStart(row, it) == left } ?: return null
+            var covered = 0; var k = first
+            while (covered < columns && k < row.cells.size) { covered += span(row.cells[k]); k++ }
+            if (covered != columns) return null
+            val taken = row.cells.subList(first, k)
+            if (taken.any { V_MERGE.containsMatchIn(it.props) }) return null
+            joined += taken.flatMap { it.paras }.filter { p -> p.table != null || p.text.isNotEmpty() || p.runs.any { it.image != null } }
+            var props = withSpan(taken.first().props, columns)
+            if (rows > 1) props = prop(props, if (r == 0) "<w:vMerge w:val=\"restart\"/>" else "<w:vMerge/>")
+            val merged = DocCell(props, if (r == 0) emptyList() else emptyLike(taken.first()).paras)
+            out[top + r] = row.copy(cells = row.cells.subList(0, first) + merged + row.cells.subList(k, row.cells.size))
+        }
+        val head = out[top]
+        val at = head.cells.indices.first { gridStart(head, it) == left }
+        out[top] = head.copy(cells = head.cells.toMutableList().also { it[at] = it[at].copy(paras = joined.ifEmpty { emptyLike(table.rows[top].cells[at]).paras }) })
+        val cols = gridColumns(table)
+        return table.copy(rows = out).let { if (cols.size == gridCount(table)) withGrid(it, cols) else it }
     }
 
     /** The line break itself takes the look of the text after it (or before it, at a paragraph's end). */
@@ -530,6 +650,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
     remember { OfficeFonts.assets = context.applicationContext.assets }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
+    remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
+    // The page's text is the screen less its margins (10 + 22 dp a side, below).
+    WriterBridge.editorWidthSp = with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var documentStyles by remember { mutableStateOf<DocStyles>(DocStyles.Plain) }
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
@@ -887,13 +1010,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     placed.forEach { (i, img, at) ->
                                         val (left, bottom) = at
                                         val (w, h) = WriterBridge.shownSize(img, scale)
-                                        val y = with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
+                                        val y = if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
+                                            else with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         val shownWidth = with(density) { w.sp.toPx() }
                                         val shownHeight = with(density) { h.sp.toPx() }
                                         val selected = selectedPicture?.first == i
                                         val table = img.table
-                                        val cells = table?.let { OfficePages.tableCells(meta, it, documentStyles) }.orEmpty()
+                                        // A table is laid out once (not on every keystroke) and drawn as page view draws it: sharp however long.
+                                        val laidTable by produceState<Pair<LaidPage, List<TableCellArea>>?>(null, img, meta.basePt, documentStyles, packageParts) {
+                                            value = table?.let { t -> withContext(Dispatchers.Default) { runCatching {
+                                                val areas = ArrayList<TableCellArea>()
+                                                OfficePages.tableLaid(meta, t, documentStyles, img.widthPt, areas) { n -> n.bytes ?: n.part?.let { packageParts[it] } } to areas
+                                            }.onFailure { Log.e("Writer", "table", it) }.getOrNull() } }
+                                        }
+                                        val cells = laidTable?.second.orEmpty()
                                         val objectInput = if (table != null) Modifier.pointerInteropFilter { event ->
                                             if (event.action == android.view.MotionEvent.ACTION_UP) {
                                                 commitCell()
@@ -931,7 +1062,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                             .then(if (selected) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
                                             .then(objectInput),
                                             contentAlignment = Alignment.Center) {
-                                            Image(picturePainter(img, packageParts, meta, documentStyles), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
+                                            if (table != null) androidx.compose.foundation.Canvas(Modifier.matchParentSize().background(Color.White)) {
+                                                laidTable?.first?.let { laid -> drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val s = this.size.width / laid.page.width
+                                                    n.save(); n.scale(s, s); laid.draw(n); n.restore()
+                                                } }
+                                            } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape): a grey box that says what it is, kept in the file as it was.
                                             if (pictureBytes(img) == null && img.table == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             val edit = cellEdit?.takeIf { it.ref.key == img.key }
@@ -1102,20 +1238,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 WriterTab.Table -> {
                     val (at, key) = selectedPicture ?: (0 to "")
-                    val img = pictures[key]
-                    val table = img?.table
+                    val table = pictures[key]?.table
+                    // The cell being typed in is put into the table first, and the change made to the table as it then is
+                    // (made to the table from before it, the typing was lost).
+                    fun change(said: String? = null, f: (DocTable) -> DocTable?) {
+                        commitCell()
+                        val key = selectedPicture?.second ?: return
+                        val img = pictures[key] ?: return
+                        f(img.table ?: return)?.let { changeTable(key, img, it) } ?: run { message = said }
+                    }
                     listOf({
                         RibbonButton("Layout", w, enabled = table != null) { commitCell(); editingTable = true }
-                        RibbonButton("Add row", w, enabled = table != null) { commitCell(); changeTable(key, img!!, WriterBridge.addRow(table!!)) }
-                        RibbonButton("Add column", w, enabled = table != null) { commitCell(); changeTable(key, img!!, WriterBridge.addColumn(table!!)) }
+                        RibbonButton("Add row", w, enabled = table != null) { change { WriterBridge.addRow(it) } }
+                        RibbonButton("Add column", w, enabled = table != null) { change { WriterBridge.addColumn(it) } }
                     }, {
-                        RibbonButton("Delete last row", w, enabled = table != null && table.rows.size > 1) {
-                            commitCell()
-                            changeTable(key, img!!, table!!.copy(rows = table.rows.dropLast(1)))
-                        }
-                        RibbonButton("Delete last column", w, enabled = table != null && table.rows.all { it.cells.size > 1 }) {
-                            commitCell()
-                            changeTable(key, img!!, table!!.copy(rows = table.rows.map { it.copy(cells = it.cells.dropLast(1)) }))
+                        RibbonButton("Delete last row", w, enabled = table != null && table.rows.size > 1) { change { it.copy(rows = it.rows.dropLast(1)) } }
+                        RibbonButton("Delete last column", w, enabled = table != null && WriterBridge.gridCount(table) > 1) {
+                            change("This column cannot be taken away.") { WriterBridge.deleteColumn(it) }
                         }
                         RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = table != null) {
                             commitCell()
@@ -1249,12 +1388,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             },
             confirmButton = { TextButton(onClick = {
                 insertingTable = false
-                val table = WriterBridge.newTable(rows, columns)
+                val table = WriterBridge.newTable(rows, columns, documentStyles.page.textWidth)
                 val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
                 val img = DocImage("t" + java.util.UUID.randomUUID(), null, width, height, table = table)
                 val at = placePicture(img)
                 state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
-                selectedCell = TableCellRef(img.key, 0, 0)
+                selectedCell = selectedPicture?.second?.let { TableCellRef(it, 0, 0) } // the key it is shown by, now
                 tab = WriterTab.Table
             }) { Text("Insert") } },
             dismissButton = { TextButton(onClick = { insertingTable = false }) { Text("Cancel") } },
@@ -1271,7 +1410,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 var mergeRows by remember(img, startRow, startColumn) { mutableIntStateOf(1) }
                 var mergeColumns by remember(img, startRow, startColumn) { mutableIntStateOf(1) }
                 val maxRows = minOf(5, draft.rows.size - startRow)
-                val maxColumns = minOf(5, draft.rows.drop(startRow).take(maxRows).minOfOrNull { it.cells.size - startColumn } ?: 1).coerceAtLeast(1)
+                // Counted in the table's grid columns, as the merge is: a cell already spanning two counts as two.
+                val gridLeft = draft.rows.getOrNull(startRow)?.let { WriterBridge.gridStart(it, startColumn) } ?: 0
+                val maxColumns = minOf(5, WriterBridge.gridCount(draft) - gridLeft).coerceAtLeast(1)
                 AlertDialog(
                     onDismissRequest = { editingTable = false },
                     title = { Text("Table layout") },
@@ -1281,8 +1422,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             TableSizeGrid(maxRows, maxColumns, mergeRows, mergeColumns) { r, c -> mergeRows = r; mergeColumns = c }
                             Text("$mergeRows × $mergeColumns selected", style = MaterialTheme.typography.bodySmall)
                             TextButton(enabled = mergeRows * mergeColumns > 1, onClick = {
-                                val merged = WriterBridge.merge(draft, startRow, startColumn, mergeRows, mergeColumns)
-                                if (merged == null) message = "Select simple, unmerged cells." else { draft = merged; mergeRows = 1; mergeColumns = 1 }
+                                val merged = WriterBridge.merge(draft, startRow, gridLeft, mergeRows, mergeColumns)
+                                if (merged == null) message = "That would cut through a merged cell." else { draft = merged; mergeRows = 1; mergeColumns = 1 }
                             }) { Text("Merge selected cells") }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(onClick = { draft = WriterBridge.addRow(draft) }) { Text("Add row") }
@@ -1290,7 +1431,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(enabled = draft.rows.size > 1, onClick = { draft = draft.copy(rows = draft.rows.dropLast(1)) }) { Text("Delete last row") }
-                                TextButton(enabled = draft.rows.all { it.cells.size > 1 }, onClick = { draft = draft.copy(rows = draft.rows.map { it.copy(cells = it.cells.dropLast(1)) }) }) { Text("Delete last column") }
+                                TextButton(enabled = WriterBridge.gridCount(draft) > 1, onClick = { WriterBridge.deleteColumn(draft)?.let { draft = it } ?: run { message = "This column cannot be taken away." } }) { Text("Delete last column") }
                             }
                         }
                     },
@@ -1311,7 +1452,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             fun setA(v: Float, typed: String? = null) { a = v.coerceIn(1f, 10000f); across = typed ?: a.roundToInt().toString(); if (chained) { d = (a * ratio).coerceAtLeast(1f); down = d.roundToInt().toString() } }
             fun setD(v: Float, typed: String? = null) { d = v.coerceIn(1f, 10000f); down = typed ?: d.roundToInt().toString(); if (chained) { a = (d / ratio).coerceAtLeast(1f); across = a.roundToInt().toString() } }
             val ok = across.toIntOrNull() in 1..10000 && down.toIntOrNull() in 1..10000
-            val painter = picturePainter(img, packageParts, meta, documentStyles)
+            val painter = picturePainter(img, packageParts)
             AlertDialog(
                 onDismissRequest = { sizing = false },
                 title = { Text("Picture size") },
@@ -1422,14 +1563,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
 @Composable
-private fun picturePainter(img: DocImage, parts: Map<String, ByteArray>, doc: OfficeDoc, styles: DocStyles): Painter {
-    val bitmap by produceState<ImageBitmap?>(null, img, parts, doc.basePt, styles) {
-        value = withContext(Dispatchers.Default) {
-            runCatching {
-                img.table?.let { table -> OfficePages.tableBitmap(doc, table, styles, 1400) { nested -> nested.bytes ?: nested.part?.let { parts[it] } } }
-                    ?: (img.bytes ?: img.part?.let { parts[it] })?.let { decodePicture(it, 1400) }
-            }.getOrNull()?.asImageBitmap()
-        }
+private fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Painter {
+    val bitmap by produceState<ImageBitmap?>(null, img, parts) {
+        val bytes = img.bytes ?: img.part?.let { parts[it] }
+        value = bytes?.let { withContext(Dispatchers.IO) { runCatching { decodePicture(it, 1400)?.asImageBitmap() }.getOrNull() } }
     }
     return bitmap?.let { BitmapPainter(it) } ?: ColorPainter(Color(0xFFE3E3E3))
 }
@@ -1501,6 +1638,9 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 /** A named tool of the ribbon (Save, Heading 1…). */
 @Composable private fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
     Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+        // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
+        // ribbon moved under the finger and the tap was lost.
+        .focusProperties { canFocus = false }
         .clickable(enabled = enabled, onClick = click).padding(horizontal = 12.dp),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
 ) {

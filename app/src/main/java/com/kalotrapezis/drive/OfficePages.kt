@@ -529,10 +529,31 @@ internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val bo
 }
 
 internal object OfficePages {
-    internal fun fittedTableColumns(columns: List<Float>, width: Float, indent: Float): List<Float> {
+    /**
+     * A table's columns fitted into [width] when wider: each keeps at least [least] (its longest word, when known),
+     * and what is left is shared in proportion to what they had over that — so on a phone a column of short numbers
+     * narrows and a column of words keeps its words whole, rather than every column shrinking alike.
+     */
+    internal fun fittedTableColumns(columns: List<Float>, width: Float, indent: Float, least: List<Float> = emptyList()): List<Float> {
         val limit = (width - indent.coerceAtLeast(0f)).coerceAtLeast(1f)
-        val ratio = (limit / columns.sum()).coerceAtMost(1f)
-        return columns.map { it * ratio }
+        if (columns.sum() <= limit) return columns
+        val need = columns.indices.map { (least.getOrNull(it) ?: 0f).coerceAtMost(columns[it]) }
+        if (need.sum() >= limit) return need.sum().let { n -> if (n > 0f) need.map { it * limit / n } else columns.map { it * limit / columns.sum() } }
+        val over = columns.indices.map { columns[it] - need[it] }
+        return columns.indices.map { need[it] + (limit - need.sum()) * over[it] / over.sum() }
+    }
+
+    /** The widest word of a cell's paragraphs (pt), in their own sizes and fonts: less than this, a word breaks. */
+    private fun longestWord(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles): Float {
+        val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG)
+        return paras.filter { it.table == null }.maxOfOrNull { p ->
+            val look = styles.look(p)
+            p.runs.filter { it.image == null }.maxOfOrNull { r ->
+                paint.textSize = r.sizePt ?: look.sizePt ?: doc.basePt
+                paint.typeface = OfficeFonts.styled(OfficeFonts.typeface(styles.fontName(r.font) ?: look.font), r.bold || look.bold == true, r.italic || look.italic == true)
+                r.text.split(' ', '\t', LINE_BREAK).maxOfOrNull { paint.measureText(it) } ?: 0f
+            } ?: 0f
+        } ?: 0f
     }
 
     /** Word's default tab stops: every half inch. */
@@ -629,10 +650,12 @@ internal object OfficePages {
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 
-    /** The same table layout used on a page, as one block for the editor's preview. */
-    private fun tableBlock(doc: OfficeDoc, table: DocTable, styles: DocStyles, pictureBytes: (DocImage) -> ByteArray?,
+    /**
+     * The same table layout used on a page, as one block for the editor, [width] pt wide: the editor lays a table out as
+     * wide as its screen at its own text size, so a phone re-flows it rather than shrinking the letters.
+     */
+    private fun tableBlock(doc: OfficeDoc, table: DocTable, styles: DocStyles, width: Float, pictureBytes: (DocImage) -> ByteArray?,
         areas: MutableList<TableCellArea>? = null): Block {
-        val width = styles.page.textWidth
         val rows = tableRows(doc, table, styles, styles.page, width, pictureBytes, areas)
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
         var y = 0f
@@ -643,27 +666,19 @@ internal object OfficePages {
         return Block(y.coerceAtLeast(1f), pieces, boxes, lines)
     }
 
-    /** A table's real page width and laid-out height, used for its one-character editor stand-in. */
-    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles): Pair<Float, Float> =
-        styles.page.textWidth to tableBlock(doc, table, styles, { null }).height
+    /** A table's width (the page's text, or [most] when narrower) and laid-out height, for its editor stand-in. */
+    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles, most: Float = Float.MAX_VALUE): Pair<Float, Float> {
+        val width = minOf(styles.page.textWidth, most)
+        return width to tableBlock(doc, table, styles, width, { null }).height
+    }
 
-    fun tableCells(doc: OfficeDoc, table: DocTable, styles: DocStyles): List<TableCellArea> =
-        ArrayList<TableCellArea>().also { tableBlock(doc, table, styles, { null }, it) }
 
-    /** Draws the table exactly as page view does, for the editor. */
-    fun tableBitmap(doc: OfficeDoc, table: DocTable, styles: DocStyles, maxPixels: Int,
-        pictureBytes: (DocImage) -> ByteArray?): android.graphics.Bitmap {
-        val width = styles.page.textWidth
-        val block = tableBlock(doc, table, styles, pictureBytes)
-        val longest = maxOf(width, block.height)
-        val scale = minOf(2f, maxPixels / longest).coerceAtLeast(1f / longest)
-        val bitmap = android.graphics.Bitmap.createBitmap((width * scale).toInt().coerceAtLeast(1), (block.height * scale).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
-        canvas.scale(scale, scale)
-        LaidPage(DocPage(width = width, height = block.height, top = 0f, bottom = 0f, left = 0f, right = 0f), block.pieces,
-            boxes = block.boxes, lines = block.lines).draw(canvas)
-        return bitmap
+    /** The table laid out as page view lays it, [width] pt wide, as a page of its own the editor draws; [areas] learns its cells. */
+    fun tableLaid(doc: OfficeDoc, table: DocTable, styles: DocStyles, width: Float, areas: MutableList<TableCellArea>?,
+        pictureBytes: (DocImage) -> ByteArray?): LaidPage {
+        val block = tableBlock(doc, table, styles, width, pictureBytes, areas)
+        return LaidPage(DocPage(width = width, height = block.height, top = 0f, bottom = 0f, left = 0f, right = 0f), block.pieces,
+            boxes = block.boxes, lines = block.lines)
     }
 
     /** The page's header (from the top edge, at its distance) and footer (ending at its distance from the bottom). */
@@ -727,7 +742,18 @@ internal object OfficePages {
         val spec = styles.tableSpec(t)
         val count = spec.rows.maxOfOrNull { r -> r.cells.sumOf { it.span } } ?: 1
         val rawCols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
-        val cols = fittedTableColumns(rawCols, width, spec.indent)
+        // The least each grid column can take: the longest word of the cells in it alone, and their margins.
+        val least = if (rawCols.sum() <= width - spec.indent.coerceAtLeast(0f)) emptyList() else FloatArray(rawCols.size).also { least ->
+            t.rows.forEachIndexed { ri, row ->
+                var g = 0
+                row.cells.forEachIndexed { ci, cell ->
+                    val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@forEachIndexed
+                    if (cs.span == 1 && g < least.size) least[g] = maxOf(least[g], longestWord(doc, cell.paras, styles) + cs.margin[0] + cs.margin[2] + 1f)
+                    g += cs.span
+                }
+            }
+        }.toList()
+        val cols = fittedTableColumns(rawCols, width, spec.indent, least)
         val total = cols.sum()
         val x0 = spec.indent + when (spec.align) { DocAlign.Center -> (width - total) / 2; DocAlign.End -> width - total; else -> 0f }
         val colX = cols.runningFold(x0) { a, c -> a + c }

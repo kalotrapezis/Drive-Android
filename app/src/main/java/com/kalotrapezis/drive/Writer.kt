@@ -944,15 +944,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 BasicTextField(
                                                     value = edit.value,
                                                     onValueChange = { cellEdit = edit.copy(value = it) },
-                                                    textStyle = TextStyle(color = Color.Black, fontSize = (BASE_SP * zoom / 100).sp),
+                                                    // As big as the cell's text is drawn: its size in points, at the table's scale.
+                                                    textStyle = TextStyle(color = Color.Black, fontSize = with(density) {
+                                                        val para = table!!.rows[area.row].cells[area.cell].paras.firstOrNull()
+                                                        ((para?.let { documentStyles.look(it).sizePt } ?: meta.basePt) * shownWidth / img.widthPt).toSp()
+                                                    }),
                                                     cursorBrush = SolidColor(WORD_BLUE),
                                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                                     keyboardActions = KeyboardActions(onDone = { commitCell(); keyboard?.hide() }),
-                                                    modifier = Modifier
+                                                    modifier = Modifier.align(Alignment.TopStart) // the box centres its content; the cell is placed from the corner
                                                         .offset { IntOffset((area.x / img.widthPt * shownWidth).roundToInt(), (area.y / img.heightPt * shownHeight).roundToInt()) }
                                                         .size(with(density) { (area.width / img.widthPt * shownWidth).toDp() }, with(density) { (area.height / img.heightPt * shownHeight).toDp() })
-                                                        .background(Color.White.copy(alpha = 0.96f)).border(2.dp, WORD_BLUE)
-                                                        .padding(4.dp).focusRequester(focus).onFocusChanged { f ->
+                                                        .background(Color.White).border(2.dp, WORD_BLUE)
+                                                        .padding(horizontal = 2.dp).focusRequester(focus).onFocusChanged { f ->
                                                             if (f.isFocused) hadFocus = true else if (hadFocus) commitCell()
                                                         },
                                                 )

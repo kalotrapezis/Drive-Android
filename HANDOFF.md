@@ -1,3 +1,46 @@
+# 28 September, night — notes fixes, the table work reviewed and finished, ODT tables, picture tools
+
+State: `writer-library`; all unit tests pass (TableEditTest new); the build is on the emulator, **not on the phone or
+tablet** (neither was connected). Desktop notes changes are on Drive `bidirectional-sync`.
+
+**Notes (both apps, asked tonight):** tags are called labels everywhere; a label no note outside the Trash carries is
+gone (drawer, label sheet, chosen label); search and a chosen label look through every note but the Trash from any
+page (Trash page's "Empty"/"Delete for good" only on the Trash page itself); desktop cards keep a header row for the
+select circle (no re-flow on hover). Android: Settings › Text editor › "Open .txt files here" (on) — Files opens .txt
+in the Text editor.
+
+**ChatGPT's table work, reviewed** (commits 7613a78, 7ba893d): usable start, several real bugs, all fixed here — the
+cell box opened over the wrong cell (a centred Box plus an offset); editing a cell flattened every run to the first
+one's look; merge/add column counted cells, not Word's grid, and wrote tcPr children out of schema order (Word may call
+that damaged); ribbon actions after typing in a cell lost the typing (a table's key was its content hash — now its
+place, `t<index>`) and the tap itself (buttons took focus → keyboard closed → ribbon moved: RibbonButton and Tool are
+now `canFocus = false`).
+
+**Tables now** (`TableEdit.kt`: a grid model of blocks, every structural change goes through it; `WriterTable.kt`: UI):
+- Editor draws a table at the body's text size, as wide as the screen (columns keep their longest word —
+  `fittedTableColumns(least=)`), vector-drawn (`tableLaid`), no gap under it (its letter's line = its height).
+- A cell: tap → typed in place (its shading, margins, vertical alignment); Home formats the cell's text while typing
+  (selection or whole cell); only what changed is replaced (`withCellText` diff).
+- Table tab (3 to a page): Row above/below · Merge (tap first then last cell; the rectangle lights up, grown around
+  merged cells) · Column left/right · Split (a merged cell back, or evenly into more) · Delete row/column/table ·
+  4 styles · Shading · More… = Table properties with tabs Table/Row/Column/Cell/Borders (the user's ⋯ rule, see
+  memory). Units: cm.
+- Pages: vertical text (btLr/tbRl, aligned across as Word), a nested table's edge kept (cell lines under content),
+  Word table-style conditional formatting (header/first col/bands/last row/corners from tblLook; a cell's own shd —
+  even fill=auto — wins).
+- ODT tables kept (no longer copy-only): attributes/columns/rows/cells raw (`ODT_HEADER`, `ODT_COVERED` marks),
+  drawn from their column/row/cell styles. Only text editing for now: structure tools are Word-only (they write w: XML).
+  Pater Imon Askisi written back: LibreOffice identical; a cell edited on the emulator and saved: identical but the edit.
+
+**Pictures:** Turn left/right, Flip (a new picture, like Crop), Replace. No grey block behind a selected object.
+
+**Checked:** LibreOffice renders of 02_Tables after merge/add column/edit (XML inspected: grid widths, tcW, order);
+a hand-made conditional-style table vs LibreOffice. **Known:** Tetra lacks DejaVu Sans (02_Tables' font), so its pages
+fit more per line than this machine's LibreOffice; floating pictures still sit in line in the editor (the rich-text
+editor cannot flow text around them); floating pictures inside cells are left out on the pages; ODT structure editing.
+
+---
+
 # 28 September, late evening — Word table editing complete
 
 State: branch `writer-library`; 133 unit tests pass; debug build installed on the phone (`208c8192`) and emulator.

@@ -63,14 +63,14 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [ ] **Line spacing** quick button on Home (1 · 1.15 · 1.5 · 2)
 - [ ] **⋯ at the end of Home → Paragraph page**: the same settings for this paragraph only, and "Edit its style"
 - [ ] **Page format**: margins, orientation, paper size (Layout)
-- [ ] **Table format** (with tables)
+- [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
 - [ ] **Bibliography / citations** (references list, citation style — APA etc.)
 - [ ] The editor cannot show space between paragraphs (library limit); what is set is saved and shows in Word,
       LibreOffice and Export PDF
 
 ### Insert
 - [x] Link
-- [ ] Table (insert, add/remove rows and columns, cell text)
+- [x] Table (insert 5×5 picker, rows/columns at the cell, merge by tapping two cells, split, cell text in place with Home formatting; .odt tables kept, text only)
 - [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
 - [x] Pictures shown on the page (Writer draws them over the text; a chart or shape is a grey box; a floating picture shows in line for now)
 - [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt

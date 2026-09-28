@@ -34,7 +34,7 @@ import org.w3c.dom.Element
 /** A page: its size and margins in points. */
 internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9f, val top: Float = 56.7f, val bottom: Float = 56.7f,
     val left: Float = 56.7f, val right: Float = 56.7f, val header: Float = 35.4f, val footer: Float = 35.4f /* from the page's edge */) {
-    val textWidth get() = (width - left - right).coerceAtLeast(72f)
+    val textWidth get() = (width - left - right).coerceAtLeast(8f)
 }
 
 /** How a paragraph is laid out: spacing (pt), line spacing (a multiple, or exact pt), indents (pt), its text's look. */
@@ -77,6 +77,17 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
 internal data class DocSection(val page: DocPage, val headers: Map<String, List<DocPara>> = emptyMap(), val footers: Map<String, List<DocPara>> = emptyMap(),
     val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false)
 
+/**
+ * A table as the pages need it: column widths, indent and alignment; each row's height ("at least", or exact) and
+ * whether it is a heading row (repeated on each page); each cell's column span, vertical merge ('n' none, 'r' starts,
+ * 'c' goes on), shading, vertical alignment ('t', 'c', 'b'), margins (left, top, right, bottom) and borders (top, left,
+ * bottom, right; null: none).
+ */
+internal class TableSpec(val cols: List<Float>, val indent: Float, val align: DocAlign, val rows: List<RowSpec>)
+internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boolean, val cells: List<CellSpec>)
+internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>)
+internal class Border(val width: Float, val color: Int)
+
 /** The document's styles, as far as laying it out needs them: its sections, and each paragraph's look. */
 internal abstract class DocStyles {
     /** The document's last section (a file without section breaks has only this one). */
@@ -87,6 +98,11 @@ internal abstract class DocStyles {
     open fun sections(paras: List<DocPara>): List<DocSection> = List(paras.size) { section }
     /** Even pages have headers and footers of their own. */
     open val evenAndOdd = false
+    /** A table's geometry; by default columns of equal width, thin black borders. */
+    open fun tableSpec(t: DocTable): TableSpec {
+        val thin = Border(0.5f, 0)
+        return TableSpec(emptyList(), 0f, DocAlign.Start, t.rows.map { r -> RowSpec(null, false, false, r.cells.map { CellSpec(1, 'n', null, 't', floatArrayOf(5.4f, 0f, 5.4f, 0f), arrayOf(thin, thin, thin, thin)) }) })
+    }
     /** Where a list item's text starts and its number or bullet hangs (pt), by the file's own list when it has one. */
     open fun listIndent(p: DocPara): Pair<Float, Float> = (36f * (p.list!!.level + 1)) to 18f
     /** A run's font name from its raw settings (Word's rFonts, ODF's font attributes). */
@@ -131,6 +147,7 @@ internal abstract class DocStyles {
 /** Word: page from the last sectPr; looks from docDefaults, the style chain and the paragraph's own pPr. */
 private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val styles = HashMap<String, Element>() // paragraph styleId → style
+    private val tableStyles = HashMap<String, Element>() // table styleId → style
     private val byName = HashMap<String, String>() // name, lowercased → styleId
     private var defaultStyle: String? = null
     private var defaults: Element? = null // docDefaults
@@ -150,6 +167,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val dir = documentPath(parts).substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
         parts[dir + "styles.xml"]?.let { OfficeFormats.parse(it).documentElement }?.let { root ->
             defaults = root.kid(W, "docDefaults")
+            for (s in root.kids().filter { it.localName == "style" && it.attr(W, "type") == "table" }) s.attr(W, "styleId")?.let { tableStyles[it] = s }
             for (s in root.kids().filter { it.localName == "style" && it.attr(W, "type") == "paragraph" }) {
                 val id = s.attr(W, "styleId") ?: continue
                 styles[id] = s
@@ -199,6 +217,60 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false,
             pageStart = numbers?.attr(W, "start")?.toIntOrNull(), pageFormat = numbers?.attr(W, "fmt") ?: "decimal",
             continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous")
+    }
+
+    override fun tableSpec(t: DocTable): TableSpec {
+        fun el(xml: String) = runCatching { OfficeFormats.parse("<x xmlns:w=\"$W\">$xml</x>".toByteArray()).documentElement }.getOrNull()
+        fun tw(e: Element?, n: String = "w") = e?.attr(W, n)?.toFloatOrNull()?.div(20f)
+        fun border(e: Element): Border? {
+            val v = e.attr(W, "val")
+            if (v == null || v == "nil" || v == "none") return null
+            val sz = (e.attr(W, "sz")?.toFloatOrNull() ?: 4f) / 8f // eighths of a point
+            return Border(if (v == "double") sz * 3 else sz.coerceAtLeast(0.25f), e.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: 0)
+        }
+        fun edge(name: String) = when (name) { "start" -> "left"; "end" -> "right"; else -> name }
+        val tblPr = el(t.props)?.kid(W, "tblPr")
+        // The table style (and the styles it is based on), then the table's own settings.
+        val chain = ArrayList<Element>()
+        var st = tableStyles[tblPr?.kid(W, "tblStyle")?.attr(W, "val")]
+        while (st != null && chain.size < 10) { chain.add(0, st); st = tableStyles[st.kid(W, "basedOn")?.attr(W, "val")] }
+        val prs = chain.mapNotNull { it.kid(W, "tblPr") } + listOfNotNull(tblPr)
+        val borders = HashMap<String, Border?>()
+        val margin = floatArrayOf(5.4f, 0f, 5.4f, 0f)
+        fun margins(pr: Element?, m: FloatArray) = pr?.kids()?.forEach { e ->
+            val v = tw(e) ?: return@forEach
+            when (edge(e.localName)) { "left" -> m[0] = v; "top" -> m[1] = v; "right" -> m[2] = v; "bottom" -> m[3] = v }
+        }
+        for (pr in prs) {
+            pr.kid(W, "tblBorders")?.kids()?.forEach { borders[edge(it.localName)] = border(it) }
+            margins(pr.kid(W, "tblCellMar"), margin)
+        }
+        val cols = el(t.grid)?.kid(W, "tblGrid")?.kids()?.filter { it.localName == "gridCol" }?.mapNotNull { tw(it) }.orEmpty()
+        val align = when (tblPr?.kid(W, "jc")?.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; else -> DocAlign.Start }
+        val gridCount = cols.size.coerceAtLeast(t.rows.maxOfOrNull { r -> r.cells.size } ?: 1)
+        val rows = t.rows.mapIndexed { ri, row ->
+            val trPr = el(row.props)?.kid(W, "trPr")
+            val h = trPr?.kid(W, "trHeight")
+            var g = 0
+            val cells = row.cells.map { c ->
+                val tcPr = el(c.props)?.kid(W, "tcPr")
+                val span = tcPr?.kid(W, "gridSpan")?.attr(W, "val")?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                val merge = tcPr?.kid(W, "vMerge")?.let { if (it.attr(W, "val") == "restart") 'r' else 'c' } ?: 'n'
+                val fill = tcPr?.kid(W, "shd")?.attr(W, "fill")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) }
+                val m = margin.copyOf().also { margins(tcPr?.kid(W, "tcMar"), it) }
+                // Each edge: the table's outer border on the outside, its inner one inside; the cell's own over both.
+                val b = arrayOf(
+                    borders[if (ri == 0) "top" else "insideH"], borders[if (g == 0) "left" else "insideV"],
+                    borders[if (ri == t.rows.size - 1) "bottom" else "insideH"], borders[if (g + span >= gridCount) "right" else "insideV"])
+                tcPr?.kid(W, "tcBorders")?.kids()?.forEach { e ->
+                    when (edge(e.localName)) { "top" -> b[0] = border(e); "left" -> b[1] = border(e); "bottom" -> b[2] = border(e); "right" -> b[3] = border(e) }
+                }
+                g += span
+                CellSpec(span, merge, fill, when (tcPr?.kid(W, "vAlign")?.attr(W, "val")) { "center" -> 'c'; "bottom" -> 'b'; else -> 't' }, m, b)
+            }
+            RowSpec(tw(h, "val"), h?.attr(W, "hRule") == "exact", trPr?.kid(W, "tblHeader").let { it != null && it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } }, cells)
+        }
+        return TableSpec(cols, tw(tblPr?.kid(W, "tblInd")) ?: 0f, align, rows)
     }
 
     override fun sections(paras: List<DocPara>): List<DocSection> {
@@ -416,8 +488,12 @@ internal fun odfLength(v: String?): Float? = v?.let { Regex("""^(-?[\d.]+)(cm|mm
 
 /** One page, laid out: pieces of paragraphs (some of their lines) and where they go, and floating pictures. */
 internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: List<Floating> = emptyList(),
-    val section: DocSection = DocSection(page), val number: Int = 1, val firstOfSection: Boolean = false) {
+    val section: DocSection = DocSection(page), val number: Int = 1, val firstOfSection: Boolean = false,
+    val boxes: List<Box> = emptyList(), val lines: List<Line> = emptyList()) {
     class Piece(val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float)
+    /** A table cell's shading, and a border. */
+    class Box(val x: Float, val y: Float, val w: Float, val h: Float, val color: Int)
+    class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
     class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean)
 
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's). */
@@ -426,6 +502,8 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             f.picture.setBounds(f.x.toInt(), f.y.toInt(), (f.x + f.w).toInt(), (f.y + f.h).toInt()); f.picture.draw(canvas)
         }
         floats(behind = true)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        for (b in boxes) { paint.color = 0xFF000000.toInt() or b.color; canvas.drawRect(b.x, b.y, b.x + b.w, b.y + b.h, paint) }
         for (p in pieces) {
             val top = p.layout.getLineTop(p.firstLine).toFloat()
             val bottom = p.layout.getLineBottom(p.lastLine).toFloat()
@@ -437,8 +515,16 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             p.layout.draw(canvas)
             canvas.restore()
         }
+        paint.strokeCap = android.graphics.Paint.Cap.SQUARE
+        for (l in lines) { paint.color = 0xFF000000.toInt() or l.color; paint.strokeWidth = l.width; canvas.drawLine(l.x1, l.y1, l.x2, l.y2, paint) }
         floats(behind = false)
     }
+}
+
+/** Some of a page laid out on its own (a table's row, a cell's contents): what goes where, from its top left. */
+internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val boxes: List<LaidPage.Box>, val lines: List<LaidPage.Line>) {
+    fun moved(dx: Float, dy: Float) = Block(height, pieces.map { LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x + dx, it.y + dy) },
+        boxes.map { LaidPage.Box(it.x + dx, it.y + dy, it.w, it.h, it.color) }, lines.map { LaidPage.Line(it.x1 + dx, it.y1 + dy, it.x2 + dx, it.y2 + dy, it.width, it.color) })
 }
 
 internal object OfficePages {
@@ -454,11 +540,13 @@ internal object OfficePages {
         val pages = ArrayList<LaidPage>()
         var pieces = ArrayList<LaidPage.Piece>()
         var floats = ArrayList<LaidPage.Floating>()
+        var boxes = ArrayList<LaidPage.Box>(); var lines = ArrayList<LaidPage.Line>()
         var y = page.top
         fun newPage() {
-            pages += LaidPage(page, pieces, floats, section, number, firstOfSection)
-            pieces = ArrayList(); floats = ArrayList(); y = page.top; number++; firstOfSection = false
+            pages += LaidPage(page, pieces, floats, section, number, firstOfSection, boxes, lines)
+            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); y = page.top; number++; firstOfSection = false
         }
+        fun place(b: Block) { pieces += b.pieces; boxes += b.boxes; lines += b.lines }
         val counters = IntArray(9)
         var prevLook: ParaLook? = null; var prevStyle: String? = null
         doc.paras.forEachIndexed { i, p ->
@@ -469,6 +557,21 @@ internal object OfficePages {
                     section = next; page = next.page; y = page.top; firstOfSection = true
                     next.pageStart?.let { number = it }
                 } else section = next
+            }
+            // A table: its rows, each kept whole on a page; its heading rows again at the top of each page it goes on to.
+            p.table?.let { t ->
+                val rows = tableRows(doc, t, styles, page, page.textWidth, pictureBytes)
+                val heading = rows.takeWhile { it.second }.map { it.first }
+                val limit = page.height - page.bottom
+                rows.forEachIndexed { ri, (row, _) ->
+                    if (y + row.height > limit && (pieces.isNotEmpty() || boxes.isNotEmpty() || lines.isNotEmpty())) {
+                        newPage()
+                        if (ri >= heading.size) heading.forEach { h -> place(h.moved(page.left, y)); y += h.height }
+                    }
+                    place(row.moved(page.left, y)); y += row.height
+                }
+                counters.fill(0); prevLook = null; prevStyle = null
+                return@forEachIndexed
             }
             val list = p.list
             if (list == null) counters.fill(0) else {
@@ -483,7 +586,7 @@ internal object OfficePages {
             val look = styles.look(p)
             val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
-            val (layout, shift) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating)
+            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating)
             val style = p.keep?.style + "/" + p.heading
             // Space between paragraphs: after the one before, then before this one — none between two of the same
             // style that say so (contextual spacing).
@@ -511,11 +614,11 @@ internal object OfficePages {
                 if (line < layout.lineCount) newPage()
             }
             // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
-            if (look.lineExact == null && layout.lineCount > 0) layout.lineCount.minus(1).let { last -> y += (look.lineMultiple.coerceIn(0.5f, 5f) - 1f) * (layout.bottomPt(last) - layout.topPt(last)) }
+            y += lastExtra
             if (!same || i + 1 >= doc.paras.size) y += look.after
             prevLook = look; prevStyle = style
         }
-        pages += LaidPage(page, pieces, floats, section, number, firstOfSection)
+        pages += LaidPage(page, pieces, floats, section, number, firstOfSection, boxes, lines)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 
@@ -532,30 +635,101 @@ internal object OfficePages {
         fun filled(paras: List<DocPara>) = paras.map { p -> p.copy(runs = p.runs.map { r ->
             if (PAGE_FIELD in r.text || PAGES_FIELD in r.text) r.copy(text = r.text.replace(PAGE_FIELD.toString(), number).replace(PAGES_FIELD.toString(), count.toString())) else r
         }) }
-        val extra = ArrayList<LaidPage.Piece>(); val extraFloats = ArrayList<LaidPage.Floating>()
-        fun stack(paras: List<DocPara>, top: Float): Float {
-            var y = top
-            for (p in paras) {
-                val look = styles.look(p)
-                val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
-                val (layout, shift) = paragraph(doc, p, look, styles, page, null, pictureBytes, floating)
-                y += look.before
-                extra += LaidPage.Piece(layout, 0, layout.lineCount - 1, page.left - shift, y)
-                floating.forEach { (img, place) -> extraFloats += floatAt(img, place, y, page, pictureBytes) }
-                y += layout.height / U + look.after
+        val extraFloats = ArrayList<LaidPage.Floating>()
+        val header = stack(doc, filled(which(section.headers)), styles, page, page.textWidth, pictureBytes, extraFloats, page.left, page.header).moved(page.left, page.header)
+        // The footer ends at its distance from the page's bottom.
+        val f = stack(doc, filled(which(section.footers)), styles, page, page.textWidth, pictureBytes, null, 0f, 0f)
+        val footer = f.moved(page.left, page.height - page.footer - f.height)
+        return LaidPage(page, header.pieces + footer.pieces + laid.pieces, laid.floats + extraFloats, section, laid.number, laid.firstOfSection,
+            header.boxes + footer.boxes + laid.boxes, laid.lines + header.lines + footer.lines)
+    }
+
+    /**
+     * Paragraphs (and tables) one under the other in [width], from 0,0 — a header, a footer, a table's cell. Floating
+     * pictures go to [floats] placed from ([left], [top]) when given; else (in a cell) they are left out.
+     */
+    private fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
+        floats: MutableList<LaidPage.Floating>?, left: Float, top: Float): Block {
+        val area = page.copy(width = width, left = 0f, right = 0f)
+        val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
+        var y = 0f
+        paras.forEachIndexed { i, p ->
+            p.table?.let { t ->
+                tableRows(doc, t, styles, page, width, pictureBytes).forEach { (row, _) -> val b = row.moved(0f, y); pieces += b.pieces; boxes += b.boxes; lines += b.lines; y += row.height }
+                return@forEachIndexed
             }
-            return y - top
+            val look = styles.look(p)
+            val marker = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
+            val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
+            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, area, marker, pictureBytes, floating)
+            if (i > 0) y += look.before
+            pieces += LaidPage.Piece(layout, 0, layout.lineCount - 1, -shift, y)
+            if (floats != null) floating.forEach { (img, place) -> floats += floatAt(img, place, top + y, page, pictureBytes) }
+            y += layout.height / U
+            y += lastExtra
+            y += look.after
         }
-        stack(filled(which(section.headers)), page.header)
-        val footer = filled(which(section.footers))
-        if (footer.isNotEmpty()) {
-            // Laid out once to know its height, then again where it ends at its distance from the bottom.
-            val mark = extra.size; val markF = extraFloats.size
-            val h = stack(footer, 0f)
-            while (extra.size > mark) extra.removeAt(extra.size - 1); while (extraFloats.size > markF) extraFloats.removeAt(extraFloats.size - 1)
-            stack(footer, page.height - page.footer - h)
+        return Block(y, pieces, boxes, lines)
+    }
+
+    /**
+     * A table's rows, each laid out from its top left (0 = the text's left edge), and whether it is a heading row.
+     * A row is as tall as its tallest cell (or its set height); a cell merged down over rows makes the last of them
+     * taller when it needs to.
+     */
+    private fun tableRows(doc: OfficeDoc, t: DocTable, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?): List<Pair<Block, Boolean>> {
+        val spec = styles.tableSpec(t)
+        val count = spec.rows.maxOfOrNull { r -> r.cells.sumOf { it.span } } ?: 1
+        val cols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
+        val total = cols.sum()
+        val x0 = spec.indent + when (spec.align) { DocAlign.Center -> (width - total) / 2; DocAlign.End -> width - total; else -> 0f }
+        val colX = cols.runningFold(x0) { a, c -> a + c }
+        // Each cell's place in the grid and its contents.
+        class Laid(val row: Int, val g: Int, val spec: CellSpec, val content: Block?)
+        val cells = t.rows.mapIndexed { ri, row ->
+            var g = 0
+            row.cells.mapIndexedNotNull { ci, cell ->
+                val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@mapIndexedNotNull null
+                val w = cols.subList(g.coerceAtMost(cols.size), (g + cs.span).coerceAtMost(cols.size)).sum()
+                val content = if (cs.merge == 'c') null else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f)
+                Laid(ri, g, cs, content).also { g += cs.span }
+            }
         }
-        return LaidPage(page, extra + laid.pieces, laid.floats + extraFloats, section, laid.number, laid.firstOfSection)
+        val heights = FloatArray(t.rows.size) { ri ->
+            val rs = spec.rows.getOrNull(ri)
+            // A row holds its borders too: the one above it, and the one below the last row.
+            val lines = (cells[ri].maxOfOrNull { it.spec.borders[0]?.width ?: 0f } ?: 0f) + if (ri == t.rows.size - 1) cells[ri].maxOfOrNull { it.spec.borders[2]?.width ?: 0f } ?: 0f else 0f
+            val need = lines + (cells[ri].filter { it.spec.merge == 'n' }.maxOfOrNull { it.content!!.height + it.spec.margin[1] + it.spec.margin[3] } ?: 0f)
+            when { rs?.height == null -> need; rs.exact -> rs.height; else -> maxOf(need, rs.height) }
+        }
+        // How many rows a cell that starts a vertical merge covers: the rows under it that go on in its column.
+        fun down(c: Laid): Int { var k = 1; while (c.row + k < cells.size && cells[c.row + k].any { it.g == c.g && it.spec.merge == 'c' }) k++; return k }
+        for (c in cells.flatten().filter { it.spec.merge == 'r' }) {
+            val k = down(c)
+            val have = (c.row until c.row + k).sumOf { heights[it].toDouble() }.toFloat()
+            val need = c.content!!.height + c.spec.margin[1] + c.spec.margin[3]
+            if (need > have) heights[c.row + k - 1] += need - have
+        }
+        return t.rows.indices.map { ri ->
+            val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
+            for (c in cells[ri]) {
+                if (c.spec.merge == 'c') continue // drawn by the cell above that starts it
+                val x = colX[c.g.coerceAtMost(colX.size - 1)]; val w = colX[(c.g + c.spec.span).coerceAtMost(colX.size - 1)] - x
+                val h = if (c.spec.merge == 'r') (ri until ri + down(c)).sumOf { heights[it].toDouble() }.toFloat() else heights[ri]
+                c.spec.fill?.let { boxes += LaidPage.Box(x, 0f, w, h, it) }
+                val content = c.content!!
+                val free = h - content.height - c.spec.margin[1] - c.spec.margin[3]
+                val dy = c.spec.margin[1] + when (c.spec.vAlign) { 'c' -> free / 2; 'b' -> free; else -> 0f }.coerceAtLeast(0f)
+                val placed = content.moved(x + c.spec.margin[0], dy)
+                pieces += placed.pieces; boxes += placed.boxes; lines += placed.lines
+                val b = c.spec.borders
+                b[0]?.let { lines += LaidPage.Line(x, 0f, x + w, 0f, it.width, it.color) }
+                b[1]?.let { lines += LaidPage.Line(x, 0f, x, h, it.width, it.color) }
+                b[2]?.let { lines += LaidPage.Line(x, h, x + w, h, it.width, it.color) }
+                b[3]?.let { lines += LaidPage.Line(x + w, 0f, x + w, h, it.width, it.color) }
+            }
+            Block(heights[ri], pieces, boxes, lines) to (spec.rows.getOrNull(ri)?.header == true)
+        }
     }
 
     /** A floating picture's place on the page: from the page, the margin, or its paragraph (at [paraTop]). */
@@ -578,7 +752,7 @@ internal object OfficePages {
     }
 
     private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, page: DocPage, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
-        floating: MutableList<Pair<DocImage, PictureXml.Place>>): Pair<StaticLayout, Float> {
+        floating: MutableList<Pair<DocImage, PictureXml.Place>>): Triple<StaticLayout, Float, Float> {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
@@ -638,8 +812,16 @@ internal object OfficePages {
         }
         val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)
         val align = when (p.align) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
+        // Word's single line is the font's height and its line gap; Android's leaves the gap out (rows came out 4% short).
+        val multiple = if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
+        // The line gap of the font most of the text is in (a paragraph in Calibri may be all Times, letter by letter).
+        val main = p.runs.filter { it.image == null }.groupBy { it.font to it.sizePt }.maxByOrNull { (_, rs) -> rs.sumOf { it.text.length } }?.value?.first()
+        val gapPaint = TextPaint(paint).apply {
+            main?.let { r -> OfficeFonts.typeface(styles.fontName(r.font))?.let { typeface = it }; r.sizePt?.let { textSize = it * U } }
+        }
+        val gap = if (look.lineExact == null) gapPaint.fontMetrics.leading * multiple else 0f
         fun build() = StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setAlignment(align)
-            .setLineSpacing(0f, if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f).setIncludePad(false)
+            .setLineSpacing(gap, multiple).setIncludePad(false)
             .setJustificationMode(if (p.align == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
             .build()
         // Tabs, left to right (Android's layout knows only left stops): each goes to the next stop after where it
@@ -655,7 +837,10 @@ internal object OfficePages {
             val gap = when (stop.type) { 'r' -> stop.pos - x - after; 'c' -> stop.pos - x - after / 2; else -> stop.pos - x }
             text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        return build() to shift
+        val laid = build()
+        // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
+        val lastExtra = if (look.lineExact == null && laid.lineCount > 0) laid.lineCount.minus(1).let { last -> (multiple - 1f) * (laid.bottomPt(last) - laid.topPt(last)) + gap / U } else 0f
+        return Triple(laid, shift, lastExtra)
     }
 
 }

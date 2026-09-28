@@ -333,3 +333,18 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
         }
     })
 }
+
+/**
+ * A picture turned a quarter ([turn] 90 or -90) or flipped (asked 2026-09-28: pictures had few tools): as with Crop,
+ * the result is a new picture, as big on the page (width and height swapped when turned), wrapped as it was.
+ * ponytail: Word's own rotation (a:xfrm rot) would keep the original; a turned copy is what LibreOffice and Word show alike.
+ */
+internal fun transformedPicture(img: DocImage, bytes: ByteArray, turn: Int, flip: Boolean): DocImage? {
+    val bitmap = decodePicture(bytes, 2400) ?: return null
+    val m = android.graphics.Matrix().apply { if (turn != 0) postRotate(turn.toFloat()); if (flip) postScale(-1f, 1f) }
+    val out = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
+    val png = img.extension == "png" || img.part?.endsWith(".png", ignoreCase = true) == true
+    val encoded = java.io.ByteArrayOutputStream().also { out.compress(if (png) android.graphics.Bitmap.CompressFormat.PNG else android.graphics.Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+    val (w, h) = if (turn != 0) img.heightPt to img.widthPt else img.widthPt to img.heightPt
+    return DocImage(img.key, null, w, h, null, encoded, if (png) "png" else "jpg", PictureXml.wrapOf(img))
+}

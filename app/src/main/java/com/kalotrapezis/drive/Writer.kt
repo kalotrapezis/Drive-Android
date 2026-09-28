@@ -762,6 +762,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
         dirty = true
     }
+    // Picture › Replace: another photo in its place, as wide as it was, wrapped as it was.
+    val replacePicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
+        val (at, key) = selectedPicture ?: return@rememberLauncherForActivityResult
+        val old = pictures[key] ?: return@rememberLauncherForActivityResult
+        if (picked != null) scope.launch {
+            val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
+            if (img == null) { message = "Could not use that picture."; return@launch }
+            changePicture(key, DocImage(key, null, old.widthPt, old.widthPt * img.heightPt / img.widthPt, null, img.bytes, img.extension, PictureXml.wrapOf(old)))
+            state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        }
+    }
+    /** Picture › Turn and Flip: done away from the screen, then shown. */
+    fun transform(turn: Int, flip: Boolean) {
+        val (at, key) = selectedPicture ?: return
+        val img = pictures[key] ?: return
+        val bytes = img.bytes ?: img.part?.let { packageParts[it] } ?: return
+        scope.launch {
+            val out = withContext(Dispatchers.Default) { runCatching { transformedPicture(img, bytes, turn, flip) }.getOrNull() }
+            if (out == null) { message = "Writer cannot turn this kind of picture."; return@launch }
+            changePicture(key, out)
+            state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        }
+    }
     fun changeTable(key: String, img: DocImage, table: DocTable) {
         val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
         changePicture(key, img.with(widthPt = width, heightPt = height, table = table))
@@ -875,9 +898,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                            // A selected picture or table has its blue frame: the selection's shading over its (invisible,
+                            // picture-tall) letter only showed as a grey block behind it.
+                            val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
+                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
+                                if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
+                            }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
                             layout?.let { l ->
                                 val text = l.layoutInput.text.text
@@ -1144,7 +1173,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                         RibbonButton("Wrap text", w, enabled = editable) { wrapping = true }
                     }, {
-                        RibbonButton("Save picture as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
+                        RibbonButton("Turn left", w, enabled = hasBytes && editable) { transform(-90, false) }
+                        RibbonButton("Turn right", w, enabled = hasBytes && editable) { transform(90, false) }
+                        RibbonButton("Flip", w, enabled = hasBytes && editable) { transform(0, true) }
+                    }, {
+                        RibbonButton("Replace", w, R.drawable.ic_gallery, enabled = editable) { replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        RibbonButton("Save as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
                         RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
                     })
                 }

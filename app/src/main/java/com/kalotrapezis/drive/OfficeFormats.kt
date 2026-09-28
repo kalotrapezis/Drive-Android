@@ -182,6 +182,10 @@ internal object PictureXml {
     }
 }
 
+/** In a header or footer laid out on the pages: the page's number, the number of pages (private-use characters). */
+internal const val PAGE_FIELD = '\uE001'
+internal const val PAGES_FIELD = '\uE002'
+
 /** A line break inside a paragraph (Shift+Enter in Word): Unicode's line separator, in a run's text. */
 internal const val LINE_BREAK = '\u2028'
 
@@ -232,6 +236,10 @@ internal enum class OfficeKind(val extension: String, val mime: String) {
 
 internal object OfficeFormats {
     /** Reads a document. Throws when the bytes are not a document Writer can read at all (encrypted, damaged…). */
+    /** A Word header's or footer's paragraphs, for the pages (page-number fields as [PAGE_FIELD] / [PAGES_FIELD]). */
+    internal fun docxPart(parts: Map<String, ByteArray>, path: String): List<DocPara> =
+        runCatching { DocxReader(parts).apply { fieldMarks = true }.readPart(path) }.getOrDefault(emptyList())
+
     fun read(bytes: ByteArray, kind: OfficeKind): OfficeDoc {
         val parts = unzip(bytes)
         return when (kind) {
@@ -442,13 +450,14 @@ internal fun Element.attr(ns: String, name: String): String? = getAttributeNS(ns
 
 internal const val W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 private const val R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+internal const val RELATIONSHIPS = R
 private const val REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
 /** A relationship's target, from the folder of the part that points at it, as a path in the package. */
-private fun resolve(dir: String, target: String): String {
+internal fun resolve(dir: String, target: String): String {
     if (target.startsWith("/")) return target.removePrefix("/")
     val out = ArrayList(dir.split('/').filter { it.isNotEmpty() })
     target.split('/').forEach { if (it == "..") out.removeLastOrNull() else if (it != "." && it.isNotEmpty()) out += it }
@@ -467,7 +476,7 @@ internal fun documentPath(parts: Map<String, ByteArray>): String {
     val root = OfficeFormats.parse(rels).documentElement
     return root.kids().firstOrNull { it.getAttribute("Type").endsWith("/officeDocument") }?.getAttribute("Target")?.removePrefix("/") ?: "word/document.xml"
 }
-private fun relsPath(part: String) = part.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" } + "_rels/" + part.substringAfterLast('/') + ".rels"
+internal fun relsPath(part: String) = part.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" } + "_rels/" + part.substringAfterLast('/') + ".rels"
 
 private class DocxReader(val parts: Map<String, ByteArray>) {
     val notes = linkedSetOf<String>()
@@ -482,6 +491,27 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val numStart = HashMap<Pair<String, Int>, Int>() // (numId, level) → startOverride
     val levels = HashMap<Pair<String, Int>, Pair<String, Int>>() // (abstractNumId, level) → (numFmt, start)
     val counters = HashMap<String, IntArray>() // numId → the count at each level, as Word numbers them
+
+    /** Reading a header or footer for the pages: its page-number fields become [PAGE_FIELD] / [PAGES_FIELD]. */
+    var fieldMarks = false
+    private var fieldInstr = StringBuilder()
+    private var fieldState = 0 // 0 outside a field, 1 in its instruction, 2 in its shown result
+    private fun fieldMark(instr: String): Char? = instr.trim().substringBefore(' ').uppercase().let { if (it == "PAGE") PAGE_FIELD else if (it == "NUMPAGES" || it == "SECTIONPAGES") PAGES_FIELD else null }
+
+    /** A header's or footer's paragraphs, with their own relationships (a logo in a header is the header's picture). */
+    fun readPart(path: String): List<DocPara> {
+        val root = OfficeFormats.parse(parts[path] ?: return emptyList()).documentElement
+        val partDir = path.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+        images.clear(); links.clear()
+        parts[relsPath(path)]?.let { r -> OfficeFormats.parse(r).documentElement.kids().forEach {
+            when (it.getAttribute("Type")) {
+                REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
+                REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
+            }
+        } }
+        readStyles(); readNumbering()
+        return ArrayList<DocPara>().also { block(root, it) }
+    }
 
     fun read(): OfficeDoc {
         val xml = parts[docPath] ?: error("Not a Word document.")
@@ -615,7 +645,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     }
                     "ins", "moveTo" -> { notes += "tracked changes"; content(e, link) }
                     "del", "moveFrom" -> notes += "tracked changes"
-                    "fldSimple" -> { notes += "fields (page numbers, dates, contents)"; content(e, link) }
+                    "fldSimple" -> { notes += "fields (page numbers, dates, contents)"
+                        val mark = if (fieldMarks) fieldMark(e.attr(W, "instr") ?: "") else null
+                        if (mark != null) runs += DocRun(mark.toString()) else content(e, link) }
                     "smartTag", "customXml" -> content(e, link)
                     "sdt" -> { notes += "content controls"; e.kid(W, "sdtContent")?.let { content(it, link) } }
                     "commentRangeStart", "commentRangeEnd" -> notes += "comments"
@@ -675,7 +707,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
             when (e.localName) {
                 "rPr" -> Unit
-                "t" -> runs += look.copy(text = e.textContent)
+                "t" -> if (!(fieldMarks && fieldState == 2 && fieldMark(fieldInstr.toString()) != null)) runs += look.copy(text = e.textContent) // a page number's old value: the page's own instead
                 "tab", "ptab" -> runs += look.copy(text = "\t")
                 "noBreakHyphen" -> runs += look.copy(text = "‑")
                 "softHyphen", "lastRenderedPageBreak" -> Unit
@@ -685,7 +717,15 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
-                "fldChar", "instrText" -> notes += "fields (page numbers, dates, contents)"
+                "fldChar", "instrText" -> {
+                    notes += "fields (page numbers, dates, contents)"
+                    if (fieldMarks) when {
+                        e.localName == "instrText" -> fieldInstr.append(e.textContent)
+                        e.attr(W, "fldCharType") == "begin" -> { fieldState = 1; fieldInstr.clear() }
+                        e.attr(W, "fldCharType") == "separate" -> { fieldState = 2; fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
+                        e.attr(W, "fldCharType") == "end" -> fieldState = 0
+                    }
+                }
                 "delText", "delInstrText" -> notes += "tracked changes"
                 "footnoteReference", "endnoteReference" -> notes += "footnotes"
                 "commentReference", "annotationRef" -> notes += "comments"

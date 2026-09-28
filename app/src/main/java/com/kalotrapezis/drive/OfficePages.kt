@@ -33,7 +33,7 @@ import org.w3c.dom.Element
 
 /** A page: its size and margins in points. */
 internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9f, val top: Float = 56.7f, val bottom: Float = 56.7f,
-    val left: Float = 56.7f, val right: Float = 56.7f) {
+    val left: Float = 56.7f, val right: Float = 56.7f, val header: Float = 35.4f, val footer: Float = 35.4f /* from the page's edge */) {
     val textWidth get() = (width - left - right).coerceAtLeast(72f)
 }
 
@@ -66,6 +66,14 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
 internal abstract class DocStyles {
     open val page = DocPage()
     abstract fun look(p: DocPara): ParaLook
+    /** Headers and footers: "default", "first" (a title page), "even" (when even pages have their own). */
+    open val headers: Map<String, List<DocPara>> = emptyMap()
+    open val footers: Map<String, List<DocPara>> = emptyMap()
+    open val titlePage = false
+    open val evenAndOdd = false
+    /** Page numbers: the first page's number, and their style ("decimal", "lowerRoman"…). */
+    open val pageStart = 1
+    open val pageFormat = "decimal"
     /** Where a list item's text starts and its number or bullet hangs (pt), by the file's own list when it has one. */
     open fun listIndent(p: DocPara): Pair<Float, Float> = (36f * (p.list!!.level + 1)) to 18f
     /** A run's font name from its raw settings (Word's rFonts, ODF's font attributes). */
@@ -116,6 +124,12 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val numInd = HashMap<Pair<String, Int>, Element>() // (numId, level) → the level's ind
     private val numLevels = HashMap<String, Array<Pair<String, String>?>>() // numId → each level's (numFmt, lvlText)
     private var minorFont: String? = null; private var majorFont: String? = null // the theme's body and heading fonts
+    override val headers = HashMap<String, List<DocPara>>()
+    override val footers = HashMap<String, List<DocPara>>()
+    override var titlePage = false
+    override var evenAndOdd = false
+    override var pageStart = 1
+    override var pageFormat = "decimal"
     private fun theme(name: String?) = when { name == null -> null; name.startsWith("minor") -> minorFont; name.startsWith("major") -> majorFont; else -> null }
     override fun fontName(raw: String?): String? = super.fontName(raw)
         ?: raw?.let { Regex("""w:(?:ascii|hAnsi)Theme="([^"]+)"""").find(it)?.groupValues?.get(1) }?.let(::theme)
@@ -156,7 +170,16 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val size = sect?.kid(W, "pgSz"); val mar = sect?.kid(W, "pgMar")
         val d = DocPage()
         page = DocPage(twips(size, "w") ?: d.width, twips(size, "h") ?: d.height, twips(mar, "top") ?: d.top, twips(mar, "bottom") ?: d.bottom,
-            twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right)
+            twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right, twips(mar, "header") ?: d.header, twips(mar, "footer") ?: d.footer)
+        // Headers and footers (the last section's): each reference names its part through the document's relationships.
+        val targets = parts[relsPath(documentPath(parts))]?.let { OfficeFormats.parse(it).documentElement.kids().associate { r -> r.getAttribute("Id") to resolve(dir, r.getAttribute("Target")) } }.orEmpty()
+        sect?.kids()?.forEach { e ->
+            val into = when (e.localName) { "headerReference" -> headers; "footerReference" -> footers; else -> null } ?: return@forEach
+            targets[e.attr(RELATIONSHIPS, "id")]?.let { into[e.attr(W, "type") ?: "default"] = OfficeFormats.docxPart(parts, it) }
+        }
+        titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false
+        evenAndOdd = parts[dir + "settings.xml"]?.let { "<w:evenAndOddHeaders" in String(it, Charsets.UTF_8) } ?: false
+        sect?.kid(W, "pgNumType")?.let { n -> n.attr(W, "start")?.toIntOrNull()?.let { pageStart = it }; n.attr(W, "fmt")?.let { pageFormat = it } }
     }
 
     private fun chain(id: String?): List<Element> {
@@ -427,23 +450,10 @@ internal object OfficePages {
                 pieces += LaidPage.Piece(layout, line, last, page.left, y)
                 // Floating pictures, placed where the paragraph starts: from the page, the margin, or the paragraph.
                 if (line == 0) for ((img, place) in floating) {
-                    val (w, h) = img.widthPt to img.heightPt
-                    val x = when (place.alignH) {
-                        "center" -> (if (place.fromH == "page") page.width else page.textWidth) / 2 - w / 2 + (if (place.fromH == "page") 0f else page.left)
-                        "right", "outside" -> (if (place.fromH == "page") page.width else page.left + page.textWidth) - w
-                        "left", "inside" -> if (place.fromH == "page") 0f else page.left
-                        else -> (place.x ?: 0f) + if (place.fromH == "page") 0f else page.left
-                    }
-                    val fy = when (place.alignV) {
-                        "center" -> (page.height - h) / 2
-                        "bottom" -> (if (place.fromV == "page") page.height else page.height - page.bottom) - h
-                        "top" -> if (place.fromV == "page") 0f else page.top
-                        else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> y }
-                    }
-                    val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
-                    floats += LaidPage.Floating(picture, x, fy, w, h, place.wrap == PictureWrap.Behind)
+                    val f = floatAt(img, place, y, page, pictureBytes)
+                    floats += f
                     // Top and bottom: the text goes on below it. ponytail: square wrap does not yet flow the text beside it.
-                    if (place.wrap == PictureWrap.TopBottom) y = maxOf(y, fy + h - (layout.getLineBottom(last) - top))
+                    if (place.wrap == PictureWrap.TopBottom) y = maxOf(y, f.y + f.h - (layout.getLineBottom(last) - top))
                 }
                 y += layout.getLineBottom(last) - top
                 line = last + 1
@@ -455,7 +465,64 @@ internal object OfficePages {
             prevLook = look; prevStyle = style
         }
         pages += LaidPage(page, pieces, floats)
-        return pages
+        return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
+    }
+
+    /** The page's header (from the top edge, at its distance) and footer (ending at its distance from the bottom). */
+    private fun withHeaderAndFooter(doc: OfficeDoc, styles: DocStyles, laid: LaidPage, index: Int, count: Int, pictureBytes: (DocImage) -> ByteArray?): LaidPage {
+        val page = laid.page
+        fun which(map: Map<String, List<DocPara>>) = when {
+            index == 0 && styles.titlePage -> map["first"] ?: emptyList() // a title page has its own (none, if the file has none)
+            styles.evenAndOdd && (index + styles.pageStart) % 2 == 0 -> map["even"] ?: map["default"]
+            else -> map["default"]
+        }.orEmpty()
+        val number = styles.number(index + styles.pageStart, styles.pageFormat)
+        fun filled(paras: List<DocPara>) = paras.map { p -> p.copy(runs = p.runs.map { r ->
+            if (PAGE_FIELD in r.text || PAGES_FIELD in r.text) r.copy(text = r.text.replace(PAGE_FIELD.toString(), number).replace(PAGES_FIELD.toString(), count.toString())) else r
+        }) }
+        val extra = ArrayList<LaidPage.Piece>(); val extraFloats = ArrayList<LaidPage.Floating>()
+        fun stack(paras: List<DocPara>, top: Float): Float {
+            var y = top
+            for (p in paras) {
+                val look = styles.look(p)
+                val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
+                val layout = paragraph(doc, p, look, styles, null, pictureBytes, floating)
+                y += look.before
+                extra += LaidPage.Piece(layout, 0, layout.lineCount - 1, page.left, y)
+                floating.forEach { (img, place) -> extraFloats += floatAt(img, place, y, page, pictureBytes) }
+                y += layout.height + look.after
+            }
+            return y - top
+        }
+        stack(filled(which(styles.headers)), page.header)
+        val footer = filled(which(styles.footers))
+        if (footer.isNotEmpty()) {
+            // Laid out once to know its height, then again where it ends at its distance from the bottom.
+            val mark = extra.size; val markF = extraFloats.size
+            val h = stack(footer, 0f)
+            while (extra.size > mark) extra.removeAt(extra.size - 1); while (extraFloats.size > markF) extraFloats.removeAt(extraFloats.size - 1)
+            stack(footer, page.height - page.footer - h)
+        }
+        return LaidPage(page, extra + laid.pieces, laid.floats + extraFloats)
+    }
+
+    /** A floating picture's place on the page: from the page, the margin, or its paragraph (at [paraTop]). */
+    private fun floatAt(img: DocImage, place: PictureXml.Place, paraTop: Float, page: DocPage, pictureBytes: (DocImage) -> ByteArray?): LaidPage.Floating {
+        val (w, h) = img.widthPt to img.heightPt
+        val x = when (place.alignH) {
+            "center" -> (if (place.fromH == "page") page.width else page.textWidth) / 2 - w / 2 + (if (place.fromH == "page") 0f else page.left)
+            "right", "outside" -> (if (place.fromH == "page") page.width else page.left + page.textWidth) - w
+            "left", "inside" -> if (place.fromH == "page") 0f else page.left
+            else -> (place.x ?: 0f) + if (place.fromH == "page") 0f else page.left
+        }
+        val y = when (place.alignV) {
+            "center" -> (page.height - h) / 2
+            "bottom" -> (if (place.fromV == "page") page.height else page.height - page.bottom) - h
+            "top" -> if (place.fromV == "page") 0f else page.top
+            else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
+        }
+        val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind)
     }
 
     private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, marker: String?, pictureBytes: (DocImage) -> ByteArray?,

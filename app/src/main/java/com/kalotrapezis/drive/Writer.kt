@@ -317,6 +317,9 @@ internal object WriterBridge {
 /** A document in Tetra's Files, for the Office home. */
 internal data class OfficeFile(val file: File, val relative: String)
 
+/** How many documents the Office home lists: the newest. */
+private const val OFFICE_RECENT = 50
+
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
     .filter { it.isFile && OfficeKind.of(it.name) != null && !it.name.startsWith("~$") }
@@ -328,7 +331,9 @@ internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
 internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit) {
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
-    LaunchedEffect(hasAccess) { if (hasAccess) files = withContext(Dispatchers.IO) { officeFiles(root) } }
+    var total by remember { mutableIntStateOf(0) }
+    // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
+    LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { total = it.size; files = it.take(OFFICE_RECENT) } }
     BackHandler { back() }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -339,7 +344,12 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     NewDocCard("PowerPoint", "Coming later", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
                 }
             }
-            item { Text("Documents in Files", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
+            item {
+                Column(Modifier.padding(top = 14.dp, bottom = 2.dp)) {
+                    Text("Recent documents", style = MaterialTheme.typography.titleMedium)
+                    if (total > OFFICE_RECENT) Text("The $OFFICE_RECENT newest of $total — the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
             if (!hasAccess) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Tetra needs access to all files to list your documents.", style = MaterialTheme.typography.bodyMedium)

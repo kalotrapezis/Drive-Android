@@ -3,7 +3,25 @@
 State: everything up to here is committed on `writer-library`; 131 unit tests pass; today's build is on the phone
 (208c8192), not the tablet. The page view (OfficePages.kt) matches LibreOffice closely on the user's documents.
 
-**Plan for tables (in this order):**
+**Done tonight (stopped here — weekly limit):**
+1. ✅ Word tables kept: `DocPara.table: DocTable` (rows/cells of DocParas, props raw); writer writes them back; no
+   longer copy-only. LibreOffice: 610-ΤΕΛ 16/16 pages and Τούρκικα identical; suite 02 tables identical.
+2. ✅ Tables on the pages (`tableRows`, `stack`, `DocxStyles.tableSpec`): widths, spans, vertical merges, margins,
+   borders (style → table → cell; a row holds its border's width), shading, vAlign, heights, heading rows repeated,
+   rows whole. Line height now includes the font's line gap (from the font most of the text is in) — Τούρκικα row for
+   row as LibreOffice; DPSYC610 20 pages. Not done: rotated cell text (textDirection), conditional table-style
+   formatting (first row/banded), floating pictures inside cells (left out).
+3. ⬜ **Next: the editor.** Today a table is one character there (DocImage.table, carried through untouched) drawn as a
+   grey box labelled "Picture". To do: draw it (lay the table out with OfficePages into a bitmap in `picturePainter`;
+   real size via a measure function WriterBridge can call), and a **Table tab** when it is selected (in the Picture
+   tab's place, `WriterTab.Picture` code ~line 924): Edit cells (grid of text fields; a changed cell keeps its first
+   paragraph's look/keep), add/delete row, delete table.
+4. ⬜ ODT tables (Πάτερ Ημών Άσκηση.odt is copy-only for them): reader/writer for table:table (styles kept via the
+   automatic-style scan), page drawing from ODT table/column/cell styles.
+
+Build with all of the above: on the phone (208c8192) and the emulator.
+
+**Original plan for tables (in this order):**
 1. Model: `DocPara.table: DocTable` — rows (trPr raw) of cells (tcPr raw) holding ordinary DocParas (nested tables
    too); tblPr/tblGrid raw. Reader builds it (no more flattening + "tables" note); writer writes it back from the
    model (cell paragraphs through the normal paragraph writer) → tables are no longer copy-only. Word first, then ODT.

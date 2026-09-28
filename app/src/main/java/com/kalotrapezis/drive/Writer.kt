@@ -222,6 +222,11 @@ internal object WriterBridge {
         // A line break inside a paragraph (the editor draws U+2028 as a box): the lines after it are the editor's own
         // "from a line break" lines, joined back into the paragraph by fromEditor.
         return RichTextDocument(doc.paras.flatMap { p ->
+            // A table: one character in the editor, standing for it (as a picture's does); it comes back as it went.
+            p.table?.let { t ->
+                val img = DocImage("t" + t.hashCode().toUInt().toString(16), null, tableSize(t).first, tableSize(t).second, table = t)
+                return@flatMap listOf(block(p, listOf(DocRun(OBJECT_MARK.toString(), image = img)), false))
+            }
             val lines = mutableListOf(mutableListOf<DocRun>())
             for (r in OfficeFormats.tidy(p.runs)) r.text.split(LINE_BREAK).forEachIndexed { i, piece ->
                 if (i > 0) lines += mutableListOf<DocRun>()
@@ -270,8 +275,19 @@ internal object WriterBridge {
             if (afterBreak && prev != null) paras[paras.size - 1] = prev.copy(runs = OfficeFormats.tidy(prev.runs + breakRun(prev.runs, p.runs) + p.runs))
             else paras += p
             paras
+        }.flatMap { p ->
+            // A table's character: the table again, a paragraph of its own; text typed beside it, paragraphs beside it.
+            if (p.runs.none { it.image?.table != null }) return@flatMap listOf(p)
+            val out = ArrayList<DocPara>(); var run = ArrayList<DocRun>()
+            fun text() { if (run.any { it.text.isNotBlank() }) out += p.copy(runs = OfficeFormats.tidy(run), list = null); run = ArrayList() }
+            for (r in p.runs) { val t = r.image?.table; if (t != null) { text(); out += tablePara(t) } else run += r }
+            text()
+            out
         }
     }
+
+    /** How big a table stands in the editor (pt): as wide as the page's text, a line per row. */
+    fun tableSize(t: DocTable): Pair<Float, Float> = 450f to (t.rows.sumOf { r -> r.cells.maxOfOrNull { it.paras.size } ?: 1 } * 16f).coerceAtLeast(16f)
 
     /** The line break itself takes the look of the text after it (or before it, at a paragraph's end). */
     private fun breakRun(before: List<DocRun>, after: List<DocRun>) =

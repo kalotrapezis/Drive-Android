@@ -34,18 +34,19 @@ class OfficeFormatsTest {
     @Test fun `a new docx reads back as written`() = roundTrip(OfficeKind.Docx)
     @Test fun `a new odt reads back as written`() = roundTrip(OfficeKind.Odt)
 
-    @Test fun `a docx keeps its other parts and names a table`() {
+    @Test fun `a docx keeps its other parts and its tables`() {
         val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
         parts["word/header1.xml"] = "<hdr/>".toByteArray()
         val xml = String(parts.getValue("word/document.xml")).replace("</w:body>", "").replace("<w:sectPr", "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:sectPr") + ""
         parts["word/document.xml"] = xml.replace("</w:document>", "</w:body></w:document>").toByteArray()
         val withTable = OfficeFormats.zip(parts)
         val doc = OfficeFormats.read(withTable, OfficeKind.Docx)
-        assertEquals(setOf("tables"), doc.unsupported)
-        assertEquals("cell", doc.paras.last().text)
+        assertEquals(emptySet<String>(), doc.unsupported)
+        assertEquals("cell", doc.paras.last().table!!.rows.single().cells.single().paras.single().text)
         val saved = OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, withTable))
         assertEquals("<hdr/>", String(saved.getValue("word/header1.xml")))
         assertTrue("<w:pgSz" in String(saved.getValue("word/document.xml")))
+        assertEquals(doc.paras.last().table, OfficeFormats.read(OfficeFormats.zip(LinkedHashMap(saved)), OfficeKind.Docx).paras.last().table)
     }
 
     @Test fun `an odt starts with its stored mimetype`() {
@@ -150,8 +151,9 @@ class OfficeFormatsTest {
             File("build/office-roundtrip").apply { mkdirs() }.resolve(f.name).writeBytes(written)
             val again = OfficeFormats.read(written, kind)
             assertEquals(f.name, doc.paras.map { it.text }, again.paras.map { it.text })
-            // Each paragraph's own formatting comes back as it was read.
+            // Each paragraph's own formatting comes back as it was read; tables, cell by cell.
             assertEquals(f.name, doc.paras.map { it.keep }, again.paras.map { it.keep })
+            assertEquals(f.name, doc.paras.mapNotNull { it.table }, again.paras.mapNotNull { it.table })
         }
     }
 }

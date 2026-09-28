@@ -50,10 +50,11 @@ internal const val OBJECT_MARK = '\uFFFC'
  * is not a picture — it shows as a grey box. Sizes in points.
  */
 internal class DocImage(val key: String, val part: String?, val widthPt: Float, val heightPt: Float, val raw: String? = null,
-    val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */) {
+    val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */,
+    val table: DocTable? = null /* the editor's stand-in for a table */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap) =
-        DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap)
-    override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap
+        DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table)
+    override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
 }
@@ -202,9 +203,21 @@ internal data class DocKeep(val style: String? = null, val parts: List<Pair<Stri
     val isEmpty get() = style == null && parts.isEmpty() && list == null
 }
 
-internal data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val list: DocList? = null, val align: DocAlign = DocAlign.Start, val keep: DocKeep? = null) {
+internal data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val list: DocList? = null, val align: DocAlign = DocAlign.Start, val keep: DocKeep? = null,
+    val table: DocTable? = null /* then this "paragraph" is a table, its one run OBJECT_MARK */) {
     val text: String get() = runs.joinToString("") { it.text }
 }
+
+/**
+ * A table (2026-09-28): its rows of cells, each cell ordinary paragraphs (a table in a cell too). What Writer does not
+ * edit is kept raw, in the file's own words: the table's properties and column grid, each row's and cell's properties.
+ */
+internal data class DocTable(val props: String, val grid: String, val rows: List<DocRow>)
+internal data class DocRow(val props: String, val cells: List<DocCell>)
+internal data class DocCell(val props: String, val paras: List<DocPara>)
+
+/** A table standing in the text as a paragraph of its own. */
+internal fun tablePara(t: DocTable) = DocPara(listOf(DocRun(OBJECT_MARK.toString())), table = t)
 
 /**
  * A document as Writer holds it. [basePt] is the document's normal text size; [unsupported] names, in plain words,
@@ -578,7 +591,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             if (e.namespaceURI != W) { if (e.localName != "AlternateContent") notes += "other content" ; continue }
             when (e.localName) {
                 "p" -> paragraph(e, out)
-                "tbl" -> { notes += "tables"; e.kids().filter { it.localName == "tr" }.forEach { tr -> tr.kids().filter { it.localName == "tc" }.forEach { block(it, out) } } }
+                "tbl" -> out += tablePara(table(e))
                 "sdt" -> { notes += "content controls"; e.kid(W, "sdtContent")?.let { block(it, out) } }
                 "customXml" -> { notes += "content controls"; block(e, out) }
                 "ins", "moveTo" -> { notes += "tracked changes"; block(e, out) }
@@ -589,6 +602,22 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
             }
         }
+    }
+
+    /** A table: rows of cells of paragraphs; its, its rows' and its cells' properties kept raw. */
+    fun table(e: Element): DocTable {
+        fun cells(parent: Element): List<DocCell> = parent.kids().flatMap { c ->
+            when (c.localName) {
+                "tc" -> listOf(DocCell(c.kid(W, "tcPr")?.let { OfficeFormats.xml(it) } ?: "", ArrayList<DocPara>().also { block(c, it) }.ifEmpty { listOf(DocPara(emptyList())) }))
+                "sdt" -> { notes += "content controls"; c.kid(W, "sdtContent")?.let { cells(it) }.orEmpty() }
+                "customXml" -> { notes += "content controls"; cells(c) }
+                else -> emptyList()
+            }
+        }
+        val rows = e.kids().filter { it.localName == "tr" || it.localName == "sdt" || it.localName == "customXml" }.flatMap { tr ->
+            if (tr.localName != "tr") { notes += "content controls"; (tr.kid(W, "sdtContent") ?: tr).kids().filter { it.localName == "tr" } } else listOf(tr)
+        }.map { tr -> DocRow(tr.kids().filter { it.localName == "tblPrEx" || it.localName == "trPr" }.joinToString("") { OfficeFormats.xml(it) }, cells(tr)) }
+        return DocTable(e.kid(W, "tblPr")?.let { OfficeFormats.xml(it) } ?: "", e.kid(W, "tblGrid")?.let { OfficeFormats.xml(it) } ?: "", rows)
     }
 
     fun paragraph(p: Element, out: MutableList<DocPara>) {
@@ -964,12 +993,30 @@ private object DocxWriter {
         val sect = xml.lastIndexOf("<w:sectPr", bodyEnd).takeIf { it >= bodyStart }?.let { xml.substring(it, bodyEnd) } ?: ""
         val linkIds = HashMap<String, String>()
         val body = StringBuilder()
-        doc.paras.forEachIndexed { index, p ->
+        /** A table: its rows and cells, their properties as the file had them, the cells' paragraphs written as the body's. */
+        fun table(t: DocTable, paragraph: (DocPara) -> Unit) {
+            body.append("<w:tbl>").append(t.props).append(t.grid)
+            for (row in t.rows) {
+                body.append("<w:tr>").append(row.props)
+                for (cell in row.cells) {
+                    body.append("<w:tc>").append(cell.props)
+                    cell.paras.forEach(paragraph)
+                    // Word wants a paragraph last in a cell (after a table in it, too).
+                    if (cell.paras.lastOrNull()?.let { it.table != null } != false) body.append("<w:p/>")
+                    body.append("</w:tc>")
+                }
+                body.append("</w:tr>")
+            }
+            body.append("</w:tbl>")
+        }
+        fun paragraph(index: Int?, p: DocPara) {
+            p.table?.let { t -> table(t) { paragraph(null, it) }; return }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
             val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first != "runFonts" })
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
-            p.list?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${it.level}"/><w:numId w:val="${numIds.getValue(index)}"/></w:numPr>""" }
+            // A list item in a table's cell keeps the file's own list (Writer's own lists are numbered for the body's).
+            p.list?.let { l -> (index?.let { numIds[it] } ?: p.keep?.list?.substringBefore('|'))?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${l.level}"/><w:numId w:val="$it"/></w:numPr>""" } }
             // A list taken off a paragraph whose style numbers it: said so, or its style would number it still.
                 ?: p.keep?.style?.takeIf { it in styleLists }?.let { props += "numPr" to """<w:numPr><w:numId w:val="0"/></w:numPr>""" }
             when (p.align) {
@@ -996,6 +1043,7 @@ private object DocxWriter {
             }
             body.append("</w:p>")
         }
+        doc.paras.forEachIndexed { index, p -> paragraph(index, p) }
         var out = xml.substring(0, bodyStart) + body + sect + xml.substring(bodyEnd)
         if (linkIds.isNotEmpty() && !Regex("""<w:document[^>]*xmlns:r=""").containsMatchIn(out)) out = out.replaceFirst("<w:document", "<w:document xmlns:r=\"$R\"")
         parts[docPath] = out.toByteArray()

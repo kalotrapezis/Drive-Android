@@ -884,9 +884,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Superscript and subscript are shown smaller: the size told and changed is the letters' own.
                     val shrink = if ((span.baselineShift?.multiplier ?: 0f) != 0f) SCRIPT_SIZE else 1f
                     val size = (WriterBridge.spOf(span.fontSize) ?: BASE_SP) / shrink
-                    Tool(R.drawable.ic_remove, "Smaller text", w) { state.addSpanStyle(SpanStyle(fontSize = ((size - 2).coerceAtLeast(8f) * shrink).sp)) }
-                    Text("${(size / BASE_SP * meta.basePt).roundToInt()}", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 2.dp))
-                    Tool(R.drawable.ic_add, "Bigger text", w) { state.addSpanStyle(SpanStyle(fontSize = ((size + 2).coerceAtMost(72f) * shrink).sp)) }
+                    // One point at a time, in the document's points (asked 2026-09-28: by 2 it skipped 13); − and + close
+                    // together around a number of fixed width, so two digits fit on a phone as one does.
+                    val pt = (size / BASE_SP * meta.basePt).roundToInt()
+                    fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
+                        Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
+                        Tool(R.drawable.ic_add, "Bigger text", w, enabled = pt < 72) { setPt(pt + 1) }
+                    }
                 }, {
                     Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
                         if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))

@@ -61,61 +61,8 @@ class WriterBridgeTest {
         assertEquals("", WriterBridge.withCellText(mixed, "").paras.single().text)
         assertEquals(DocRun("Total: 1", bold = true), WriterBridge.withCellText(mixed, "Total: 156.25 EUR").paras.single().runs.first())
 
-        val added = WriterBridge.addRow(table).rows.last()
-        assertEquals(1, added.cells.size)
-        assertEquals("", added.cells.single().paras.single().text)
-        assertEquals(keep, added.cells.single().paras.single().keep)
-        assertEquals(true, added.cells.single().paras.single().runs.single().bold)
-        assertEquals(false, "tblHeader" in added.props)
-        assertEquals(false, "vMerge" in added.cells.single().props)
-
-        val edited = table.copy(rows = listOf(table.rows.single().copy(cells = listOf(changed))) + added)
-        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(edited))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
+        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(table.copy(rows = listOf(DocRow("", listOf(changed))))))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
         assertEquals(listOf("new", "line"), back.rows.first().cells.single().paras.map { it.text })
-        assertEquals(2, back.rows.size)
-        assertEquals("", back.rows.last().cells.single().paras.single().text)
-    }
-
-    @Test fun `a simple table can add columns and merge a rectangle`() {
-        val table = WriterBridge.addColumn(WriterBridge.newTable(3, 3, 450f))
-        assertEquals(listOf(4, 4, 4), table.rows.map { it.cells.size })
-        // The table keeps its width: four columns of 2250 twentieths of a point, and each cell says so too.
-        assertEquals(listOf(2250f, 2250f, 2250f, 2250f), WriterBridge.gridColumns(table))
-        assertEquals(true, table.rows.all { r -> r.cells.all { "<w:tcW w:w=\"2250\" w:type=\"dxa\"/>" in it.props } })
-        val filled = table.copy(rows = table.rows.mapIndexed { r, row -> row.copy(cells = row.cells.mapIndexed { c, cell -> WriterBridge.withCellText(cell, "$r,$c") }) })
-        val merged = WriterBridge.merge(filled, 0, 1, 2, 2)!!
-        assertEquals(listOf(3, 3, 4), merged.rows.map { it.cells.size })
-        assertEquals(true, "gridSpan" in merged.rows[0].cells[1].props)
-        assertEquals(true, "restart" in merged.rows[0].cells[1].props)
-        assertEquals(true, "vMerge" in merged.rows[1].cells[1].props)
-        assertEquals(listOf("0,1", "0,2", "1,1", "1,2"), merged.rows[0].cells[1].paras.map { it.text })
-
-        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(merged))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
-        assertEquals(listOf(3, 3, 4), back.rows.map { it.cells.size })
-        assertEquals(listOf("0,1", "0,2", "1,1", "1,2"), back.rows[0].cells[1].paras.map { it.text })
-    }
-
-    @Test fun `merging and columns follow the grid, not the count of cells`() {
-        val table = WriterBridge.newTable(3, 4, 400f)
-        // Row 0: its first two columns merged, so its cells are 3; the rectangle from grid column 2 is still columns 2–3.
-        val wide = WriterBridge.merge(table, 0, 0, 1, 2)!!
-        assertEquals(listOf(3, 4, 4), wide.rows.map { it.cells.size })
-        val block = WriterBridge.merge(wide, 0, 2, 2, 2)!!
-        assertEquals(listOf(2, 3, 4), block.rows.map { it.cells.size })
-        assertEquals(2, WriterBridge.gridStart(block.rows[0], 1))
-        assertEquals(2, WriterBridge.span(block.rows[1].cells[2]))
-        // Cutting through the merged cell is refused rather than guessed at.
-        assertEquals(null, WriterBridge.merge(block, 0, 1, 1, 2))
-        // Properties in Word's order: width, span, merge, then the rest.
-        val props = block.rows[0].cells[1].props
-        assertEquals(true, props.indexOf("tcW") < props.indexOf("gridSpan") && props.indexOf("gridSpan") < props.indexOf("vMerge"))
-        // The last column away: the spanning cell narrows, the rest widen to keep the width.
-        val fewer = WriterBridge.deleteColumn(block)!!
-        assertEquals(1, WriterBridge.span(fewer.rows[0].cells[1]))
-        assertEquals(listOf(3, 3, 3), fewer.rows.map { r -> r.cells.sumOf { WriterBridge.span(it) } })
-        assertEquals(8000f, WriterBridge.gridColumns(fewer).sum(), 3f)
-        val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(block))), OfficeKind.Docx), OfficeKind.Docx).paras.single().table!!
-        assertEquals(block.rows.map { it.cells.size }, back.rows.map { it.cells.size })
     }
 
     @Test fun `a nested table stays inside its parent cell`() {

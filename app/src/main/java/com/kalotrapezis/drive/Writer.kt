@@ -95,6 +95,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -352,130 +353,6 @@ internal object WriterBridge {
         return cell.copy(paras = paras.subList(0, a) + middle + paras.subList(b + 1, paras.size))
     }
 
-    /** Adds a plain row with the last row's cell geometry/look, but not its heading or vertical-merge flags. */
-    fun addRow(table: DocTable): DocTable {
-        val source = table.rows.lastOrNull()
-        val cells = source?.cells?.map { cell ->
-            val para = cell.paras.firstOrNull { it.table == null } ?: DocPara(emptyList())
-            val run = para.runs.firstOrNull { it.image == null } ?: DocRun("")
-            DocCell(cell.props.replace(Regex("""<w:vMerge\b[^>]*/>"""), ""), listOf(para.copy(runs = listOf(run.copy(text = "", image = null)), table = null)))
-        } ?: listOf(DocCell("", listOf(DocPara(listOf(DocRun(""))))))
-        val props = source?.props.orEmpty().replace(Regex("""<w:tblHeader\b[^>]*/>"""), "")
-        return table.copy(rows = table.rows + DocRow(props, cells))
-    }
-
-    /** A plain Word table, [widthPt] wide in equal columns (Word needs the grid to lay it out). */
-    fun newTable(rows: Int, columns: Int, widthPt: Float): DocTable {
-        val border = """<w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders>"""
-        val n = columns.coerceIn(1, 5)
-        val cell = DocCell("<w:tcPr/>", listOf(DocPara(listOf(DocRun("")))))
-        val table = DocTable("<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>$border<w:tblLook w:val=\"04A0\"/></w:tblPr>", "<w:tblGrid/>",
-            List(rows.coerceIn(1, 5)) { DocRow("", List(n) { cell.copy() }) })
-        return withGrid(table, List(n) { widthPt * 20 / n })
-    }
-
-    // Word's column grid: the table's column widths (twentieths of a point), each cell spanning one or more of them.
-    private val GRID_COL = Regex("""<w:gridCol\b[^>]*?w:w="(\d+)"[^>]*/>""")
-    private val GRID_SPAN = Regex("""<w:gridSpan\b[^>]*?w:val="(\d+)"[^>]*/>""")
-    private val V_MERGE = Regex("""<w:vMerge\b[^>]*/>""")
-    private val TC_W = Regex("""<w:tcW\b[^>]*/>""")
-    fun gridColumns(t: DocTable) = GRID_COL.findAll(t.grid).map { it.groupValues[1].toFloat() }.toList()
-    fun span(c: DocCell) = GRID_SPAN.find(c.props)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
-    /** The grid column a row's [cell] starts at. */
-    fun gridStart(row: DocRow, cell: Int) = row.cells.take(cell).sumOf { span(it) }
-    fun gridCount(t: DocTable) = maxOf(gridColumns(t).size, t.rows.maxOfOrNull { r -> r.cells.sumOf { span(it) } } ?: 1)
-    // The order Word's schema keeps a cell's properties in; Word calls a file damaged when they are out of it.
-    private val TC_ORDER = listOf("cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar", "textDirection", "tcFitText", "vAlign", "hideMark")
-    /** [xml] (one property) put into a cell's properties in its place. */
-    private fun prop(raw: String, xml: String): String {
-        if ("</w:tcPr>" !in raw) return "<w:tcPr>$xml</w:tcPr>"
-        val name = Regex("""<w:(\w+)""").find(xml)!!.groupValues[1]
-        val later = TC_ORDER.drop(TC_ORDER.indexOf(name) + 1).mapNotNull { n -> Regex("""<w:$n[\s/>]""").find(raw)?.range?.first }.minOrNull()
-        val at = later ?: raw.lastIndexOf("</w:tcPr>")
-        return raw.substring(0, at) + xml + raw.substring(at)
-    }
-    private fun withSpan(props: String, n: Int) = GRID_SPAN.replace(props, "").let { if (n > 1) prop(it, "<w:gridSpan w:val=\"$n\"/>") else it }
-
-    /** [cols] as the table's grid, and every cell as wide as the columns it spans (Word reads both). */
-    private fun withGrid(t: DocTable, cols: List<Float>): DocTable {
-        val grid = "<w:tblGrid>" + cols.joinToString("") { "<w:gridCol w:w=\"${it.roundToInt()}\"/>" } + "</w:tblGrid>"
-        return t.copy(grid = grid, rows = t.rows.map { row ->
-            var g = 0
-            row.copy(cells = row.cells.map { c ->
-                val w = cols.subList(g.coerceAtMost(cols.size), (g + span(c)).coerceAtMost(cols.size)).sum().roundToInt()
-                g += span(c)
-                c.copy(props = prop(TC_W.replace(c.props, ""), "<w:tcW w:w=\"$w\" w:type=\"dxa\"/>"))
-            })
-        })
-    }
-
-    /** A plain cell after [source]: its look and borders, none of its merging, its text emptied. */
-    private fun emptyLike(source: DocCell): DocCell {
-        val para = source.paras.firstOrNull { it.table == null } ?: DocPara(emptyList())
-        val run = para.runs.firstOrNull { it.image == null } ?: DocRun("")
-        return DocCell(withSpan(V_MERGE.replace(source.props, ""), 1), listOf(para.copy(runs = listOf(run.copy(text = "", image = null)), table = null)))
-    }
-
-    /**
-     * A column added on the right, as wide as a share of the table: the others narrow so the table stays as wide
-     * as it was, as Word does.
-     */
-    fun addColumn(table: DocTable): DocTable {
-        val n = gridCount(table)
-        val rows = table.rows.map { row ->
-            row.copy(cells = row.cells + emptyLike(row.cells.lastOrNull() ?: DocCell("<w:tcPr/>", listOf(DocPara(listOf(DocRun("")))))))
-        }
-        val cols = gridColumns(table).takeIf { it.size == n } ?: return table.copy(rows = rows)
-        val total = cols.sum()
-        return withGrid(table.copy(rows = rows), cols.map { it * n / (n + 1) } + total / (n + 1))
-    }
-
-    /** The right-hand column taken away (a cell spanning it narrows); the others widen to keep the table's width. */
-    fun deleteColumn(table: DocTable): DocTable? {
-        val n = gridCount(table)
-        if (n < 2) return null
-        val rows = table.rows.map { row ->
-            val last = row.cells.lastOrNull() ?: return@map row
-            if (gridStart(row, row.cells.lastIndex) + span(last) < n) row // this row stops short of the last column
-            else if (span(last) > 1) row.copy(cells = row.cells.dropLast(1) + last.copy(props = withSpan(last.props, span(last) - 1)))
-            else row.copy(cells = row.cells.dropLast(1))
-        }
-        if (rows.any { it.cells.isEmpty() }) return null
-        val cols = gridColumns(table).takeIf { it.size == n } ?: return table.copy(rows = rows)
-        val kept = cols.dropLast(1)
-        return withGrid(table.copy(rows = rows), kept.map { it * cols.sum() / kept.sum() })
-    }
-
-    /**
-     * Merges [rows] × [columns] grid columns from row [top], grid column [left]: each row's cells there become one
-     * spanning them, the first row's holding all their text and the rows below continuing it down. Refused (null)
-     * when the rectangle cuts through a cell, or holds cells already merged down.
-     */
-    fun merge(table: DocTable, top: Int, left: Int, rows: Int, columns: Int): DocTable? {
-        if (rows * columns < 2 || top < 0 || top + rows > table.rows.size) return null
-        val out = table.rows.toMutableList()
-        val joined = ArrayList<DocPara>()
-        for (r in 0 until rows) {
-            val row = table.rows[top + r]
-            val first = row.cells.indices.firstOrNull { gridStart(row, it) == left } ?: return null
-            var covered = 0; var k = first
-            while (covered < columns && k < row.cells.size) { covered += span(row.cells[k]); k++ }
-            if (covered != columns) return null
-            val taken = row.cells.subList(first, k)
-            if (taken.any { V_MERGE.containsMatchIn(it.props) }) return null
-            joined += taken.flatMap { it.paras }.filter { p -> p.table != null || p.text.isNotEmpty() || p.runs.any { it.image != null } }
-            var props = withSpan(taken.first().props, columns)
-            if (rows > 1) props = prop(props, if (r == 0) "<w:vMerge w:val=\"restart\"/>" else "<w:vMerge/>")
-            val merged = DocCell(props, if (r == 0) emptyList() else emptyLike(taken.first()).paras)
-            out[top + r] = row.copy(cells = row.cells.subList(0, first) + merged + row.cells.subList(k, row.cells.size))
-        }
-        val head = out[top]
-        val at = head.cells.indices.first { gridStart(head, it) == left }
-        out[top] = head.copy(cells = head.cells.toMutableList().also { it[at] = it[at].copy(paras = joined.ifEmpty { emptyLike(table.rows[top].cells[at]).paras }) })
-        val cols = gridColumns(table)
-        return table.copy(rows = out).let { if (cols.size == gridCount(table)) withGrid(it, cols) else it }
-    }
-
     /** The line break itself takes the look of the text after it (or before it, at a paragraph's end). */
     private fun breakRun(before: List<DocRun>, after: List<DocRun>) =
         (after.firstOrNull() ?: before.lastOrNull() ?: DocRun("")).copy(text = LINE_BREAK.toString(), image = null)
@@ -661,7 +538,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var sizing by remember { mutableStateOf(false) }
     var wrapping by remember { mutableStateOf(false) }
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var editingTable by remember { mutableStateOf(false) }
+    var tableDialog by remember { mutableStateOf<String?>(null) } // "split" or "props" (the ⋯ page)
+    // Merging: the first cell tapped, then the last; the cells between light up before they are merged.
+    var mergeFrom by remember { mutableStateOf<TableCellRef?>(null) }
+    var mergeTo by remember { mutableStateOf<TableCellRef?>(null) }
     var insertingTable by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<TableCellRef?>(null) }
     var cellEdit by remember { mutableStateOf<TableCellEdit?>(null) }
@@ -677,7 +557,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     LaunchedEffect(selectedPicture) {
         if (selectedPicture == null) {
             if (tab == WriterTab.Picture || tab == WriterTab.Table) tab = WriterTab.Home
-            editingTable = false
+            tableDialog = null; mergeFrom = null; mergeTo = null
         }
     }
 
@@ -1034,6 +914,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 val yy = event.y / shownHeight * img.heightPt
                                                 cells.firstOrNull { x >= it.x && x <= it.x + it.width && yy >= it.y && yy <= it.y + it.height }?.let { area ->
                                                     val ref = TableCellRef(img.key, area.row, area.cell)
+                                                    if (mergeFrom?.key == img.key) { mergeTo = ref; return@let } // choosing where the merge ends
                                                     selectedCell = ref
                                                     val cell = table.rows[area.row].cells[area.cell]
                                                     if (cell.paras.any { p -> p.table != null || p.runs.any { it.image != null } }) message = "This cell has nested content; its text is kept."
@@ -1070,6 +951,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape): a grey box that says what it is, kept in the file as it was.
                                             if (pictureBytes(img) == null && img.table == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
+                                            if (table != null && tab == WriterTab.Table) {
+                                                val from = mergeFrom?.takeIf { it.key == img.key }
+                                                val lit = from?.let { f -> TableEdit.cellsBetween(table, f.row to f.cell, (mergeTo ?: f).let { it.row to it.cell }) }
+                                                    ?: selectedCell?.takeIf { it.key == img.key && cellEdit == null }?.let { setOf(it.row to it.cell) }.orEmpty()
+                                                cells.filter { (it.row to it.cell) in lit }.forEach { a ->
+                                                    Box(Modifier.align(Alignment.TopStart)
+                                                        .offset { IntOffset((a.x / img.widthPt * shownWidth).roundToInt(), (a.y / img.heightPt * shownHeight).roundToInt()) }
+                                                        .size(with(density) { (a.width / img.widthPt * shownWidth).toDp() }, with(density) { (a.height / img.heightPt * shownHeight).toDp() })
+                                                        .background(if (from != null) WORD_BLUE.copy(alpha = 0.18f) else Color.Transparent).border(2.dp, WORD_BLUE))
+                                                }
+                                            }
                                             val edit = cellEdit?.takeIf { it.ref.key == img.key }
                                             val area = edit?.let { e -> cells.firstOrNull { it.row == e.ref.row && it.cell == e.ref.cell } }
                                             if (edit != null && area != null) {
@@ -1237,29 +1130,51 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     })
                 }
                 WriterTab.Table -> {
-                    val (at, key) = selectedPicture ?: (0 to "")
-                    val table = pictures[key]?.table
+                    val (at, _) = selectedPicture ?: (0 to "")
+                    val table = selectedPicture?.second?.let { pictures[it] }?.table
+                    // The cell the tools act on: the one tapped, else the first.
+                    fun here(): TableCellRef? = selectedPicture?.second?.let { key -> selectedCell?.takeIf { it.key == key } ?: TableCellRef(key, 0, 0) }
                     // The cell being typed in is put into the table first, and the change made to the table as it then is
-                    // (made to the table from before it, the typing was lost).
-                    fun change(said: String? = null, f: (DocTable) -> DocTable?) {
+                    // (made to the table from before it, the typing was lost); its key is read again after.
+                    fun change(said: String? = null, f: (DocTable, TableCellRef) -> DocTable?) {
                         commitCell()
-                        val key = selectedPicture?.second ?: return
-                        val img = pictures[key] ?: return
-                        f(img.table ?: return)?.let { changeTable(key, img, it) } ?: run { message = said }
+                        val ref = here() ?: return
+                        val img = pictures[ref.key] ?: return
+                        f(img.table ?: return, ref)?.let { changeTable(ref.key, img, it) } ?: run { message = said }
                     }
-                    listOf({
-                        RibbonButton("Layout", w, enabled = table != null) { commitCell(); editingTable = true }
-                        RibbonButton("Add row", w, enabled = table != null) { change { WriterBridge.addRow(it) } }
-                        RibbonButton("Add column", w, enabled = table != null) { change { WriterBridge.addColumn(it) } }
-                    }, {
-                        RibbonButton("Delete last row", w, enabled = table != null && table.rows.size > 1) { change { it.copy(rows = it.rows.dropLast(1)) } }
-                        RibbonButton("Delete last column", w, enabled = table != null && WriterBridge.gridCount(table) > 1) {
-                            change("This column cannot be taken away.") { WriterBridge.deleteColumn(it) }
+                    val from = mergeFrom?.takeIf { it.key == selectedPicture?.second }
+                    if (from != null) listOf({
+                        val n = table?.let { t -> TableEdit.cellsBetween(t, from.row to from.cell, (mergeTo ?: from).let { it.row to it.cell }).size } ?: 0
+                        Text(if (mergeTo == null) "Tap the last cell to merge" else "$n cells", color = w, style = MaterialTheme.typography.labelLarge)
+                        RibbonButton("Merge", w, enabled = mergeTo != null && n > 1) {
+                            val to = mergeTo!!
+                            change("These cells cannot be merged.") { t, _ -> TableEdit.merge(t, from.row to from.cell, to.row to to.cell) }
+                            selectedCell = from; mergeFrom = null; mergeTo = null
                         }
+                        RibbonButton("Cancel", w) { mergeFrom = null; mergeTo = null }
+                    }) else listOf({
+                        // Everyday tools on the ribbon, the rest behind ⋯ (asked 2026-09-28); three to a page, as a phone fits them.
+                        RibbonButton("Row above", w, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
+                        RibbonButton("Row below", w, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
+                        RibbonButton("Merge", w, enabled = table != null) { commitCell(); mergeFrom = here(); mergeTo = null }
+                    }, {
+                        RibbonButton("Column left", w, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = false) } }
+                        RibbonButton("Column right", w, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
+                        RibbonButton("Split", w, enabled = table != null) { commitCell(); tableDialog = "split" }
+                    }, {
+                        RibbonButton("Delete row", w, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton("Delete column", w, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
                         RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = table != null) {
                             commitCell()
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home
                         }
+                    }, {
+                        TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { change { t, _ -> TableEdit.withLook(t, look) } } }
+                    }, {
+                        Swatches(w, R.drawable.ic_format_color_fill, "Shading", TABLE_COLORS.take(8).map { Color(0xFF000000 or it.toLong()) }) { color ->
+                            change { t, c -> TableEdit.withCells(t, TableEdit.wholeCell(t, c.row, c.cell)) { it.copy(props = TableEdit.withShading(it.props, color?.let { k -> (k.toArgb() and 0xFFFFFF) })) } }
+                        }
+                        RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null) { commitCell(); tableDialog = "props" }
                     })
                 }
                 WriterTab.View -> listOf({
@@ -1388,7 +1303,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             },
             confirmButton = { TextButton(onClick = {
                 insertingTable = false
-                val table = WriterBridge.newTable(rows, columns, documentStyles.page.textWidth)
+                val table = TableEdit.newTable(rows, columns, documentStyles.page.textWidth)
                 val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
                 val img = DocImage("t" + java.util.UUID.randomUUID(), null, width, height, table = table)
                 val at = placePicture(img)
@@ -1402,42 +1317,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     selectedPicture?.let { (_, key) -> pictures[key] }?.let { img ->
         val key = selectedPicture!!.second
         img.table?.let { table ->
-            if (editingTable) {
-                var draft by remember(img) { mutableStateOf(table) }
-                val picked = selectedCell?.takeIf { it.key == key }
-                val startRow = (picked?.row ?: 0).coerceIn(0, draft.rows.lastIndex)
-                val startColumn = (picked?.cell ?: 0).coerceIn(0, (draft.rows.getOrNull(startRow)?.cells?.lastIndex ?: 0))
-                var mergeRows by remember(img, startRow, startColumn) { mutableIntStateOf(1) }
-                var mergeColumns by remember(img, startRow, startColumn) { mutableIntStateOf(1) }
-                val maxRows = minOf(5, draft.rows.size - startRow)
-                // Counted in the table's grid columns, as the merge is: a cell already spanning two counts as two.
-                val gridLeft = draft.rows.getOrNull(startRow)?.let { WriterBridge.gridStart(it, startColumn) } ?: 0
-                val maxColumns = minOf(5, WriterBridge.gridCount(draft) - gridLeft).coerceAtLeast(1)
-                AlertDialog(
-                    onDismissRequest = { editingTable = false },
-                    title = { Text("Table layout") },
-                    text = {
-                        Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Merge from cell ${startRow + 1}, ${startColumn + 1}", style = MaterialTheme.typography.titleSmall)
-                            TableSizeGrid(maxRows, maxColumns, mergeRows, mergeColumns) { r, c -> mergeRows = r; mergeColumns = c }
-                            Text("$mergeRows × $mergeColumns selected", style = MaterialTheme.typography.bodySmall)
-                            TextButton(enabled = mergeRows * mergeColumns > 1, onClick = {
-                                val merged = WriterBridge.merge(draft, startRow, gridLeft, mergeRows, mergeColumns)
-                                if (merged == null) message = "That would cut through a merged cell." else { draft = merged; mergeRows = 1; mergeColumns = 1 }
-                            }) { Text("Merge selected cells") }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = { draft = WriterBridge.addRow(draft) }) { Text("Add row") }
-                                TextButton(onClick = { draft = WriterBridge.addColumn(draft) }) { Text("Add column") }
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(enabled = draft.rows.size > 1, onClick = { draft = draft.copy(rows = draft.rows.dropLast(1)) }) { Text("Delete last row") }
-                                TextButton(enabled = WriterBridge.gridCount(draft) > 1, onClick = { WriterBridge.deleteColumn(draft)?.let { draft = it } ?: run { message = "This column cannot be taken away." } }) { Text("Delete last column") }
-                            }
-                        }
-                    },
-                    confirmButton = { TextButton(onClick = { editingTable = false; changeTable(key, img, draft) }) { Text("OK") } },
-                    dismissButton = { TextButton(onClick = { editingTable = false }) { Text("Cancel") } },
-                )
+            val ref = selectedCell?.takeIf { it.key == key } ?: TableCellRef(key, 0, 0)
+            when (tableDialog) {
+                "split" -> TableSplitDialog(TableEdit.size(table, ref.row, ref.cell).let { (w, h) -> if (w * h > 1) w to h else 2 to 1 }, { tableDialog = null }) { cols, rows ->
+                    tableDialog = null
+                    TableEdit.split(table, ref.row, ref.cell, cols, rows)?.let { changeTable(key, img, it) } ?: run { message = "This cell cannot be split." }
+                }
+                "props" -> TablePropertiesDialog(table, ref.row, ref.cell, { tableDialog = null }) { tableDialog = null; changeTable(key, img, it) }
             }
         }
         if (sizing) {

@@ -85,7 +85,8 @@ internal data class DocSection(val page: DocPage, val headers: Map<String, List<
  */
 internal class TableSpec(val cols: List<Float>, val indent: Float, val align: DocAlign, val rows: List<RowSpec>)
 internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boolean, val cells: List<CellSpec>)
-internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>)
+internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>,
+    val turn: Int = 0 /* its text read upwards (-90, Word's btLr) or downwards (90, tbRl) */)
 internal class Border(val width: Float, val color: Int)
 internal data class TableCellArea(val row: Int, val cell: Int, val x: Float, val y: Float, val width: Float, val height: Float)
 
@@ -267,7 +268,8 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                     when (edge(e.localName)) { "top" -> b[0] = border(e); "left" -> b[1] = border(e); "bottom" -> b[2] = border(e); "right" -> b[3] = border(e) }
                 }
                 g += span
-                CellSpec(span, merge, fill, when (tcPr?.kid(W, "vAlign")?.attr(W, "val")) { "center" -> 'c'; "bottom" -> 'b'; else -> 't' }, m, b)
+                CellSpec(span, merge, fill, when (tcPr?.kid(W, "vAlign")?.attr(W, "val")) { "center" -> 'c'; "bottom" -> 'b'; else -> 't' }, m, b,
+                    when (tcPr?.kid(W, "textDirection")?.attr(W, "val")) { "btLr" -> -90; "tbRl", "tbRlV" -> 90; else -> 0 })
             }
             RowSpec(tw(h, "val"), h?.attr(W, "hRule") == "exact", trPr?.kid(W, "tblHeader").let { it != null && it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } }, cells)
         }
@@ -491,7 +493,9 @@ internal fun odfLength(v: String?): Float? = v?.let { Regex("""^(-?[\d.]+)(cm|mm
 internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: List<Floating> = emptyList(),
     val section: DocSection = DocSection(page), val number: Int = 1, val firstOfSection: Boolean = false,
     val boxes: List<Box> = emptyList(), val lines: List<Line> = emptyList()) {
-    class Piece(val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float)
+    /** [turn]: drawn turned that many degrees about ([tx], [ty]), its x and y then counted in the turned frame. */
+    class Piece(val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float,
+        val turn: Int = 0, val tx: Float = 0f, val ty: Float = 0f)
     /** A table cell's shading, and a border. */
     class Box(val x: Float, val y: Float, val w: Float, val h: Float, val color: Int)
     class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
@@ -509,6 +513,7 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             val top = p.layout.getLineTop(p.firstLine).toFloat()
             val bottom = p.layout.getLineBottom(p.lastLine).toFloat()
             canvas.save()
+            if (p.turn != 0) { canvas.translate(p.tx, p.ty); canvas.rotate(p.turn.toFloat()) }
             canvas.translate(p.x, p.y)
             canvas.scale(1 / U, 1 / U) // the layout counts in twentieths of a point
             canvas.translate(0f, -top)
@@ -523,9 +528,12 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
 }
 
 /** Some of a page laid out on its own (a table's row, a cell's contents): what goes where, from its top left. */
-internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val boxes: List<LaidPage.Box>, val lines: List<LaidPage.Line>) {
-    fun moved(dx: Float, dy: Float) = Block(height, pieces.map { LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x + dx, it.y + dy) },
-        boxes.map { LaidPage.Box(it.x + dx, it.y + dy, it.w, it.h, it.color) }, lines.map { LaidPage.Line(it.x1 + dx, it.y1 + dy, it.x2 + dx, it.y2 + dy, it.width, it.color) })
+internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val boxes: List<LaidPage.Box>, val lines: List<LaidPage.Line>,
+    val across: Float = 0f /* turned text: how wide it stands */) {
+    fun moved(dx: Float, dy: Float) = Block(height, pieces.map {
+        if (it.turn == 0) LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x + dx, it.y + dy)
+        else LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x, it.y, it.turn, it.tx + dx, it.ty + dy) },
+        boxes.map { LaidPage.Box(it.x + dx, it.y + dy, it.w, it.h, it.color) }, lines.map { LaidPage.Line(it.x1 + dx, it.y1 + dy, it.x2 + dx, it.y2 + dy, it.width, it.color) }, across)
 }
 
 internal object OfficePages {
@@ -737,6 +745,20 @@ internal object OfficePages {
      * A row is as tall as its tallest cell (or its set height); a cell merged down over rows makes the last of them
      * taller when it needs to.
      */
+    /**
+     * A cell whose text reads upwards or downwards: laid out as a line as long as the row is tall (a row of set height),
+     * else as long as its longest line, and turned; the block is as tall as that line is long, as Word makes the row.
+     */
+    private fun turned(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, row: RowSpec?, cs: CellSpec, pictureBytes: (DocImage) -> ByteArray?): Block {
+        fun lay(width: Float) = stack(doc, paras, styles, page, width, pictureBytes, null, 0f, 0f)
+        val set = row?.height?.minus(cs.margin[1] + cs.margin[3])?.takeIf { it > 8f && row.exact }
+        val length = set ?: lay(1000f).pieces.maxOfOrNull { p -> (p.firstLine..p.lastLine).maxOf { p.layout.getLineWidth(it) / U } + p.x }?.plus(1f)?.coerceIn(8f, 1000f) ?: 8f
+        val flat = lay(length)
+        // Upwards: the line's start at the cell's bottom; downwards: at its top, the first line on the right.
+        val (tx, ty) = if (cs.turn < 0) 0f to length else flat.height to 0f
+        return Block(length, flat.pieces.map { LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x, it.y, cs.turn, tx, ty) }, emptyList(), emptyList(), flat.height)
+    }
+
     private fun tableRows(doc: OfficeDoc, t: DocTable, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
         areas: MutableList<TableCellArea>? = null): List<Pair<Block, Boolean>> {
         val spec = styles.tableSpec(t)
@@ -764,7 +786,8 @@ internal object OfficePages {
             row.cells.mapIndexedNotNull { ci, cell ->
                 val cs = spec.rows.getOrNull(ri)?.cells?.getOrNull(ci) ?: return@mapIndexedNotNull null
                 val w = cols.subList(g.coerceAtMost(cols.size), (g + cs.span).coerceAtMost(cols.size)).sum()
-                val content = if (cs.merge == 'c') null else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f, cs.margin[2])
+                val content = if (cs.merge == 'c') null else if (cs.turn != 0) turned(doc, cell.paras, styles, page, spec.rows.getOrNull(ri), cs, pictureBytes)
+                    else stack(doc, cell.paras, styles, page, (w - cs.margin[0] - cs.margin[2]).coerceAtLeast(4f), pictureBytes, null, 0f, 0f, cs.margin[2])
                 Laid(ri, ci, g, cs, content).also { g += cs.span }
             }
         }
@@ -785,7 +808,7 @@ internal object OfficePages {
         }
         var rowY = 0f
         return t.rows.indices.map { ri ->
-            val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
+            val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>(); val edges = ArrayList<LaidPage.Line>()
             for (c in cells[ri]) {
                 if (c.spec.merge == 'c') continue // drawn by the cell above that starts it
                 val x = colX[c.g.coerceAtMost(colX.size - 1)]; val w = colX[(c.g + c.spec.span).coerceAtMost(colX.size - 1)] - x
@@ -794,16 +817,25 @@ internal object OfficePages {
                 c.spec.fill?.let { boxes += LaidPage.Box(x, 0f, w, h, it) }
                 val content = c.content!!
                 val free = h - content.height - c.spec.margin[1] - c.spec.margin[3]
-                val dy = c.spec.margin[1] + when (c.spec.vAlign) { 'c' -> free / 2; 'b' -> free; else -> 0f }.coerceAtLeast(0f)
-                val placed = content.moved(x + c.spec.margin[0], dy)
+                val m = c.spec.margin
+                // Turned text is aligned across the cell, as Word turns its top with it: downwards, "top" is the right
+                // side; upwards, the left. Its line starts at the top (downwards) or the bottom (upwards).
+                val side = (w - m[0] - m[2] - content.across).coerceAtLeast(0f)
+                val placed = when {
+                    c.spec.turn > 0 -> content.moved(x + m[0] + when (c.spec.vAlign) { 'c' -> side / 2; 'b' -> 0f; else -> side }, m[1])
+                    c.spec.turn < 0 -> content.moved(x + m[0] + when (c.spec.vAlign) { 'c' -> side / 2; 'b' -> side; else -> 0f }, (h - m[3] - content.height).coerceAtLeast(m[1]))
+                    else -> content.moved(x + m[0], m[1] + when (c.spec.vAlign) { 'c' -> free / 2; 'b' -> free; else -> 0f }.coerceAtLeast(0f))
+                }
                 pieces += placed.pieces; boxes += placed.boxes; lines += placed.lines
                 val b = c.spec.borders
-                b[0]?.let { lines += LaidPage.Line(x, 0f, x + w, 0f, it.width, it.color) }
-                b[1]?.let { lines += LaidPage.Line(x, 0f, x, h, it.width, it.color) }
-                b[2]?.let { lines += LaidPage.Line(x, h, x + w, h, it.width, it.color) }
-                b[3]?.let { lines += LaidPage.Line(x + w, 0f, x + w, h, it.width, it.color) }
+                b[0]?.let { edges += LaidPage.Line(x, 0f, x + w, 0f, it.width, it.color) }
+                b[1]?.let { edges += LaidPage.Line(x, 0f, x, h, it.width, it.color) }
+                b[2]?.let { edges += LaidPage.Line(x, h, x + w, h, it.width, it.color) }
+                b[3]?.let { edges += LaidPage.Line(x + w, 0f, x + w, h, it.width, it.color) }
             }
-            (Block(heights[ri], pieces, boxes, lines) to (spec.rows.getOrNull(ri)?.header == true)).also { rowY += heights[ri] }
+            // The cells' own lines under what is in them: a table in a cell reaching its edge keeps its line there
+            // (the cell's line, and the next cell's, were drawn over it — a nested table lost its right side).
+            (Block(heights[ri], pieces, boxes, edges + lines) to (spec.rows.getOrNull(ri)?.header == true)).also { rowY += heights[ri] }
         }
     }
 

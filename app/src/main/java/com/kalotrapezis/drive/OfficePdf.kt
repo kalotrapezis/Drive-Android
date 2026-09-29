@@ -10,7 +10,7 @@ import java.io.OutputStream
 internal object OfficePdf {
     fun write(doc: OfficeDoc, styles: DocStyles, out: OutputStream, pictureBytes: (DocImage) -> ByteArray? = { null }) {
         val pdf = PdfDocument()
-        OfficePages.layout(doc, styles, pictureBytes).forEachIndexed { i, laid ->
+        OfficePages.layout(doc, styles, pictureBytes = pictureBytes).forEachIndexed { i, laid ->
             val page = pdf.startPage(PdfDocument.PageInfo.Builder(laid.page.width.toInt(), laid.page.height.toInt(), i + 1).create())
             laid.draw(page.canvas) // the PDF canvas counts in points, as the layout does
             pdf.finishPage(page)

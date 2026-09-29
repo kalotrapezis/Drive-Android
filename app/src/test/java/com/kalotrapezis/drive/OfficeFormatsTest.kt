@@ -211,6 +211,33 @@ class OfficeFormatsTest {
         assert("""w:header="708"""" in set) // its header distance kept
     }
 
+    @Test fun `a table of contents lists the headings with their pages, in the file's contents styles, and updates in place`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Title page"))), DocPara(emptyList()),
+                DocPara(listOf(DocRun("Εισαγωγή")), heading = 1), DocPara(listOf(DocRun("text"))),
+                DocPara(listOf(DocRun("Method")), heading = 2), DocPara(listOf(DocRun("Deep")), heading = 4), DocPara(listOf(DocRun("Results")), heading = 1)))
+            val styles = DocStyles.of(kind, OfficeFormats.write(doc, kind))
+            // A stand-in for the page layout: each paragraph on the page of its index.
+            val fake: (OfficeDoc, IntArray) -> Unit = { d, pages -> d.paras.indices.forEach { pages[it] = it + 1 } }
+            val with = Contents.insert(doc, kind, styles, 1, fake)
+            // At the empty paragraph: its title and the three headings of levels 1–3, each with a tab and its page.
+            assertEquals(kind.name, listOf("Title page", "Contents", "Εισαγωγή\t6", "Method\t8", "Results\t10"), with.paras.take(5).map { it.text })
+            assertEquals(kind.name, listOf(Contents.headingStyle(kind), Contents.levelStyle(kind, 1), Contents.levelStyle(kind, 2)), with.paras.drop(1).take(3).map { it.keep?.style })
+            // Written, read back: the same, and the styles are in the file.
+            val bytes = OfficeFormats.write(with, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("contents.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, with.paras.map { it.text }, back.paras.map { it.text })
+            val tabs = DocStyles.of(kind, bytes).look(back.paras[2]).tabs
+            assert(tabs.any { it.type == 'r' && it.leader == '.' }) { "$kind $tabs" }
+            // A new heading, then Update: the same place, one more line, no second copy.
+            val more = back.copy(paras = back.paras + DocPara(listOf(DocRun("Discussion")), heading = 1))
+            val updated = Contents.insert(more, kind, styles, more.paras.size, fake)
+            assertEquals(kind.name, 1, updated.paras.count { it.text == "Contents" })
+            assertEquals(kind.name, "Discussion\t12", updated.paras[5].text)
+        }
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

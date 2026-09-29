@@ -27,6 +27,13 @@ Columns: `DocPage.columns/columnGap` (read from w:cols / style:columns, written 
 layout flows `page` = the current column inside `frame` (the sheet); `breakPage()` for page breaks and sections.
 Checked: unit test; tablet (2 columns on the landscape copy) and LibreOffice (w:cols num=2, 3 pages alike).
 
+**References › Table of contents (night):** Contents.kt — the headings 1–3 with their page, in TOCHeading/TOC1–3 (docx,
+added from DOCX_BUILTIN) or Contents_20_Heading/1–3 (ODT_BUILTIN), a right tab with dot leader at the text width;
+page numbers from `OfficePages.layout(…, pageOf)` (laid out once with the table in place); "Update table" when one is
+there (found by its styles). Checked: unit test both kinds; LibreOffice renders both; tablet (TOC test.docx, copy of
+02): pages 1, 1, 2 — the same as LibreOffice's layout of the saved file. Not a Word field: Word's "Update field"
+does not know it (Tetra's Update does).
+
 **Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).

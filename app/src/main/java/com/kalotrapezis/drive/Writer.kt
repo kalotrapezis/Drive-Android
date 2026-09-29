@@ -713,7 +713,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Layout("Layout"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -1214,6 +1214,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
     }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
+    /**
+     * References › Table of contents: put at the cursor's paragraph (or, if the document has one, brought up to date),
+     * its page numbers from the pages as Writer lays them out. ponytail: laid out on the main thread; fine for a
+     * thesis-sized document, move off it if a long one stalls.
+     */
+    fun insertContents() = change {
+        val cur = current()
+        val at = chosen()?.first?.minOrNull() ?: cur.paras.size
+        val parts = packageParts
+        meta = runCatching { Contents.insert(cur, kind, documentStyles, at) { d, pages ->
+            OfficePages.layout(d, documentStyles, pages) { img -> img.bytes ?: img.part?.let { parts[it] } } } }
+            .onFailure { Log.e("Writer", "contents", it) }.getOrNull() ?: run { message = "The contents could not be made."; return@change }
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
+        message = "Contents from ${cur.paras.count { it.heading in 1..3 }} headings"
+    }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
@@ -1890,6 +1906,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
+                })
+                WriterTab.References -> listOf({
+                    val has = remember(meta.paras) { Contents.find(meta, kind) != null }
+                    RibbonButton(if (has) "Update table" else "Table of contents", w, enabled = loaded) { insertContents() }
                 })
                 WriterTab.View -> listOf({
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.

@@ -790,7 +790,8 @@ internal object OfficePages {
     /** Word's default tab stops: every half inch. */
     private const val TAB = 36f
 
-    fun layout(doc: OfficeDoc, styles: DocStyles, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
+    /** [pageOf], when given, learns the page number (as printed) each paragraph starts on — for a table of contents. */
+    fun layout(doc: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
         val sections = styles.sections(doc.paras)
         var section = sections.firstOrNull() ?: styles.section
         var frame = section.page // the sheet
@@ -870,6 +871,7 @@ internal object OfficePages {
                 var last = line
                 while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limit) last++
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
+                if (line == 0) pageOf?.let { if (i < it.size) it[i] = number }
                 look.box?.let { box -> boxLines(box, look, page, y, y + layout.bottomPt(last) - top, line == 0, last == layout.lineCount - 1,
                     box == prevLook?.box && prevEndPage == pages.size, box == doc.paras.getOrNull(i + 1)?.takeIf { it.table == null }?.let { styles.look(it).box },
                     prevEnd, lines) }

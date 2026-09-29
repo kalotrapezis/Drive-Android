@@ -1,3 +1,29 @@
+# 29 September, noon — header, footer and page numbers; a false "changed"; closing here
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37) and emulator,
+**not the phone** (never connected today — first thing next time: install there and walk through today's features).
+
+- **01_Text_and_Paragraphs opened as changed**: the editor re-lays a list item's indent after drawing it; the change
+  detector (draft/dirty snapshotFlow) now leaves paragraph indents out. Checked on the tablet: opens clean, no draft.
+- **Header, footer, page numbers** (Insert › Header & footer / Page numbers → `HeaderFooterDialog`): one line of text
+  at top and bottom, left/centre/right; page number top or bottom, left/centre/right, as `#`, `Page # of N`,
+  `Σελίδα # από N`, `# / N`; different first page. `HeaderFooter.of(section)` prefills from the file (zones read from
+  tab stops). Written by `HeaderFooterEdit.docx` (new header/footer parts + rels + content types, body sectPr refs,
+  titlePg) / `.odt` (Standard master page's header/footer, TetraHF automatic paragraph styles with tab stops, page
+  layout header/footer-style). Applied to `original` at once, so the pages show it; the draft is now the whole
+  package the file is written from (styles and headers survive a restart).
+- ODT headers/footers are now **read** for the pages too (`OfficeFormats.odtMaster`; room below the top margin as
+  LibreOffice gives it).
+- Checked: unit test both formats (set → read back → saved with new text → still there); Word on the tablet
+  (02 copy: number top right, footer centred) and LibreOffice; ODT: Πάτερ Ημών Άσκηση.odt in LibreOffice (JVM-made).
+  **Not yet**: the ODT path through the tablet's UI.
+- Known: a header with several lines/pictures is replaced by one line (the page says so first); only the main page
+  style of an ODT (Standard) gets it; odd/even headers not offered; old header parts stay unused in a .docx.
+- Next: phone check; ODT header through the UI on the tablet; then (user's list) undo for style/spacing changes,
+  comments, table of contents, APA bibliography.
+
+---
+
 # 29 September, day — ODT tables finished, the desktop-like view with rulers, styles
 
 State: `writer-library`; all unit tests pass; the build is on the **tablet** (971f6b37) and the emulator, not the phone.

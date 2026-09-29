@@ -28,7 +28,8 @@ internal data class HeaderFooter(
                 val n = p.text.substring(0, at).count { it == '\t' }
                 if (n == 0) return p.align
                 // The n-th of the paragraph's own tab stops says which zone (Word's header has centre, then right).
-                val stops = p.keep?.parts?.firstOrNull { it.first == "tabs" }?.second?.let { x -> Regex("""w:val="(\w+)"""").findAll(x).map { it.groupValues[1] }.filter { it != "clear" }.toList() }.orEmpty()
+                val stops = p.keep?.parts?.firstOrNull { it.first == "tabs" || (it.first == "child" && "tab-stops" in it.second) }?.second
+                    ?.let { x -> Regex("""(?:w:val|style:type)="(\w+)"""").findAll(x).map { it.groupValues[1] }.filter { it != "clear" }.toList() }.orEmpty()
                 return when (stops.getOrNull(n - 1)) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; null -> if (n == 1) DocAlign.Center else DocAlign.End; else -> DocAlign.Start }
             }
             fun align(paras: List<DocPara>?) = paras.orEmpty().firstOrNull { it.text.isNotBlank() }?.let { p ->
@@ -122,6 +123,80 @@ internal object HeaderFooterEdit {
         parts[docPath] = xml.toByteArray()
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
+        return parts
+    }
+
+    /**
+     * The same in an OpenDocument: the main page style's (Standard, else the first) header and footer replaced, its
+     * paragraphs styled by automatic styles of their own (alignment, the zones' tab stops), the page layout given room
+     * for them (at least nothing, and a quarter centimetre between them and the text, as LibreOffice's own).
+     */
+    fun odt(source: Map<String, ByteArray>, hf: HeaderFooter, page: DocPage): LinkedHashMap<String, ByteArray> {
+        val parts = LinkedHashMap(source)
+        var xml = String(parts.getValue("styles.xml"), Charsets.UTF_8)
+        val masters = Regex("""<style:master-page\b[^>]*?(?:/>|>[\s\S]*?</style:master-page>)""").findAll(xml).toList()
+        val master = masters.firstOrNull { """style:name="Standard"""" in it.value.substringBefore('>') } ?: masters.firstOrNull() ?: error("No page style")
+        val names = Regex("""style:name="([^"]+)"""").findAll(xml).map { it.groupValues[1] }.toMutableSet()
+        val auto = StringBuilder()
+        fun pt(v: Float) = "${(v * 100).roundToInt() / 100f}pt"
+        fun paragraph(text: String, align: DocAlign, format: String?, numberAlign: DocAlign): String {
+            fun zone(a: DocAlign) = when (a) { DocAlign.Center -> 1; DocAlign.End -> 2; else -> 0 }
+            fun t(v: String) = OfficeFormats.esc(v.replace(Regex(" {2,}"), " "))
+            val number = format?.split(Regex("(?=[#N])|(?<=[#N])"))?.filter { it.isNotEmpty() }?.joinToString("") { when (it) {
+                "#" -> "<text:page-number text:select-page=\"current\">1</text:page-number>"; "N" -> "<text:page-count>1</text:page-count>"; else -> t(it) } }
+            val zones = arrayOf(StringBuilder(), StringBuilder(), StringBuilder())
+            if (text.isNotBlank()) zones[zone(align)].append(t(text.trim()))
+            if (number != null) zones[zone(numberAlign)].let { if (it.isNotEmpty()) it.append(' '); it.append(number) }
+            val used = zones.indices.filter { zones[it].isNotEmpty() }
+            val one = used.size <= 1
+            val a = if (one) when (used.firstOrNull() ?: 0) { 1 -> "center"; 2 -> "end"; else -> "start" } else "start"
+            val stops = if (one) "" else "<style:tab-stops>" + used.filter { it > 0 }.joinToString("") {
+                if (it == 1) "<style:tab-stop style:position=\"${pt(page.textWidth / 2)}\" style:type=\"center\"/>" else "<style:tab-stop style:position=\"${pt(page.textWidth)}\" style:type=\"right\"/>" } + "</style:tab-stops>"
+            val name = generateSequence(1) { it + 1 }.map { "TetraHF$it" }.first { it !in names }.also { names += it }
+            auto.append("""<style:style style:name="$name" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:text-align="$a">$stops</style:paragraph-properties></style:style>""")
+            val body = if (one) zones[used.firstOrNull() ?: 0].toString() else used.joinToString("") { z -> (if (z > 0) "<text:tab/>" else "") + zones[z] }
+            return """<text:p text:style-name="$name">$body</text:p>"""
+        }
+        val bands = StringBuilder()
+        for (kind in listOf("header", "footer")) {
+            val (text, align) = if (kind == "header") hf.header to hf.headerAlign else hf.footer to hf.footerAlign
+            val number = hf.number == (if (kind == "header") HeaderFooter.NumberPlace.Header else HeaderFooter.NumberPlace.Footer)
+            if (text.isNotBlank() || number) bands.append("<style:$kind>${paragraph(text, align, if (number) hf.numberFormat else null, hf.numberAlign)}</style:$kind>")
+        }
+        // A title page: an empty header and footer of its own (only when there is one to leave off).
+        if (hf.firstDifferent) for (kind in listOf("header", "footer")) if ("<style:$kind>" in bands) bands.append("<style:$kind-first><text:p/></style:$kind-first>")
+        // In ODF's order: headers, then footers.
+        val ordered = listOf("header", "header-first", "footer", "footer-first").joinToString("") { k -> Regex("""<style:$k>[\s\S]*?</style:$k>""").find(bands)?.value ?: "" }
+        val m = master.value
+        val open = m.substring(0, m.indexOf('>') + 1).let { if (it.endsWith("/>")) it.dropLast(2) + ">" else it }
+        val rest = if (m.endsWith("/>") && m.indexOf('>') == m.length - 1) "" else m.substring(m.indexOf('>') + 1, m.length - "</style:master-page>".length)
+            .replace(Regex("""<style:(header|header-left|header-first|footer|footer-left|footer-first)\b[^>]*?(?:/>|>[\s\S]*?</style:\1>)"""), "")
+        xml = xml.replaceRange(master.range, "$open$ordered$rest</style:master-page>")
+        // Room for them on the page layout the page style uses.
+        Regex("""style:page-layout-name="([^"]+)"""").find(open)?.groupValues?.get(1)?.let { layoutName ->
+            Regex("""<style:page-layout\b[^>]*style:name="${Regex.escape(layoutName)}"[^>]*?(?:/>|>[\s\S]*?</style:page-layout>)""").find(xml)?.let { lm ->
+                var l = lm.value
+                if (l.endsWith("/>") && l.indexOf('>') == l.length - 1) l = l.dropLast(2) + "></style:page-layout>"
+                for ((kind, gap) in listOf("header" to "margin-bottom", "footer" to "margin-top")) {
+                    if ("<style:$kind>" !in ordered) continue
+                    val filled = """<style:$kind-style><style:header-footer-properties fo:min-height="0cm" fo:$gap="0.25cm"/></style:$kind-style>"""
+                    l = when {
+                        Regex("""<style:$kind-style>\s*<style:header-footer-properties""").containsMatchIn(l) -> l
+                        Regex("""<style:$kind-style\s*/>|<style:$kind-style>\s*</style:$kind-style>""").containsMatchIn(l) -> l.replace(Regex("""<style:$kind-style\s*/>|<style:$kind-style>\s*</style:$kind-style>"""), filled)
+                        // Header style before footer style, both after the page's own properties.
+                        kind == "header" && "<style:footer-style" in l -> l.replaceFirst("<style:footer-style", "$filled<style:footer-style")
+                        else -> l.replace("</style:page-layout>", "$filled</style:page-layout>")
+                    }
+                }
+                xml = xml.replaceRange(lm.range, l)
+            }
+        }
+        xml = when {
+            "</office:automatic-styles>" in xml -> xml.replaceFirst("</office:automatic-styles>", "$auto</office:automatic-styles>")
+            "<office:automatic-styles/>" in xml -> xml.replaceFirst("<office:automatic-styles/>", "<office:automatic-styles>$auto</office:automatic-styles>")
+            else -> xml.replaceFirst("<office:master-styles", "<office:automatic-styles>$auto</office:automatic-styles><office:master-styles")
+        }
+        parts["styles.xml"] = xml.toByteArray()
         return parts
     }
 

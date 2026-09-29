@@ -489,11 +489,23 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         // A table Writer put in, not saved yet: its styles are Writer's own.
         if ("table-cell/$ODT_TETRA_CELL" !in tableStyles) OfficeFormats.parse(("<x xmlns:style=\"$STYLE\" xmlns:fo=\"$FO\" xmlns:table=\"$TABLE\">$ODT_TETRA_STYLES</x>").toByteArray())
             .documentElement.kids().forEach { st -> tableStyles["${st.attr(STYLE, "family")}/${st.attr(STYLE, "name")}"] = st }
-        val props = master?.attr(STYLE, "page-layout-name")?.let { layouts[it] }?.kid(STYLE, "page-layout-properties")
+        val layout = master?.attr(STYLE, "page-layout-name")?.let { layouts[it] }
+        val props = layout?.kid(STYLE, "page-layout-properties")
         fun len(name: String) = odfLength(props?.attr(FO, name))
         val d = DocPage()
-        section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height, len("margin-top") ?: d.top, len("margin-bottom") ?: d.bottom,
-            len("margin-left") ?: d.left, len("margin-right") ?: d.right))
+        // A header sits at the top margin and the text starts below it (its height, at least one line, and its spacing),
+        // as LibreOffice lays a page out; the footer likewise at the bottom.
+        val (headers, footers) = OfficeFormats.odtMaster(parts)
+        fun band(paras: List<DocPara>?, style: String, gap: String): Float {
+            if (paras == null) return 0f
+            val hf = layout?.kid(STYLE, style)?.kid(STYLE, "header-footer-properties")
+            return maxOf(odfLength(hf?.attr(FO, "min-height")) ?: 0f, paras.size.coerceAtLeast(1) * 14f) + (odfLength(hf?.attr(FO, gap)) ?: 0f)
+        }
+        val top = len("margin-top") ?: d.top; val bottom = len("margin-bottom") ?: d.bottom
+        section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height,
+            top + band(headers["default"], "header-style", "margin-bottom"), bottom + band(footers["default"], "footer-style", "margin-top"),
+            len("margin-left") ?: d.left, len("margin-right") ?: d.right, header = top, footer = bottom),
+            headers, footers, titlePage = "first" in headers || "first" in footers)
     }
 
     /**

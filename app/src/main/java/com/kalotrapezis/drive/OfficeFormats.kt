@@ -287,6 +287,13 @@ internal object OfficeFormats {
     internal fun docxPart(parts: Map<String, ByteArray>, path: String): List<DocPara> =
         runCatching { DocxReader(parts).apply { fieldMarks = true }.readPart(path) }.getOrDefault(emptyList())
 
+    /**
+     * An OpenDocument's header and footer (its main page style's: Standard, else the first), each "default" and
+     * "first" (a title page's), for the pages — page-number fields as [PAGE_FIELD] / [PAGES_FIELD].
+     */
+    internal fun odtMaster(parts: Map<String, ByteArray>): Pair<Map<String, List<DocPara>>, Map<String, List<DocPara>>> =
+        runCatching { OdtReader(parts).apply { fieldMarks = true }.readMaster() }.getOrDefault(emptyMap<String, List<DocPara>>() to emptyMap())
+
     fun read(bytes: ByteArray, kind: OfficeKind): OfficeDoc {
         val parts = unzip(bytes)
         return when (kind) {
@@ -1221,6 +1228,20 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         return OfficeDoc(out.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt)
     }
 
+    /** Reading a header or footer: its page number and count become [PAGE_FIELD] / [PAGES_FIELD]. */
+    var fieldMarks = false
+
+    fun readMaster(): Pair<Map<String, List<DocPara>>, Map<String, List<DocPara>>> {
+        val root = OfficeFormats.parse(parts["styles.xml"] ?: return emptyMap<String, List<DocPara>>() to emptyMap()).documentElement
+        root.kid(OFFICE, "styles")?.let { collect(it, false) }
+        root.kid(OFFICE, "automatic-styles")?.let { collect(it, true) }
+        val master = root.kid(OFFICE, "master-styles")?.kids()?.let { ms -> ms.firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: ms.firstOrNull() }
+            ?: return emptyMap<String, List<DocPara>>() to emptyMap()
+        fun read(tag: String) = master.kid(STYLE, tag)?.takeIf { it.attr(STYLE, "display") != "false" }?.let { ArrayList<DocPara>().also { out -> block(it, out, null, -1) } }
+        fun both(kind: String) = listOfNotNull(read(kind)?.let { "default" to it }, read("$kind-first")?.let { "first" to it }).toMap()
+        return both("header") to both("footer")
+    }
+
     fun collect(parent: Element, automatic: Boolean) {
         for (e in parent.kids()) when (e.localName) {
             "style" -> {
@@ -1481,6 +1502,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         "change", "change-start", "change-end" -> notes += "tracked changes"
                         "ruby" -> { notes += "other text effects"; e.kid(TEXT, "ruby-base")?.let { content(it, look, inLink) } }
                         "meta", "meta-field" -> content(e, look, inLink)
+                        "page-number", "page-count" -> if (fieldMarks) runs += look.copy(text = (if (e.localName == "page-number") PAGE_FIELD else PAGES_FIELD).toString())
+                            else { notes += "fields (page numbers, dates, contents)"; content(e, look, inLink) }
                         else -> { notes += "fields (page numbers, dates, contents)"; content(e, look, inLink) }
                     } else if (e.namespaceURI == OFFICE && (e.localName == "annotation" || e.localName == "annotation-end")) notes += "comments"
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))

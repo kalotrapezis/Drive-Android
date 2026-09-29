@@ -949,9 +949,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var headerPage by remember { mutableStateOf(false) }
     /** The document's header, footer and page numbers set (Word), into the file as it will be written; shown on the pages. */
     fun setHeaderFooter(hf: HeaderFooter) {
-        val parts = runCatching { HeaderFooterEdit.docx(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), hf, documentStyles.page) }
+        val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
+            if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(it, hf, documentStyles.page) else HeaderFooterEdit.odt(it, hf, documentStyles.page) } }
             .onFailure { Log.e("Writer", "header", it) }.getOrNull() ?: run { message = "The header could not be set."; return }
-        original = OfficeFormats.zip(parts)
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
         message = "Shown on the pages (the eye at the top)"
@@ -1368,8 +1369,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).
-                    RibbonButton("Header & footer", w, enabled = loaded) { if (kind == OfficeKind.Docx) headerPage = true else message = "Header and footer: Word files for now." }
-                    RibbonButton("Page numbers", w, enabled = loaded) { if (kind == OfficeKind.Docx) headerPage = true else message = "Page numbers: Word files for now." }
+                    RibbonButton("Header & footer", w, enabled = loaded) { headerPage = true }
+                    RibbonButton("Page numbers", w, enabled = loaded) { headerPage = true }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")

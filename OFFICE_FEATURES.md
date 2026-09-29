@@ -90,7 +90,7 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
      behindDoc), a:srcRect for crop, wp:extent + a:ext for size; ODT draw:frame svg:x/y, text:anchor-type,
      style:wrap / style:run-through on its graphic style, fo:clip for crop.
 - [ ] Page break
-- [ ] Header and footer; page numbers
+- [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / Σελίδα 1 από 3 / 1 / 3, different first page) — [ ] richer headers (several lines, pictures), odd/even
 - [ ] Footnotes and endnotes
 - [ ] Comments
 - [ ] Shapes, text box

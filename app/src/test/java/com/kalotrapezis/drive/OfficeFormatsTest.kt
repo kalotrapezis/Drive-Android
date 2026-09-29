@@ -227,4 +227,25 @@ class OfficeFormatsTest {
             assertEquals(1, Regex(if (kind == OfficeKind.Docx) "w:styleId=\"Heading1\"" else "style:name=\"Heading_20_1\"").findAll(again).count())
         }
     }
+
+    @Test fun `a header, footer and page numbers set from Writer are Word's, and stay through saving`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Body")))))
+        val start = OfficeFormats.write(doc, OfficeKind.Docx)
+        for (hf in listOf(
+            HeaderFooter(header = "Running head", headerAlign = DocAlign.Start, footer = "Draft", footerAlign = DocAlign.Center,
+                number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "Page # of N"),
+            HeaderFooter(number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, numberFormat = "#", firstDifferent = true),
+        )) {
+            val parts = HeaderFooterEdit.docx(OfficeFormats.unzip(start), hf, DocPage())
+            val bytes = OfficeFormats.zip(parts)
+            // Saved again with new text: the page setup and its header and footer stay.
+            val saved = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun("Changed"))))), OfficeKind.Docx, bytes)
+            for (b in listOf(bytes, saved)) {
+                val section = DocStyles.of(OfficeKind.Docx, b).section
+                assertEquals(hf, HeaderFooter.of(section))
+                OfficeFormats.unzip(b).filterKeys { it.endsWith(".xml") || it.endsWith(".rels") }.values.forEach { OfficeFormats.parse(it) } // well formed
+            }
+            assertEquals(listOf("Changed"), OfficeFormats.read(saved, OfficeKind.Docx).paras.map { it.text })
+        }
+    }
 }

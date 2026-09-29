@@ -311,6 +311,46 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
     }
 }
 
+/**
+ * Insert › Header & footer, Page numbers (asked 2026-09-27): a line of text at the top and at the bottom of every
+ * page, where each stands, and the page number — for APA, top right on every page.
+ */
+@Composable
+internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () -> Unit, apply: (HeaderFooter) -> Unit) {
+    var d by remember { mutableStateOf(now) }
+    @Composable fun aligns(on: DocAlign, set: (DocAlign) -> Unit) =
+        listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right").forEach { (a, l) -> Choice(l, on == a) { set(a) } }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Header, footer and page numbers", style = MaterialTheme.typography.titleLarge)
+                if (rich) Text("This document's header or footer has more than a line of text (a logo, a table…). Setting it here puts this in its place.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    OutlinedTextField(d.header, { d = d.copy(header = it.replace("\n", " ")) }, label = { Text("Header") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Section("Header stands") { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
+                    OutlinedTextField(d.footer, { d = d.copy(footer = it.replace("\n", " ")) }, label = { Text("Footer") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Section("Footer stands") { aligns(d.footerAlign) { d = d.copy(footerAlign = it) } }
+                    Section("Page number") {
+                        Choice("None", d.number == null) { d = d.copy(number = null) }
+                        Choice("At the top", d.number == HeaderFooter.NumberPlace.Header) { d = d.copy(number = HeaderFooter.NumberPlace.Header) }
+                        Choice("At the bottom", d.number == HeaderFooter.NumberPlace.Footer) { d = d.copy(number = HeaderFooter.NumberPlace.Footer) }
+                    }
+                    if (d.number != null) {
+                        Section("Number stands") { aligns(d.numberAlign) { d = d.copy(numberAlign = it) } }
+                        Section("Written as") { HeaderFooter.FORMATS.forEach { f -> Choice(f.replace("#", "1").replace("N", "3"), d.numberFormat == f) { d = d.copy(numberFormat = f) } } }
+                    }
+                    Toggle("A different first page (a title page without header, footer or number)", d.firstDifferent) { d = d.copy(firstDifferent = it) }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(d) }) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
 /** Space in points (Word's unit for it), 0 allowed. */
 @Composable private fun PtField(label: String, pt: Float, set: (Float) -> Unit) {
     var text by remember(label) { mutableStateOf(plain(pt)) }

@@ -665,11 +665,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             runCatching {
                 val bytes = file?.readBytes()
                 val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 11f)
-                var draftStyles: ByteArray? = null
+                var draftPackage: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
                     val draftParts = OfficeFormats.unzip(draftBytes)
-                    draftStyles = draftParts[stylesPath(draftParts, kind)] // styles changed before it closed
+                    draftPackage = draftBytes // its styles, header and footer, as changed before it closed
                     val originalParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
                     // A picture added before the app closed lives only in the draft: it is new again, with its bytes.
                     OfficeFormats.read(draftBytes, kind).let { dd -> dd.copy(paras = dd.paras.map { p -> p.copy(runs = p.runs.map { r ->
@@ -678,10 +678,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }) }) }
                 }.getOrNull() }
                 packageParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
-                // The draft's styles, when they were changed: the file as it will be written starts from them.
-                val start = draftStyles?.let { styles -> val parts = OfficeFormats.unzip(bytes ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
-                    val path = stylesPath(parts, kind)
-                    if (parts[path]?.contentEquals(styles) == true) bytes else { parts[path] = styles; OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null) } } ?: bytes
+                // With a draft, the file as it will be written starts from the draft (styles, header and footer as changed).
+                val start = draftPackage ?: bytes
                 Triple(start, doc, draft)
             }
         }
@@ -948,6 +946,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val hereStyle = rulerAt?.first?.min()?.let { i -> meta.paras.getOrNull(i) }?.let { documentStyles.styleOf(it) }
     var stylesPage by remember { mutableStateOf(false) }
     var editingStyle by remember { mutableStateOf<StyleEntry?>(null) }
+    var headerPage by remember { mutableStateOf(false) }
+    /** The document's header, footer and page numbers set (Word), into the file as it will be written; shown on the pages. */
+    fun setHeaderFooter(hf: HeaderFooter) {
+        val parts = runCatching { HeaderFooterEdit.docx(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), hf, documentStyles.page) }
+            .onFailure { Log.e("Writer", "header", it) }.getOrNull() ?: run { message = "The header could not be set."; return }
+        original = OfficeFormats.zip(parts)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+        message = "Shown on the pages (the eye at the top)"
+    }
     /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
     fun editStyle(entry: StyleEntry, change: StyleChange) {
         val key = documentStyles.styleKey(entry) ?: run { message = "This style cannot be changed here."; return }
@@ -1358,6 +1366,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
+                }, {
+                    // Header, footer and page numbers: one page for all three (APA: the number top right).
+                    RibbonButton("Header & footer", w, enabled = loaded) { if (kind == OfficeKind.Docx) headerPage = true else message = "Header and footer: Word files for now." }
+                    RibbonButton("Page numbers", w, enabled = loaded) { if (kind == OfficeKind.Docx) headerPage = true else message = "Page numbers: Word files for now." }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -1665,6 +1677,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }
     if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }, { editingStyle = it }) { stylesPage = false; applyStyle(it) }
     editingStyle?.let { entry ->
         StyleDialog(entry, documentStyles.look(DocPara(emptyList(), heading = entry.heading, keep = entry.id?.let { DocKeep(style = it) })), meta.basePt,

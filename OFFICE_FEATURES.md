@@ -60,8 +60,8 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [ ] **Styles**: long press a style (Normal, Heading 1–3, Title, Quote…) → its page: font, size, bold/italic, colour,
       alignment, line spacing (single · 1.15 · 1.5 · double), space before/after, first-line indent — changes the
       document's own style, so every paragraph with it changes, in Word/LibreOffice too
-- [ ] **Line spacing** quick button on Home (1 · 1.15 · 1.5 · 2)
-- [ ] **⋯ at the end of Home → Paragraph page**: the same settings for this paragraph only, and "Edit its style"
+- [x] **Line spacing** quick buttons on Home (1 · 1.15 · 1.5 · 2) — shown on the pages and in the file; the editor keeps its own lines
+- [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style"
 - [ ] **Page format**: margins, orientation, paper size (Layout)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
 - [ ] **Bibliography / citations** (references list, citation style — APA etc.)

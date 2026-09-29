@@ -1,3 +1,25 @@
+# 29 September, morning — tablet connected; line spacing and the Paragraph page
+
+State: `writer-library`; all unit tests pass; the build is on the **tablet** (971f6b37) and the emulator, not the phone.
+
+- **Tablet check** (02_Tables): pages fine; in the editor a table stayed page-wide while the text used the whole
+  screen — now its columns widen with the screen (`tableRows(grow=)`, only the editor's `tableBlock`); tapping a cell and
+  typing works on the tablet.
+- **Line spacing on Home** (last ribbon page): 1 · 1.15 · 1.5 · 2, then **More…** = the Paragraph page (line spacing,
+  space before/after in pt, left indent and first line indented/hanging in cm; the paragraph's own value, e.g. Word's
+  1.08, shown as an extra chip). Written in the file's own words (`OfficeFormats.withSpacing`: docx w:spacing/w:ind,
+  ODT fo:line-height/margins/text-indent), kept on `meta.paras` (the keep source), so pages and file show it; the
+  editor does not (its own lines). Which paragraphs: `WriterBridge.paragraphsAt` (the editor's text = its blocks with a
+  space between and "• "/"1. " before list items; tested with a real RichTextState). Checked on the tablet (a copy of
+  01): pages, saved XML, LibreOffice render agree; on the emulator (phone size, a new unsaved document).
+- New documents now lay out with the blank file's own styles (not `Plain`), so what is set shows before saving.
+- **Fixed:** a restored draft lost its paragraphs' formatting (it was taken from the file) — now from the draft.
+- **Known:** undo does not undo a spacing change; 01_Text_and_Paragraphs opens as "changed" (dot, save prompt) without
+  any edit — happened before today's work too, not yet looked into.
+- Next on the user's list: styles pages (long-press a style → its page), then header/footer/page numbers.
+
+---
+
 # 28 September, night — notes fixes, the table work reviewed and finished, ODT tables, picture tools
 
 State: `writer-library`; all unit tests pass (TableEditTest new); the build is on the emulator, **not on the phone or

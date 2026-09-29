@@ -71,4 +71,21 @@ class WriterBridgeTest {
         assertEquals(listOf(47.5f, 47.5f), OfficePages.fittedTableColumns(listOf(80f, 80f), 95f, 0f))
         assertEquals(listOf(40f, 60f), OfficePages.fittedTableColumns(listOf(40f, 60f), 120f, 0f))
     }
+
+    @Test fun `the paragraphs a selection touches are found in the editor's text`() {
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(
+            DocPara(listOf(DocRun("abc"))), DocPara(listOf(DocRun("one")), list = DocList(false, 0)),
+            DocPara(listOf(DocRun("two")), list = DocList(true, 0, 1)), DocPara(listOf(DocRun("x${LINE_BREAK}y"))), DocPara(emptyList()), DocPara(listOf(DocRun("end")))))))
+        val text = state.annotatedString.text
+        val rich = state.toRichTextDocument()
+        fun at(word: String, to: String = word) = WriterBridge.paragraphsAt(text, rich, text.indexOf(word), text.indexOf(to) + to.length)
+        assertEquals(setOf(0), at("abc"))
+        assertEquals(setOf(1), at("one"))
+        assertEquals(setOf(2), at("two"))
+        assertEquals(setOf(3), at("y")) // the line after a break is still its paragraph
+        assertEquals(setOf(5), at("end"))
+        assertEquals(setOf(1, 2, 3), at("one", "x"))
+        assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
+    }
 }

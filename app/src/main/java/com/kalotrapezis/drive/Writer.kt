@@ -304,6 +304,23 @@ internal object WriterBridge {
         }
     }
 
+    /**
+     * The paragraphs (as fromEditor counts them) the text from [start] to [end] touches. The editor's text is its
+     * blocks one after another, a space between, a list item's "• " or "1. " before it: each block is found in turn.
+     */
+    fun paragraphsAt(text: String, rich: RichTextDocument, start: Int, end: Int): Set<Int> {
+        var pos = 0; var n = -1
+        val out = HashSet<Int>()
+        for (b in rich.blocks) {
+            if (!b.isLineBreak) n++
+            val from = text.indexOf(b.text, pos).takeIf { it >= 0 } ?: return out
+            val to = from + b.text.length
+            if (start <= to && end >= from) out += n
+            pos = to + 1
+        }
+        return out
+    }
+
     /** How big a table stands in the editor: exactly the same layout as on its page. */
     fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles, editorWidthSp / (BASE_SP / doc.basePt))
 
@@ -546,6 +563,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var insertingTable by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<TableCellRef?>(null) }
     var cellEdit by remember { mutableStateOf<TableCellEdit?>(null) }
+    var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home's ⋯ page: for which paragraphs, as they look
     // The pictures' keys in the order they stand in the text.
     val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
     // The selected picture (a tap on it selects it): its place in the text and its key.
@@ -598,7 +616,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
             meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting it cannot show exactly")
             dirty = false
-            if (draft != null) { state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles)); dirty = true; message = "Your unsaved changes are back" }
+            if (draft != null) {
+                state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
+                meta = meta.copy(paras = draft.paras) // the draft's paragraph formatting (spacing set before it closed), not the file's
+                dirty = true; message = "Your unsaved changes are back"
+            }
             state.history.clear()
             loaded = true
         }.onFailure { failed = it.message ?: "This file could not be read." }
@@ -606,7 +628,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
-        snapshotFlow { state.annotatedString }.drop(1).collectLatest {
+        snapshotFlow { state.annotatedString to meta.paras }.drop(1).collectLatest { // meta: a paragraph's spacing set
+
             dirty = true
             delay(1500)
             val doc = current()
@@ -788,6 +811,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun changeTable(key: String, img: DocImage, table: DocTable) {
         val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
         changePicture(key, img.with(widthPt = width, heightPt = height, table = table))
+    }
+    /** Spacing set on paragraphs [at]: only what differs from [was] is written, in the file's own words. */
+    fun setSpacing(at: Set<Int>, was: ParaLook, now: ParaLook) {
+        val cur = current()
+        fun <T> changed(a: T, b: T) = b.takeIf { it != a }
+        val line = now.lineMultiple.takeIf { now.lineExact == null && (was.lineExact != null || it != was.lineMultiple) }
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p ->
+            if (i !in at || p.table != null) p else p.copy(keep = OfficeFormats.withSpacing(p.keep, kind, line, changed(was.before, now.before),
+                changed(was.after, now.after), changed(was.left, now.left), changed(was.firstLine, now.firstLine)))
+        })
+        dirty = true
+    }
+    fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
+        val rich = state.toRichTextDocument()
+        val cur = current()
+        // Text typed beside a table makes one block two paragraphs: then the count differs and nothing is guessed.
+        val at = WriterBridge.paragraphsAt(state.annotatedString.text, rich, state.selection.min, state.selection.max)
+            .takeIf { it.isNotEmpty() && rich.blocks.count { !it.isLineBreak } == cur.paras.size }
+            ?: run { message = "Put the cursor in a paragraph of text"; return }
+        cur.paras.getOrNull(at.min())?.let { then(at, documentStyles.look(it)) }
     }
     fun commitCell() {
         val edit = cellEdit ?: return
@@ -1145,6 +1188,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
                         Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a)) }
                     }
+                }, {
+                    // Line spacing (the pages and the file show it; the editor keeps its own lines) and the ⋯ page.
+                    Tool(R.drawable.ic_format_line_spacing, "Line spacing", w) { chooseParagraphs { at, look -> paragraphPage = at to look } }
+                    LINE_SPACINGS.forEach { m ->
+                        RibbonButton(plain(m), w) {
+                            chooseParagraphs { at, look -> setSpacing(at, look, look.copy(lineMultiple = m, lineExact = null)); message = "Line spacing ${plain(m)} — it shows on the pages" }
+                        }
+                    }
+                    Divider(w)
+                    RibbonButton("More…", w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                 })
                 WriterTab.Insert -> listOf({
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -1457,6 +1510,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 confirmButton = { TextButton(onClick = { wrapping = false }) { Text("Close") } },
             )
         }
+    }
+    paragraphPage?.let { (at, look) ->
+        ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }
     if (showVersions) {
         val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }

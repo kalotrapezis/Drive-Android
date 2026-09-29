@@ -302,6 +302,53 @@ internal object OfficeFormats {
     }
 
     /**
+     * A paragraph's spacing set from Writer, in the file's own words (the rest of its formatting as it was): line spacing
+     * as a multiple, space before and after, left and first-line indent (pt; first line < 0: hanging). null: unchanged.
+     */
+    fun withSpacing(keep: DocKeep?, kind: OfficeKind, line: Float? = null, before: Float? = null, after: Float? = null,
+        left: Float? = null, firstLine: Float? = null): DocKeep {
+        val k = keep ?: DocKeep()
+        val parts = k.parts.toMutableList()
+        fun set(xml: String, name: String, value: String?, drop: List<String> = emptyList()): String {
+            if (value == null) return xml
+            var x = xml
+            for (a in drop + name) x = x.replace(Regex("""\s$a="[^"]*""""), "")
+            return x.replaceFirst(Regex("""\s*/>$"""), """ $name="$value"/>""")
+        }
+        if (kind == OfficeKind.Docx) {
+            fun tw(pt: Float?) = pt?.let { Math.round(it * 20).toString() }
+            fun edit(name: String, change: (String) -> String) {
+                val i = parts.indexOfFirst { it.first == name }
+                val was = if (i >= 0) parts[i].second else "<w:$name/>"
+                if (i >= 0) parts[i] = name to change(was) else parts += name to change(was)
+            }
+            if (line != null || before != null || after != null) edit("spacing") { x ->
+                var s = set(x, "w:before", tw(before), listOf("w:beforeAutospacing", "w:beforeLines"))
+                s = set(s, "w:after", tw(after), listOf("w:afterAutospacing", "w:afterLines"))
+                if (line != null) s = set(set(s, "w:line", Math.round(line * 240).toString()), "w:lineRule", "auto")
+                s
+            }
+            if (left != null || firstLine != null) edit("ind") { x ->
+                var s = set(x, "w:left", tw(left), listOf("w:start", "w:leftChars", "w:startChars"))
+                if (firstLine != null) s = if (firstLine < 0) set(s, "w:hanging", tw(-firstLine), listOf("w:firstLine", "w:hangingChars", "w:firstLineChars"))
+                    else set(s, "w:firstLine", tw(firstLine), listOf("w:hanging", "w:hangingChars", "w:firstLineChars"))
+                s
+            }
+        } else {
+            fun put(name: String, value: String?, drop: List<String> = emptyList()) {
+                if (value == null) return
+                parts.removeAll { (kind, xml) -> kind == "@" && (drop + name).any { xml.startsWith(" $it=") } }
+                parts += "@" to " $name=\"$value\""
+            }
+            fun pt(v: Float?) = v?.let { OdtWriter.fmt(it) + "pt" }
+            put("fo:line-height", line?.let { "${Math.round(it * 100)}%" }, listOf("style:line-height-at-least", "style:line-spacing"))
+            put("fo:margin-top", pt(before)); put("fo:margin-bottom", pt(after))
+            put("fo:margin-left", pt(left)); put("fo:text-indent", pt(firstLine))
+        }
+        return k.copy(parts = parts)
+    }
+
+    /**
      * Which paragraph of [old] each paragraph of [new] is (-1: a new one). Unchanged paragraphs are matched first
      * (longest common run); between two matches, changed paragraphs pair up in order.
      */

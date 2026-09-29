@@ -186,6 +186,69 @@ internal fun TablePropertiesDialog(table: DocTable, row: Int, cell: Int, dismiss
     }
 }
 
+/** The line spacings offered (Word's everyday ones). */
+internal val LINE_SPACINGS = listOf(1f, 1.15f, 1.5f, 2f)
+/** A number as people write it: 1, 1.15, 6.5. */
+internal fun plain(v: Float) = if (v % 1f == 0f) v.toInt().toString() else v.toString()
+
+/**
+ * Home's ⋯ page (asked 2026-09-27: "set everything once, then type"): the chosen paragraphs' line spacing, space
+ * before and after (pt, as Word counts them) and indents (cm). [apply] gets the new look; what was not touched stays.
+ */
+@Composable
+internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLook) -> Unit) {
+    var draft by remember { mutableStateOf(look) }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Paragraph", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Section("Line spacing") {
+                        LINE_SPACINGS.forEach { m ->
+                            Choice(plain(m), draft.lineExact == null && kotlin.math.abs(draft.lineMultiple - m) < 0.01f) {
+                                draft = draft.copy(lineMultiple = m, lineExact = null, lineAtLeast = false)
+                            }
+                        }
+                        // What the paragraph has when it is none of these (Word's 1.08, an exact height): shown, and back with a tap.
+                        val own = look.lineExact?.let { "${if (look.lineAtLeast) "At least" else "Exactly"} ${plain(Math.round(it * 10) / 10f)} pt" }
+                            ?: plain(Math.round(look.lineMultiple * 100) / 100f).takeIf { LINE_SPACINGS.none { m -> kotlin.math.abs(look.lineMultiple - m) < 0.01f } }
+                        own?.let { Choice(it, draft.lineExact == look.lineExact && draft.lineAtLeast == look.lineAtLeast && draft.lineMultiple == look.lineMultiple) {
+                            draft = draft.copy(lineMultiple = look.lineMultiple, lineExact = look.lineExact, lineAtLeast = look.lineAtLeast)
+                        } }
+                    }
+                    Section("Space between paragraphs") {
+                        PtField("Before", draft.before) { draft = draft.copy(before = it) }
+                        PtField("After", draft.after) { draft = draft.copy(after = it) }
+                    }
+                    Section("Indent") {
+                        CmField("Left", draft.left, least = 0f) { draft = draft.copy(left = it) }
+                    }
+                    Section("First line") {
+                        Choice("None", draft.firstLine == 0f) { draft = draft.copy(firstLine = 0f) }
+                        Choice("Indented", draft.firstLine > 0f) { draft = draft.copy(firstLine = if (draft.firstLine > 0f) draft.firstLine else 1.25f * CM) }
+                        Choice("Hanging", draft.firstLine < 0f) { draft = draft.copy(firstLine = if (draft.firstLine < 0f) draft.firstLine else -1.25f * CM) }
+                    }
+                    if (draft.firstLine != 0f) CmField(if (draft.firstLine > 0f) "Indented by" else "Hanging by", kotlin.math.abs(draft.firstLine)) { v ->
+                        draft = draft.copy(firstLine = if (draft.firstLine < 0f) -v else v)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(draft) }) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+/** Space in points (Word's unit for it), 0 allowed. */
+@Composable private fun PtField(label: String, pt: Float, set: (Float) -> Unit) {
+    var text by remember(label) { mutableStateOf(plain(pt)) }
+    OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it in 0f..200f }?.let(set) },
+        label = { Text(label) }, suffix = { Text("pt") }, singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 160.dp))
+}
+
 private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t.rows.mapIndexed { i, row -> if (i == r) row.copy(props = f(row.props)) else row })
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -231,9 +294,9 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
 }
 
 /** A length in centimetres (Greece measures pages in cm), kept in points. */
-@Composable private fun CmField(label: String, pt: Float, set: (Float) -> Unit) {
+@Composable private fun CmField(label: String, pt: Float, least: Float = 0.1f, set: (Float) -> Unit) {
     var text by remember(label) { mutableStateOf(String.format(Locale.ROOT, "%.2f", pt / CM)) }
-    OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it in 0.1f..60f }?.let { set(it * CM) } },
+    OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it in least..60f }?.let { set(it * CM) } },
         label = { Text(label) }, suffix = { Text("cm") }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 240.dp))
 }

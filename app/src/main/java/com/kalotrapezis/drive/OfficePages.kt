@@ -136,7 +136,8 @@ internal abstract class DocStyles {
 
     companion object {
         fun of(kind: OfficeKind, bytes: ByteArray?): DocStyles = runCatching {
-            val parts = bytes?.let { OfficeFormats.unzip(it) } ?: return@runCatching null
+            // A new document: the styles of the blank file Writer will write, so what is set on it shows before it is saved.
+            val parts = OfficeFormats.unzip(bytes ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
             if (kind == OfficeKind.Docx) DocxStyles(parts) else OdtStyles(parts)
         }.getOrNull() ?: Plain
 
@@ -770,7 +771,8 @@ internal object OfficePages {
      */
     private fun tableBlock(doc: OfficeDoc, table: DocTable, styles: DocStyles, width: Float, pictureBytes: (DocImage) -> ByteArray?,
         areas: MutableList<TableCellArea>? = null): Block {
-        val rows = tableRows(doc, table, styles, styles.page, width, pictureBytes, areas)
+        // On a screen wider than the page, the columns widen with it: the table keeps its share of the text's width.
+        val rows = tableRows(doc, table, styles, styles.page, width, pictureBytes, areas, (width / styles.page.textWidth).coerceAtLeast(1f))
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
         var y = 0f
         rows.forEach { (row, _) ->
@@ -780,9 +782,9 @@ internal object OfficePages {
         return Block(y.coerceAtLeast(1f), pieces, boxes, lines)
     }
 
-    /** A table's width (the page's text, or [most] when narrower) and laid-out height, for its editor stand-in. */
+    /** A table's width (the page's text, or [most]: the editor's) and laid-out height, for its editor stand-in. */
     fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles, most: Float = Float.MAX_VALUE): Pair<Float, Float> {
-        val width = minOf(styles.page.textWidth, most)
+        val width = if (most < Float.MAX_VALUE) most else styles.page.textWidth
         return width to tableBlock(doc, table, styles, width, { null }).height
     }
 
@@ -866,10 +868,10 @@ internal object OfficePages {
     }
 
     private fun tableRows(doc: OfficeDoc, t: DocTable, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
-        areas: MutableList<TableCellArea>? = null): List<Pair<Block, Boolean>> {
+        areas: MutableList<TableCellArea>? = null, grow: Float = 1f): List<Pair<Block, Boolean>> {
         val spec = styles.tableSpec(t)
         val count = spec.rows.maxOfOrNull { r -> r.cells.sumOf { it.span } } ?: 1
-        val rawCols = spec.cols.takeIf { it.size >= count && it.sum() > 0f } ?: List(count) { width / count }
+        val rawCols = spec.cols.takeIf { it.size >= count && it.sum() > 0f }?.map { it * grow } ?: List(count) { width / count }
         // The least each grid column can take: the longest word of the cells in it alone, and their margins.
         val least = if (rawCols.sum() <= width - spec.indent.coerceAtLeast(0f)) emptyList() else FloatArray(rawCols.size).also { least ->
             t.rows.forEachIndexed { ri, row ->

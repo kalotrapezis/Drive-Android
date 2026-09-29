@@ -156,4 +156,28 @@ class OfficeFormatsTest {
             assertEquals(f.name, doc.paras.mapNotNull { it.table }, again.paras.mapNotNull { it.table })
         }
     }
+
+    @Test fun `spacing set from Writer is written in the file's own words and read back`() {
+        for (kind in OfficeKind.entries) {
+            val start = OfficeFormats.write(sample, kind)
+            val doc = OfficeFormats.read(start, kind)
+            val paras = doc.paras.mapIndexed { i, p ->
+                if (i != 1) p else p.copy(keep = OfficeFormats.withSpacing(p.keep, kind, line = 1.5f, before = 6f, after = 12f, left = 18f, firstLine = -9f))
+            }
+            val back = OfficeFormats.read(OfficeFormats.write(doc.copy(paras = paras), kind, start), kind)
+            assertEquals(emptySet<String>(), back.unsupported)
+            assertEquals(doc.paras.map { it.text }, back.paras.map { it.text })
+            val parts = back.paras[1].keep!!.parts.joinToString("") { it.second }
+            if (kind == OfficeKind.Docx) {
+                assertTrue(parts, "w:line=\"360\"" in parts && "w:lineRule=\"auto\"" in parts && "w:before=\"120\"" in parts && "w:after=\"240\"" in parts)
+                assertTrue(parts, "w:left=\"360\"" in parts && "w:hanging=\"180\"" in parts)
+            } else {
+                for (a in listOf("fo:line-height=\"150%\"", "fo:margin-top=\"6pt\"", "fo:margin-bottom=\"12pt\"", "fo:margin-left=\"18pt\"", "fo:text-indent=\"-9pt\""))
+                    assertTrue(parts, a in parts)
+            }
+            // Set again: replaced, not added twice.
+            val twice = OfficeFormats.withSpacing(back.paras[1].keep, kind, line = 2f).parts.joinToString("") { it.second }
+            assertEquals(1, Regex(if (kind == OfficeKind.Docx) "w:line=" else "line-height=").findAll(twice).count())
+        }
+    }
 }

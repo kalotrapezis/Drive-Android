@@ -711,7 +711,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
-        snapshotFlow { Triple(state.annotatedString, meta.paras, styleEdits) }.drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
+        // The editor lays a list item's indent out again once it is drawn (its bullet measured): only its look, so the
+        // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed).
+        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, a.spanStyles, a.paragraphStyles.map { it.item.copy(textIndent = null) to it.start }) }, meta.paras, styleEdits) }
+            .drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
 
             dirty = true
             delay(1500)

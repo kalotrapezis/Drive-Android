@@ -223,6 +223,28 @@ internal fun tablePara(t: DocTable) = DocPara(listOf(DocRun(OBJECT_MARK.toString
 internal const val ODT_HEADER = "<header/>"
 internal const val ODT_COVERED = "<covered/>"
 /**
+ * A paragraph style Writer offers (asked 2026-09-29): its name as people see it, and how a paragraph points to it —
+ * [heading] 1–6 for a heading, else [id] (the file's own; null: the document's plain text, "Normal").
+ */
+internal data class StyleEntry(val name: String, val id: String?, val heading: Int = 0)
+
+/**
+ * Word's Title, Subtitle and Quote, for a document that has not got them: shown at once, and written into its
+ * styles.xml when a paragraph takes one ("NORMAL" becomes the document's own plain style). As Word 2016 makes them.
+ */
+internal val DOCX_BUILTIN = mapOf(
+    "Title" to """<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="10"/><w:qFormat/><w:pPr><w:spacing w:after="80" w:line="240" w:lineRule="auto"/><w:contextualSpacing/></w:pPr><w:rPr><w:spacing w:val="-10"/><w:kern w:val="28"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>""",
+    "Subtitle" to """<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="11"/><w:qFormat/><w:pPr><w:spacing w:after="160"/></w:pPr><w:rPr><w:color w:val="595959"/><w:spacing w:val="15"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>""",
+    "Quote" to """<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="29"/><w:qFormat/><w:pPr><w:spacing w:before="200" w:after="160"/><w:ind w:left="864" w:right="864"/><w:jc w:val="center"/></w:pPr><w:rPr><w:i/><w:iCs/><w:color w:val="404040"/></w:rPr></w:style>""",
+)
+/** LibreOffice's Title, Subtitle and Quotations, likewise. */
+internal val ODT_BUILTIN = mapOf(
+    "Title" to """<style:style style:name="Title" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:text-align="center" fo:keep-with-next="always"/><style:text-properties fo:font-size="28pt" fo:font-weight="bold"/></style:style>""",
+    "Subtitle" to """<style:style style:name="Subtitle" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.106cm" fo:margin-bottom="0.212cm" fo:text-align="center"/><style:text-properties fo:font-size="18pt"/></style:style>""",
+    "Quotations" to """<style:style style:name="Quotations" style:family="paragraph" style:parent-style-name="Standard" style:class="html"><style:paragraph-properties fo:margin-left="1cm" fo:margin-right="1cm" fo:margin-top="0cm" fo:margin-bottom="0.283cm"/></style:style>""",
+)
+
+/**
  * A table Writer puts into an OpenDocument file: as wide as the text, its cells lined as a new Word table's are. The
  * styles go into the file with it (automatic styles, written only when a table uses them).
  */
@@ -980,6 +1002,11 @@ private object DocxWriter {
         val headingIds = (1..6).filter { n -> allParas.any { it.heading == n } }.associateWith { n ->
             styleId("heading $n", "Heading$n") { id -> """<w:style w:type="paragraph" w:styleId="$id"><w:name w:val="heading $n"/>${normal?.let { "<w:basedOn w:val=\"$it\"/><w:next w:val=\"$it\"/>" } ?: ""}<w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="${n - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${listOf(36, 30, 26, 24, 22, 22)[n - 1]}"/></w:rPr></w:style>""" }
         }
+        // Title, Subtitle, Quote: added when a paragraph took one the document had not got.
+        allParas.mapNotNull { it.keep?.style }.toSet().filter { it in DOCX_BUILTIN && it !in ids }.forEach { id ->
+            ids += id
+            styles = styles.replace("</w:styles>", DOCX_BUILTIN.getValue(id).let { d -> if (normal != null) d.replace("NORMAL", normal) else d.replace(Regex("""<w:(basedOn|next) w:val="NORMAL"/>"""), "") } + "</w:styles>")
+        }
         val hyperlinkId = if (allParas.any { p -> p.runs.any { it.link != null } })
             styleId("hyperlink", "Hyperlink") { id -> """<w:style w:type="character" w:styleId="$id"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style>""" } else null
         parts[dir + "styles.xml"] = styles.toByteArray()
@@ -1498,7 +1525,8 @@ private object OdtWriter {
             val add = (1..6).filter { n -> doc.paras.any { it.heading == n } && "Heading_20_$n" !in named }.joinToString("") { n ->
                 """<style:style style:name="Heading_20_$n" style:display-name="Heading $n" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="$body" style:default-outline-level="$n" style:class="text"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="${listOf("130%", "115%", "101%", "95%", "85%", "85%")[n - 1]}" fo:font-weight="bold"/></style:style>"""
             }
-            if (add.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
+            val builtin = doc.paras.mapNotNull { it.keep?.style }.toSet().filter { it in ODT_BUILTIN && it !in named }.joinToString("") { ODT_BUILTIN.getValue(it) }
+            if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
         }
 
         // The file's own automatic styles: what the new text still refers to stays (a picture's position and wrap, a

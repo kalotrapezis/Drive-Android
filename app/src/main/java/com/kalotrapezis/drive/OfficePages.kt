@@ -114,6 +114,20 @@ internal abstract class DocStyles {
     /** A list item's number or bullet as its list writes it ("2.1.", "a)", "iv."), from the counts at each level. */
     open fun listLabel(p: DocPara, counts: IntArray): String? = null
 
+    /**
+     * The paragraph styles to offer: Normal, Title, Subtitle, the six headings, Quote, then the document's own
+     * (its hidden ones left out).
+     */
+    open fun paragraphStyles(): List<StyleEntry> = standardStyles(emptyList())
+    protected fun standardStyles(own: List<StyleEntry>, title: String = "Title", subtitle: String = "Subtitle", quote: String = "Quote"): List<StyleEntry> {
+        val first = listOf(StyleEntry("Normal", null), StyleEntry("Title", title), StyleEntry("Subtitle", subtitle)) +
+            (1..6).map { StyleEntry("Heading $it", null, it) } + StyleEntry("Quote", quote)
+        return first + own.filter { o -> first.none { it.id == o.id } }.sortedBy { it.name.lowercase() }
+    }
+    /** Which of [paragraphStyles] a paragraph has. */
+    fun styleOf(p: DocPara): StyleEntry = paragraphStyles().firstOrNull { if (p.heading > 0) it.heading == p.heading else it.heading == 0 && it.id == p.keep?.style }
+        ?: StyleEntry(p.keep?.style ?: "Normal", p.keep?.style)
+
     /** A number in a list's style: "1", "a", "A", "i", "I", "01"… */
     fun number(n: Int, format: String): String = when (format) {
         "lowerLetter", "a" -> letters(n).lowercase()
@@ -153,6 +167,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val styles = HashMap<String, Element>() // paragraph styleId → style
     private val tableStyles = HashMap<String, Element>() // table styleId → style
     private val byName = HashMap<String, String>() // name, lowercased → styleId
+    private val ownStyles = ArrayList<String>() // the paragraph styles people see, in the file's order
     private var defaultStyle: String? = null
     private var defaults: Element? = null // docDefaults
     private val numInd = HashMap<Pair<String, Int>, Element>() // (numId, level) → the level's ind
@@ -177,7 +192,14 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 styles[id] = s
                 byName[(s.kid(W, "name")?.attr(W, "val") ?: id).lowercase()] = id
                 if (s.attr(W, "default").let { it == "1" || it == "true" }) defaultStyle = id
+                if (s.kid(W, "semiHidden") == null) ownStyles += id
             }
+        }
+        // Title, Subtitle and Quote as Word makes them, for a document without: shown before it is saved with them.
+        for ((id, xml) in DOCX_BUILTIN) if (id.lowercase() !in byName && id !in styles) {
+            val d = defaultStyle?.let { xml.replace("NORMAL", it) } ?: xml.replace(Regex("""<w:(basedOn|next) w:val="NORMAL"/>"""), "")
+            styles[id] = OfficeFormats.parse("<x xmlns:w=\"$W\">$d</x>".toByteArray()).documentElement.kids().first()
+            byName[id.lowercase()] = id
         }
         parts[dir + "numbering.xml"]?.let { OfficeFormats.parse(it).documentElement }?.let { root ->
             val abstracts = root.kids().filter { it.localName == "abstractNum" }.associateBy { it.attr(W, "abstractNumId") }
@@ -385,6 +407,14 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     }
 
     private var listIndented = false
+    override fun paragraphStyles(): List<StyleEntry> {
+        val headings = (1..6).mapNotNull { byName["heading $it"] }.toSet()
+        val own = ownStyles.filter { it != defaultStyle && it !in headings }.map { id ->
+            StyleEntry((styles[id]?.kid(W, "name")?.attr(W, "val") ?: id).replaceFirstChar { it.uppercase() }, id)
+        }
+        return standardStyles(own, byName["title"] ?: "Title", byName["subtitle"] ?: "Subtitle", byName["quote"] ?: "Quote")
+    }
+
     override fun look(p: DocPara): ParaLook {
         listIndented = false
         val d = defaults
@@ -445,6 +475,9 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 "master-styles" -> master = group.kids().firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: group.kids().firstOrNull()
             }
         }
+        // Title, Subtitle and Quotations as LibreOffice makes them, for a document without: shown before it is saved with them.
+        OfficeFormats.parse(("<x xmlns:style=\"$STYLE\" xmlns:fo=\"$FO\">" + ODT_BUILTIN.filterKeys { it !in named }.values.joinToString("") + "</x>").toByteArray())
+            .documentElement.kids().forEach { st -> st.attr(STYLE, "name")?.let { named[it] = st } }
         // A table Writer put in, not saved yet: its styles are Writer's own.
         if ("table-cell/$ODT_TETRA_CELL" !in tableStyles) OfficeFormats.parse(("<x xmlns:style=\"$STYLE\" xmlns:fo=\"$FO\" xmlns:table=\"$TABLE\">$ODT_TETRA_STYLES</x>").toByteArray())
             .documentElement.kids().forEach { st -> tableStyles["${st.attr(STYLE, "family")}/${st.attr(STYLE, "name")}"] = st }
@@ -559,6 +592,12 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             for (i in 0 until a.length) a.item(i).let { look = one(look, it.nodeName, it.nodeValue.trim(), base) }
         }
         return look
+    }
+
+    override fun paragraphStyles(): List<StyleEntry> {
+        val own = named.filterKeys { it != "Standard" && it != "Text_20_body" && it != "Heading" && !it.startsWith("Heading_20_") }
+            .map { (name, e) -> StyleEntry(e.attr(STYLE, "display-name") ?: odfDisplayName(name), name) }
+        return standardStyles(own, "Title", "Subtitle", "Quotations")
     }
 
     override fun look(p: DocPara): ParaLook {

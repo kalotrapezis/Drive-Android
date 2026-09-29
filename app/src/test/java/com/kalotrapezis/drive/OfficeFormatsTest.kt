@@ -191,4 +191,16 @@ class OfficeFormatsTest {
             assertEquals(1, Regex(if (kind == OfficeKind.Docx) "w:line=" else "line-height=").findAll(twice).count())
         }
     }
+
+    @Test fun `Title, Subtitle and Quote go into a document that has not got them`() {
+        for ((kind, quote) in listOf(OfficeKind.Docx to "Quote", OfficeKind.Odt to "Quotations")) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Big")), keep = DocKeep(style = "Title")), DocPara(listOf(DocRun("Said")), keep = DocKeep(style = quote))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val styles = String(OfficeFormats.unzip(bytes).getValue(if (kind == OfficeKind.Docx) "word/styles.xml" else "styles.xml"))
+            assertTrue(styles, if (kind == OfficeKind.Docx) "w:styleId=\"Title\"" in styles && "w:styleId=\"Quote\"" in styles && "NORMAL" !in styles
+                else "style:name=\"Title\"" in styles && "style:name=\"Quotations\"" in styles)
+            assertTrue(!styles.contains("Subtitle")) // only what is used
+            assertEquals(listOf("Title", quote), OfficeFormats.read(bytes, kind).paras.map { it.keep?.style })
+        }
+    }
 }

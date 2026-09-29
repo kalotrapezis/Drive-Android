@@ -910,15 +910,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             .takeIf { it.isNotEmpty() && rich.blocks.count { !it.isLineBreak } == cur.paras.size } ?: return null
         return cur.paras.getOrNull(at.min())?.takeIf { it.table == null }?.let { at to documentStyles.look(it) }
     }
+    /** A paragraph style put on the chosen paragraphs: the file's own (or a heading level), shown at once as it looks. */
+    fun applyStyle(style: StyleEntry) {
+        val at = chosen()?.first ?: run { message = "Put the cursor in a paragraph of text"; return }
+        val cur = current()
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p ->
+            if (i !in at || p.table != null) p else p.copy(heading = style.heading, keep = (p.keep ?: DocKeep()).copy(style = style.id).takeIf { !it.isEmpty })
+        })
+        dirty = true
+        state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel) }
+    }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
-    LaunchedEffect(loaded, onPage, viewing) {
-        if (!loaded || !onPage || viewing) return@LaunchedEffect
+    // …and the ribbon which style it has.
+    LaunchedEffect(loaded, viewing) {
+        if (!loaded || viewing) return@LaunchedEffect
         snapshotFlow { state.selection to meta.paras }.collectLatest { delay(200); rulerAt = chosen() }
     }
+    val hereStyle = rulerAt?.first?.min()?.let { i -> meta.paras.getOrNull(i) }?.let { documentStyles.styleOf(it) }
+    var stylesPage by remember { mutableStateOf(false) }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
     fun setIndents(now: RulerIndents) {
         val (at, look) = rulerAt ?: return
@@ -1276,9 +1289,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
                 }, {
-                    listOf(HeadingStyle.Normal to "Normal", HeadingStyle.H1 to "H1", HeadingStyle.H2 to "H2", HeadingStyle.H3 to "H3").forEach { (h, label) ->
-                        RibbonButton(label, w, on = state.currentHeadingStyle == h) { state.setHeadingStyle(h) }
+                    // The everyday styles; every other (Subtitle, Quote, Heading 4–6, the document's own) behind Styles….
+                    val styles = documentStyles.paragraphStyles()
+                    listOf(styles[0] to "Normal", styles[1] to "Title", styles.first { it.heading == 1 } to "H1", styles.first { it.heading == 2 } to "H2", styles.first { it.heading == 3 } to "H3").forEach { (style, label) ->
+                        RibbonButton(label, w, on = hereStyle == style) { applyStyle(style) }
                     }
+                    RibbonButton("Styles…", w, R.drawable.ic_more_vert) { stylesPage = true }
                 }, {
                     Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
                     Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
@@ -1618,6 +1634,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }) { stylesPage = false; applyStyle(it) }
     paragraphPage?.let { (at, look) ->
         ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }

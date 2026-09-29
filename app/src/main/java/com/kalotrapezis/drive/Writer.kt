@@ -924,6 +924,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     temp.writeBytes(bytes)
                     if (!copy) keepPrevious(context, f)
                     check(temp.renameTo(target)) { "Could not save ${target.name}." }
+                    // Its time is now (the phone's storage was seen keeping the old one): sync and the hash cache know it changed.
+                    target.setLastModified(System.currentTimeMillis())
                     target to bytes
                 }
             }

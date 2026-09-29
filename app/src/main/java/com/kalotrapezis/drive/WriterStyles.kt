@@ -32,10 +32,11 @@ import androidx.compose.ui.window.DialogProperties
 
 /**
  * Home's Styles… page (asked 2026-09-29): every paragraph style — Normal, Title, Subtitle, the six headings, Quote,
- * then the document's own — each written in its own look, the paragraph's own marked. A tap puts it on the paragraph.
+ * then the document's own — each written in its own look, the paragraph's own marked. A tap puts it on the paragraph;
+ * Change… opens the style itself (every paragraph with it changes).
  */
 @Composable
-internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, dismiss: () -> Unit, choose: (StyleEntry) -> Unit) {
+internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, dismiss: () -> Unit, edit: (StyleEntry) -> Unit, choose: (StyleEntry) -> Unit) {
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(vertical = 20.dp)) {
@@ -56,6 +57,7 @@ internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, d
                                 fontStyle = if (look.italic == true) FontStyle.Italic else FontStyle.Normal,
                                 color = look.color?.takeIf { it != 0 }?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Black)
                             if (on) Text("✓", color = Color(0xFF1A73E8), style = MaterialTheme.typography.titleMedium)
+                            if (styles.styleKey(entry) != null) TextButton(onClick = { edit(entry) }) { Text("Change…", color = Color(0xFF1A73E8)) }
                         }
                         HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = Color(0x1F000000))
                     }

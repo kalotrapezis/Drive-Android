@@ -54,14 +54,18 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
 - [ ] Format painter (copy formatting)
-- [ ] More styles: Title, Subtitle, Quote, Heading 4–6
+- [x] More styles: Title, Subtitle, Quote, Heading 4–6 and the document's own (Home › Styles…); Normal, Title, H1–H3 on the ribbon; the editor draws each as the document defines it
+
+### Viewing (asked 2026-09-29)
+- [x] Tablet: pages at the editor's size, centred, Word's rulers (top + each page's side); the editor is the page itself with a ruler whose indent marks drag
+- [x] Centimetres or inches (View tab) for rulers and every length (APA uses inches)
 
 ### Formatting pages (asked 2026-09-27: "set everything once, then type" — for big work like a thesis)
-- [ ] **Styles**: long press a style (Normal, Heading 1–3, Title, Quote…) → its page: font, size, bold/italic, colour,
+- [x] **Styles**: Styles… › Change… on a style → its page: font, size, bold/italic, colour,
       alignment, line spacing (single · 1.15 · 1.5 · double), space before/after, first-line indent — changes the
       document's own style, so every paragraph with it changes, in Word/LibreOffice too
 - [x] **Line spacing** quick buttons on Home (1 · 1.15 · 1.5 · 2) — shown on the pages and in the file; the editor keeps its own lines
-- [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style"
+- [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left, right and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style" from there
 - [ ] **Page format**: margins, orientation, paper size (Layout)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
 - [ ] **Bibliography / citations** (references list, citation style — APA etc.)

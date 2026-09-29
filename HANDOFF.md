@@ -1,3 +1,30 @@
+# 29 September, day — ODT tables finished, the desktop-like view with rulers, styles
+
+State: `writer-library`; all unit tests pass; the build is on the **tablet** (971f6b37) and the emulator, not the phone.
+The user's ask (mid-morning): finish pictures/tables, then viewing (a proper page, rulers as on desktop) and styles
+(Normal, Title, H1, H2… on the ribbon, the rest in a modal page), cm or inches (APA uses inches).
+
+- **ODT tables**: rows/columns/merge/split now work in .odt too (`TableEdit.odtModel`: spans + covered cells, one
+  table-column each); Insert › Table in .odt (Writer's own `Tetra_20_table/cell` automatic styles). Looks, shading and
+  the ⋯ page are still Word-only. Checked: Πάτερ Ημών Άσκηση.odt edited → LibreOffice.
+- **View**: `PagesView` on a tablet: page at the editor's text size, centred, `HorizontalRuler` (page in view) and a
+  `VerticalRuler` beside each page (WriterRuler.kt). The editor on a tablet is the page (its width and margins),
+  `IndentRuler` above: first-line / left (hanging) / right marks, dragged, snapped to ticks → `setSpacing`. Indents are
+  shown in the editor (RichTextBlock.textIndent). A phone keeps reflow and no rulers. `WriterUnits` (View tab): cm/in.
+- **Styles**: the editor draws each paragraph's style (size, bold, italic, colour, alignment) with tagged marks that
+  never come back as the letters' own (Writer.kt `STYLE_*`; heading looks of the library emptied by reflection,
+  `documentHeadings`). Ribbon: Normal · Title · H1–H3 · Styles… (all styles in their look; Change… opens a style's
+  page: font, size, bold/italic, colour, alignment, line spacing, before/after, indents) → `StyleEdit.docx/odt` edits
+  styles.xml, kept in `original` (and the draft). Title/Subtitle/Quote added to a document without them.
+  A style's alignment now counts on the pages too (`ParaLook.align`).
+- Checked: the whole Έγγραφα corpus + Word suite round-trip through the editor with styles drawn (unit test); on the
+  tablet: Quote/H2 applied, Heading 1 changed (Times, 20pt, blue, centre) → XML and LibreOffice agree.
+- **Known**: applying a style or changing one clears undo (the editor is re-shown); explicit "left" in a centred style
+  cannot be expressed; the editor still uses its own font (not the style's); ODT table looks/shading.
+- Next on the list: header/footer/page numbers, then comments, table of contents.
+
+---
+
 # 29 September, morning — tablet connected; line spacing and the Paragraph page
 
 State: `writer-library`; all unit tests pass; the build is on the **tablet** (971f6b37) and the emulator, not the phone.

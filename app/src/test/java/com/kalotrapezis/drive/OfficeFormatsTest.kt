@@ -203,4 +203,28 @@ class OfficeFormatsTest {
             assertEquals(listOf("Title", quote), OfficeFormats.read(bytes, kind).paras.map { it.keep?.style })
         }
     }
+
+    @Test fun `a style changed from Writer changes in the file's styles, and every paragraph with it`() {
+        val change = StyleChange(font = "Times New Roman", sizePt = 16f, bold = false, italic = true, color = 0x1F3864, align = DocAlign.Center,
+            line = 2f, before = 12f, after = 6f, left = 36f, firstLine = -18f)
+        for (kind in OfficeKind.entries) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Head")), heading = 1), DocPara(listOf(DocRun("Big")), keep = DocKeep(style = "Title"))))
+            val parts = OfficeFormats.unzip(OfficeFormats.write(doc, kind))
+            val path = if (kind == OfficeKind.Docx) "word/styles.xml" else "styles.xml"
+            var styles = String(parts.getValue(path))
+            styles = if (kind == OfficeKind.Docx) StyleEdit.docx(StyleEdit.docx(styles, "Heading1", 1, "Normal", change), "Subtitle", 0, "Normal", StyleChange(sizePt = 20f))
+                else StyleEdit.odt(StyleEdit.odt(styles, "Heading_20_1", 1, change), "Subtitle", 0, StyleChange(sizePt = 20f))
+            parts[path] = styles.toByteArray()
+            val bytes = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+            OfficeFormats.parse(styles.toByteArray()) // still well formed
+            val look = DocStyles.of(kind, bytes).look(OfficeFormats.read(bytes, kind).paras[0])
+            assertEquals(kind.name, listOf("Times New Roman", 16f, false, true, 0x1F3864, DocAlign.Center, 2f, 12f, 6f, 36f, -18f),
+                listOf(look.font, look.sizePt, look.bold, look.italic, look.color, look.align, look.lineMultiple, look.before, look.after, look.left, look.firstLine))
+            // A style the document had not got (Subtitle) is added, then changed.
+            assertEquals(20f, DocStyles.of(kind, bytes).look(DocPara(emptyList(), keep = DocKeep(style = "Subtitle"))).sizePt)
+            // Changed twice: set again, not added again.
+            val again = if (kind == OfficeKind.Docx) StyleEdit.docx(styles, "Heading1", 1, "Normal", StyleChange(sizePt = 18f)) else StyleEdit.odt(styles, "Heading_20_1", 1, StyleChange(sizePt = 18f))
+            assertEquals(1, Regex(if (kind == OfficeKind.Docx) "w:styleId=\"Heading1\"" else "style:name=\"Heading_20_1\"").findAll(again).count())
+        }
+    }
 }

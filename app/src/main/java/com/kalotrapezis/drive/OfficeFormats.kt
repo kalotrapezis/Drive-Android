@@ -571,6 +571,9 @@ internal fun documentPath(parts: Map<String, ByteArray>): String {
     val root = OfficeFormats.parse(rels).documentElement
     return root.kids().firstOrNull { it.getAttribute("Type").endsWith("/officeDocument") }?.getAttribute("Target")?.removePrefix("/") ?: "word/document.xml"
 }
+/** Where a document keeps its named styles. */
+internal fun stylesPath(parts: Map<String, ByteArray>, kind: OfficeKind) = if (kind == OfficeKind.Odt) "styles.xml"
+    else documentPath(parts).substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" } + "styles.xml"
 internal fun relsPath(part: String) = part.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" } + "_rels/" + part.substringAfterLast('/') + ".rels"
 
 private class DocxReader(val parts: Map<String, ByteArray>) {
@@ -913,7 +916,7 @@ private fun docxStyleLists(parts: Map<String, ByteArray>, dir: String): Map<Stri
 }
 
 /** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
-private val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
+internal val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
     "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange")
@@ -924,7 +927,7 @@ private val ODF_WRITTEN = setOf("font-weight", "font-weight-asian", "font-weight
     "font-size", "font-size-asian", "font-size-complex", "color", "background-color", "text-position")
 
 /** A run's properties in the order Word's schema requires. */
-private val RPR_ORDER = listOf("rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss",
+internal val RPR_ORDER = listOf("rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss",
     "imprint", "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect",
     "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish", "oMath")
 /** The run properties Writer carries as the file has them, without editing them. */
@@ -1000,7 +1003,7 @@ private object DocxWriter {
             id
         }
         val headingIds = (1..6).filter { n -> allParas.any { it.heading == n } }.associateWith { n ->
-            styleId("heading $n", "Heading$n") { id -> """<w:style w:type="paragraph" w:styleId="$id"><w:name w:val="heading $n"/>${normal?.let { "<w:basedOn w:val=\"$it\"/><w:next w:val=\"$it\"/>" } ?: ""}<w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="${n - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${listOf(36, 30, 26, 24, 22, 22)[n - 1]}"/></w:rPr></w:style>""" }
+            styleId("heading $n", "Heading$n") { id -> docxHeadingStyle(n, id, normal) }
         }
         // Title, Subtitle, Quote: added when a paragraph took one the document had not got.
         allParas.mapNotNull { it.keep?.style }.toSet().filter { it in DOCX_BUILTIN && it !in ids }.forEach { id ->
@@ -1522,9 +1525,7 @@ private object OdtWriter {
         val body = if ("Text_20_body" in named) "Text_20_body" else "Standard"
         // A heading style the document does not have is added, so its headings still look like headings.
         if (stylesXml != null && "</office:styles>" in stylesXml) {
-            val add = (1..6).filter { n -> doc.paras.any { it.heading == n } && "Heading_20_$n" !in named }.joinToString("") { n ->
-                """<style:style style:name="Heading_20_$n" style:display-name="Heading $n" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="$body" style:default-outline-level="$n" style:class="text"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="${listOf("130%", "115%", "101%", "95%", "85%", "85%")[n - 1]}" fo:font-weight="bold"/></style:style>"""
-            }
+            val add = (1..6).filter { n -> doc.paras.any { it.heading == n } && "Heading_20_$n" !in named }.joinToString("") { n -> odtHeadingStyle(n, body) }
             val builtin = doc.paras.mapNotNull { it.keep?.style }.toSet().filter { it in ODT_BUILTIN && it !in named }.joinToString("") { ODT_BUILTIN.getValue(it) }
             if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
         }

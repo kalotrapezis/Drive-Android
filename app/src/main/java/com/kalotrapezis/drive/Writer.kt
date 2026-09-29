@@ -163,6 +163,8 @@ private const val STYLE_SIZE = 0.037f
 private const val STYLE_WEIGHT = 701
 private const val STYLE_ALPHA = 0xFEL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
+/** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
+private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
 
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
@@ -260,7 +262,9 @@ internal object WriterBridge {
                 type = p.list?.takeIf { !afterBreak }?.let { RichTextBlockType.ListItem(it.ordered, it.level, it.start) } ?: RichTextBlockType.Paragraph,
                 spans = marks,
                 headingLevel = p.heading,
-                textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                // Its own alignment, else its style's — marked (a text direction no paragraph of its own has) as the style's.
+                textAlign = when (p.align.takeIf { it != DocAlign.Start } ?: look.align ?: DocAlign.Start) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                textDirection = if (p.align == DocAlign.Start && look.align != null && look.align != DocAlign.Start) STYLE_ALIGNED else androidx.compose.ui.text.style.TextDirection.Unspecified,
                 // The paragraph's left and first-line indents shown (a list item's indent is the editor's own).
                 textIndent = if (p.list != null || p.table != null) null else look.let { l ->
                     val rest = l.left.coerceAtLeast(0f) * scale
@@ -324,7 +328,8 @@ internal object WriterBridge {
                 })
             }
             val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
-            val align = when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
+            val align = if (b.textDirection == STYLE_ALIGNED) DocAlign.Start // its style's
+                else when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
             DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
         }.fold(ArrayList<DocPara>()) { paras, (p, afterBreak) ->
             val prev = paras.lastOrNull()
@@ -586,6 +591,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }
+    var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style changes
     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
     var loaded by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf<String?>(null) }
@@ -659,9 +665,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             runCatching {
                 val bytes = file?.readBytes()
                 val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 11f)
+                var draftStyles: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
                     val draftParts = OfficeFormats.unzip(draftBytes)
+                    draftStyles = draftParts[stylesPath(draftParts, kind)] // styles changed before it closed
                     val originalParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
                     // A picture added before the app closed lives only in the draft: it is new again, with its bytes.
                     OfficeFormats.read(draftBytes, kind).let { dd -> dd.copy(paras = dd.paras.map { p -> p.copy(runs = p.runs.map { r ->
@@ -670,7 +678,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }) }) }
                 }.getOrNull() }
                 packageParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
-                Triple(bytes, doc, draft)
+                // The draft's styles, when they were changed: the file as it will be written starts from them.
+                val start = draftStyles?.let { styles -> val parts = OfficeFormats.unzip(bytes ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
+                    val path = stylesPath(parts, kind)
+                    if (parts[path]?.contentEquals(styles) == true) bytes else { parts[path] = styles; OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null) } } ?: bytes
+                Triple(start, doc, draft)
             }
         }
         result.onSuccess { (bytes, doc, draft) ->
@@ -699,7 +711,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
-        snapshotFlow { state.annotatedString to meta.paras }.drop(1).collectLatest { // meta: a paragraph's spacing set
+        snapshotFlow { Triple(state.annotatedString, meta.paras, styleEdits) }.drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
 
             dirty = true
             delay(1500)
@@ -932,6 +944,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     val hereStyle = rulerAt?.first?.min()?.let { i -> meta.paras.getOrNull(i) }?.let { documentStyles.styleOf(it) }
     var stylesPage by remember { mutableStateOf(false) }
+    var editingStyle by remember { mutableStateOf<StyleEntry?>(null) }
+    /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
+    fun editStyle(entry: StyleEntry, change: StyleChange) {
+        val key = documentStyles.styleKey(entry) ?: run { message = "This style cannot be changed here."; return }
+        val cur = current()
+        val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
+        val path = stylesPath(parts, kind)
+        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return }
+        parts[path] = runCatching { if (kind == OfficeKind.Docx) StyleEdit.docx(xml, key, entry.heading, documentStyles.normalId, change) else StyleEdit.odt(xml, key, entry.heading, change) }
+            .onFailure { Log.e("Writer", "style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        meta = cur
+        dirty = true; styleEdits++
+        state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
+    }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
     fun setIndents(now: RulerIndents) {
         val (at, look) = rulerAt ?: return
@@ -1303,7 +1331,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
-                        Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a)) }
+                        Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a, textDirection = androidx.compose.ui.text.style.TextDirection.Content)) }
                     }
                 }, {
                     // Line spacing (the pages and the file show it; the editor keeps its own lines) and the ⋯ page.
@@ -1634,7 +1662,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
-    if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }) { stylesPage = false; applyStyle(it) }
+    if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }, { editingStyle = it }) { stylesPage = false; applyStyle(it) }
+    editingStyle?.let { entry ->
+        StyleDialog(entry, documentStyles.look(DocPara(emptyList(), heading = entry.heading, keep = entry.id?.let { DocKeep(style = it) })), meta.basePt,
+            { editingStyle = null }) { change -> editingStyle = null; editStyle(entry, change) }
+    }
     paragraphPage?.let { (at, look) ->
         ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }

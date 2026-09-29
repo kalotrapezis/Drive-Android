@@ -46,6 +46,7 @@ internal data class ParaLook(
     val sizePt: Float? = null, val bold: Boolean? = null, val italic: Boolean? = null, val color: Int? = null, val font: String? = null,
     val tabs: List<TabStop> = emptyList(),
     val listIndented: Boolean = false, // a list item's indent is already in left/firstLine
+    val align: DocAlign? = null, // the style's alignment (a paragraph's own is DocPara.align)
 )
 
 /**
@@ -124,6 +125,10 @@ internal abstract class DocStyles {
             (1..6).map { StyleEntry("Heading $it", null, it) } + StyleEntry("Quote", quote)
         return first + own.filter { o -> first.none { it.id == o.id } }.sortedBy { it.name.lowercase() }
     }
+    /** How the document's styles name [e] (its id in Word, its name in LibreOffice); null: it cannot be changed. */
+    open fun styleKey(e: StyleEntry): String? = null
+    /** Word's plain style's id (what new styles are based on). */
+    open val normalId: String? get() = null
     /** Which of [paragraphStyles] a paragraph has. */
     fun styleOf(p: DocPara): StyleEntry = paragraphStyles().firstOrNull { if (p.heading > 0) it.heading == p.heading else it.heading == 0 && it.id == p.keep?.style }
         ?: StyleEntry(p.keep?.style ?: "Normal", p.keep?.style)
@@ -401,6 +406,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 l.copy(tabs = t.sortedBy { it.pos })
             }
             "pageBreakBefore" -> l.copy(pageBreakBefore = e.attr(W, "val").let { it == null || it == "1" || it == "true" })
+            "jc" -> l.copy(align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute" -> DocAlign.Justify; else -> DocAlign.Start })
             "contextualSpacing" -> l.copy(contextual = e.attr(W, "val").let { it == null || it == "1" || it == "true" })
             else -> l
         }
@@ -414,6 +420,8 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         }
         return standardStyles(own, byName["title"] ?: "Title", byName["subtitle"] ?: "Subtitle", byName["quote"] ?: "Quote")
     }
+    override fun styleKey(e: StyleEntry) = if (e.heading > 0) byName["heading ${e.heading}"] ?: "Heading${e.heading}" else e.id ?: defaultStyle ?: "Normal"
+    override val normalId get() = defaultStyle
 
     override fun look(p: DocPara): ParaLook {
         listIndented = false
@@ -563,6 +571,8 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             else odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = false) } ?: l
         "style:line-height-at-least" -> odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = true) } ?: l
         "fo:break-before" -> l.copy(pageBreakBefore = v == "page")
+        "fo:text-align" -> l.copy(align = when (v) { "center" -> DocAlign.Center; "end", "right" -> DocAlign.End; "justify" -> DocAlign.Justify; else -> DocAlign.Start })
+        "fo:font-family" -> l.copy(font = v.trim('\'', '"'))
         "style:contextual-spacing", "fo:contextual-spacing" -> l.copy(contextual = v == "true")
         "fo:font-size" -> (if (v.endsWith("%")) v.removeSuffix("%").toFloatOrNull()?.let { (l.sizePt ?: base) * it / 100 } else odfLength(v))?.let { l.copy(sizePt = it) } ?: l
         "fo:font-weight" -> l.copy(bold = v == "bold" || (v.toIntOrNull() ?: 400) >= 600)
@@ -599,6 +609,7 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             .map { (name, e) -> StyleEntry(e.attr(STYLE, "display-name") ?: odfDisplayName(name), name) }
         return standardStyles(own, "Title", "Subtitle", "Quotations")
     }
+    override fun styleKey(e: StyleEntry) = if (e.heading > 0) "Heading_20_${e.heading}" else e.id ?: if ("Text_20_body" in named) "Text_20_body" else "Standard"
 
     override fun look(p: DocPara): ParaLook {
         var look = apply(ParaLook(), defaults, 12f)
@@ -1068,7 +1079,8 @@ internal object OfficePages {
             typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), look.bold == true, look.italic == true)
         }
         val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)
-        val align = when (p.align) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
+        val aligned = p.align.takeIf { it != DocAlign.Start } ?: look.align ?: DocAlign.Start // its own, else its style's
+        val align = when (aligned) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
         // Word's single line is the font's height and its line gap; Android's leaves the gap out (rows came out 4% short).
         val multiple = if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
         // The line gap of the font most of the text is in (a paragraph in Calibri may be all Times, letter by letter).
@@ -1079,7 +1091,7 @@ internal object OfficePages {
         val gap = if (look.lineExact == null) gapPaint.fontMetrics.leading * multiple else 0f
         fun build() = StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setAlignment(align)
             .setLineSpacing(gap, multiple).setIncludePad(false)
-            .setJustificationMode(if (p.align == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
+            .setJustificationMode(if (aligned == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
             .build()
         // Tabs, left to right (Android's layout knows only left stops): each goes to the next stop after where it
         // starts — the paragraph's own, a list's text position, then every half inch — the text after it lined up to

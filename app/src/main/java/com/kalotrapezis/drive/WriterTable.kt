@@ -242,6 +242,75 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
     }
 }
 
+/** The fonts offered for a style: Word's everyday ones (Writer draws them with their metric twins). */
+private val STYLE_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
+private val STYLE_COLORS = listOf(0x000000, 0x404040, 0x595959, 0x1F3864, 0x2F5496, 0x4472C4, 0xC00000, 0x538135, 0x7030A0)
+
+/**
+ * A style's own page (asked 2026-09-27: a style's font, size, bold, italic, colour, alignment, line spacing, space
+ * before and after, indents — changes the document's style, so every paragraph with it changes, in Word and
+ * LibreOffice too). [apply] gets only what was changed.
+ */
+@Composable
+internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismiss: () -> Unit, apply: (StyleChange) -> Unit) {
+    var d by remember { mutableStateOf(look.copy(sizePt = look.sizePt ?: basePt, align = look.align ?: DocAlign.Start)) }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
+                Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Section("Font") {
+                        (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }
+                    }
+                    Section("Size and look") {
+                        PtField("Size", d.sizePt ?: basePt) { if (it >= 1f) d = d.copy(sizePt = it) }
+                        Choice("Bold", d.bold == true) { d = d.copy(bold = d.bold != true) }
+                        Choice("Italic", d.italic == true) { d = d.copy(italic = d.italic != true) }
+                    }
+                    Section("Colour") {
+                        Choice("Automatic", d.color == null) { d = d.copy(color = null) }
+                        STYLE_COLORS.forEach { c ->
+                            Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF000000 or c.toLong()))
+                                .border(if (d.color == c) 3.dp else 1.dp, if (d.color == c) MaterialTheme.colorScheme.primary else Color(0x55888888), CircleShape)
+                                .clickable { d = d.copy(color = c) })
+                        }
+                    }
+                    Section("Alignment") {
+                        listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right", DocAlign.Justify to "Justify").forEach { (a, l) -> Choice(l, d.align == a) { d = d.copy(align = a) } }
+                    }
+                    Section("Line spacing") {
+                        LINE_SPACINGS.forEach { m -> Choice(plain(m), d.lineExact == null && kotlin.math.abs(d.lineMultiple - m) < 0.01f) { d = d.copy(lineMultiple = m, lineExact = null) } }
+                        if (look.lineExact == null && LINE_SPACINGS.none { kotlin.math.abs(look.lineMultiple - it) < 0.01f })
+                            Choice(plain(Math.round(look.lineMultiple * 100) / 100f), d.lineExact == null && d.lineMultiple == look.lineMultiple) { d = d.copy(lineMultiple = look.lineMultiple) }
+                    }
+                    Section("Space between paragraphs") {
+                        PtField("Before", d.before) { d = d.copy(before = it) }
+                        PtField("After", d.after) { d = d.copy(after = it) }
+                    }
+                    Section("Indent") {
+                        CmField("Left", d.left, least = 0f) { d = d.copy(left = it) }
+                        Choice("First line: none", d.firstLine == 0f) { d = d.copy(firstLine = 0f) }
+                        Choice("Indented", d.firstLine > 0f) { d = d.copy(firstLine = if (d.firstLine > 0f) d.firstLine else 1.25f * CM) }
+                        Choice("Hanging", d.firstLine < 0f) { d = d.copy(firstLine = if (d.firstLine < 0f) d.firstLine else -1.25f * CM) }
+                    }
+                    if (d.firstLine != 0f) CmField(if (d.firstLine > 0f) "Indented by" else "Hanging by", kotlin.math.abs(d.firstLine)) { v -> d = d.copy(firstLine = if (d.firstLine < 0f) -v else v) }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = {
+                        fun <T> changed(a: T, b: T) = b.takeIf { it != a }
+                        apply(StyleChange(font = changed(look.font, d.font), sizePt = changed(look.sizePt ?: basePt, d.sizePt), bold = changed(look.bold == true, d.bold == true),
+                            italic = changed(look.italic == true, d.italic == true), color = if (d.color != look.color) d.color ?: -1 else null,
+                            align = changed(look.align ?: DocAlign.Start, d.align), line = d.lineMultiple.takeIf { d.lineExact == null && (look.lineExact != null || it != look.lineMultiple) },
+                            before = changed(look.before, d.before), after = changed(look.after, d.after), left = changed(look.left, d.left), firstLine = changed(look.firstLine, d.firstLine)))
+                    }) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
 /** Space in points (Word's unit for it), 0 allowed. */
 @Composable private fun PtField(label: String, pt: Float, set: (Float) -> Unit) {
     var text by remember(label) { mutableStateOf(plain(pt)) }

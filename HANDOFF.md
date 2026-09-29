@@ -23,6 +23,9 @@ sectPr (header/footer/gutter kept, Word's order); `.odt` every page layout (top/
 text lands where asked). Page break / Blank page there too. A tablet now always fits the page on screen (shownZoom),
 so a landscape page stays a page. Checked: unit test both kinds + a two-section docx; LibreOffice: Letter landscape
 text at 1.5 in / 1 in (both kinds); tablet: 01 copy → APA + landscape, saved, LibreOffice A4 landscape at 1 in.
+Columns: `DocPage.columns/columnGap` (read from w:cols / style:columns, written by PageSetup), `DocPage.column(k)`; the
+layout flows `page` = the current column inside `frame` (the sheet); `breakPage()` for page breaks and sections.
+Checked: unit test; tablet (2 columns on the landscape copy) and LibreOffice (w:cols num=2, 3 pages alike).
 
 **Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**

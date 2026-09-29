@@ -188,7 +188,7 @@ class OfficeFormatsTest {
             val bytes = OfficeFormats.write(doc, kind)
             val before = DocStyles.of(kind, bytes).page
             // Letter, landscape, APA's inch but a wide left.
-            val want = before.copy(width = 792f, height = 612f, top = 72f, bottom = 72f, left = 108f, right = 72f)
+            val want = before.copy(width = 792f, height = 612f, top = 72f, bottom = 72f, left = 108f, right = 72f, columns = 2, columnGap = 36f)
             val parts = OfficeFormats.unzip(bytes).let { if (kind == OfficeKind.Docx) PageSetup.docx(it, want) else PageSetup.odt(it, want, before) }
             val out = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
             java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("page.${kind.extension}").writeBytes(out)
@@ -197,6 +197,10 @@ class OfficeFormatsTest {
                 Triple("bottom", want.bottom, got.bottom), Triple("left", want.left, got.left), Triple("right", want.right, got.right)))
                 assert(kotlin.math.abs(a - b) < 0.5f) { "$kind $name: $a ≠ $b" }
             assert(PageSetup.landscape(got) && PageSetup.sizeName(got) == "Letter") { kind.name }
+            assertEquals(kind.name, 2 to 36f, got.columns to got.columnGap)
+            // A column is the text's width less the gap, halved; the second starts after the gap.
+            assertEquals(kind.name, (792f - 108f - 72f - 36f) / 2, got.column(1).textWidth, 0.5f)
+            assertEquals(kind.name, 108f + (792f - 108f - 72f - 36f) / 2 + 36f, got.column(1).left, 0.5f)
             assertEquals(kind.name, doc.paras.map { it.text }, OfficeFormats.read(out, kind).paras.map { it.text })
         }
         // A Word file with several sections: every one set.

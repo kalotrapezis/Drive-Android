@@ -65,9 +65,14 @@ internal object PageSetup {
             var inner = if (self) "" else sect.substring(sect.indexOf('>') + 1, sect.length - "</w:sectPr>".length)
             val oldMar = Regex("""<w:pgMar\b[^>]*/>""").find(inner)?.value
             inner = inner.replace(Regex("""<w:pgSz\b[^>]*/>"""), "").replace(Regex("""<w:pgMar\b[^>]*/>"""), "")
-            // In Word's order: after the header/footer references, footnote/endnote settings and the section's type.
+                .replace(Regex("""<w:cols\b[^>]*?(?:/>|>[\s\S]*?</w:cols>)"""), "")
+            // In Word's order: after the header/footer references, footnote/endnote settings and the section's type…
             val later = Regex("""<w:(paperSrc|pgBorders|lnNumType|pgNumType|cols|formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
-            return open + inner.substring(0, later) + size + margins(oldMar) + inner.substring(later) + "</w:sectPr>"
+            inner = inner.substring(0, later) + size + margins(oldMar) + inner.substring(later)
+            // …and the columns after the page numbering, before the rest.
+            val cols = """<w:cols w:num="${page.columns}" w:space="${tw(page.columnGap)}"/>"""
+            val beforeCols = Regex("""<w:(formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
+            return open + inner.substring(0, beforeCols) + cols + inner.substring(beforeCols) + "</w:sectPr>"
         }
         val sections = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""")
         if (!sections.containsMatchIn(xml)) xml = xml.replace("</w:body>", "<w:sectPr/></w:body>")
@@ -88,10 +93,16 @@ internal object PageSetup {
         val bottom = (page.bottom - (now.bottom - now.footer)).coerceAtLeast(5.7f)
         val set = mapOf("fo:page-width" to pt(page.width), "fo:page-height" to pt(page.height), "style:print-orientation" to if (landscape(page)) "landscape" else "portrait",
             "fo:margin-top" to pt(top), "fo:margin-bottom" to pt(bottom), "fo:margin-left" to pt(page.left), "fo:margin-right" to pt(page.right))
-        xml = Regex("""<style:page-layout-properties\b[^>]*?(/?)>""").replace(xml) { m ->
-            var tag = m.value.removeSuffix(if (m.groupValues[1] == "/") "/>" else ">")
+        val columns = if (page.columns > 1) """<style:columns fo:column-count="${page.columns}" fo:column-gap="${pt(page.columnGap)}"/>""" else ""
+        xml = Regex("""<style:page-layout-properties\b[^>]*?(?:/>|>[\s\S]*?</style:page-layout-properties>)""").replace(xml) { m ->
+            val self = m.value.endsWith("/>") && m.value.indexOf('>') == m.value.length - 1
+            var tag = m.value.substring(0, m.value.indexOf('>')).removeSuffix("/")
             for ((k, v) in set) tag = if (Regex("""\s$k="""").containsMatchIn(tag)) tag.replace(Regex("""\s$k="[^"]*""""), " $k=\"$v\"") else "$tag $k=\"$v\""
-            tag + (if (m.groupValues[1] == "/") "/>" else ">")
+            // Its columns: a child, after a background picture and before the footnote separator (ODF's order).
+            val inner = (if (self) "" else m.value.substring(m.value.indexOf('>') + 1, m.value.length - "</style:page-layout-properties>".length))
+                .replace(Regex("""<style:columns\b[^>]*?(?:/>|>[\s\S]*?</style:columns>)"""), "")
+            val at = Regex("""<style:footnote-sep\b""").find(inner)?.range?.first ?: inner.length
+            "$tag>" + inner.substring(0, at) + columns + inner.substring(at) + "</style:page-layout-properties>"
         }
         parts["styles.xml"] = xml.toByteArray()
         return parts

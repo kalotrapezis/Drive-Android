@@ -1876,6 +1876,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Landscape", w, enabled = loaded, on = PageSetup.landscape(sheet)) {
                         if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
                     RibbonButton("Size", w, enabled = loaded) { pagePage = true }
+                    // Columns: the pages show them (the editor keeps one column of text).
+                    Box {
+                        var columning by remember { mutableStateOf(false) }
+                        RibbonButton(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, enabled = loaded) { columning = true }
+                        DropdownMenu(columning, { columning = false }) {
+                            listOf(1 to "One", 2 to "Two", 3 to "Three").forEach { (n, label) ->
+                                DropdownMenuItem(text = { Text(label) }, onClick = { columning = false
+                                    if (n != sheet.columns) { setPage(sheet.copy(columns = n)); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
+                            }
+                        }
+                    }
                 }, {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }

@@ -33,8 +33,16 @@ import org.w3c.dom.Element
 
 /** A page: its size and margins in points. */
 internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9f, val top: Float = 56.7f, val bottom: Float = 56.7f,
-    val left: Float = 56.7f, val right: Float = 56.7f, val header: Float = 35.4f, val footer: Float = 35.4f /* from the page's edge */) {
+    val left: Float = 56.7f, val right: Float = 56.7f, val header: Float = 35.4f, val footer: Float = 35.4f /* from the page's edge */,
+    val columns: Int = 1, val columnGap: Float = 36f) {
     val textWidth get() = (width - left - right).coerceAtLeast(8f)
+    /** Column [k] of the text, as a page of its own width (the text flows down one, then the next). */
+    fun column(k: Int): DocPage {
+        if (columns <= 1) return this
+        val w = ((textWidth - columnGap * (columns - 1)) / columns).coerceAtLeast(8f)
+        val l = left + k * (w + columnGap)
+        return copy(left = l, right = width - l - w)
+    }
 }
 
 /** How a paragraph is laid out: spacing (pt), line spacing (a multiple, or exact pt), indents (pt), its text's look. */
@@ -262,7 +270,8 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val size = sect?.kid(W, "pgSz"); val mar = sect?.kid(W, "pgMar")
         val d = DocPage()
         val page = DocPage(twips(size, "w") ?: d.width, twips(size, "h") ?: d.height, twips(mar, "top") ?: d.top, twips(mar, "bottom") ?: d.bottom,
-            twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right, twips(mar, "header") ?: d.header, twips(mar, "footer") ?: d.footer)
+            twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right, twips(mar, "header") ?: d.header, twips(mar, "footer") ?: d.footer,
+            sect?.kid(W, "cols")?.attr(W, "num")?.toIntOrNull()?.coerceIn(1, 6) ?: 1, twips(sect?.kid(W, "cols"), "space") ?: 36f)
         val headers = HashMap(before?.headers.orEmpty()); val footers = HashMap(before?.footers.orEmpty())
         sect?.kids()?.forEach { e ->
             val into = when (e.localName) { "headerReference" -> headers; "footerReference" -> footers; else -> null } ?: return@forEach
@@ -538,7 +547,9 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val top = len("margin-top") ?: d.top; val bottom = len("margin-bottom") ?: d.bottom
         section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height,
             top + band(headers["default"], "header-style", "margin-bottom"), bottom + band(footers["default"], "footer-style", "margin-top"),
-            len("margin-left") ?: d.left, len("margin-right") ?: d.right, header = top, footer = bottom),
+            len("margin-left") ?: d.left, len("margin-right") ?: d.right, header = top, footer = bottom,
+            columns = props?.kid(STYLE, "columns")?.attr(FO, "column-count")?.toIntOrNull()?.coerceIn(1, 6) ?: 1,
+            columnGap = odfLength(props?.kid(STYLE, "columns")?.attr(FO, "column-gap")) ?: 36f),
             headers, footers, titlePage = "first" in headers || "first" in footers)
     }
 
@@ -782,7 +793,9 @@ internal object OfficePages {
     fun layout(doc: OfficeDoc, styles: DocStyles, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
         val sections = styles.sections(doc.paras)
         var section = sections.firstOrNull() ?: styles.section
-        var page = section.page
+        var frame = section.page // the sheet
+        var col = 0
+        var page = frame.column(0) // where the text flows: the page, or one of its columns
         var number = section.pageStart ?: 1
         var firstOfSection = true
         val pages = ArrayList<LaidPage>()
@@ -791,9 +804,13 @@ internal object OfficePages {
         var boxes = ArrayList<LaidPage.Box>(); var lines = ArrayList<LaidPage.Line>()
         var y = page.top
         fun newPage() {
-            pages += LaidPage(page, pieces, floats, section, number, firstOfSection, boxes, lines)
-            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); y = page.top; number++; firstOfSection = false
+            // In columns: the next column first.
+            if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
+            pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
+            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); col = 0; page = frame.column(0); y = page.top; number++; firstOfSection = false
         }
+        /** A page break: a whole new page, whatever column the text is in. */
+        fun breakPage() { col = frame.columns; newPage() }
         fun place(b: Block) { pieces += b.pieces; boxes += b.boxes; lines += b.lines }
         val counters = IntArray(9)
         var prevLook: ParaLook? = null; var prevStyle: String? = null
@@ -804,8 +821,8 @@ internal object OfficePages {
             // A new section: a new page (unless it goes on on the same one) of its own size, numbered as it says.
             sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
                 if (!next.continuous) {
-                    if (pieces.isNotEmpty() || floats.isNotEmpty()) newPage()
-                    section = next; page = next.page; y = page.top; firstOfSection = true
+                    if (pieces.isNotEmpty() || floats.isNotEmpty()) breakPage()
+                    section = next; frame = next.page; col = 0; page = frame.column(0); y = page.top; firstOfSection = true
                     next.pageStart?.let { number = it }
                 } else section = next
             }
@@ -842,7 +859,7 @@ internal object OfficePages {
             // Space between paragraphs: after the one before, then before this one — none between two of the same
             // style that say so (contextual spacing).
             val same = look.contextual && prevLook?.contextual == true && style == prevStyle
-            if (look.pageBreakBefore && pieces.isNotEmpty()) newPage()
+            if (look.pageBreakBefore && pieces.isNotEmpty()) breakPage()
             if (pieces.isNotEmpty() && !same) y += look.before
             val limit = page.height - page.bottom
             var line = 0
@@ -873,7 +890,7 @@ internal object OfficePages {
             if (!same || i + 1 >= doc.paras.size) y += look.after
             prevLook = look; prevStyle = style
         }
-        pages += LaidPage(page, pieces, floats, section, number, firstOfSection, boxes, lines)
+        pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 

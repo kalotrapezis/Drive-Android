@@ -130,7 +130,7 @@ one pass once the tabs' features are done.
 
 ### Layout (Word's Layout; OnlyOffice Διάταξη)
 - [x] Margins (Normal = 1 in/APA, Narrow, Moderate, Wide, 2.5 cm, or custom in cm/in), orientation, size (A4, Letter, Legal, A5, A3) — Layout tab, one Page setup page; every section of a Word file (pgSz/pgMar, header distances kept), every page layout of an ODT (the header band allowed for); a tablet shows a page too wide smaller rather than reflowing
-- [ ] Columns
+- [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) — [ ] column break, balancing a continuous section, columns in part of a document
 - [x] Page break, blank page (also on Layout) — [ ] column, section breaks
 - [ ] Line numbers, hyphenation
 - [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)

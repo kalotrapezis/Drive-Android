@@ -111,6 +111,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.times
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.isSpecified
@@ -231,6 +233,12 @@ internal object WriterBridge {
                 spans = marks,
                 headingLevel = p.heading,
                 textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                // The paragraph's left and first-line indents shown (a list item's indent is the editor's own).
+                textIndent = if (p.list != null || p.table != null) null else styles.look(p).let { l ->
+                    val rest = l.left.coerceAtLeast(0f) * scale
+                    val first = if (afterBreak) rest else (l.left + l.firstLine).coerceAtLeast(0f) * scale
+                    if (rest == 0f && first == 0f) null else androidx.compose.ui.text.style.TextIndent(first.sp, rest.sp)
+                },
                 isLineBreak = afterBreak,
             )
         }
@@ -322,7 +330,10 @@ internal object WriterBridge {
     }
 
     /** How big a table stands in the editor: exactly the same layout as on its page. */
-    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles, editorWidthSp / (BASE_SP / doc.basePt))
+    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles,
+        if (pageWidthPt != null) styles.page.textWidth else editorWidthSp / (BASE_SP / doc.basePt))
+    /** The text's width (pt) when the editor shows the page itself; null: it fits the screen. */
+    var pageWidthPt: Float? = null
 
     /** How wide the editor's text is (sp), so a table is laid out to fit it; set by the screen. */
     var editorWidthSp = 320f
@@ -543,13 +554,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
-    remember { OfficeFonts.assets = context.applicationContext.assets }
+    remember { OfficeFonts.assets = context.applicationContext.assets; WriterUnits.load(context) }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
-    // The page's text is the screen less its margins (10 + 22 dp a side, below).
-    WriterBridge.editorWidthSp = with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var documentStyles by remember { mutableStateOf<DocStyles>(DocStyles.Plain) }
+    // A tablet edits on the page itself (asked 2026-09-29, as on a desktop): the page's width and margins at the
+    // editor's text size, centred, the ruler above. A phone (or a page too wide) keeps the text to the screen's width.
+    val sheet = documentStyles.page
+    val perPt = with(LocalDensity.current) { (BASE_SP * zoom / 100f / meta.basePt).sp.toDp() }
+    val screen = LocalConfiguration.current.screenWidthDp.dp
+    val onPage = screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
+    WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
+    // Else the page's text is the screen less its margins (10 + 22 dp a side, below).
+    WriterBridge.editorWidthSp = with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
     var viewing by remember { mutableStateOf(open != null) }
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
@@ -622,6 +640,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 dirty = true; message = "Your unsaved changes are back"
             }
             state.history.clear()
+            // The cursor at the start (the editor leaves it at the end): the first tap brought the end into view.
+            state.selection = androidx.compose.ui.text.TextRange(0)
             loaded = true
         }.onFailure { failed = it.message ?: "This file could not be read." }
     }
@@ -819,18 +839,34 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val line = now.lineMultiple.takeIf { now.lineExact == null && (was.lineExact != null || it != was.lineMultiple) }
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p ->
             if (i !in at || p.table != null) p else p.copy(keep = OfficeFormats.withSpacing(p.keep, kind, line, changed(was.before, now.before),
-                changed(was.after, now.after), changed(was.left, now.left), changed(was.firstLine, now.firstLine)))
+                changed(was.after, now.after), changed(was.left, now.left), changed(was.firstLine, now.firstLine), changed(was.right, now.right)))
         })
         dirty = true
+        // The editor shows indents: shown again, the cursor where it was.
+        if (was.left != now.left || was.firstLine != now.firstLine) state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel) }
     }
-    fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
+    /** The paragraphs the cursor or selection is in, and how the first of them looks; null when they cannot be told. */
+    fun chosen(): Pair<Set<Int>, ParaLook>? {
         val rich = state.toRichTextDocument()
         val cur = current()
         // Text typed beside a table makes one block two paragraphs: then the count differs and nothing is guessed.
         val at = WriterBridge.paragraphsAt(state.annotatedString.text, rich, state.selection.min, state.selection.max)
-            .takeIf { it.isNotEmpty() && rich.blocks.count { !it.isLineBreak } == cur.paras.size }
-            ?: run { message = "Put the cursor in a paragraph of text"; return }
-        cur.paras.getOrNull(at.min())?.let { then(at, documentStyles.look(it)) }
+            .takeIf { it.isNotEmpty() && rich.blocks.count { !it.isLineBreak } == cur.paras.size } ?: return null
+        return cur.paras.getOrNull(at.min())?.takeIf { it.table == null }?.let { at to documentStyles.look(it) }
+    }
+    fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
+        chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
+    }
+    // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
+    var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
+    LaunchedEffect(loaded, onPage, viewing) {
+        if (!loaded || !onPage || viewing) return@LaunchedEffect
+        snapshotFlow { state.selection to meta.paras }.collectLatest { delay(200); rulerAt = chosen() }
+    }
+    val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
+    fun setIndents(now: RulerIndents) {
+        val (at, look) = rulerAt ?: return
+        setSpacing(at, look, look.copy(left = now.left, firstLine = now.firstLine, right = now.right))
     }
     fun commitCell() {
         val edit = cellEdit ?: return
@@ -930,12 +966,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
-                pages?.let { PagesView(it, Modifier.fillMaxSize()) }
+                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize()) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
+            Column(Modifier.weight(1f).fillMaxWidth()) {
+            val margins = if (onPage) androidx.compose.foundation.layout.PaddingValues(start = sheet.left * perPt, end = sheet.right * perPt, top = sheet.top * perPt, bottom = 180.dp)
+                else androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)
+            if (onPage && loaded) BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val x = (maxWidth - sheet.width * perPt) / 2
+                IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
+            }
             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Surface(color = Color.White, shape = RoundedCornerShape(6.dp), modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp)) {
+                Surface(color = Color.White, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
+                    modifier = (if (onPage) Modifier.align(Alignment.TopCenter).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
@@ -948,7 +992,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp))
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
                             layout?.let { l ->
@@ -960,7 +1004,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
-                                Box(Modifier.matchParentSize().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)) {
+                                Box(Modifier.matchParentSize().padding(margins)) {
                                     placed.forEach { (i, img, at) ->
                                         val (left, bottom) = at
                                         val (w, h) = WriterBridge.shownSize(img, scale)
@@ -1086,6 +1130,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                     }
                 }
+            }
             }
         }
         // The ribbon, like Word's, at the bottom: a line of tabs and a line of that tab's tools, scrolling sideways
@@ -1290,6 +1335,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
                     Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                }, {
+                    // Centimetres or inches for the rulers and every length (APA's margins are given in inches).
+                    RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
+                    RibbonButton("inches", w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
                 })
             }
             // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
@@ -1665,36 +1714,54 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 }
 
 /**
- * The document's pages (Print layout): white pages of the file's own size on the dark background, fitted to the
- * screen's width, pinch to zoom (sideways scrolling when wider), "Page n of N" at the bottom.
+ * The document's pages (Print layout): white pages of the file's own size on the dark desk, "Page n of N" at the
+ * bottom, pinch to zoom (sideways scrolling when wider). A tablet shows them as a desktop does (asked 2026-09-29): a
+ * page at the editor's text size ([perPt] a point) when it fits, centred, with Word's rulers — along the top for the
+ * page in view, down each page's side. A phone fits the page to its width, no rulers.
  */
 @Composable
-private fun PagesView(pages: List<LaidPage>, modifier: Modifier) {
+private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier) {
     var zoom by remember { mutableFloatStateOf(1f) }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     BoxWithConstraints(modifier) {
-        val pageWidth = (maxWidth - 24.dp) * zoom
+        val rulers = maxWidth >= 700.dp
+        val ruler = if (rulers) 18.dp else 0.dp
+        val gap = if (rulers) 6.dp else 0.dp
+        val widest = pages.maxOf { it.page.width }
+        val fit = (maxWidth - ruler - gap - 24.dp) / widest
+        val scale = (if (rulers) minOf(perPt, fit) else fit) * zoom // on screen, per point
+        val content = maxOf(maxWidth, widest * scale + ruler + gap + 24.dp)
         val sideways = rememberScrollState()
-        androidx.compose.foundation.lazy.LazyColumn(
-            state = list,
-            modifier = Modifier.fillMaxHeight().horizontalScroll(sideways).width(maxOf(maxWidth, pageWidth + 24.dp))
-                .transformable(androidx.compose.foundation.gestures.rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(0.5f, 4f) }, canPan = { false }),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 72.dp),
-        ) {
-            items(pages.size) { i ->
-                val laid = pages[i]
-                androidx.compose.foundation.Canvas(Modifier.width(pageWidth).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
-                    drawIntoCanvas { c ->
-                        val n = c.nativeCanvas
-                        val scale = size.width / laid.page.width
-                        n.save(); n.scale(scale, scale); laid.draw(n); n.restore()
+        val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
+        Column(Modifier.fillMaxSize()) {
+            if (rulers) {
+                val page = pages[at.coerceIn(0, pages.lastIndex)].page
+                val x = (content - (page.width * scale + ruler + gap)) / 2 + ruler + gap - with(LocalDensity.current) { sideways.value.toDp() }
+                HorizontalRuler(page, scale, x, Modifier.fillMaxWidth().height(22.dp))
+            }
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = list,
+                modifier = Modifier.weight(1f).horizontalScroll(sideways).width(content)
+                    .transformable(androidx.compose.foundation.gestures.rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(0.5f, 4f) }, canPan = { false }),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 72.dp),
+            ) {
+                items(pages.size) { i ->
+                    val laid = pages[i]
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        if (rulers) VerticalRuler(laid.page, scale, Modifier.width(ruler).height(scale * laid.page.height))
+                        androidx.compose.foundation.Canvas(Modifier.width(scale * laid.page.width).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
+                            drawIntoCanvas { c ->
+                                val n = c.nativeCanvas
+                                val k = size.width / laid.page.width
+                                n.save(); n.scale(k, k); laid.draw(n); n.restore()
+                            }
+                        }
                     }
                 }
             }
         }
-        val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
         Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
             Text("Page ${(at + 1).coerceAtMost(pages.size)} of ${pages.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))

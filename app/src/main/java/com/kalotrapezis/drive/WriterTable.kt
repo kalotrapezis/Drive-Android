@@ -222,6 +222,7 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
                     }
                     Section("Indent") {
                         CmField("Left", draft.left, least = 0f) { draft = draft.copy(left = it) }
+                        CmField("Right", draft.right, least = 0f) { draft = draft.copy(right = it) }
                     }
                     Section("First line") {
                         Choice("None", draft.firstLine == 0f) { draft = draft.copy(firstLine = 0f) }
@@ -293,11 +294,12 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
     Text(look.name, style = MaterialTheme.typography.labelSmall)
 }
 
-/** A length in centimetres (Greece measures pages in cm), kept in points. */
+/** A length in the chosen unit (centimetres, or inches — Writer › View), kept in points. */
 @Composable private fun CmField(label: String, pt: Float, least: Float = 0.1f, set: (Float) -> Unit) {
-    var text by remember(label) { mutableStateOf(String.format(Locale.ROOT, "%.2f", pt / CM)) }
-    OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it in least..60f }?.let { set(it * CM) } },
-        label = { Text(label) }, suffix = { Text("cm") }, singleLine = true,
+    val unit = WriterUnits.name
+    var text by remember(label, unit) { mutableStateOf(WriterUnits.text(pt)) }
+    OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.let(WriterUnits::toPt)?.takeIf { it in least * CM..60f * CM }?.let(set) },
+        label = { Text(label) }, suffix = { Text(unit) }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 240.dp))
 }
 

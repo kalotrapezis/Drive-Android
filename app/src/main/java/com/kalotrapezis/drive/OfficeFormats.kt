@@ -311,10 +311,10 @@ internal object OfficeFormats {
 
     /**
      * A paragraph's spacing set from Writer, in the file's own words (the rest of its formatting as it was): line spacing
-     * as a multiple, space before and after, left and first-line indent (pt; first line < 0: hanging). null: unchanged.
+     * as a multiple, space before and after, left, first-line and right indent (pt; first line < 0: hanging). null: unchanged.
      */
     fun withSpacing(keep: DocKeep?, kind: OfficeKind, line: Float? = null, before: Float? = null, after: Float? = null,
-        left: Float? = null, firstLine: Float? = null): DocKeep {
+        left: Float? = null, firstLine: Float? = null, right: Float? = null): DocKeep {
         val k = keep ?: DocKeep()
         val parts = k.parts.toMutableList()
         fun set(xml: String, name: String, value: String?, drop: List<String> = emptyList()): String {
@@ -336,8 +336,9 @@ internal object OfficeFormats {
                 if (line != null) s = set(set(s, "w:line", Math.round(line * 240).toString()), "w:lineRule", "auto")
                 s
             }
-            if (left != null || firstLine != null) edit("ind") { x ->
+            if (left != null || firstLine != null || right != null) edit("ind") { x ->
                 var s = set(x, "w:left", tw(left), listOf("w:start", "w:leftChars", "w:startChars"))
+                s = set(s, "w:right", tw(right), listOf("w:end", "w:rightChars", "w:endChars"))
                 if (firstLine != null) s = if (firstLine < 0) set(s, "w:hanging", tw(-firstLine), listOf("w:firstLine", "w:hangingChars", "w:firstLineChars"))
                     else set(s, "w:firstLine", tw(firstLine), listOf("w:hanging", "w:hangingChars", "w:firstLineChars"))
                 s
@@ -351,7 +352,7 @@ internal object OfficeFormats {
             fun pt(v: Float?) = v?.let { OdtWriter.fmt(it) + "pt" }
             put("fo:line-height", line?.let { "${Math.round(it * 100)}%" }, listOf("style:line-height-at-least", "style:line-spacing"))
             put("fo:margin-top", pt(before)); put("fo:margin-bottom", pt(after))
-            put("fo:margin-left", pt(left)); put("fo:text-indent", pt(firstLine))
+            put("fo:margin-left", pt(left)); put("fo:text-indent", pt(firstLine)); put("fo:margin-right", pt(right))
         }
         return k.copy(parts = parts)
     }

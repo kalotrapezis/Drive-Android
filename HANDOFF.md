@@ -8,7 +8,16 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
   check the noon entry left open.
 - **UI is English only** (the user: languages come later with string files): the "Σελίδα 1 από 3" choice is gone.
   A file that already says "Σελίδα 1 από 3" keeps its own words (read, not offered).
-- Next (user's list): undo for style/spacing changes, comments, table of contents, APA bibliography.
+- **Undo for Writer's own changes** (style, spacing/indents, picture, table, header/footer, a style's definition, line
+  break, super/subscript on a selection): each keeps the whole document before it (`WriterSnapshot`, 50 kept) —
+  the editor's own undo knows only typing and forgot it whenever the document was shown again. Typing between two
+  changes is the editor's to undo, then one step back as a whole. Checked on the phone (Undo test.docx, a copy of 01):
+  typed "xy" + Heading 1 → undo, undo → as opened; redo, redo; a header and line spacing 2 undone (pages agree).
+  Known: typing undone just before one of these changes is not redone after it.
+- **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: clear formatting, borders (bottom/top/
+  all/none/horizontal line; style and colour behind ⋯), change case behind ⋯; no font name on the ribbon (space).
+  Insert: page break/blank page, comment, symbol, date. Later: text box/shape/WordArt, equations, SmartArt, charts,
+  forms (content controls). Then a References tab: table of contents, citations, APA bibliography.
 
 ---
 

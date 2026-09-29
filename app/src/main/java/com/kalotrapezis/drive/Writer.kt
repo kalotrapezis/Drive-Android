@@ -62,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -151,6 +152,12 @@ private const val MAX_PICTURE_SP = 300f
 /** Superscript and subscript are shown this much smaller; a size the file sets and the document's own are told apart by
  *  the factor (the editor keeps only the size shown). */
 private const val SCRIPT_SIZE = 0.7f
+/** Writer's own changes kept for undo; each is the whole document, so not without end. */
+private const val UNDO_STEPS = 50
+
+/** The document as it was before one of Writer's own changes, for undo. */
+private class WriterSnapshot(val doc: OfficeDoc, val original: ByteArray?, val styles: DocStyles,
+    val pictures: Map<String, DocImage>, val selection: androidx.compose.ui.text.TextRange)
 private const val SCRIPT_SIZE_OWN = 0.69f
 
 /**
@@ -659,6 +666,44 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun current() = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
         OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt, pictures)))))
 
+    // Undo for what Writer changes itself (a style, spacing, a picture, a table, the header…): the editor's own undo
+    // knows only typing, and forgets it whenever the document is shown again. Each such change keeps the whole
+    // document from before it; typing between two changes is the editor's to undo, then one step back as a whole.
+    val undone = remember { mutableStateListOf<WriterSnapshot>() }
+    val redone = remember { mutableStateListOf<WriterSnapshot>() }
+    var base by remember { mutableStateOf<WriterSnapshot?>(null) } // as it was after the last change (or opening)
+    var changing by remember { mutableIntStateOf(0) }
+    fun snapshot() = WriterSnapshot(current(), original, documentStyles, HashMap(pictures), state.selection)
+    fun show(s: WriterSnapshot) {
+        original = s.original; documentStyles = s.styles; meta = s.doc
+        pictures.clear(); pictures.putAll(s.pictures)
+        state.setRichTextDocument(WriterBridge.toEditor(s.doc, pictures, documentStyles), s.selection)
+        state.history.clear()
+        base = s; dirty = true; styleEdits++
+    }
+    /** A change of Writer's own, undone as one step. */
+    fun <T> change(block: () -> T): T {
+        if (changing++ == 0) {
+            if (state.history.canUndo) base?.let { undone.add(it) } // the typing since the last change
+            undone.add(snapshot())
+            while (undone.size > UNDO_STEPS) undone.removeAt(0)
+            redone.clear()
+        }
+        try { return block() } finally { if (--changing == 0) { state.history.clear(); base = snapshot() } }
+    }
+    fun undo() {
+        if (state.history.canUndo) { state.history.undo(); return }
+        val s = undone.removeLastOrNull() ?: return
+        redone.add(snapshot()); show(s)
+    }
+    fun redo() {
+        if (state.history.canRedo) { state.history.redo(); return }
+        val s = redone.removeLastOrNull() ?: return
+        undone.add(snapshot()); show(s)
+    }
+    // Typing after an undo: what was undone cannot come back (as in Word).
+    LaunchedEffect(Unit) { snapshotFlow { state.history.canUndo }.collect { if (it) redone.clear() } }
+
     LaunchedEffect(reload) {
         loaded = false
         val result = withContext(Dispatchers.IO) {
@@ -700,9 +745,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 meta = meta.copy(paras = draft.paras) // the draft's paragraph formatting (spacing set before it closed), not the file's
                 dirty = true; message = "Your unsaved changes are back"
             }
-            state.history.clear()
+            state.history.clear(); undone.clear(); redone.clear()
             // The cursor at the start (the editor leaves it at the end): the first tap brought the end into view.
             state.selection = androidx.compose.ui.text.TextRange(0)
+            base = snapshot()
             loaded = true
         }.onFailure { failed = it.message ?: "This file could not be read." }
     }
@@ -842,17 +888,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
      * A mark is typed there and the picture put in its place in Writer's own document — the editor's own way of adding
      * a picture (insertHtml) mixed up the text after it (found 2026-09-28).
      */
-    fun placePicture(img: DocImage): Int {
+    fun placePicture(img: DocImage): Int = change {
         state.addTextAfterSelection(PICTURE_SPOT.toString())
         val at = state.selection.min - 1
         state.setRichTextDocument(WriterBridge.toEditor(WriterBridge.putPicture(current(), img), pictures, documentStyles), androidx.compose.ui.text.TextRange(at, at + 1))
         dirty = true
-        return at
+        at
     }
     /** A picture dragged from [from] to [to] in the text: taken out and put in again there; it stays selected. */
-    fun movePicture(from: Int, to: Int, key: String) {
-        val img = pictures[key] ?: return
-        if (to == from || to == from + 1) return
+    fun movePicture(from: Int, to: Int, key: String) = change {
+        val img = pictures[key] ?: return@change
+        if (to == from || to == from + 1) return@change
         state.removeTextRange(androidx.compose.ui.text.TextRange(from, from + 1))
         state.selection = androidx.compose.ui.text.TextRange(if (to > from) to - 1 else to)
         placePicture(img)
@@ -868,7 +914,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
-    fun changePicture(key: String, img: DocImage) {
+    fun changePicture(key: String, img: DocImage) = change {
         pictures[key] = img
         val at = state.selection
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
@@ -902,7 +948,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         changePicture(key, img.with(widthPt = width, heightPt = height, table = table))
     }
     /** Spacing set on paragraphs [at]: only what differs from [was] is written, in the file's own words. */
-    fun setSpacing(at: Set<Int>, was: ParaLook, now: ParaLook) {
+    fun setSpacing(at: Set<Int>, was: ParaLook, now: ParaLook) = change {
         val cur = current()
         fun <T> changed(a: T, b: T) = b.takeIf { it != a }
         val line = now.lineMultiple.takeIf { now.lineExact == null && (was.lineExact != null || it != was.lineMultiple) }
@@ -924,8 +970,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         return cur.paras.getOrNull(at.min())?.takeIf { it.table == null }?.let { at to documentStyles.look(it) }
     }
     /** A paragraph style put on the chosen paragraphs: the file's own (or a heading level), shown at once as it looks. */
-    fun applyStyle(style: StyleEntry) {
-        val at = chosen()?.first ?: run { message = "Put the cursor in a paragraph of text"; return }
+    fun applyStyle(style: StyleEntry) = change {
+        val at = chosen()?.first ?: run { message = "Put the cursor in a paragraph of text"; return@change }
         val cur = current()
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p ->
             if (i !in at || p.table != null) p else p.copy(heading = style.heading, keep = (p.keep ?: DocKeep()).copy(style = style.id).takeIf { !it.isEmpty })
@@ -948,24 +994,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var editingStyle by remember { mutableStateOf<StyleEntry?>(null) }
     var headerPage by remember { mutableStateOf(false) }
     /** The document's header, footer and page numbers set (Word), into the file as it will be written; shown on the pages. */
-    fun setHeaderFooter(hf: HeaderFooter) {
+    fun setHeaderFooter(hf: HeaderFooter) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(it, hf, documentStyles.page) else HeaderFooterEdit.odt(it, hf, documentStyles.page) } }
-            .onFailure { Log.e("Writer", "header", it) }.getOrNull() ?: run { message = "The header could not be set."; return }
+            .onFailure { Log.e("Writer", "header", it) }.getOrNull() ?: run { message = "The header could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
         message = "Shown on the pages (the eye at the top)"
     }
     /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
-    fun editStyle(entry: StyleEntry, change: StyleChange) {
-        val key = documentStyles.styleKey(entry) ?: run { message = "This style cannot be changed here."; return }
+    fun editStyle(entry: StyleEntry, edit: StyleChange) = change {
+        val key = documentStyles.styleKey(entry) ?: run { message = "This style cannot be changed here."; return@change }
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
         val path = stylesPath(parts, kind)
-        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return }
-        parts[path] = runCatching { if (kind == OfficeKind.Docx) StyleEdit.docx(xml, key, entry.heading, documentStyles.normalId, change) else StyleEdit.odt(xml, key, entry.heading, change) }
-            .onFailure { Log.e("Writer", "style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return }
+        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
+        parts[path] = runCatching { if (kind == OfficeKind.Docx) StyleEdit.docx(xml, key, entry.heading, documentStyles.normalId, edit) else StyleEdit.odt(xml, key, entry.heading, edit) }
+            .onFailure { Log.e("Writer", "style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         meta = cur
@@ -1060,8 +1106,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 } else {
                 Tool(R.drawable.ic_visibility, "Pages", w, enabled = loaded) { viewing = true }
                 Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
-                Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo) { state.history.undo() }
-                Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo) { state.history.redo() }
+                Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }
+                Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo || redone.isNotEmpty()) { redo() }
                 Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                 }
             }
@@ -1294,7 +1340,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Superscript and subscript: read back in at once, so they show smaller as a file's do.
                     listOf("X²" to androidx.compose.ui.text.style.BaselineShift.Superscript, "X₂" to androidx.compose.ui.text.style.BaselineShift.Subscript).forEach { (label, shift) ->
                         val sign = Math.signum(span.baselineShift?.multiplier ?: 0f)
-                        RibbonButton(label, w, on = sign == Math.signum(shift.multiplier)) {
+                        RibbonButton(label, w, on = sign == Math.signum(shift.multiplier)) { fun set() {
                             val was = span.baselineShift?.takeIf { sign != 0f }
                             // Off: the letters go back to the size they had (the file's own, or the one set on purpose).
                             if (was != null) {
@@ -1306,6 +1352,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                             if (sign != Math.signum(shift.multiplier)) state.addSpanStyle(SpanStyle(baselineShift = shift))
                             if (!state.selection.collapsed) { val at = state.selection; state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) }
+                        }
+                            // Letters chosen are shown again (Writer's change, undone as one); at the cursor it is typing.
+                            if (state.selection.collapsed) set() else change { set() }
                         }
                     }
                     Divider(w)
@@ -1361,11 +1410,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                 }, {
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
-                    RibbonButton("Line break", w) {
+                    RibbonButton("Line break", w) { change {
                         state.addTextAfterSelection(LINE_BREAK.toString())
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
-                    }
+                    } }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).

@@ -129,10 +129,10 @@ one pass once the tabs' features are done.
       date picker, check box — OnlyOffice's last Insert button)
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)
-- [ ] First: a **drawing box** (Word's Drawing Canvas) — drawn in, placed in the text like a picture, so Word and
-      LibreOffice show it
-- [ ] Select, two pens and a highlighter, each with its colour (a 5×4 palette + More colours) and size in mm (− 1 mm +);
-      Eraser — finger or the tablet's pen
+- [x] A **drawing box** (Draw › Drawing box): drawn in with finger or pen, put in the text as a see-through PNG in a
+      paragraph of its own (Word and LibreOffice show it); the Picture tab sizes/wraps it after
+- [x] Two pens and a highlighter, each its colour (8) and width in mm (− 0.5 mm +); stroke eraser; undo a stroke —
+      [ ] Select/lasso, more colours, editing a drawing again after it is placed (it is a picture then)
 - [ ] Later: ink over the text itself (floats on the page: needs floating objects; Word saves it as InkML); Ink to
       Shape / Ink to Math / Ink Replay not planned
 

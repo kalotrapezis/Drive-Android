@@ -55,7 +55,13 @@ pages show it at once (was only on save). A shape in a line: its outline scaled 
 Checked: unit test both kinds (LibreOffice renders both alike); tablet: a yellow-outline circle added, set in front of
 text, saved — LibreOffice's page matches Tetra's.
 
-**Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
+**Draw tab (night):** Draw › Drawing box → `DrawDialog` (WriterDraw.kt): pen, pen 2, highlighter (colour + mm each),
+stroke eraser, undo; `InkPicture.png` renders the strokes (widths in mm of the page) to a see-through PNG placed as a
+picture in a paragraph of its own. Checked on the tablet (strokes, highlighter) and in LibreOffice (the PNG shows).
+Not yet: ink over the text itself (needs floating objects), editing a drawing again.
+
+**Next:** Design tab (watermark, page colour, page borders), then back to References (citations — parked), Review,
+then the ribbon-icon pass. Known from the handout: shapes/pictures in front of text cannot be moved by dragging yet. in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).
 

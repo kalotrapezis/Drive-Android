@@ -713,7 +713,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -1247,6 +1247,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var symbolPage by remember { mutableStateOf(false) }
     var pagePage by remember { mutableStateOf(false) }
     var shapesPage by remember { mutableStateOf(false) }
+    var drawPage by remember { mutableStateOf(false) }
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1893,6 +1894,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
                     })
                 }
+                WriterTab.Draw -> listOf({
+                    // A drawing box first (as agreed): drawn in, then put in the text as a picture.
+                    RibbonButton("Drawing box", w, enabled = loaded) { drawPage = true }
+                })
                 WriterTab.Layout -> listOf({
                     // Word's Layout: margins, orientation, size (one page for all three), then breaks.
                     RibbonButton("Margins", w, enabled = loaded) { pagePage = true }
@@ -2165,6 +2170,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+    }
+    if (drawPage) DrawDialog(sheet.textWidth.coerceAtMost(450f), { drawPage = false }) { bytes, wPt, hPt ->
+        drawPage = false
+        val img = DocImage("n" + java.util.UUID.randomUUID(), null, wPt, hPt, null, bytes, "png")
+        pictures[img.key] = img
+        // A drawing is a paragraph of its own (inside a title it split the title's words around it): a new line before
+        // it unless the cursor starts one, after it unless one ends there. ponytail: two steps for undo, not one.
+        change {
+            val t = state.annotatedString.text
+            val sel = state.selection.max
+            val range = WriterBridge.blockRange(t, state.toRichTextDocument(), sel)
+            state.selection = androidx.compose.ui.text.TextRange(sel)
+            if (range != null && sel > range.first) state.addTextAfterSelection("\n")
+            if (range != null && sel < range.second) { state.addTextAfterSelection("\n"); state.selection = androidx.compose.ui.text.TextRange(state.selection.min - 1) }
+        }
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at + 1)
     }
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false

@@ -1209,7 +1209,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     }
-                    RibbonButton("Table", w, enabled = loaded && kind == OfficeKind.Docx) { insertingTable = true }
+                    RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -1237,15 +1237,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 WriterTab.Table -> {
                     val (at, _) = selectedPicture ?: (0 to "")
-                    // Rows, columns, merging and looks write Word's table XML: an OpenDocument table keeps its text tools only (for now).
-                    val table = selectedPicture?.second?.let { pictures[it] }?.table?.takeIf { kind == OfficeKind.Docx }
+                    // Rows, columns, merging and splitting for both kinds; looks, shading and the ⋯ page write Word's XML (Word only for now).
+                    val table = selectedPicture?.second?.let { pictures[it] }?.table
+                    val word = kind == OfficeKind.Docx
                     // The cell the tools act on: the one tapped, else the first.
                     fun here(): TableCellRef? = selectedPicture?.second?.let { key -> selectedCell?.takeIf { it.key == key } ?: TableCellRef(key, 0, 0) }
                     // The cell being typed in is put into the table first, and the change made to the table as it then is
                     // (made to the table from before it, the typing was lost); its key is read again after.
                     fun change(said: String? = null, f: (DocTable, TableCellRef) -> DocTable?) {
                         commitCell()
-                        if (kind != OfficeKind.Docx) { message = "In an .odt table, only the text can be changed for now."; return }
                         val ref = here() ?: return
                         val img = pictures[ref.key] ?: return
                         f(img.table ?: return, ref)?.let { changeTable(ref.key, img, it) } ?: run { message = said }
@@ -1277,12 +1277,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home
                         }
                     }, {
-                        TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { change { t, _ -> TableEdit.withLook(t, look) } } }
+                        TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { if (word) change { t, _ -> TableEdit.withLook(t, look) } else message = "Table styles are for Word files for now." } }
                     }, {
                         Swatches(w, R.drawable.ic_format_color_fill, "Shading", TABLE_COLORS.take(8).map { Color(0xFF000000 or it.toLong()) }) { color ->
-                            change { t, c -> TableEdit.withCells(t, TableEdit.wholeCell(t, c.row, c.cell)) { it.copy(props = TableEdit.withShading(it.props, color?.let { k -> (k.toArgb() and 0xFFFFFF) })) } }
+                            if (word) change { t, c -> TableEdit.withCells(t, TableEdit.wholeCell(t, c.row, c.cell)) { it.copy(props = TableEdit.withShading(it.props, color?.let { k -> (k.toArgb() and 0xFFFFFF) })) } }
+                            else message = "Shading is for Word files for now."
                         }
-                        RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null) { commitCell(); tableDialog = "props" }
+                        RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
                     })
                 }
                 WriterTab.View -> listOf({
@@ -1411,7 +1412,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             },
             confirmButton = { TextButton(onClick = {
                 insertingTable = false
-                val table = TableEdit.newTable(rows, columns, documentStyles.page.textWidth)
+                val table = if (kind == OfficeKind.Odt) TableEdit.newOdtTable(rows, columns, "Table " + java.util.UUID.randomUUID().toString().take(6))
+                    else TableEdit.newTable(rows, columns, documentStyles.page.textWidth)
                 val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
                 val img = DocImage("t" + java.util.UUID.randomUUID(), null, width, height, table = table)
                 val at = placePicture(img)

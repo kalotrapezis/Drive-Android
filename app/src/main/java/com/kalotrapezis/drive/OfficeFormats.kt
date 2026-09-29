@@ -222,6 +222,14 @@ internal fun tablePara(t: DocTable) = DocPara(listOf(DocRun(OBJECT_MARK.toString
 /** An OpenDocument table's marks, before a row's or cell's own attributes: a header row, a merged-away cell. */
 internal const val ODT_HEADER = "<header/>"
 internal const val ODT_COVERED = "<covered/>"
+/**
+ * A table Writer puts into an OpenDocument file: as wide as the text, its cells lined as a new Word table's are. The
+ * styles go into the file with it (automatic styles, written only when a table uses them).
+ */
+internal const val ODT_TETRA_TABLE = "Tetra_20_table"
+internal const val ODT_TETRA_CELL = "Tetra_20_cell"
+internal const val ODT_TETRA_STYLES = """<style:style style:name="$ODT_TETRA_TABLE" style:family="table"><style:table-properties style:width="17cm" table:align="margins"/></style:style>""" +
+    """<style:style style:name="$ODT_TETRA_CELL" style:family="table-cell"><style:table-cell-properties fo:padding="0.1cm" fo:border="0.5pt solid #000000"/></style:style>"""
 
 /**
  * A document as Writer holds it. [basePt] is the document's normal text size; [unsupported] names, in plain words,
@@ -1668,6 +1676,7 @@ private object OdtWriter {
             rest = content.substring(close + "</office:text>".length)
         }
         var out = content.substring(0, open.range.first) + "<office:text${open.groupValues[1]}>" + decls + text + "</office:text>" + rest
+        if (ODT_TETRA_CELL in text && ownAuto.none { it.first == ODT_TETRA_CELL }) auto.append(ODT_TETRA_STYLES)
         val autoRe = Regex("""<office:automatic-styles\s*/>|<office:automatic-styles>[\s\S]*?</office:automatic-styles>""")
         val kept = LinkedHashSet<String>()
         var scan = text.toString() + auto

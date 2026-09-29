@@ -16,9 +16,17 @@ internal object TableEdit {
     private val TC_W = Regex("""<w:tcW\b[^>]*/>""")
     private val HEADER = Regex("""<w:tblHeader\b[^>]*/>""")
     private val GRID_OUT = Regex("""<w:grid(?:Before|After)\b""")
+    // OpenDocument (2026-09-29): a merged cell says how many columns and rows it spans, the places it covers are
+    // covered-table-cells; the columns are table-column elements (a style each, sometimes repeated).
+    private val ODT_SPAN_C = Regex("""\stable:number-columns-spanned="(\d+)"""")
+    private val ODT_SPAN_R = Regex("""\stable:number-rows-spanned="(\d+)"""")
+    private val ODT_COL = Regex("""<table:table-column\b[^>]*/>""")
+    private val ODT_REPEAT = Regex("""\stable:number-columns-repeated="(\d+)"""")
+    fun isOdt(t: DocTable) = !t.props.startsWith("<w:")
 
     fun gridColumns(t: DocTable) = GRID_COL.findAll(t.grid).map { it.groupValues[1].toFloat() }.toList()
-    fun span(c: DocCell) = GRID_SPAN.find(c.props)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+    /** Grid columns a Word cell spans (an OpenDocument cell stands in one place: the places it covers are cells too). */
+    fun span(c: DocCell) = if (!c.props.startsWith("<w:")) 1 else GRID_SPAN.find(c.props)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
     /** The grid column a row's [cell] starts at. */
     fun gridStart(row: DocRow, cell: Int) = row.cells.take(cell).sumOf { span(it) }
     fun gridCount(t: DocTable) = maxOf(gridColumns(t).size, t.rows.maxOfOrNull { r -> r.cells.sumOf { span(it) } } ?: 1)
@@ -48,6 +56,11 @@ internal object TableEdit {
         return withGrid(table, List(n) { widthPt * 20 / n })
     }
 
+    /** A plain OpenDocument table: as wide as the text, equal columns, every cell lined (Writer's own styles). */
+    fun newOdtTable(rows: Int, columns: Int, name: String) = DocTable(" table:name=\"${OfficeFormats.esc(name)}\" table:style-name=\"$ODT_TETRA_TABLE\"",
+        "<table:table-column table:number-columns-repeated=\"${columns.coerceAtLeast(1)}\"/>",
+        List(rows.coerceAtLeast(1)) { DocRow("", List(columns.coerceAtLeast(1)) { DocCell(" table:style-name=\"$ODT_TETRA_CELL\" office:value-type=\"string\"", listOf(DocPara(listOf(DocRun(""))))) }) })
+
     /** [cols] as the table's grid, and every cell as wide as the columns it spans (Word reads both). */
     private fun withGrid(t: DocTable, cols: List<Float>): DocTable {
         val grid = "<w:tblGrid>" + cols.joinToString("") { "<w:gridCol w:w=\"${it.roundToInt()}\"/>" } + "</w:tblGrid>"
@@ -74,7 +87,8 @@ internal object TableEdit {
         var cont: Map<Int, String> = emptyMap()) {
         fun covers(r: Int, g: Int) = r in r0 until r0 + h && g in g0 until g0 + w
     }
-    private class Model(val table: DocTable, val rows: MutableList<String>, val blocks: MutableList<Block>, var n: Int, val cols: MutableList<Float>?) {
+    private class Model(val table: DocTable, val rows: MutableList<String>, val blocks: MutableList<Block>, var n: Int, val cols: MutableList<Float>?,
+        val odt: Boolean = false, val odtCols: MutableList<String>? = null /* one table-column each */) {
         fun at(r: Int, g: Int) = blocks.firstOrNull { it.covers(r, g) }
         fun inRow(r: Int) = blocks.filter { r in it.r0 until it.r0 + it.h }.sortedBy { it.g0 }
         /** The cells of row [r] the continuing rows keep, shifted when rows go in or out at [at] by [by]. */
@@ -82,9 +96,35 @@ internal object TableEdit {
             if (b.r0 >= at) b.r0 += by
             b.cont = b.cont.mapKeys { (k, _) -> if (k >= at) k + by else k }
         }
+        /** A new row's properties, to go in at [at], from row [from]'s: not a heading row (in an .odt, one between heading rows is). */
+        fun newRow(from: Int, at: Int) = if (!odt) HEADER.replace(rows[from], "")
+            else rows[from].removePrefix(ODT_HEADER).let { if (rows.getOrNull(at)?.startsWith(ODT_HEADER) == true) ODT_HEADER + it else it }
+        /** Column [k] of an .odt written twice (a new one beside it), or false when its columns are not plain ones. */
+        fun copyColumn(k: Int, at: Int): Boolean { if (!odt) return true; val c = odtCols ?: return false; c.add(at, c[k.coerceIn(0, c.lastIndex)]); return true }
+    }
+
+    private fun odtModel(t: DocTable): Model? {
+        val blocks = ArrayList<Block>()
+        t.rows.forEachIndexed { r, row ->
+            row.cells.forEachIndexed { g, c ->
+                if (c.props.startsWith(ODT_COVERED)) return@forEachIndexed
+                fun n(re: Regex) = re.find(c.props)?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                blocks += Block(r, g, n(ODT_SPAN_R).coerceAtMost(t.rows.size - r), n(ODT_SPAN_C).coerceAtMost(row.cells.size - g),
+                    ODT_SPAN_R.replace(ODT_SPAN_C.replace(c.props, ""), ""), c.paras)
+            }
+        }
+        // Two cells claiming one place: not guessed at.
+        val taken = HashSet<Pair<Int, Int>>()
+        for (b in blocks) for (r in b.r0 until b.r0 + b.h) for (g in b.g0 until b.g0 + b.w) if (!taken.add(r to g)) return null
+        val cols = ODT_COL.findAll(t.grid).flatMap { m ->
+            val k = ODT_REPEAT.find(m.value)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(1, 64) ?: 1
+            List(k) { ODT_REPEAT.replace(m.value, "") }
+        }.toMutableList().takeIf { ODT_COL.replace(t.grid, "").isBlank() && it.size == gridCount(t) }
+        return Model(t, t.rows.map { it.props }.toMutableList(), blocks, gridCount(t), null, true, cols)
     }
 
     private fun model(t: DocTable): Model? {
+        if (isOdt(t)) return odtModel(t)
         if (t.rows.any { GRID_OUT.containsMatchIn(it.props) }) return null // rows that start or end off the grid: not guessed at
         val blocks = ArrayList<Block>()
         t.rows.forEachIndexed { r, row ->
@@ -103,6 +143,17 @@ internal object TableEdit {
     }
 
     private fun Model.write(): DocTable {
+        if (odt) return table.copy(grid = odtCols?.joinToString("") ?: table.grid, rows = rows.indices.map { r ->
+            DocRow(rows[r], (0 until n).map { g ->
+                val b = at(r, g)
+                when {
+                    b == null -> DocCell("", listOf(DocPara(emptyList())))
+                    b.r0 == r && b.g0 == g -> DocCell(b.props + (if (b.w > 1) " table:number-columns-spanned=\"${b.w}\"" else "") +
+                        (if (b.h > 1) " table:number-rows-spanned=\"${b.h}\"" else ""), b.paras)
+                    else -> DocCell(ODT_COVERED, emptyList())
+                }
+            })
+        })
         val out = rows.indices.map { r ->
             DocRow(rows[r], inRow(r).map { b ->
                 if (r == b.r0) DocCell(withMerge(withSpan(b.props, b.w), if (b.h > 1) "restart" else null), b.paras)
@@ -130,7 +181,7 @@ internal object TableEdit {
             else fresh += Block(at, x.g0, 1, x.w, x.props, blank(x.paras))
         }
         m.blocks += fresh
-        m.rows.add(at, HEADER.replace(m.rows[like], ""))
+        m.rows.add(at, m.newRow(like, at))
         return m.write()
     }
 
@@ -152,6 +203,7 @@ internal object TableEdit {
         val m = model(t) ?: return null
         val b = m.cell(row, cell) ?: return null
         val at = if (right) b.g0 + b.w else b.g0
+        if (!m.copyColumn(if (right) at - 1 else at, at)) return null
         val straddling = m.blocks.filter { it.g0 < at && it.g0 + it.w > at }
         m.blocks.forEach { if (it.g0 >= at) it.g0++ }
         straddling.forEach { it.w++ }
@@ -174,6 +226,7 @@ internal object TableEdit {
         m.blocks.filter { it.g0 <= g && it.g0 + it.w > g }.forEach { if (it.w == 1) m.blocks.remove(it) else it.w-- }
         m.blocks.forEach { if (it.g0 > g) it.g0-- }
         if (m.rows.indices.any { m.inRow(it).isEmpty() }) return null
+        if (m.odt) m.odtCols?.removeAt(g) ?: return null
         m.cols?.let { c -> val total = c.sum(); c.removeAt(g); val left = c.sum(); if (left > 0f) c.replaceAll { it * total / left } }
         m.n--
         return m.write()
@@ -242,6 +295,7 @@ internal object TableEdit {
                 for (k in colsW.indices) {
                     val right = left + colsW[k]
                     if (cut > left + 0.5f && cut < right - 0.5f) {
+                        if (!m.copyColumn(k, k + 1)) return null
                         m.blocks.forEach { x -> if (x.g0 > k) x.g0++ else if (x.g0 + x.w > k) x.w++ }
                         colsW[k] = cut - left; colsW.add(k + 1, right - cut); m.n++
                         break
@@ -256,7 +310,7 @@ internal object TableEdit {
             val beside = m.inRow(at - 1)
             m.shiftRows(at, 1)
             beside.forEach { x -> x.h++; x.cont = x.cont + (at to (x.cont[at - 1] ?: x.props)) }
-            m.rows.add(at, HEADER.replace(m.rows[at - 1], ""))
+            m.rows.add(at, m.newRow(at - 1, at))
         }
         // The cell's lines now: grid columns grouped as evenly as its width allows; rows the same.
         val x0 = colsW.take(b.g0).sum(); val width = colsW.subList(b.g0, b.g0 + b.w).sum()

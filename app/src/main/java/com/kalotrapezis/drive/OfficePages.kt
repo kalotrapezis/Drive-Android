@@ -445,6 +445,9 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 "master-styles" -> master = group.kids().firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: group.kids().firstOrNull()
             }
         }
+        // A table Writer put in, not saved yet: its styles are Writer's own.
+        if ("table-cell/$ODT_TETRA_CELL" !in tableStyles) OfficeFormats.parse(("<x xmlns:style=\"$STYLE\" xmlns:fo=\"$FO\" xmlns:table=\"$TABLE\">$ODT_TETRA_STYLES</x>").toByteArray())
+            .documentElement.kids().forEach { st -> tableStyles["${st.attr(STYLE, "family")}/${st.attr(STYLE, "name")}"] = st }
         val props = master?.attr(STYLE, "page-layout-name")?.let { layouts[it] }?.kid(STYLE, "page-layout-properties")
         fun len(name: String) = odfLength(props?.attr(FO, name))
         val d = DocPage()

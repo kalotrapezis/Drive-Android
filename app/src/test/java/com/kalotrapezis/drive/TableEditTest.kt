@@ -85,4 +85,43 @@ class TableEditTest {
         assertEquals(listOf("a1 b1", "_ b1", "a2 b2"), grid(TableEdit.split(lettered(2, 2), 0, 0, 1, 2)!!))
         assertEquals(grid(three), grid(saved(three)))
     }
+
+    /** An OpenDocument table as LibreOffice writes one, its cells lettered. */
+    private fun odtLettered(rows: Int, cols: Int) = DocTable(" table:name=\"T\" table:style-name=\"T\"",
+        "<table:table-column table:style-name=\"T.A\" table:number-columns-repeated=\"$cols\"/>",
+        List(rows) { r -> DocRow(" table:style-name=\"T.1\"", List(cols) { c ->
+            DocCell(" table:style-name=\"T.A1\" office:value-type=\"string\"", listOf(DocPara(listOf(DocRun("${'a' + c}${r + 1}"))))) }) })
+
+    private fun odtGrid(t: DocTable): List<String> {
+        val slots = Array(t.rows.size) { arrayOfNulls<String>(t.rows[it].cells.size) }
+        t.rows.forEachIndexed { r, row -> row.cells.forEachIndexed { g, c ->
+            if (c.props.startsWith(ODT_COVERED)) return@forEachIndexed
+            fun n(a: String) = Regex("""$a="(\d+)"""").find(c.props)?.groupValues?.get(1)?.toInt() ?: 1
+            val text = c.paras.joinToString("+") { it.text }.ifEmpty { "_" }
+            for (rr in r until r + n("rows-spanned")) for (gg in g until g + n("columns-spanned")) slots[rr][gg] = text
+        } }
+        return slots.map { it.joinToString(" ") }
+    }
+    private fun odtSaved(t: DocTable) = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(tablePara(t))), OfficeKind.Odt), OfficeKind.Odt).paras.single().table!!
+
+    @Test fun `an OpenDocument table takes rows, columns, merging and splitting too`() {
+        val t = odtLettered(3, 3)
+        assertEquals(listOf("a1 b1 c1", "_ _ _", "a2 b2 c2", "a3 b3 c3"), odtGrid(TableEdit.insertRow(t, 0, 0, below = true)!!))
+        val wider = TableEdit.insertColumn(t, 0, 0, right = true)!!
+        assertEquals(listOf("a1 _ b1 c1", "a2 _ b2 c2", "a3 _ b3 c3"), odtGrid(wider))
+        assertEquals(4, Regex("<table:table-column").findAll(wider.grid).count()) // one column element each now
+        assertEquals(listOf("b1 c1", "b2 c2", "b3 c3"), odtGrid(TableEdit.deleteColumn(t, 0, 0)!!))
+        val m = TableEdit.merge(t, 0 to 0, 1 to 1)!!
+        assertEquals(listOf("M M c1", "M M c2", "a3 b3 c3"), odtGrid(m).map { it.replace("a1+b1+a2+b2", "M") })
+        assertEquals(true, " table:number-columns-spanned=\"2\" table:number-rows-spanned=\"2\"" in m.rows[0].cells[0].props)
+        assertEquals(true, m.rows[1].cells[1].props.startsWith(ODT_COVERED))
+        assertEquals(odtGrid(m), odtGrid(odtSaved(m)))
+        // Through the merged cell, a row grows it; split back, as it was but for the text.
+        assertEquals(listOf("M M c1", "M M _", "M M c2", "a3 b3 c3"), odtGrid(TableEdit.insertRow(m, 0, 2, below = true)!!).map { it.replace("a1+b1+a2+b2", "M") })
+        assertEquals(listOf("a1+b1+a2+b2 _ c1", "_ _ c2", "a3 b3 c3"), odtGrid(TableEdit.split(m, 0, 0, 2, 2)!!))
+        // A heading row: a row put in below it is not one, one put in above it is.
+        val headed = t.copy(rows = t.rows.mapIndexed { i, r -> if (i == 0) r.copy(props = ODT_HEADER + r.props) else r })
+        assertEquals(false, TableEdit.insertRow(headed, 0, 0, below = true)!!.rows[1].props.startsWith(ODT_HEADER))
+        assertEquals(true, TableEdit.insertRow(headed, 0, 0, below = false)!!.rows[0].props.startsWith(ODT_HEADER))
+    }
 }

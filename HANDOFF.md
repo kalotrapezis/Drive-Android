@@ -17,6 +17,13 @@ at the cursor; Insert › Comment adds (name remembered in prefs "writer"/"autho
 05_Review_and_Forms round trip; LibreOffice reads both comments (author/date/initials) from the tablet's saved copy;
 tablet pane and emulator sidebar seen. Not yet: reply/resolve, comments on the pages view, the phone itself.
 
+**Layout tab (night):** Margins / Portrait / Landscape / Size → `PageSetupDialog` (PageSetup.kt): Word presets
+(Normal = APA's inch), custom in the chosen unit, A4/Letter/Legal/A5/A3. `PageSetup.docx` rewrites pgSz+pgMar in every
+sectPr (header/footer/gutter kept, Word's order); `.odt` every page layout (top/bottom less the header band, so the
+text lands where asked). Page break / Blank page there too. A tablet now always fits the page on screen (shownZoom),
+so a landscape page stays a page. Checked: unit test both kinds + a two-section docx; LibreOffice: Letter landscape
+text at 1.5 in / 1 in (both kinds); tablet: 01 copy → APA + landscape, saved, LibreOffice A4 landscape at 1 in.
+
 **Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).

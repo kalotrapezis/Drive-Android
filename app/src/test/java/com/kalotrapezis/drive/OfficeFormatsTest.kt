@@ -182,6 +182,31 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `the page's size, orientation and margins are set in both kinds and read back`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page set from the Layout tab.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val before = DocStyles.of(kind, bytes).page
+            // Letter, landscape, APA's inch but a wide left.
+            val want = before.copy(width = 792f, height = 612f, top = 72f, bottom = 72f, left = 108f, right = 72f)
+            val parts = OfficeFormats.unzip(bytes).let { if (kind == OfficeKind.Docx) PageSetup.docx(it, want) else PageSetup.odt(it, want, before) }
+            val out = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("page.${kind.extension}").writeBytes(out)
+            val got = DocStyles.of(kind, out).page
+            for ((name, a, b) in listOf(Triple("width", want.width, got.width), Triple("height", want.height, got.height), Triple("top", want.top, got.top),
+                Triple("bottom", want.bottom, got.bottom), Triple("left", want.left, got.left), Triple("right", want.right, got.right)))
+                assert(kotlin.math.abs(a - b) < 0.5f) { "$kind $name: $a ≠ $b" }
+            assert(PageSetup.landscape(got) && PageSetup.sizeName(got) == "Letter") { kind.name }
+            assertEquals(kind.name, doc.paras.map { it.text }, OfficeFormats.read(out, kind).paras.map { it.text })
+        }
+        // A Word file with several sections: every one set.
+        val two = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), keep = DocKeep(parts = listOf("sectPr" to "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/></w:sectPr>"))),
+            DocPara(listOf(DocRun("two"))))), OfficeKind.Docx)
+        val set = String(PageSetup.docx(OfficeFormats.unzip(two), DocPage(width = 612f, height = 792f, top = 36f, bottom = 36f, left = 36f, right = 36f)).getValue("word/document.xml"))
+        assertEquals(2, Regex("""<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720"""").findAll(set).count())
+        assert("""w:header="708"""" in set) // its header distance kept
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

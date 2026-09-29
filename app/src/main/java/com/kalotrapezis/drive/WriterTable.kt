@@ -363,12 +363,12 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
 private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t.rows.mapIndexed { i, row -> if (i == r) row.copy(props = f(row.props)) else row })
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun Section(title: String, content: @Composable () -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+@Composable internal fun Section(title: String, content: @Composable () -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Text(title, style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
 }
 
-@Composable private fun Choice(label: String, on: Boolean, click: () -> Unit) = Surface(
+@Composable internal fun Choice(label: String, on: Boolean, click: () -> Unit) = Surface(
     shape = CircleShape, color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
     contentColor = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
     modifier = Modifier.clip(CircleShape).clickable(onClick = click),
@@ -405,7 +405,7 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
 }
 
 /** A length in the chosen unit (centimetres, or inches — Writer › View), kept in points. */
-@Composable private fun CmField(label: String, pt: Float, least: Float = 0.1f, set: (Float) -> Unit) {
+@Composable internal fun CmField(label: String, pt: Float, least: Float = 0.1f, set: (Float) -> Unit) {
     val unit = WriterUnits.name
     var text by remember(label, unit) { mutableStateOf(WriterUnits.text(pt)) }
     OutlinedTextField(text, { v -> text = v; v.replace(',', '.').toFloatOrNull()?.let(WriterUnits::toPt)?.takeIf { it in least * CM..60f * CM }?.let(set) },

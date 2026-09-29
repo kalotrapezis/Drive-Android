@@ -713,7 +713,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Layout("Layout"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -764,7 +764,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var panelHidden by remember { mutableStateOf(false) }
     val paneOn = tablet && meta.comments.isNotEmpty() && !panelHidden
     val perPt100 = with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }
-    val shownZoom = if (!paneOn) zoom else minOf(zoom, ((screen - COMMENT_PANE - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(50)
+    // A tablet keeps the page whole (a landscape page, the pane beside it): shown smaller rather than reflowed.
+    val shownZoom = if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
     val perPt = with(LocalDensity.current) { (BASE_SP * shownZoom / 100f / meta.basePt).sp.toDp() }
     val onPage = screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
     WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
@@ -1228,6 +1229,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var editingStyle by remember { mutableStateOf<StyleEntry?>(null) }
     var headerPage by remember { mutableStateOf(false) }
     var symbolPage by remember { mutableStateOf(false) }
+    var pagePage by remember { mutableStateOf(false) }
+    /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
+    fun setPage(page: DocPage) = change {
+        val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
+            if (kind == OfficeKind.Docx) PageSetup.docx(it, page) else PageSetup.odt(it, page, documentStyles.page) } }
+            .onFailure { Log.e("Writer", "page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+    }
     var datePage by remember { mutableStateOf(false) }
     /** Symbol or date typed at the cursor, over what is chosen (as typing; the editor's own undo). */
     fun typeIn(s: String) { if (!state.selection.collapsed) state.removeSelectedText(); state.addTextAfterSelection(s) }
@@ -1857,6 +1868,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
                     })
                 }
+                WriterTab.Layout -> listOf({
+                    // Word's Layout: margins, orientation, size (one page for all three), then breaks.
+                    RibbonButton("Margins", w, enabled = loaded) { pagePage = true }
+                    RibbonButton("Portrait", w, enabled = loaded, on = !PageSetup.landscape(sheet)) {
+                        if (PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
+                    RibbonButton("Landscape", w, enabled = loaded, on = PageSetup.landscape(sheet)) {
+                        if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
+                    RibbonButton("Size", w, enabled = loaded) { pagePage = true }
+                }, {
+                    RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
+                    RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
+                })
                 WriterTab.View -> listOf({
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.
                     RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
@@ -2103,6 +2126,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
     }
+    if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
     if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }

@@ -37,8 +37,21 @@ internal data class DocRun(
     val image: DocImage? = null, // then [text] is OBJECT_MARK
     val font: String? = null, // the file's own letter settings Writer does not edit, raw: fonts, small caps, spacing, language… (Word's rPr elements; ODF's attributes)
     val script: Int = 0, // 1 superscript, -1 subscript
+    val comments: List<String> = emptyList(), // the ids of the comments over these letters (OfficeDoc.comments)
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
+}
+
+/**
+ * A comment on some letters (asked 2026-09-29): who wrote it, when (ISO), what it says. One from the file goes back as
+ * the file had it ([raw]: Word's w:comment, or ODT's annotation contents) — replies and their links stay; a new one is
+ * written from its fields.
+ */
+internal data class DocComment(val id: String, val author: String, val date: String?, val text: String, val raw: String? = null, val initials: String? = null)
+
+/** A list that tags every run added to it with the comments open at that moment (the readers' ranges). */
+internal class CommentedRuns(private val open: Collection<String>) : ArrayList<DocRun>() {
+    override fun add(element: DocRun) = super.add(if (open.isEmpty()) element else element.copy(comments = open.toList()))
 }
 
 /** A picture, a chart or a shape stands in the text as this one character. */
@@ -261,7 +274,15 @@ internal data class OfficeDoc(
     val paras: List<DocPara>,
     val unsupported: Set<String> = emptySet(),
     val basePt: Float = 11f,
+    val comments: List<DocComment> = emptyList(),
 ) {
+    /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
+    val liveComments: List<DocComment> get() {
+        val used = HashSet<String>()
+        fun walk(ps: List<DocPara>) { ps.forEach { p -> p.runs.forEach { used += it.comments }; p.table?.rows?.forEach { r -> r.cells.forEach { walk(it.paras) } } } }
+        walk(paras)
+        return comments.filter { it.id in used }
+    }
     /** What would go missing on saving over the file: content, not just its look. Any of it → Save as a copy only. */
     val blocking: Set<String> get() = unsupported - SIMPLIFIED
     /** What saving over the file simplifies to Writer's own (agreed 2026-09-27, option b): said, not a reason for a copy. */
@@ -406,6 +427,36 @@ internal object OfficeFormats {
         return k.copy(parts = rest + set).takeIf { !it.isEmpty }
     }
 
+    /** [c] put on the letters [spans] (paragraph, from, to — in the paragraph's own text): its runs cut there, tagged. */
+    fun withComment(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, c: DocComment): OfficeDoc {
+        val byPara = spans.groupBy { it.first }
+        return doc.copy(comments = doc.comments.filter { it.id != c.id } + c, paras = doc.paras.mapIndexed { i, p ->
+            val mine = byPara[i] ?: return@mapIndexed p
+            var at = 0
+            val runs = ArrayList<DocRun>()
+            for (r in p.runs) {
+                val cuts = sortedSetOf(0, r.text.length)
+                mine.forEach { (_, a, b) -> cuts += (a - at).coerceIn(0, r.text.length); cuts += (b - at).coerceIn(0, r.text.length) }
+                cuts.toList().zipWithNext().filter { (x, y) -> y > x }.forEach { (x, y) ->
+                    val inside = mine.any { (_, a, b) -> at + x >= a && at + y <= b }
+                    runs += r.copy(text = r.text.substring(x, y), comments = if (inside && c.id !in r.comments) r.comments + c.id else r.comments)
+                }
+                at += r.text.length
+            }
+            p.copy(runs = tidy(runs))
+        })
+    }
+    /** A comment taken off (its letters stay). */
+    fun withoutComment(doc: OfficeDoc, id: String): OfficeDoc {
+        fun strip(ps: List<DocPara>): List<DocPara> = ps.map { p -> p.copy(runs = tidy(p.runs.map { r -> if (id in r.comments) r.copy(comments = r.comments - id) else r }),
+            table = p.table?.let { t -> t.copy(rows = t.rows.map { row -> row.copy(cells = row.cells.map { cell -> cell.copy(paras = strip(cell.paras)) }) }) }) }
+        return doc.copy(paras = strip(doc.paras), comments = doc.comments.filter { it.id != id })
+    }
+    /** An id no comment of [doc] has: Word's are numbers, ODT's names. */
+    fun newCommentId(doc: OfficeDoc, kind: OfficeKind): String = if (kind == OfficeKind.Docx)
+        ((doc.comments.mapNotNull { it.id.toIntOrNull() }.maxOrNull() ?: -1) + 1).toString()
+        else generateSequence(1) { it + 1 }.map { "__Annotation__Tetra_$it" }.first { n -> doc.comments.none { it.id == n } }
+
     /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
     fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
         val k = keep ?: DocKeep()
@@ -445,23 +496,30 @@ internal object OfficeFormats {
      * even inside a word). Letters left as they were keep theirs; a typed letter takes the font of the one before it,
      * as in Word; a new paragraph, the font its previous paragraph ended with.
      */
+    /**
+     * …and each letter's comments the same way (2026-09-29): a letter typed inside a comment's letters joins it (both its
+     * neighbours carry it), one typed at its edge does not; all its letters deleted, the comment is gone.
+     */
     fun carryFonts(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
-        if (old.none { p -> p.runs.any { it.font != null } }) return new
+        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() } }) return new
         val from = pairParagraphs(old, new)
         var carried: String? = null // the font the previous paragraph ended with
         return new.mapIndexed { j, p ->
             val text = p.text
             val fonts = arrayOfNulls<String>(text.length)
+            val notes = arrayOfNulls<List<String>>(text.length)
             val known = BooleanArray(text.length)
             from[j].takeIf { it >= 0 }?.let { old[it] }?.let { o ->
                 val oldText = o.text
                 val oldFonts = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.font) } } }
+                val oldNotes = ArrayList<List<String>>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.comments) } } }
+                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; known[y] = true }
                 // Common start and end first; the changed middle by longest common subsequence (small, where one typed).
                 var a = 0
-                while (a < text.length && a < oldText.length && text[a] == oldText[a]) { fonts[a] = oldFonts[a]; known[a] = true; a++ }
+                while (a < text.length && a < oldText.length && text[a] == oldText[a]) { take(a, a); a++ }
                 var z = 0
                 while (z < text.length - a && z < oldText.length - a && text[text.length - 1 - z] == oldText[oldText.length - 1 - z]) {
-                    fonts[text.length - 1 - z] = oldFonts[oldText.length - 1 - z]; known[text.length - 1 - z] = true; z++
+                    take(text.length - 1 - z, oldText.length - 1 - z); z++
                 }
                 val nn = text.length - a - z; val on = oldText.length - a - z
                 if (nn > 0 && on > 0 && nn.toLong() * on <= 4_000_000) {
@@ -470,7 +528,7 @@ internal object OfficeFormats {
                         l[x][y] = if (oldText[a + x] == text[a + y]) l[x + 1][y + 1] + 1 else maxOf(l[x + 1][y], l[x][y + 1])
                     var x = 0; var y = 0
                     while (x < on && y < nn) when {
-                        oldText[a + x] == text[a + y] -> { fonts[a + y] = oldFonts[a + x]; known[a + y] = true; x++; y++ }
+                        oldText[a + x] == text[a + y] -> { take(a + y, a + x); x++; y++ }
                         l[x + 1][y] >= l[x][y + 1] -> x++
                         else -> y++
                     }
@@ -480,13 +538,27 @@ internal object OfficeFormats {
             var before: String? = if (known.isNotEmpty() && !known[0]) (known.indices.firstOrNull { known[it] }?.let { fonts[it] } ?: carried) else carried
             for (k in text.indices) if (known[k]) before = fonts[k] else fonts[k] = before
             carried = fonts.lastOrNull() ?: carried
-            // The runs again, cut where the font changes.
+            // Typed letters: the comments both known neighbours share.
+            run {
+                var left: List<String> = emptyList()
+                var k = 0
+                while (k < text.length) {
+                    if (known[k]) { left = notes[k].orEmpty(); k++; continue }
+                    var e = k
+                    while (e < text.length && !known[e]) e++
+                    val right = if (e < text.length) notes[e].orEmpty() else emptyList()
+                    val both = left.filter { it in right }
+                    for (q in k until e) notes[q] = both
+                    k = e
+                }
+            }
+            // The runs again, cut where the font or the comments change.
             var at = 0
             val runs = ArrayList<DocRun>()
             for (r in p.runs) {
                 var start = 0
-                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start]) {
-                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start])
+                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty()) {
+                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty())
                     start = k
                 }
                 at += r.text.length
@@ -585,6 +657,7 @@ private const val REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocum
 private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 
 /** A relationship's target, from the folder of the part that points at it, as a path in the package. */
 internal fun resolve(dir: String, target: String): String {
@@ -624,6 +697,25 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val numStart = HashMap<Pair<String, Int>, Int>() // (numId, level) → startOverride
     val levels = HashMap<Pair<String, Int>, Pair<String, Int>>() // (abstractNumId, level) → (numFmt, start)
     val counters = HashMap<String, IntArray>() // numId → the count at each level, as Word numbers them
+    val openComments = LinkedHashSet<String>() // the comments whose range the reading is in
+    val comments = LinkedHashMap<String, DocComment>()
+    /** The document's comments (comments.xml), and which have a range in the text; one without is not kept yet. */
+    fun readComments(body: Element) {
+        val ranged = HashSet<String>()
+        val starts = body.getElementsByTagNameNS(W, "commentRangeStart")
+        for (i in 0 until starts.length) (starts.item(i) as Element).attr(W, "id")?.let { ranged += it }
+        val refs = body.getElementsByTagNameNS(W, "commentReference")
+        for (i in 0 until refs.length) if ((refs.item(i) as Element).attr(W, "id") !in ranged) notes += "comments"
+        val path = parts[relsPath(docPath)]?.let { r -> OfficeFormats.parse(r).documentElement.kids().firstOrNull { it.getAttribute("Type") == REL_COMMENTS }?.getAttribute("Target") }
+            ?.let { resolve(dir, it) } ?: return
+        val root = parts[path]?.let { OfficeFormats.parse(it).documentElement } ?: return
+        for (c in root.kids().filter { it.localName == "comment" }) {
+            val id = c.attr(W, "id") ?: continue
+            if (id !in ranged) continue
+            comments[id] = DocComment(id, c.attr(W, "author") ?: "", c.attr(W, "date"),
+                c.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent }, OfficeFormats.xml(c), c.attr(W, "initials"))
+        }
+    }
 
     /** Reading a header or footer for the pages: its page-number fields become [PAGE_FIELD] / [PAGES_FIELD]. */
     var fieldMarks = false
@@ -661,9 +753,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         }
         readStyles(); readNumbering()
         val body = root.kid(W, "body") ?: error("Not a Word document.")
+        readComments(body)
         val paras = ArrayList<DocPara>()
         block(body, paras)
-        return OfficeDoc(paras.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt)
+        return OfficeDoc(paras.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
     }
 
     /** Paragraph styles that number their paragraphs themselves (Word's List Bullet, List Number…): styleId → numPr. */
@@ -717,7 +810,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "ins", "moveTo" -> { notes += "tracked changes"; block(e, out) }
                 "del", "moveFrom" -> notes += "tracked changes"
                 "sectPr", "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "tcPr", "trPr", "tblPr", "tblGrid" -> Unit
-                "commentRangeStart", "commentRangeEnd" -> notes += "comments"
+                "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
+                "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                 "altChunk" -> notes += "embedded objects"
                 else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
             }
@@ -763,7 +857,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A list numbered by its style shows as the list it is (asked 2026-09-28: the test suite's bullets did not show).
         if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
-        val runs = ArrayList<DocRun>()
+        val runs = CommentedRuns(openComments)
         // A page break inside a paragraph: the paragraph is split there and the part after it starts a page — Word's
         // own "page break before", which saves and shows the same (2026-09-28; it made files copy-only before).
         // A break at the paragraph's start: the paragraph starts a page. At its end (or alone in it): the next paragraph
@@ -800,7 +894,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         if (mark != null) runs += DocRun(mark.toString()) else content(e, link) }
                     "smartTag", "customXml" -> content(e, link)
                     "sdt" -> { notes += "content controls"; e.kid(W, "sdtContent")?.let { content(it, link) } }
-                    "commentRangeStart", "commentRangeEnd" -> notes += "comments"
+                    "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
+                    "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
                     else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
                 }
@@ -878,7 +973,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 }
                 "delText", "delInstrText" -> notes += "tracked changes"
                 "footnoteReference", "endnoteReference" -> notes += "footnotes"
-                "commentReference", "annotationRef" -> notes += "comments"
+                "commentReference" -> Unit // written again after the comment's range
+                "annotationRef" -> notes += "comments"
                 "sym" -> notes += "symbols"
                 else -> notes += "other content"
             }
@@ -1140,6 +1236,24 @@ private object DocxWriter {
             }
             body.append("</w:tbl>")
         }
+        // Comments: their ranges around the letters they are on, then their part.
+        val live = doc.liveComments.associateBy { it.id }
+        val openComments = LinkedHashSet<String>()
+        val closedComments = HashSet<String>() // started once: never again
+        val nextFirst = java.util.IdentityHashMap<DocPara, DocPara?>().also { m ->
+            var prev: DocPara? = null
+            fun walk(ps: List<DocPara>) { ps.forEach { q -> if (q.table != null) q.table.rows.forEach { r -> r.cells.forEach { walk(it.paras) } } else { prev?.let { m[it] = q }; prev = q } } }
+            walk(doc.paras)
+        }
+        /** Before letters carrying [now]: the comments they leave end (and are referenced), those they enter start. */
+        fun commentMarks(now: List<String>) {
+            for (id in openComments.filter { it !in now }) {
+                body.append("""<w:commentRangeEnd w:id="$id"/><w:r><w:commentReference w:id="$id"/></w:r>""")
+                openComments -= id
+            }
+            // One stretch each: a comment that ended is not started again (its letters further on lose it).
+            for (id in now) if (id !in openComments && id in live && closedComments.add(id)) { body.append("""<w:commentRangeStart w:id="$id"/>"""); openComments += id }
+        }
         fun paragraph(index: Int?, p: DocPara) {
             p.table?.let { t -> table(t) { paragraph(null, it) }; return }
             body.append("<w:p>")
@@ -1168,19 +1282,48 @@ private object DocxWriter {
                 var end = k
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""")
-                for (r in runs.subList(k, end)) body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
+                for (r in runs.subList(k, end)) { commentMarks(r.comments); body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt)) }
                 if (link != null) body.append("</w:hyperlink>")
                 k = end
             }
+            // A comment ends here unless the next paragraph goes on in it.
+            commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
             body.append("</w:p>")
         }
         doc.paras.forEachIndexed { index, p -> paragraph(index, p) }
+        if (openComments.isNotEmpty()) { body.append("<w:p>"); commentMarks(emptyList()); body.append("</w:p>") }
+        writeComments(parts, dir, rels, live.values.toList(), ::ensurePart)
         var out = xml.substring(0, bodyStart) + body + sect + xml.substring(bodyEnd)
         if (linkIds.isNotEmpty() && !Regex("""<w:document[^>]*xmlns:r=""").containsMatchIn(out)) out = out.replaceFirst("<w:document", "<w:document xmlns:r=\"$R\"")
         parts[docPath] = out.toByteArray()
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
         return OfficeFormats.zip(parts)
+    }
+
+    /**
+     * comments.xml: the comments still on some letters — each from the file as it was, a new one written out. What the
+     * file says about a comment gone (Word's replies/resolved in commentsExtended, commentsIds) is taken out with it.
+     */
+    private fun writeComments(parts: LinkedHashMap<String, ByteArray>, dir: String, rels: String, live: List<DocComment>,
+        ensurePart: (String, String, String, String) -> Unit) {
+        val target = Regex("""<Relationship\b[^>]*Type="$REL_COMMENTS"[^>]*>""").find(rels)?.value?.let { Regex("""Target="([^"]+)"""").find(it)?.groupValues?.get(1) }
+        if (target == null && live.isEmpty()) return
+        if (target == null) ensurePart("comments.xml", REL_COMMENTS, "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml", "")
+        val path = resolve(dir, target ?: "comments.xml")
+        val old = parts[path]?.let { String(it, Charsets.UTF_8) }.orEmpty()
+        val root = Regex("""<w:comments\b[^>]*>""").find(old)?.value ?: """<w:comments xmlns:w="$W">"""
+        val gone = Regex("""<w:comment\b[^>]*w:id="([^"]+)"[\s\S]*?</w:comment>""").findAll(old).filter { m -> live.none { it.id == m.groupValues[1] } }
+            .flatMap { m -> Regex("""w14:paraId="([0-9A-Fa-f]+)"""").findAll(m.value).map { it.groupValues[1] } }.toSet()
+        parts[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" + root + live.joinToString("") { c ->
+            c.raw ?: """<w:comment w:id="${c.id}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}${c.initials?.let { " w:initials=\"${OfficeFormats.esc(it)}\"" } ?: ""}>""" +
+                c.text.split('\n').joinToString("") { line -> """<w:p><w:r><w:t xml:space="preserve">${OfficeFormats.esc(line)}</w:t></w:r></w:p>""" } + "</w:comment>"
+        } + "</w:comments>").toByteArray()
+        if (gone.isNotEmpty()) for (name in listOf("commentsExtended.xml", "commentsIds.xml", "commentsExtensible.xml")) {
+            val p = parts.keys.firstOrNull { it.endsWith("/$name") || it == name } ?: continue
+            parts[p] = String(parts.getValue(p), Charsets.UTF_8).replace(Regex("""<w1[56]\w*:comment\w*\b[^>]*?(?:paraId|durableId)="([0-9A-Fa-f]+)"[^>]*?/>""")) { m ->
+                if (gone.any { it in m.value }) "" else m.value }.toByteArray()
+        }
     }
 
     /** A picture's XML: the file's own for one from the file; a new one, written in full, for one added in Writer. */
@@ -1222,6 +1365,7 @@ private object DocxWriter {
 // ============================================================================================ OpenDocument (.odt)
 
 internal const val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+internal const val DC = "http://purl.org/dc/elements/1.1/"
 internal const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
 internal const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
 internal const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
@@ -1240,6 +1384,9 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
     val listStyles = HashMap<String, Element>()
     var basePt = 12f
     val listCounters = HashMap<String, IntArray>() // list style → the count at each level, for a list that continues
+    val openComments = LinkedHashSet<String>()
+    val comments = LinkedHashMap<String, DocComment>()
+    var ended = emptySet<String>() // the annotations with an end: a comment on some letters (one without is on a point)
 
     fun read(): OfficeDoc {
         val content = OfficeFormats.parse(parts["content.xml"] ?: error("Not an OpenDocument text.")).documentElement
@@ -1251,9 +1398,10 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         }
         content.kid(OFFICE, "automatic-styles")?.let { collect(it, true) }
         val text = content.kid(OFFICE, "body")?.kid(OFFICE, "text") ?: error("Not an OpenDocument text.")
+        ended = text.getElementsByTagNameNS(OFFICE, "annotation-end").let { l -> (0 until l.length).mapNotNull { (l.item(it) as Element).attr(OFFICE, "name") }.toSet() }
         val out = ArrayList<DocPara>()
         block(text, out, null, -1)
-        return OfficeDoc(out.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt)
+        return OfficeDoc(out.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
     }
 
     /** Reading a header or footer: its page number and count become [PAGE_FIELD] / [PAGES_FIELD]. */
@@ -1504,7 +1652,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         } else if (!isHeading || !plainParagraph(styleName, true)) keepStyle = styleName
         val keep = DocKeep(keepStyle, parts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
         if (isHeading && p.attr(TEXT, "is-list-header") == null && p.parentNode.let { it is Element && it.localName == "list-item" }) notes += "numbered headings"
-        val runs = ArrayList<DocRun>()
+        val runs = CommentedRuns(openComments)
         val currentList = list
         fun content(parent: Element, look: DocRun, inLink: Boolean) {
             var n: Node? = parent.firstChild
@@ -1533,7 +1681,15 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         "page-number", "page-count" -> if (fieldMarks) runs += look.copy(text = (if (e.localName == "page-number") PAGE_FIELD else PAGES_FIELD).toString())
                             else { notes += "fields (page numbers, dates, contents)"; content(e, look, inLink) }
                         else -> { notes += "fields (page numbers, dates, contents)"; content(e, look, inLink) }
-                    } else if (e.namespaceURI == OFFICE && (e.localName == "annotation" || e.localName == "annotation-end")) notes += "comments"
+                    } else if (e.namespaceURI == OFFICE && e.localName == "annotation") {
+                        val name = e.attr(OFFICE, "name")
+                        if (name == null || name !in ended) notes += "comments" // on a point, not some letters: not kept yet
+                        else {
+                            comments[name] = DocComment(name, e.kid(DC, "creator")?.textContent ?: "", e.kid(DC, "date")?.textContent,
+                                e.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent }, e.kids().joinToString("") { OfficeFormats.xml(it) })
+                            openComments += name
+                        }
+                    } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))
                     else notes += "other content"
                 }
@@ -1612,7 +1768,7 @@ private object OdtWriter {
             }
         }
         fun textStyle(r: DocRun): String? {
-            val look = r.copy(text = "", link = null, image = null)
+            val look = r.copy(text = "", link = null, image = null, comments = emptyList())
             if (look == DocRun("")) return null
             return textStyles.getOrPut(look) {
                 val name = fresh("TT")
@@ -1661,6 +1817,25 @@ private object OdtWriter {
             """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         }).let { x -> img.wrap?.let { w -> if (wraps.add(w)) auto.append(PictureXml.odtStyle(w)); PictureXml.odt(x, w) } ?: x }
 
+        // Comments: an annotation where one starts (its contents as the file had them, or written out), its end where it ends.
+        val live = doc.liveComments.associateBy { it.id }
+        val openComments = LinkedHashSet<String>()
+        val closedComments = HashSet<String>() // started once: never again
+        val nextFirst = java.util.IdentityHashMap<DocPara, DocPara?>().also { m ->
+            var prev: DocPara? = null
+            fun walk(ps: List<DocPara>) { ps.forEach { q -> if (q.table != null) q.table.rows.forEach { r -> r.cells.forEach { walk(it.paras) } } else { prev?.let { m[it] = q }; prev = q } } }
+            walk(doc.paras)
+        }
+        fun StringBuilder.commentMarks(now: List<String>) {
+            for (id in openComments.filter { it !in now }) { append("""<office:annotation-end office:name="${OfficeFormats.esc(id)}"/>"""); openComments -= id }
+            for (id in now) if (id !in openComments && closedComments.add(id)) live[id]?.let { c ->
+                append("""<office:annotation office:name="${OfficeFormats.esc(id)}">""")
+                append(c.raw ?: ("<dc:creator>${OfficeFormats.esc(c.author)}</dc:creator>" + (c.date?.let { "<dc:date>$it</dc:date>" } ?: "") +
+                    c.text.split('\n').joinToString("") { "<text:p>${spaces(it, true)}</text:p>" }))
+                append("</office:annotation>")
+                openComments += id
+            }
+        }
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
             val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
@@ -1678,6 +1853,7 @@ private object OdtWriter {
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) append("""<text:a xlink:type="simple" xlink:href="${OfficeFormats.esc(link)}">""")
                 for (r in runs.subList(k, end)) {
+                    commentMarks(r.comments)
                     if (r.image != null) { append(frame(r.image)); prev = "x"; continue }
                     val s = textStyle(r)
                     if (s != null) append("<text:span text:style-name=\"$s\">")
@@ -1688,6 +1864,8 @@ private object OdtWriter {
                 if (link != null) append("</text:a>")
                 k = end
             }
+            // A comment ends here unless the next paragraph goes on in it.
+            commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
             append("</$tag>")
         }
 
@@ -1772,6 +1950,7 @@ private object OdtWriter {
         val autoXml = "<office:automatic-styles>$ownKept$auto</office:automatic-styles>"
         out = if (autoRe.containsMatchIn(out)) out.replaceFirst(autoRe, Regex.escapeReplacement(autoXml)) else out.replaceFirst("<office:body>", "$autoXml<office:body>")
         if ("xmlns:xlink=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:xlink=\"$XLINK\"")
+        if ("<office:annotation" in text && "xmlns:dc=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:dc=\"$DC\"")
         manifest?.let { parts["META-INF/manifest.xml"] = it.toByteArray() }
         if (frames > 0) listOf("draw" to "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "svg" to SVG).forEach { (prefix, ns) ->
             val head = out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))

@@ -576,3 +576,31 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
         }
     }
 }
+
+/** Insert › Comment: who writes it (remembered) and what it says. */
+@Composable
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, add: (String, String) -> Unit) {
+    var author by remember { mutableStateOf(name) }
+    var text by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Comment") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        } },
+        confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text("Add") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** A comment read: who, when, what; Delete takes it off (its words stay). */
+@Composable
+internal fun CommentDialog(c: DocComment, dismiss: () -> Unit, delete: () -> Unit) {
+    val date = c.date?.let { d -> runCatching { java.time.OffsetDateTime.parse(if (d.endsWith("Z") || d.contains('+')) d else d + "Z") }.getOrNull()
+        ?.atZoneSameInstant(java.time.ZoneId.systemDefault())?.format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(c.author.ifBlank { "Comment" }) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            date?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text(c.text, style = MaterialTheme.typography.bodyLarge)
+        } },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = delete) { Text("Delete") } })
+}

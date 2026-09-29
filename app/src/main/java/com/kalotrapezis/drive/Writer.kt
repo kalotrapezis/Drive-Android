@@ -460,6 +460,32 @@ internal object WriterBridge {
         blockSpans(text, rich) { k, from, to -> if (found == null && at in from..to) found = k }
         return found
     }
+    /**
+     * Each editor block's place: its span in the editor's text, its paragraph, and where in that paragraph's own text
+     * it starts (a line after a break starts after the break's letter).
+     */
+    data class BlockPlace(val from: Int, val to: Int, val para: Int, val at: Int)
+    fun blockPlaces(text: String, rich: RichTextDocument): List<BlockPlace> {
+        val out = ArrayList<BlockPlace>()
+        var n = -1; var at = 0
+        blockSpans(text, rich) { k, from, to ->
+            if (!rich.blocks[k].isLineBreak) { n++; at = 0 } else at++
+            out += BlockPlace(from, to, n, at)
+            at += to - from
+        }
+        return out
+    }
+    /** The letters [from]..[to] of the editor's text as (paragraph, from, to) in the paragraphs' own text. */
+    fun paragraphSpans(places: List<BlockPlace>, from: Int, to: Int): List<Triple<Int, Int, Int>> = places.mapNotNull { b ->
+        val a = maxOf(from, b.from); val z = minOf(to, b.to)
+        if (z <= a) null else Triple(b.para, b.at + a - b.from, b.at + z - b.from)
+    }
+    /** The editor's text where letters [a]..[b] of paragraph [para] are (the parts on each of its lines). */
+    fun editorSpans(places: List<BlockPlace>, para: Int, a: Int, b: Int): List<IntRange> = places.filter { it.para == para }.mapNotNull { p ->
+        val x = maxOf(a, p.at); val y = minOf(b, p.at + (p.to - p.from))
+        if (y <= x) null else (p.from + x - p.at) until (p.from + y - p.at)
+    }
+
     /** Where each paragraph starts in the editor's text (a line after a break is still its paragraph). */
     fun paragraphStarts(text: String, rich: RichTextDocument): List<Int> {
         val out = ArrayList<Int>()
@@ -579,12 +605,12 @@ internal object WriterBridge {
             if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
         }
     }
-    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null) })
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList()) })
 
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList()) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -845,7 +871,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             dirty = false
             if (draft != null) {
                 state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
-                meta = meta.copy(paras = draft.paras) // the draft's paragraph formatting (spacing set before it closed), not the file's
+                meta = meta.copy(paras = draft.paras, comments = draft.comments) // the draft's paragraph formatting and comments, not the file's
                 dirty = true; message = "Your unsaved changes are back"
             }
             state.history.clear(); undone.clear(); redone.clear()
@@ -1143,6 +1169,40 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
     }
+    // Comments (asked 2026-09-29): where each one's letters are in the editor, and the one the cursor is in.
+    val commentsShown by remember { derivedStateOf {
+        if (meta.comments.isEmpty()) emptyList() else {
+            val text = state.annotatedString.text
+            val places = WriterBridge.blockPlaces(text, state.toRichTextDocument())
+            val live = current()
+            val byId = live.comments.associateBy { it.id }
+            live.paras.flatMapIndexed { i, p ->
+                var at = 0
+                p.runs.flatMap { r -> r.comments.mapNotNull { id -> byId[id] }.flatMap { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { c to it } }.also { at += r.text.length } }
+            }
+        }
+    } }
+    val hereComment by remember { derivedStateOf { state.selection.min.let { at -> commentsShown.firstOrNull { (_, r) -> at in r.first..r.last + 1 }?.first } } }
+    var commentOpen by remember { mutableStateOf<DocComment?>(null) }
+    var commenting by remember { mutableStateOf(false) }
+    /** Insert › Comment: on the chosen letters, or the word at the cursor. */
+    fun addComment(author: String, text: String) = change {
+        val t = state.annotatedString.text
+        val sel = state.selection
+        val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
+            var a = sel.min; var z = sel.min
+            while (a > 0 && t[a - 1].isLetterOrDigit()) a--
+            while (z < t.length && t[z].isLetterOrDigit()) z++
+            a to z
+        }
+        val cur = current()
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), from, to)
+        if (spans.isEmpty() || state.toRichTextDocument().blocks.count { !it.isLineBreak } != cur.paras.size) { message = "Choose some words first"; return@change }
+        val initials = author.split(' ').filter { it.isNotBlank() }.joinToString("") { it.take(1) }.uppercase()
+        meta = OfficeFormats.withComment(cur, spans, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text, initials = initials))
+        dirty = true
+    }
+    fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
@@ -1342,6 +1402,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
+                                // Commented letters: tinted (the comment itself in the bar above the ribbon).
+                                if (commentsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                    commentsShown.forEach { (c, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
+                                        if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300)) }
+                                }
                                 // …and a paragraph's borders, as a light outline (the pages draw them as they print).
                                 val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
                                 val breaks = remember(looks) { looks.indices.filter { it > 0 && looks[it]?.pageBreakBefore == true } }
@@ -1516,6 +1581,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            // The comment the cursor is in: who and what, a tap opens it.
+            hereComment?.let { c ->
+                Row(Modifier.fillMaxWidth().clickable { commentOpen = c }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFFFB300)))
+                    Text((if (c.author.isNotBlank()) c.author + ": " else "") + c.text.replace('\n', ' '), color = w, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                    Text("Open", color = w, style = MaterialTheme.typography.labelLarge)
+                }
+            }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
                 WriterTab.entries.filter { t -> when (t) {
@@ -1680,6 +1754,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
+                    RibbonButton("Comment", w, enabled = loaded) { commenting = true }
                     RibbonButton("Symbol", w, enabled = loaded) { symbolPage = true }
                     RibbonButton("Date", w, enabled = loaded) { datePage = true }
                 }, {
@@ -1993,6 +2068,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (commenting) NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { commenting = false }) { author, text ->
+        commenting = false
+        context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
+        addComment(author, text)
+    }
+    commentOpen?.let { c -> CommentDialog(c, { commentOpen = null }) { commentOpen = null; deleteComment(c.id) } }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
     if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }

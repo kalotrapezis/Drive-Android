@@ -136,6 +136,52 @@ class OfficeFormatsTest {
     }
 
     /** The user's own documents on this computer, when they are here: each must read without an error. */
+    @Test fun `comments are read, kept, followed through editing, added and taken off, in both kinds`() {
+        val suite = File(System.getProperty("user.home"), "Έγγραφα/Claude/Projects/Defaulty/Word App Test Suite/05_Review_and_Forms.docx")
+        if (suite.isFile) {
+            val bytes = suite.readBytes()
+            val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+            assert("comments" !in doc.unsupported) { doc.unsupported.toString() }
+            val c = doc.comments.single()
+            assertEquals("Test Reviewer", c.author)
+            assertEquals("specific phrase", doc.paras.flatMap { it.runs }.filter { c.id in it.comments }.joinToString("") { it.text })
+            val again = OfficeFormats.read(OfficeFormats.write(doc, OfficeKind.Docx, bytes), OfficeKind.Docx)
+            assertEquals(doc.comments, again.comments)
+            assertEquals("specific phrase", again.paras.flatMap { it.runs }.filter { c.id in it.comments }.joinToString("") { it.text })
+        }
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val base = OfficeDoc(listOf(DocPara(listOf(DocRun("Review this specific phrase and go on."))), DocPara(listOf(DocRun("Second paragraph.")))))
+            val id = OfficeFormats.newCommentId(base, kind)
+            val note = DocComment(id, "Θεολόγος", "2026-09-29T18:00:00Z", "Check this.\nΚαι αυτό.", initials = "Θ")
+            // From "specific" on, across into the next paragraph's first word.
+            val doc = OfficeFormats.withComment(base, listOf(Triple(0, 12, 38), Triple(1, 0, 6)), note)
+            val bytes = OfficeFormats.write(doc, kind)
+            File("build/office-roundtrip").apply { mkdirs() }.resolve("comments.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, emptySet<String>(), back.unsupported)
+            val read = back.comments.single()
+            assertEquals(kind.name, listOf("Θεολόγος", "Check this.\nΚαι αυτό."), listOf(read.author, read.text))
+            assertEquals(kind.name, listOf("specific phrase and go on.", "Second"), back.paras.map { p -> p.runs.filter { read.id in it.comments }.joinToString("") { it.text } })
+            // Typing inside it joins it; at its edge, not; the words around are untouched.
+            val typed = listOf(DocPara(listOf(DocRun("Review this! specific new phrase and go on."))), back.paras[1])
+            val carried = OfficeFormats.carryFonts(back.paras, typed)
+            assertEquals(kind.name, "specific new phrase and go on.", carried[0].runs.filter { read.id in it.comments }.joinToString("") { it.text })
+            // Two stretches of one comment (never made by Writer): written as one — the first — not started twice.
+            val split = OfficeFormats.withComment(base, listOf(Triple(0, 12, 27), Triple(1, 0, 6)), note)
+            val splitBack = OfficeFormats.read(OfficeFormats.write(split, kind), kind)
+            assertEquals(kind.name, listOf("specific phrase", ""), splitBack.paras.map { p -> p.runs.filter { it.comments.isNotEmpty() }.joinToString("") { it.text } })
+            // Its letters all deleted: the comment is not written again.
+            val gone = back.copy(paras = listOf(DocPara(listOf(DocRun("Review this "))), DocPara(listOf(DocRun(" paragraph.")))))
+            val carriedGone = gone.copy(paras = OfficeFormats.carryFonts(back.paras, gone.paras))
+            assertEquals(kind.name, emptyList<DocComment>(), OfficeFormats.read(OfficeFormats.write(carriedGone, kind, bytes), kind).comments)
+            // Taken off by hand: the letters stay, the comment goes.
+            val off = OfficeFormats.withoutComment(back, read.id)
+            val offBack = OfficeFormats.read(OfficeFormats.write(off, kind, bytes), kind)
+            assertEquals(kind.name, emptyList<DocComment>(), offBack.comments)
+            assertEquals(kind.name, back.paras.map { it.text }, offBack.paras.map { it.text })
+        }
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

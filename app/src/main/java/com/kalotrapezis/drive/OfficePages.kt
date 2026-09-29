@@ -727,7 +727,9 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's). */
     fun draw(canvas: Canvas) {
         fun floats(behind: Boolean) = floats.filter { it.behind == behind }.forEach { f ->
-            f.picture.setBounds(f.x.toInt(), f.y.toInt(), (f.x + f.w).toInt(), (f.y + f.h).toInt()); f.picture.draw(canvas)
+            val shape = f.picture as? ShapePicture
+            if (shape != null) shape.drawAt(canvas, f.x, f.y, f.w, f.h)
+            else { f.picture.setBounds(f.x.toInt(), f.y.toInt(), (f.x + f.w).toInt(), (f.y + f.h).toInt()); f.picture.draw(canvas) }
         }
         floats(behind = true)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -804,7 +806,17 @@ internal object OfficePages {
         var floats = ArrayList<LaidPage.Floating>()
         var boxes = ArrayList<LaidPage.Box>(); var lines = ArrayList<LaidPage.Line>()
         var y = page.top
+        // The page's pictures that no text may stand beside (top-and-bottom wrap), top to bottom.
+        val bands = ArrayList<Pair<Float, Float>>()
+        /** [at] moved below any band a line of height [h] there would cross. */
+        fun clear(at: Float, h: Float): Float {
+            var yy = at
+            var moved = true
+            while (moved) { moved = false; for ((a, b) in bands) if (yy < b && yy + h > a) { yy = b; moved = true } }
+            return yy
+        }
         fun newPage() {
+            bands.clear()
             // In columns: the next column first.
             if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
             pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
@@ -864,10 +876,27 @@ internal object OfficePages {
             if (pieces.isNotEmpty() && !same) y += look.before
             val limit = page.height - page.bottom
             var line = 0
+            // Where the paragraph starts as the text flows, before a picture's band pushes its lines down: what its
+            // floating pictures are placed from (Word's "from the paragraph"; found 2026-09-29 — pen strokes on a
+            // keyboard picture were drawn a keyboard lower).
+            var natural = y
+            var floated = false
             while (line < layout.lineCount) {
                 // As many lines as fit on this page (a line never splits; one taller than a page goes on a page of its own).
                 val top = layout.topPt(line)
-                if (y + (layout.bottomPt(line) - top) > limit && pieces.isNotEmpty()) { newPage(); continue }
+                y = clear(y, layout.bottomPt(line) - top)
+                if (y + (layout.bottomPt(line) - top) > limit && pieces.isNotEmpty()) { newPage(); if (line == 0) natural = y; continue }
+                if (line == 0 && !floated) {
+                    floated = true
+                    for ((img, place) in floating) {
+                        val f = floatAt(img, place, natural, page, pictureBytes)
+                        floats += f
+                        // Top and bottom: no text beside it — lines that would cross it go on below it.
+                        // ponytail: square wrap does not yet flow the text beside it.
+                        if (place.wrap == PictureWrap.TopBottom) bands += f.y to f.y + f.h
+                    }
+                    y = clear(y, layout.bottomPt(line) - top)
+                }
                 var last = line
                 while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limit) last++
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
@@ -875,13 +904,6 @@ internal object OfficePages {
                 look.box?.let { box -> boxLines(box, look, page, y, y + layout.bottomPt(last) - top, line == 0, last == layout.lineCount - 1,
                     box == prevLook?.box && prevEndPage == pages.size, box == doc.paras.getOrNull(i + 1)?.takeIf { it.table == null }?.let { styles.look(it).box },
                     prevEnd, lines) }
-                // Floating pictures, placed where the paragraph starts: from the page, the margin, or the paragraph.
-                if (line == 0) for ((img, place) in floating) {
-                    val f = floatAt(img, place, y, page, pictureBytes)
-                    floats += f
-                    // Top and bottom: the text goes on below it. ponytail: square wrap does not yet flow the text beside it.
-                    if (place.wrap == PictureWrap.TopBottom) y = maxOf(y, f.y + f.h - (layout.bottomPt(last) - top))
-                }
                 y += layout.bottomPt(last) - top
                 line = last + 1
                 if (line < layout.lineCount) newPage()
@@ -1114,7 +1136,7 @@ internal object OfficePages {
             "top" -> if (place.fromV == "page") 0f else page.top
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
-        val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+        val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind)
     }
 
@@ -1251,4 +1273,49 @@ internal object OfficeFonts {
 
     fun styled(tf: Typeface?, bold: Boolean, italic: Boolean): Typeface =
         Typeface.create(tf ?: Typeface.DEFAULT, if (bold) 700 else 400, italic)
+}
+
+/**
+ * A drawn shape (Word's wps:wsp: ellipse, rectangle, rounded rectangle, line), with its fill (and see-through) and
+ * outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey boxes). Any
+ * other shape is still a grey box.
+ */
+internal class ShapePicture(private val geometry: String, private val fill: Int?, private val line: Int?, private val lineWidth: Float) : android.graphics.drawable.Drawable() {
+    fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        // The outline is centred on the edge: inset by half, so it stays inside the box as Word draws it.
+        val r = android.graphics.RectF(x, y, x + w, y + h)
+        fun shape(p: android.graphics.Paint) = when (geometry) {
+            "ellipse" -> canvas.drawOval(r, p)
+            "roundRect" -> canvas.drawRoundRect(r, minOf(w, h) / 6, minOf(w, h) / 6, p)
+            "line", "straightConnector1" -> canvas.drawLine(x, y, x + w, y + h, p)
+            else -> canvas.drawRect(r, p)
+        }
+        fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; shape(paint) }
+        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; shape(paint) }
+    }
+    override fun draw(canvas: Canvas) { val b = bounds; drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat()) }
+    override fun setAlpha(alpha: Int) = Unit
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
+    @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+
+    companion object {
+        private val SUPPORTED = setOf("ellipse", "rect", "roundRect", "line", "straightConnector1")
+        /** From a drawing's XML, when it is a plain shape of those kinds; null otherwise. */
+        fun of(raw: String?): ShapePicture? {
+            val sp = raw?.let { Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(it)?.groupValues?.get(1) } ?: return null
+            val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in SUPPORTED } ?: return null
+            fun color(xml: String?): Int? {
+                if (xml == null || "<a:noFill" in xml) return null
+                val m = Regex("""<a:srgbClr val="([0-9A-Fa-f]{6})"(?:\s*/>|>([\s\S]*?)</a:srgbClr>)""").find(xml) ?: return null
+                val alpha = Regex("""<a:alpha val="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1)?.toIntOrNull()?.let { it * 255 / 100000 } ?: 255
+                return (alpha shl 24) or m.groupValues[1].toInt(16)
+            }
+            val ln = Regex("""<a:ln\b([^>]*)>([\s\S]*?)</a:ln>""").find(sp)
+            // What is before the outline is the fill (spPr's order: geometry, fill, outline).
+            val fill = color(sp.substringBefore("<a:ln").substringAfter("</a:prstGeom>", ""))
+            val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
+            return ShapePicture(geometry, fill, color(ln?.groupValues?.get(2)), width)
+        }
+    }
 }

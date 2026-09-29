@@ -34,6 +34,19 @@ there (found by its styles). Checked: unit test both kinds; LibreOffice renders 
 02): pages 1, 1, 2 — the same as LibreOffice's layout of the saved file. Not a Word field: Word's "Update field"
 does not know it (Tetra's Update does).
 
+**Order (the user, night):** the tabs go in Word's order — Home, Insert, **Draw**, Design, Layout, References.
+Layout and the table of contents were done out of order; **citations/bibliography are parked** in
+`parked/Citations.kt` (APA 7 formatting + a source model, not wired, not built) until References comes round.
+
+**Drawings in Word files (night, the user's keyboard handout — Το Ελληνικό πληκτρολόγιο.docx):** pen strokes (Word ink,
+w14:contentPart, drawn from their fallback PNG) and shapes were placed a keyboard too low: a top-and-bottom picture
+pushed the *next paragraph's start*, which its floating objects are placed from. Now such a picture is a band that
+only lines crossing it are pushed below (`bands`/`clear` in OfficePages.layout); floats are placed from where their
+paragraph naturally starts. Ink uses its fallback's box (VML margin/width/height: the pen's width around the line —
+a flat underline was 0 tall). Plain shapes (ellipse, rect, roundRect, line) are drawn with their fill (and alpha) and
+outline (`ShapePicture`) — the yellow circles around ! @ # were grey boxes. Checked on the tablet against Word's own
+PDF of it: the keyboard's top 124.6 pt (Word 124.5), strokes on < > ? at 250.6–251.7 pt (Word 250.4–255.4).
+
 **Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).

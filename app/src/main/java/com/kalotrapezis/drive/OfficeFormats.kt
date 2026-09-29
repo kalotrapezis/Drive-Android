@@ -126,6 +126,12 @@ internal object PictureXml {
             return Triple(from, off, align)
         }
         val (fh, x, ah) = axis("positionH"); val (fv, y, av) = axis("positionV")
+        // Pen strokes: placed by their picture's box (the fallback's margins), from the same origin.
+        if ("wordprocessingInk" in raw) {
+            val style = Regex("""<v:shape\b[^>]*\bstyle="([^"]*)"""").find(raw)?.groupValues?.get(1)
+            fun pt(key: String) = style?.let { Regex("""(?:^|;)$key:(-?[\d.]+)pt""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }
+            if (pt("margin-left") != null && pt("margin-top") != null) return Place(if (fh == "paragraph") "margin" else fh, pt("margin-left"), ah, fv, pt("margin-top"), av, wrap)
+        }
         return Place(if (fh == "paragraph") "margin" else fh, x, ah, fv, y, av, wrap)
     }
 
@@ -1009,8 +1015,11 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             when (m.groupValues[2]) { "in" -> n * 72; "px" -> n * 0.75f; "cm" -> n * 28.3465f; "mm" -> n * 2.83465f; else -> n }
         }
         val rule = vml?.getAttributeNS("urn:schemas-microsoft-com:office:office", "hr") == "t"
-        val w = extent?.getAttribute("cx")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("width")?.takeIf { it > 0 && !rule } ?: if (rule) 450f else 144f
-        val h = extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("height")?.takeIf { it > 0 } ?: 96f
+        // Pen strokes (Word's ink): the box is the line's centre, a flat stroke is 0 tall; its picture (the older-Word
+        // fallback) is the box with the pen's width around it, so that box is the one it is drawn in (2026-09-29).
+        val ink = e.getElementsByTagNameNS("*", "contentPart").length > 0
+        val w = (if (ink) vmlLength("width") else null) ?: extent?.getAttribute("cx")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("width")?.takeIf { it > 0 && !rule } ?: if (rule) 450f else 144f
+        val h = (if (ink) vmlLength("height") else null) ?: extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("height")?.takeIf { it > 0 } ?: 96f
         return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e))
     }
     var imageCount = 0

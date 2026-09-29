@@ -61,7 +61,7 @@ with string files).
 - [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
 - [ ] Borders (Word/OnlyOffice's menu): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
       line; border style and colour — behind ⋯
-- [ ] Change case (Aa: Sentence case, lower, UPPER, Capitalise Each Word) — behind ⋯
+- [x] Change case (Aa beside the eraser: Sentence case, lowercase, UPPERCASE, Capitalise Each Word; the chosen letters or the word at the cursor; looks kept; Greek capitals without accents, final ς)
 - [ ] Multilevel list — later
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files

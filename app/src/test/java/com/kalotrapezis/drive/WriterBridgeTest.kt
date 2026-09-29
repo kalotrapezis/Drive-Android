@@ -137,6 +137,25 @@ class WriterBridgeTest {
         assertEquals(listOf(0, text.indexOf("two")), WriterBridge.paragraphStarts(text, state.toRichTextDocument()))
     }
 
+    @Test fun `change case keeps each letter's place, and Greek's final sigma`() {
+        val el = java.util.Locale.forLanguageTag("el-GR")
+        fun c(s: String, case: WriterBridge.Case, start: Boolean = true) = WriterBridge.inCase(s, case, start, el)
+        assertEquals("ΤΟ ΣΠΙΤΙ ΜΑΣ, ΑΫΠΝΙΑ Ϊ", c("Το σπίτι μας, αϋπνία ΐ", WriterBridge.Case.Upper)) // Greek capitals: no accent, the dialytika stays
+        assertEquals("CAFÉ", c("café", WriterBridge.Case.Upper))
+        assertEquals("Άλλος Ένας", c("άλλος ένας", WriterBridge.Case.Words)) // a capital starting a word keeps its accent
+        assertEquals("το σπίτι μας", c("ΤΟ ΣΠΊΤΙ ΜΑΣ", WriterBridge.Case.Lower)) // final sigma
+        assertEquals("Το σπίτι μας. Και εδώ;", c("ΤΟ ΣΠΊΤΙ ΜΑΣ. ΚΑΙ ΕΔΏ;", WriterBridge.Case.Sentence))
+        assertEquals("Hello World, It's Me", c("hello WORLD, it's me", WriterBridge.Case.Words))
+        assertEquals("straße".length, c("straße", WriterBridge.Case.Upper).length) // ß stays rather than growing
+        // In the editor: only the chosen letters change, their looks stay.
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("one "), DocRun("TWO", bold = true), DocRun(" three")))), basePt = 11f)
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc))
+        val text = state.annotatedString.text
+        val changed = WriterBridge.changeCase(text, state.toRichTextDocument(), text.indexOf("TWO"), text.indexOf("TWO") + 3, WriterBridge.Case.Lower)
+        assertEquals(listOf(DocRun("one "), DocRun("two", bold = true), DocRun(" three")), WriterBridge.fromEditor(changed, 11f).single().runs)
+    }
+
     @Test fun `dates are offered in the phone's language and in English`() {
         val forms = dateForms(java.time.LocalDateTime.of(2026, 9, 29, 15, 45), java.util.Locale.forLanguageTag("el-GR"))
         assertEquals("29/09/2026", forms[0])

@@ -64,6 +64,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -397,6 +399,48 @@ internal object WriterBridge {
         }
         return rich.copy(blocks = blocks)
     }
+    enum class Case(val label: String) { Sentence("Sentence case."), Lower("lowercase"), Upper("UPPERCASE"), Words("Capitalise Each Word") }
+
+    /** [s] in [case], letter for letter (so each keeps its look); a letter whose case is longer (ß → SS) stays as it was. */
+    fun inCase(s: String, case: Case, sentenceStart: Boolean, locale: java.util.Locale = java.util.Locale.getDefault()): String {
+        val lower = s.lowercase(locale).takeIf { it.length == s.length } ?: s.map { c -> c.lowercase(locale).singleOrNull() ?: c }.joinToString("")
+        fun up(c: Char) = c.toString().uppercase(locale).singleOrNull() ?: c
+        // Greek in capitals has no accent (the dialytika stays): ΣΠΙΤΙ, ΑΫΠΝΙΑ — Latin capitals keep theirs.
+        fun capital(c: Char): Char {
+            if (Character.UnicodeScript.of(c.code) != Character.UnicodeScript.GREEK) return up(c)
+            val bare = java.text.Normalizer.normalize(java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFD)
+                .replace("\u0301", "").replace("\u0342", "").uppercase(locale), java.text.Normalizer.Form.NFC)
+            return bare.singleOrNull() ?: up(c)
+        }
+        return when (case) {
+            Case.Lower -> lower
+            Case.Upper -> s.map(::capital).joinToString("")
+            Case.Words, Case.Sentence -> buildString {
+                var start = if (case == Case.Words) true else sentenceStart
+                lower.forEachIndexed { i, c ->
+                    append(if (start && c.isLetter()) up(c) else c)
+                    if (c.isLetter()) start = false
+                    if (case == Case.Words && !c.isLetterOrDigit() && c != '\'' && c != '’') start = true
+                    if (case == Case.Sentence && c in ".!?;") start = true // ; is the Greek question mark
+                }
+            }
+        }
+    }
+
+    /** Change case (Word's Aa) on the text from [start] to [end]: the letters change, their looks stay. */
+    fun changeCase(text: String, rich: RichTextDocument, start: Int, end: Int, case: Case): RichTextDocument {
+        val blocks = rich.blocks.toMutableList()
+        blockSpans(text, rich) { k, from, to ->
+            val s = (start - from).coerceAtLeast(0); val e = (end - from).coerceAtMost(to - from)
+            if (e <= s) return@blockSpans
+            val b = rich.blocks[k]
+            // A sentence starts at the paragraph's start, or after . ! ? (then spaces) before the chosen text.
+            val sentenceStart = b.text.substring(0, s).trimEnd().let { it.isEmpty() || it.last() in ".!?;" }
+            blocks[k] = b.copy(text = b.text.substring(0, s) + inCase(b.text.substring(s, e), case, sentenceStart) + b.text.substring(e))
+        }
+        return rich.copy(blocks = blocks)
+    }
+
     private fun RichTextSpanMark.withRange(r: IntRange): RichTextSpanMark = when (this) {
         is RichTextSpanMark.Bold -> copy(range = r)
         is RichTextSpanMark.Underline -> copy(range = r)
@@ -1502,6 +1546,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
+                    }
+                    // Change case (Word's Aa): the chosen letters, or the word at the cursor.
+                    Box {
+                        var casing by remember { mutableStateOf(false) }
+                        RibbonButton("Aa", w) { casing = true }
+                        DropdownMenu(casing, { casing = false }) {
+                            WriterBridge.Case.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { casing = false; change {
+                                val text = state.annotatedString.text
+                                val sel = state.selection
+                                val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
+                                    var a = sel.min; var z = sel.min
+                                    while (a > 0 && text[a - 1].isLetterOrDigit()) a--
+                                    while (z < text.length && text[z].isLetterOrDigit()) z++
+                                    a to z
+                                }
+                                state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
+                            } }) }
+                        }
                     }
                     // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
                     Tool(R.drawable.ic_format_clear, "Clear formatting", w) { change {

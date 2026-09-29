@@ -47,6 +47,14 @@ a flat underline was 0 tall). Plain shapes (ellipse, rect, roundRect, line) are 
 outline (`ShapePicture`) — the yellow circles around ! @ # were grey boxes. Checked on the tablet against Word's own
 PDF of it: the keyboard's top 124.6 pt (Word 124.5), strokes on < > ? at 250.6–251.7 pt (Word 250.4–255.4).
 
+**Insert › Shapes (night):** `ShapePicture` (OfficePages.kt) = kind + fill + outline, `path()` draws each kind (used by
+the pages, the editor's overlay, the gallery); `PictureXml.newShape` writes docx wps:wsp inline or ODT
+draw:custom-shape whose style name `Tetra_20_shape_<fill ARGB>_<line>_<width×100>_<wrap>` carries its look
+(`odtShapeStyle` makes the automatic style). `PictureXml.withWrap` now rewrites the XML when wrapping changes, so the
+pages show it at once (was only on save). A shape in a line: its outline scaled to the line's twentieths of a point.
+Checked: unit test both kinds (LibreOffice renders both alike); tablet: a yellow-outline circle added, set in front of
+text, saved — LibreOffice's page matches Tetra's.
+
 **Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).

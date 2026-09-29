@@ -1168,7 +1168,9 @@ internal object OfficePages {
                 val width = page.textWidth - left.coerceAtLeast(0f)
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
-                val drawable = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+                // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
+                val drawable = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                    ?: ShapePicture.of(img.raw)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
                 continue
@@ -1276,23 +1278,17 @@ internal object OfficeFonts {
 }
 
 /**
- * A drawn shape (Word's wps:wsp: ellipse, rectangle, rounded rectangle, line), with its fill (and see-through) and
- * outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey boxes). Any
- * other shape is still a grey box.
+ * A drawn shape (Word's wps:wsp, LibreOffice's draw:custom-shape): its outline path in a w×h box, with its fill (and
+ * see-through) and outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey
+ * boxes; Insert › Shapes makes them). A shape of another kind is still a grey box.
  */
-internal class ShapePicture(private val geometry: String, private val fill: Int?, private val line: Int?, private val lineWidth: Float) : android.graphics.drawable.Drawable() {
+internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float) : android.graphics.drawable.Drawable() {
     fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        // The outline is centred on the edge: inset by half, so it stays inside the box as Word draws it.
-        val r = android.graphics.RectF(x, y, x + w, y + h)
-        fun shape(p: android.graphics.Paint) = when (geometry) {
-            "ellipse" -> canvas.drawOval(r, p)
-            "roundRect" -> canvas.drawRoundRect(r, minOf(w, h) / 6, minOf(w, h) / 6, p)
-            "line", "straightConnector1" -> canvas.drawLine(x, y, x + w, y + h, p)
-            else -> canvas.drawRect(r, p)
-        }
-        fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; shape(paint) }
-        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; shape(paint) }
+        paint.strokeJoin = android.graphics.Paint.Join.ROUND
+        val path = path(geometry, w, h).apply { offset(x, y) }
+        if (geometry !in LINES) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; canvas.drawPath(path, paint) }
+        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
     }
     override fun draw(canvas: Canvas) { val b = bounds; drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat()) }
     override fun setAlpha(alpha: Int) = Unit
@@ -1300,15 +1296,61 @@ internal class ShapePicture(private val geometry: String, private val fill: Int?
     @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 
     companion object {
-        private val SUPPORTED = setOf("ellipse", "rect", "roundRect", "line", "straightConnector1")
-        /** From a drawing's XML, when it is a plain shape of those kinds; null otherwise. */
+        /** Word's preset names; LibreOffice's draw:type names map to them. */
+        val KINDS = listOf("rect", "roundRect", "ellipse", "triangle", "rtTriangle", "diamond", "pentagon", "hexagon", "octagon", "star5",
+            "rightArrow", "leftArrow", "upArrow", "downArrow", "plus", "heart", "line")
+        private val LINES = setOf("line", "straightConnector1")
+        private val ODF = mapOf("rectangle" to "rect", "round-rectangle" to "roundRect", "ellipse" to "ellipse", "isosceles-triangle" to "triangle",
+            "right-triangle" to "rtTriangle", "diamond" to "diamond", "pentagon" to "pentagon", "hexagon" to "hexagon", "octagon" to "octagon",
+            "star5" to "star5", "right-arrow" to "rightArrow", "left-arrow" to "leftArrow", "up-arrow" to "upArrow", "down-arrow" to "downArrow",
+            "cross" to "plus", "heart" to "heart", "mso-spt20" to "line")
+        fun odfType(kind: String) = ODF.entries.firstOrNull { it.value == kind }?.key ?: "rectangle"
+
+        /** The shape's outline in a [w]×[h] box from 0,0. */
+        fun path(kind: String, w: Float, h: Float): android.graphics.Path = android.graphics.Path().apply {
+            fun poly(vararg p: Float) { moveTo(p[0] * w, p[1] * h); var i = 2; while (i < p.size) { lineTo(p[i] * w, p[i + 1] * h); i += 2 }; close() }
+            fun ring(n: Int, start: Double = -Math.PI / 2) = poly(*FloatArray(n * 2) { k -> val a = start + 2 * Math.PI * (k / 2) / n
+                if (k % 2 == 0) (0.5 + 0.5 * Math.cos(a)).toFloat() else (0.5 + 0.5 * Math.sin(a)).toFloat() })
+            when (kind) {
+                "ellipse" -> addOval(0f, 0f, w, h, android.graphics.Path.Direction.CW)
+                "roundRect" -> addRoundRect(0f, 0f, w, h, minOf(w, h) / 6, minOf(w, h) / 6, android.graphics.Path.Direction.CW)
+                "triangle" -> poly(0.5f, 0f, 1f, 1f, 0f, 1f)
+                "rtTriangle" -> poly(0f, 0f, 1f, 1f, 0f, 1f)
+                "diamond" -> poly(0.5f, 0f, 1f, 0.5f, 0.5f, 1f, 0f, 0.5f)
+                "pentagon" -> ring(5)
+                "hexagon" -> poly(0.25f, 0f, 0.75f, 0f, 1f, 0.5f, 0.75f, 1f, 0.25f, 1f, 0f, 0.5f)
+                "octagon" -> poly(0.29f, 0f, 0.71f, 0f, 1f, 0.29f, 1f, 0.71f, 0.71f, 1f, 0.29f, 1f, 0f, 0.71f, 0f, 0.29f)
+                "star5" -> poly(*FloatArray(20) { k -> val i = k / 2; val a = -Math.PI / 2 + Math.PI * i / 5; val r = if (i % 2 == 0) 0.5 else 0.2
+                    if (k % 2 == 0) (0.5 + r * Math.cos(a)).toFloat() else (0.5 + r * Math.sin(a) * 1.05 + 0.03).toFloat() })
+                "rightArrow" -> poly(0f, 0.25f, 0.6f, 0.25f, 0.6f, 0f, 1f, 0.5f, 0.6f, 1f, 0.6f, 0.75f, 0f, 0.75f)
+                "leftArrow" -> poly(1f, 0.25f, 0.4f, 0.25f, 0.4f, 0f, 0f, 0.5f, 0.4f, 1f, 0.4f, 0.75f, 1f, 0.75f)
+                "upArrow" -> poly(0.25f, 1f, 0.25f, 0.4f, 0f, 0.4f, 0.5f, 0f, 1f, 0.4f, 0.75f, 0.4f, 0.75f, 1f)
+                "downArrow" -> poly(0.25f, 0f, 0.25f, 0.6f, 0f, 0.6f, 0.5f, 1f, 1f, 0.6f, 0.75f, 0.6f, 0.75f, 0f)
+                "plus" -> poly(0.35f, 0f, 0.65f, 0f, 0.65f, 0.35f, 1f, 0.35f, 1f, 0.65f, 0.65f, 0.65f, 0.65f, 1f, 0.35f, 1f, 0.35f, 0.65f, 0f, 0.65f, 0f, 0.35f, 0.35f, 0.35f)
+                "heart" -> { moveTo(0.5f * w, h); cubicTo(-0.1f * w, 0.55f * h, 0.05f * w, -0.05f * h, 0.5f * w, 0.25f * h)
+                    cubicTo(0.95f * w, -0.05f * h, 1.1f * w, 0.55f * h, 0.5f * w, h); close() }
+                "line", "straightConnector1" -> { moveTo(0f, 0f); lineTo(w, h) }
+                else -> addRect(0f, 0f, w, h, android.graphics.Path.Direction.CW)
+            }
+        }
+
+        /** From a drawing's XML, when it is a shape of those kinds (Word's, or a custom shape Writer made); null otherwise. */
         fun of(raw: String?): ShapePicture? {
-            val sp = raw?.let { Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(it)?.groupValues?.get(1) } ?: return null
-            val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in SUPPORTED } ?: return null
+            if (raw == null) return null
+            if (raw.startsWith("<draw:custom-shape")) {
+                val kind = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)?.let { ODF[it] } ?: return null
+                // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>_<wrap>.
+                val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_""").find(raw)
+                fun hex(v: String?) = v?.takeIf { it != "none" }?.let { t -> t.toLongOrNull(16)?.let { if (t.length == 8) it.toInt() else (0xFF000000 or it).toInt() } }
+                return if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
+                    else ShapePicture(kind, 0xFF729FCF.toInt(), 0xFF3465A4.toInt(), 1f) // LibreOffice's own default look
+            }
+            val sp = Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(raw)?.groupValues?.get(1) ?: return null
+            val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in KINDS || it in LINES } ?: return null
             fun color(xml: String?): Int? {
                 if (xml == null || "<a:noFill" in xml) return null
                 val m = Regex("""<a:srgbClr val="([0-9A-Fa-f]{6})"(?:\s*/>|>([\s\S]*?)</a:srgbClr>)""").find(xml) ?: return null
-                val alpha = Regex("""<a:alpha val="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1)?.toIntOrNull()?.let { it * 255 / 100000 } ?: 255
+                val alpha = Regex("""<a:alpha val="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1)?.toIntOrNull()?.let { Math.round(it * 255 / 100000f) } ?: 255
                 return (alpha shl 24) or m.groupValues[1].toInt(16)
             }
             val ln = Regex("""<a:ln\b([^>]*)>([\s\S]*?)</a:ln>""").find(sp)

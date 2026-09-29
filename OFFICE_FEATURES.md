@@ -118,8 +118,12 @@ one pass once the tabs' features are done.
       banners; callouts; lines. Its page (OnlyOffice's "Advanced settings"): Size (width/height absolute or relative to
       margin/page, lock proportions), Rotation, Text wrapping, Position, Lines & arrows, Text box, Alt text. Fill and
       outline colour/width on the ribbon when a shape is selected.
-      Done so far (29 Sep): shapes in a file are drawn on the pages — ellipse, rectangle, rounded rectangle, line, with
-      fill/alpha/outline; others still grey boxes.
+      Done (29 Sep): Insert › Shapes — 17 kinds (rectangle, rounded, ellipse, triangles, diamond, pentagon, hexagon,
+      octagon, star, four arrows, plus, heart, line), fill (or none) and outline from six colours; written as Word's
+      wps:wsp / LibreOffice's custom shape (its look in an automatic graphic style); drawn in the editor, on the pages
+      and PDF; the Picture tab sizes, wraps, replaces… it (wrapping now shows on the pages at once). Shapes in a file
+      of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,
+      changing fill/outline after.
 - [ ] Later (they float over the text, which the editor cannot do yet): text box, WordArt; equations (√x,
       kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
       date picker, check box — OnlyOffice's last Insert button)

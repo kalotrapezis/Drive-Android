@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -650,6 +652,45 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
                         comments.forEach { c -> CommentCard(c, c == here, { open(c) }, { delete(c) }) }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): each kind drawn as it will be, in the colours
+ * chosen above it — a fill (or none, for a circle around a word) and an outline. A tap puts it at the cursor.
+ */
+@Composable
+internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: String, fill: Int?, line: Int?) -> Unit) {
+    val colors = listOf(0xFF4472C4, 0xFFFFC114, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFF000000).map { it.toInt() }
+    var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
+    var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Shapes", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
+                        Choice("None", chosen == null) { set(null) }
+                        colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c))
+                            .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                            .clickable { set(c) }) }
+                    }
+                    swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
+                    swatches("Outline", line) { line = it }
+                    Section("Shape") {
+                        ShapePicture.KINDS.filter { !odt || it != "line" }.forEach { kind ->
+                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { insert(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null) }.padding(8.dp)) {
+                                val preview = ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 2f)
+                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                                    drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, if (kind == "line") size.height - 4f else size.height - 4f) }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
             }
         }
     }

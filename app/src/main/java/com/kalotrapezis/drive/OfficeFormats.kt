@@ -84,7 +84,8 @@ internal object PictureXml {
     /** A picture Writer can resize and re-wrap: a new one, or a file's picture — not a chart, shape or old VML drawing. */
     fun editable(img: DocImage): Boolean {
         val raw = img.raw ?: return img.bytes != null
-        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw else "<pic:pic" in raw && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
+        if (raw.startsWith("<draw:custom-shape")) return true
+        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw else ("<pic:pic" in raw || "<wps:wsp" in raw && "<wps:txbx" !in raw) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
@@ -111,7 +112,7 @@ internal object PictureXml {
         val raw = img.raw ?: return null
         val wrap = wrapOf(img) ?: PictureWrap.Square
         if (wrap == PictureWrap.InLine) return null
-        if (raw.startsWith("<draw:frame")) {
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
             val head = raw.substring(0, raw.indexOf('>'))
             fun attr(n: String) = Regex("""\s$n="([^"]*)"""").find(head)?.groupValues?.get(1)
             val from = if (attr("text:anchor-type") == "page") "page" else "paragraph"
@@ -139,7 +140,8 @@ internal object PictureXml {
     fun wrapOf(img: DocImage): PictureWrap? {
         img.wrap?.let { return it }
         val raw = img.raw ?: return PictureWrap.InLine
-        if (raw.startsWith("<draw:frame")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine else null
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine
+            else Regex("""Tetra_20_shape_\w+?_\w+?_\d+_(\w+)"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
         return when {
             "<wp:inline" in raw -> PictureWrap.InLine
             "<wp:wrapTopAndBottom" in raw -> PictureWrap.TopBottom
@@ -151,7 +153,7 @@ internal object PictureXml {
 
     fun resized(img: DocImage, widthPt: Float, heightPt: Float): DocImage {
         val raw = img.raw ?: return img.with(widthPt = widthPt, heightPt = heightPt)
-        val out = if (raw.startsWith("<draw:frame")) {
+        val out = if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
             val end = raw.indexOf('>')
             raw.substring(0, end).replace(Regex("""svg:width="[^"]*""""), "svg:width=\"${OdtWriter.fmt(widthPt)}pt\"")
                 .replace(Regex("""svg:height="[^"]*""""), "svg:height=\"${OdtWriter.fmt(heightPt)}pt\"") + raw.substring(end)
@@ -184,11 +186,52 @@ internal object PictureXml {
 
     /** ODF: the frame's anchor, and a graphic style of Writer's own saying how the text goes around it. */
     fun odt(xml: String, wrap: PictureWrap): String {
+        // A shape Writer made keeps its look: its style's name changes only in how the text goes around it.
+        if (xml.startsWith("<draw:custom-shape") && "Tetra_20_shape_" in xml) {
+            val end = xml.indexOf('>')
+            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+_)\w+"""), "$1${wrap.name}")
+                .replace(Regex("""\stext:anchor-type="[^"]*""""), "") + " text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\""
+            return head + xml.substring(end)
+        }
         val end = xml.indexOf('>')
         val head = xml.substring(0, end).replace(Regex("""\s(text:anchor-type|draw:style-name|svg:x|svg:y)="[^"]*""""), "")
         return head + " draw:style-name=\"${odtStyleName(wrap)}\" text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + xml.substring(end)
     }
     fun odtStyleName(wrap: PictureWrap) = "Tetra_20_wrap_20_${wrap.name}"
+    /** [img] wrapped as [wrap] — its XML too, so the pages show it at once (a new picture's is written on saving). */
+    fun withWrap(img: DocImage, wrap: PictureWrap, file: OfficeKind): DocImage {
+        val raw = img.raw ?: return img.with(wrap = wrap)
+        return img.with(raw = if (file == OfficeKind.Docx) docx(raw, wrap) else odt(raw, wrap), wrap = wrap)
+    }
+
+    /**
+     * Insert › Shapes (asked 2026-09-29): a new shape of [kind] (Word's preset name), [fill] (ARGB, null: none) and
+     * [line] (null: none) [lineWidth] pt wide, in line with the text — Word's wps:wsp, or LibreOffice's custom shape
+     * whose automatic style (named after its look) the writer adds.
+     */
+    fun newShape(kind: String, file: OfficeKind, fill: Int?, line: Int?, lineWidth: Float, widthPt: Float, heightPt: Float): String {
+        fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+        if (file == OfficeKind.Odt) {
+            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${PictureWrap.InLine.name}"
+            return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/></draw:custom-shape>"""
+        }
+        val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
+        val id = (System.nanoTime() % 900000 + 100000)
+        val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
+        return """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Shape $id"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="$kind"><a:avLst/></a:prstGeom>$fillXml$lineXml</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>"""
+    }
+    /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
+    fun odtShapeStyle(name: String): String? {
+        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_(\w+)""").matchEntire(name) ?: return null
+        val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[4] } ?: PictureWrap.InLine
+        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap))?.groupValues?.get(1) ?: ""
+        val fill = m.groupValues[1].takeIf { it != "none" }?.toLong(16)
+        val fillXml = if (fill == null) """draw:fill="none"""" else """draw:fill="solid" draw:fill-color="#${"%06X".format(fill and 0xFFFFFF)}"""" +
+            Math.round((fill ushr 24) * 100 / 255f).let { if (it < 100) """ draw:opacity="$it%"""" else "" }
+        val lineXml = m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="solid" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none""""
+        return """<style:style style:name="$name" style:family="graphic"><style:graphic-properties $fillXml $lineXml $base/></style:style>"""
+    }
     fun odtStyle(wrap: PictureWrap): String {
         val props = when (wrap) {
             PictureWrap.InLine -> """style:vertical-pos="top" style:vertical-rel="baseline""""
@@ -1825,6 +1868,7 @@ private object OdtWriter {
         var manifest = parts["META-INF/manifest.xml"]?.let { String(it, Charsets.UTF_8) }
         var frames = 0
         val wraps = HashSet<PictureWrap>()
+        val shapeStyles = HashSet<String>()
         fun frame(img: DocImage): String = (img.raw ?: run {
             val bytes = img.bytes ?: return@run ""
             val name = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.${img.extension}" }.first { it !in parts }
@@ -1833,6 +1877,7 @@ private object OdtWriter {
             val n = ++frames
             """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         }).let { x -> img.wrap?.let { w -> if (wraps.add(w)) auto.append(PictureXml.odtStyle(w)); PictureXml.odt(x, w) } ?: x }
+            .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } }
 
         // Comments: an annotation where one starts (its contents as the file had them, or written out), its end where it ends.
         val live = doc.liveComments.associateBy { it.id }

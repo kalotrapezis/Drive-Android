@@ -238,6 +238,31 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a shape made in Writer is written as the file's own and read back as one`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val yellow = 0x0DFFC114 // mostly see-through fill, as the keyboard's circles
+            fun shape(k: String, fill: Int?, line: Int?, wrap: PictureWrap? = null) =
+                DocImage("s$k", null, 72f, 72f, PictureXml.newShape(k, kind, fill, line, 1f, 72f, 72f), wrap = wrap)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Circle: "), DocRun(OBJECT_MARK.toString(), image = shape("ellipse", yellow, 0xFFFFC114.toInt())),
+                DocRun(" star: "), DocRun(OBJECT_MARK.toString(), image = shape("star5", 0xFF4472C4.toInt(), null)),
+                DocRun(" in front: "), DocRun(OBJECT_MARK.toString(), image = shape("rightArrow", 0xFFE53935.toInt(), 0xFF000000.toInt(), PictureWrap.InFront))))))
+            val bytes = OfficeFormats.write(doc, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("shapes.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, emptySet<String>(), back.blocking)
+            val imgs = back.paras.single().runs.mapNotNull { it.image }
+            assertEquals(kind.name, 3, imgs.size)
+            // Each drawn again as it was made.
+            val shapes = imgs.map { ShapePicture.of(it.raw) }
+            assertEquals(kind.name, listOf("ellipse", "star5", "rightArrow"), shapes.map { it?.geometry })
+            assertEquals(kind.name, listOf(yellow, 0xFF4472C4.toInt(), 0xFFE53935.toInt()), shapes.map { it?.fill })
+            assertEquals(kind.name, listOf(0xFFFFC114.toInt(), null, 0xFF000000.toInt()), shapes.map { it?.line })
+            assertEquals(kind.name, listOf(PictureWrap.InLine, PictureWrap.InLine, PictureWrap.InFront), imgs.map { PictureXml.wrapOf(it) })
+            // Written again unchanged: the same (a style not added twice).
+            assertEquals(kind.name, imgs.map { it.raw }, OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind).paras.single().runs.mapNotNull { it.image?.raw })
+        }
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

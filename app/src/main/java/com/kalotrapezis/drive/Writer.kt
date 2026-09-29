@@ -1246,6 +1246,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var headerPage by remember { mutableStateOf(false) }
     var symbolPage by remember { mutableStateOf(false) }
     var pagePage by remember { mutableStateOf(false) }
+    var shapesPage by remember { mutableStateOf(false) }
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1548,9 +1549,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
                                                 } }
+                                            } else if (ShapePicture.of(img.raw) != null) {
+                                                // A shape: drawn as the pages draw it (its outline's width in points too).
+                                                val shape = remember(img.raw) { ShapePicture.of(img.raw)!! }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
+                                                    n.save(); n.scale(k, k); shape.drawAt(n, 0f, 0f, img.widthPt, img.heightPt); n.restore()
+                                                } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
-                                            // Not a picture (a chart, a shape): a grey box that says what it is, kept in the file as it was.
-                                            if (pictureBytes(img) == null && img.table == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
+                                            if (pictureBytes(img) == null && img.table == null && ShapePicture.of(img.raw) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
                                             if (table != null && tab == WriterTab.Table) {
                                                 val from = mergeFrom?.takeIf { it.key == img.key }
@@ -1801,6 +1809,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
+                    RibbonButton("Shapes", w, enabled = loaded) { shapesPage = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                     RibbonButton("Symbol", w, enabled = loaded) { symbolPage = true }
                     RibbonButton("Date", w, enabled = loaded) { datePage = true }
@@ -2134,7 +2143,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 text = {
                     Column {
                         PictureWrap.entries.forEach { wrap ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { wrapping = false; if (wrap != now) changePicture(key, img.with(wrap = wrap)) }) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { wrapping = false; if (wrap != now) changePicture(key, PictureXml.withWrap(img, wrap, kind)) }) {
                                 RadioButton(wrap == now, null)
                                 Text(wrap.label, modifier = Modifier.padding(start = 8.dp))
                             }
@@ -2156,6 +2165,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+    }
+    if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
+        shapesPage = false
+        // An inch square (a line: two inches across); its picture tab sizes, wraps and places it after.
+        val (w, h) = if (shape == "line") 144f to 0.75f else 72f to 72f
+        val img = DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, kind, fill, line, 1f, w, h))
+        pictures[img.key] = img
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        tab = WriterTab.Picture
     }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }

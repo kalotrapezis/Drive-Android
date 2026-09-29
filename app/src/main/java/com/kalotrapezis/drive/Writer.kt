@@ -1114,6 +1114,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
     }
+    /** Borders set on paragraphs [at] (the same for each: alike and side by side, they are one box, as in Word). */
+    fun setBorders(at: Set<Int>, box: ParaBox) = change {
+        val cur = current()
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> if (i !in at || p.table != null) p else p.copy(keep = OfficeFormats.withBorders(p.keep, kind, box)) })
+        dirty = true
+        message = "Borders — they show on the pages"
+    }
+    /** Word's horizontal line: an empty paragraph with a line under it after this one, and a new paragraph to go on in. */
+    fun horizontalLine() = change {
+        val text = state.annotatedString.text
+        val rich = state.toRichTextDocument()
+        val end = WriterBridge.blockRange(text, rich, state.selection.max)?.second ?: return@change
+        state.selection = androidx.compose.ui.text.TextRange(end)
+        state.addTextAfterSelection("\n")
+        state.addTextAfterSelection("\n")
+        val cursor = state.selection.min
+        val cur = current()
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), cursor, cursor).singleOrNull()
+            ?.takeIf { state.toRichTextDocument().blocks.count { !it.isLineBreak } == cur.paras.size && it > 0 } ?: return@change
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> when (i) {
+            here - 1 -> p.copy(heading = 0, list = null, keep = OfficeFormats.withBorders(null, kind, ParaBox(bottom = Border(0.75f, 0))))
+            here -> p.copy(heading = 0, list = null, keep = OfficeFormats.withBorders(p.keep, kind, null))
+            else -> p
+        } })
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
+    }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
@@ -1313,8 +1340,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
-                                val breaks = remember(meta.paras, documentStyles) { meta.paras.indices.filter { it > 0 && meta.paras[it].table == null && documentStyles.look(meta.paras[it]).pageBreakBefore } }
-                                val starts = remember(text, breaks) { if (breaks.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
+                                // …and a paragraph's borders, as a light outline (the pages draw them as they print).
+                                val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
+                                val breaks = remember(looks) { looks.indices.filter { it > 0 && looks[it]?.pageBreakBefore == true } }
+                                val boxed = remember(looks) { looks.indices.filter { looks[it]?.box != null } }
+                                val starts = remember(text, breaks, boxed) { if (breaks.isEmpty() && boxed.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
                                     WriterBridge.paragraphStarts(text, rich).takeIf { it.size == meta.paras.size } } ?: emptyList() }
                                 if (starts.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
                                     val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
@@ -1322,6 +1352,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val y = l.getLineTop(l.getLineForOffset(o))
                                         drawLine(Color(0xFF9AA0A6), Offset(0f, y), Offset(size.width, y), 1.dp.toPx(), pathEffect = dash)
                                     } }
+                                    boxed.forEach { i ->
+                                        val box = looks[i]?.box ?: return@forEach
+                                        val a = starts.getOrNull(i)?.takeIf { it <= text.length } ?: return@forEach
+                                        val z = ((starts.getOrNull(i + 1) ?: (text.length + 1)) - 1).coerceIn(a, text.length)
+                                        val top = l.getLineTop(l.getLineForOffset(a)); val bottom = l.getLineBottom(l.getLineForOffset(z))
+                                        val c = Color(0xFF5F6368); val sw = 1.dp.toPx(); val x1 = size.width
+                                        val joinsAbove = looks.getOrNull(i - 1)?.box == box; val joinsBelow = looks.getOrNull(i + 1)?.box == box
+                                        if (box.top != null && !joinsAbove) drawLine(c, Offset(0f, top), Offset(x1, top), sw)
+                                        if (box.between != null && joinsAbove) drawLine(c, Offset(0f, top), Offset(x1, top), sw)
+                                        if (box.bottom != null && !joinsBelow) drawLine(c, Offset(0f, bottom), Offset(x1, bottom), sw)
+                                        if (box.left != null) drawLine(c, Offset(0f, top), Offset(0f, bottom), sw)
+                                        if (box.right != null) drawLine(c, Offset(x1, top), Offset(x1, bottom), sw)
+                                    }
                                 }
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
@@ -1601,6 +1644,25 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                     }
                     Divider(w)
+                    // Borders (Word's menu, for paragraphs): each side on or off, a box, none, a horizontal line.
+                    Box {
+                        var bordering by remember { mutableStateOf(false) }
+                        RibbonButton("Borders", w) { bordering = true }
+                        DropdownMenu(bordering, { bordering = false }) {
+                            val thin = Border(0.5f, 0)
+                            listOf<Pair<String, (ParaBox) -> ParaBox>>(
+                                "Bottom border" to { b -> b.copy(bottom = if (b.bottom == null) thin else null) },
+                                "Top border" to { b -> b.copy(top = if (b.top == null) thin else null) },
+                                "Left border" to { b -> b.copy(left = if (b.left == null) thin else null) },
+                                "Right border" to { b -> b.copy(right = if (b.right == null) thin else null) },
+                                "No border" to { _ -> ParaBox() },
+                                "All borders" to { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = thin) },
+                                "Outside borders" to { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = null) },
+                                "Inside horizontal border" to { b -> b.copy(between = if (b.between == null) thin else null) },
+                            ).forEach { (label, f) -> DropdownMenuItem(text = { Text(label) }, onClick = { bordering = false; chooseParagraphs { at, look -> setBorders(at, f(look.box ?: ParaBox())) } }) }
+                            DropdownMenuItem(text = { Text("Horizontal line") }, onClick = { bordering = false; horizontalLine() })
+                        }
+                    }
                     RibbonButton("More…", w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                 })
                 WriterTab.Insert -> listOf({

@@ -156,6 +156,28 @@ class WriterBridgeTest {
         assertEquals(listOf(DocRun("one "), DocRun("two", bold = true), DocRun(" three")), WriterBridge.fromEditor(changed, 11f).single().runs)
     }
 
+    @Test fun `paragraph borders are kept and read back in both kinds`() {
+        val thin = Border(0.5f, 0)
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val box = ParaBox(top = thin, left = thin, bottom = thin, right = thin)
+            val paras = listOf(DocPara(listOf(DocRun("plain"))),
+                DocPara(listOf(DocRun("boxed")), keep = OfficeFormats.withBorders(null, kind, box)),
+                DocPara(listOf(DocRun("line under")), keep = OfficeFormats.withBorders(null, kind, ParaBox(bottom = Border(0.75f, 0xC00000)))),
+                DocPara(listOf(DocRun("all")), keep = OfficeFormats.withBorders(null, kind, box.copy(between = thin))))
+            val bytes = OfficeFormats.write(OfficeDoc(paras), kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("borders.${kind.extension}").writeBytes(bytes) // for a look in LibreOffice
+            val styles = DocStyles.of(kind, bytes)
+            val looks = OfficeFormats.read(bytes, kind).paras.map { styles.look(it).box }
+            assertEquals(kind.name, null, looks[0])
+            assertEquals(kind.name, listOf(thin, thin, thin, thin), looks[1]!!.let { listOf(it.top, it.left, it.bottom, it.right) })
+            assertEquals(kind.name, Border(0.75f, 0xC00000), looks[2]!!.bottom)
+            assertEquals(kind.name, null, looks[2]!!.top)
+            assert(looks[3]!!.between != null) { kind.name }
+            // Taken off again.
+            assertEquals(kind.name, null, OfficeFormats.withBorders(OfficeFormats.read(bytes, kind).paras[1].keep, kind, null)?.let { styles.look(DocPara(emptyList(), keep = it)).box })
+        }
+    }
+
     @Test fun `dates are offered in the phone's language and in English`() {
         val forms = dateForms(java.time.LocalDateTime.of(2026, 9, 29, 15, 45), java.util.Locale.forLanguageTag("el-GR"))
         assertEquals("29/09/2026", forms[0])

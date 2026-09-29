@@ -386,6 +386,26 @@ internal object OfficeFormats {
         return k.copy(parts = parts)
     }
 
+    /** A paragraph's borders set ([box] null or empty: none), in the file's own words: Word's pBdr, ODT's fo:border-*. */
+    fun withBorders(keep: DocKeep?, kind: OfficeKind, box: ParaBox?): DocKeep? {
+        val k = keep ?: DocKeep()
+        val b = box?.takeIf { !it.isEmpty }
+        val rest = k.parts.filter { (name, xml) -> name != "pBdr" && !(name == "@" && (xml.startsWith(" fo:border") || xml.startsWith(" fo:padding") || xml.startsWith(" style:join-border"))) }
+        val set = if (b == null) emptyList() else if (kind == OfficeKind.Docx) {
+            fun side(tag: String, e: Border?, pad: Float) = e?.let { """<w:$tag w:val="single" w:sz="${Math.round(it.width * 8).coerceIn(2, 96)}" w:space="${Math.round(pad)}" w:color="${if (it.color == 0) "auto" else "%06X".format(it.color and 0xFFFFFF)}"/>""" }.orEmpty()
+            listOf("pBdr" to "<w:pBdr>" + side("top", b.top, b.padTop) + side("left", b.left, b.padLeft) + side("bottom", b.bottom, b.padBottom) +
+                side("right", b.right, b.padRight) + side("between", b.between, b.padTop) + "</w:pBdr>")
+        } else {
+            fun side(name: String, e: Border?) = e?.let { "@" to " fo:border-$name=\"${"%.2f".format(java.util.Locale.ROOT, it.width).trimEnd('0').trimEnd('.')}pt solid #${"%06X".format(it.color and 0xFFFFFF)}\"" }
+            listOfNotNull(side("top", b.top ?: b.between), side("left", b.left), side("bottom", b.bottom ?: b.between), side("right", b.right)) +
+                listOf("@" to " fo:padding-top=\"${OdtWriter.fmt(b.padTop)}pt\"", "@" to " fo:padding-bottom=\"${OdtWriter.fmt(b.padBottom)}pt\"",
+                    "@" to " fo:padding-left=\"${OdtWriter.fmt(b.padLeft)}pt\"", "@" to " fo:padding-right=\"${OdtWriter.fmt(b.padRight)}pt\"") +
+                // A line between paragraphs: LibreOffice joins two alike into one box unless told not to.
+                listOfNotNull(("@" to " style:join-border=\"false\"").takeIf { b.between != null })
+        }
+        return k.copy(parts = rest + set).takeIf { !it.isEmpty }
+    }
+
     /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
     fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
         val k = keep ?: DocKeep()

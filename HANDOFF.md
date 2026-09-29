@@ -29,6 +29,13 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
   paragraph between two breaks. The editor draws a dashed "Page break" line above such paragraphs (also the file's
   own breaks). Checked on the tablet (copies of 02 in Test-Words): pages view, saved → LibreOffice breaks at the same
   word (5 → 6 pages), XML `<w:pPr><w:pageBreakBefore/></w:pPr>`; blank page inside a heading; undone in one step.
+- **Paragraph borders**: read (docx pBdr, ODT fo:border*/padding/join-border → `ParaLook.box`), drawn on the pages
+  (`boxLines`: alike paragraphs side by side are one box, the top line where it starts, the bottom where it ends; a
+  line alone spans the text), outlined in the editor. Home › Borders (after the line spacings): Bottom/Top/Left/Right
+  (on/off), No border, All, Outside, Inside horizontal, Horizontal line. Written by `OfficeFormats.withBorders`
+  (0.5pt single, auto colour). Checked: unit test both kinds; tablet (Border test.docx) pages vs LibreOffice alike;
+  JVM-written ODT/DOCX in LibreOffice (colour, width). Not yet: style/colour choice; "No border" does not override a
+  style's own borders; headers/footers/cells do not draw paragraph borders.
 - **Change case** (Home, Aa beside the eraser): Sentence case / lowercase / UPPERCASE / Capitalise Each Word on the
   chosen letters or the word at the cursor; letter for letter, so each keeps its look; Greek UPPERCASE drops the tonos
   (keeps the dialytika), lowercase ends words in ς (unit-tested). Checked on the tablet; undoable.
@@ -37,8 +44,7 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
   in English (document text, not UI). Typed at the cursor (the editor's undo). Checked on the tablet.
 - **Sync bug seen (flagged as a separate task, not fixed here):** saving over HF test.odt on the phone reached the
   computer as a new "HF test (2).odt" beside the old one, and the tablet got only the "(2)".
-- **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: borders (bottom/top/
-  all/none/horizontal line; style and colour behind ⋯); no font name on the ribbon (space).
+- **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: border style/colour behind ⋯ (later); no font name on the ribbon (space).
   Insert: comment. Later: text box/shape/WordArt, equations, SmartArt, charts,
   forms (content controls). Then a References tab: table of contents, citations, APA bibliography.
 

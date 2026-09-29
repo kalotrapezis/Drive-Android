@@ -59,8 +59,9 @@ with string files).
 - [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
 - [x] Superscript, subscript
 - [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
-- [ ] Borders (Word/OnlyOffice's menu): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
-      line; border style and colour — behind ⋯
+- [x] Borders (Home, after line spacing): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
+      line (an empty paragraph with a line under it). Word's pBdr / ODT fo:border (+ join-border); drawn on the pages
+      (and PDF) as Word groups them, outlined in the editor — [ ] border style and colour (behind ⋯)
 - [x] Change case (Aa beside the eraser: Sentence case, lowercase, UPPERCASE, Capitalise Each Word; the chosen letters or the word at the cursor; looks kept; Greek capitals without accents, final ς)
 - [ ] Multilevel list — later
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)

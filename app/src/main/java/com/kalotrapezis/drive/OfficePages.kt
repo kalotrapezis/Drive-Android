@@ -42,7 +42,7 @@ internal data class ParaLook(
     val before: Float = 0f, val after: Float = 0f,
     val lineMultiple: Float = 1f, val lineExact: Float? = null, val lineAtLeast: Boolean = false,
     val left: Float = 0f, val right: Float = 0f, val firstLine: Float = 0f, // firstLine < 0: hanging
-    val pageBreakBefore: Boolean = false, val contextual: Boolean = false,
+    val pageBreakBefore: Boolean = false, val contextual: Boolean = false, val box: ParaBox? = null,
     val sizePt: Float? = null, val bold: Boolean? = null, val italic: Boolean? = null, val color: Int? = null, val font: String? = null,
     val tabs: List<TabStop> = emptyList(),
     val listIndented: Boolean = false, // a list item's indent is already in left/firstLine
@@ -89,7 +89,32 @@ internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boole
 internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>,
     val turn: Int = 0 /* its text read upwards (-90, Word's btLr) or downwards (90, tbRl) */,
     val text: ParaLook? = null /* the table style's look for its text here (header bold…), under the paragraphs' own */)
-internal class Border(val width: Float, val color: Int)
+internal data class Border(val width: Float, val color: Int)
+
+/** A Word border (w:top, w:bottom… in eighths of a point); none when it says so. */
+internal fun wordBorder(e: Element): Border? {
+    val v = e.attr(W, "val")
+    if (v == null || v == "nil" || v == "none") return null
+    val sz = (e.attr(W, "sz")?.toFloatOrNull() ?: 4f) / 8f
+    return Border(if (v == "double") sz * 3 else sz.coerceAtLeast(0.25f), e.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: 0)
+}
+
+/** An OpenDocument border ("0.5pt solid #000000"); none when it says so. */
+internal fun odfBorder(v: String?): Border? {
+    if (v == null || v.startsWith("none") || v.startsWith("hidden")) return null
+    val parts = v.trim().split(Regex("\\s+"))
+    val w = parts.firstNotNullOfOrNull { odfLength(it) } ?: 0.5f
+    return Border(if ("double" in parts) w else w.coerceAtLeast(0.25f), parts.firstOrNull { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) } ?: 0)
+}
+
+/**
+ * A paragraph's borders (Word's pBdr, ODT's fo:border): its four sides, the line between two paragraphs with the
+ * same borders (one box, as Word draws them), and how far each side stands from the text (pt).
+ */
+internal data class ParaBox(val top: Border? = null, val left: Border? = null, val bottom: Border? = null, val right: Border? = null,
+    val between: Border? = null, val padTop: Float = 1f, val padLeft: Float = 4f, val padBottom: Float = 1f, val padRight: Float = 4f) {
+    val isEmpty get() = top == null && left == null && bottom == null && right == null && between == null
+}
 internal data class TableCellArea(val row: Int, val cell: Int, val x: Float, val y: Float, val width: Float, val height: Float)
 
 /** The document's styles, as far as laying it out needs them: its sections, and each paragraph's look. */
@@ -253,12 +278,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     override fun tableSpec(t: DocTable): TableSpec {
         fun el(xml: String) = runCatching { OfficeFormats.parse("<x xmlns:w=\"$W\">$xml</x>".toByteArray()).documentElement }.getOrNull()
         fun tw(e: Element?, n: String = "w") = e?.attr(W, n)?.toFloatOrNull()?.div(20f)
-        fun border(e: Element): Border? {
-            val v = e.attr(W, "val")
-            if (v == null || v == "nil" || v == "none") return null
-            val sz = (e.attr(W, "sz")?.toFloatOrNull() ?: 4f) / 8f // eighths of a point
-            return Border(if (v == "double") sz * 3 else sz.coerceAtLeast(0.25f), e.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: 0)
-        }
+        fun border(e: Element) = wordBorder(e)
         fun edge(name: String) = when (name) { "start" -> "left"; "end" -> "right"; else -> name }
         val tblPr = el(t.props)?.kid(W, "tblPr")
         // The table style (and the styles it is based on), then the table's own settings.
@@ -406,6 +426,20 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 l.copy(tabs = t.sortedBy { it.pos })
             }
             "pageBreakBefore" -> l.copy(pageBreakBefore = e.attr(W, "val").let { it == null || it == "1" || it == "true" })
+            "pBdr" -> {
+                var b = ParaBox()
+                for (k in e.kids()) {
+                    val space = k.attr(W, "space")?.toFloatOrNull()
+                    when (k.localName) {
+                        "top" -> b = b.copy(top = wordBorder(k), padTop = space ?: b.padTop)
+                        "left", "start" -> b = b.copy(left = wordBorder(k), padLeft = space ?: b.padLeft)
+                        "bottom" -> b = b.copy(bottom = wordBorder(k), padBottom = space ?: b.padBottom)
+                        "right", "end" -> b = b.copy(right = wordBorder(k), padRight = space ?: b.padRight)
+                        "between" -> b = b.copy(between = wordBorder(k))
+                    }
+                }
+                l.copy(box = b.takeIf { !it.isEmpty })
+            }
             "jc" -> l.copy(align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute" -> DocAlign.Justify; else -> DocAlign.Start })
             "contextualSpacing" -> l.copy(contextual = e.attr(W, "val").let { it == null || it == "1" || it == "true" })
             else -> l
@@ -526,12 +560,7 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         }
         // Relative widths (negative here) share the table's width.
         if (cols.any { it < 0f }) { val rel = cols.filter { it < 0f }.sumOf { -it.toDouble() }.toFloat(); val w = width ?: section.page.textWidth; cols.replaceAll { if (it < 0f) -it / rel * w else it } }
-        fun border(v: String?): Border? {
-            if (v == null || v.startsWith("none") || v.startsWith("hidden")) return null
-            val parts = v.trim().split(Regex("\\s+"))
-            val w = parts.firstNotNullOfOrNull { odfLength(it) } ?: 0.5f
-            return Border(if ("double" in parts) w else w.coerceAtLeast(0.25f), parts.firstOrNull { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) } ?: 0)
-        }
+        fun border(v: String?) = odfBorder(v)
         val gridCount = cols.size.coerceAtLeast(1)
         val vertical = IntArray(gridCount + 64) // rows still covered below a cell merged down, per grid column
         val verticalSpan = IntArray(gridCount + 64)
@@ -583,6 +612,17 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             else odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = false) } ?: l
         "style:line-height-at-least" -> odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = true) } ?: l
         "fo:break-before" -> l.copy(pageBreakBefore = v == "page")
+        "fo:border" -> odfBorder(v).let { b -> l.copy(box = (l.box ?: ParaBox()).copy(top = b, left = b, bottom = b, right = b).takeIf { !it.isEmpty }) }
+        "fo:border-top" -> l.copy(box = (l.box ?: ParaBox()).copy(top = odfBorder(v)).takeIf { !it.isEmpty })
+        "fo:border-bottom" -> l.copy(box = (l.box ?: ParaBox()).copy(bottom = odfBorder(v)).takeIf { !it.isEmpty })
+        "fo:border-left" -> l.copy(box = (l.box ?: ParaBox()).copy(left = odfBorder(v)).takeIf { !it.isEmpty })
+        "fo:border-right" -> l.copy(box = (l.box ?: ParaBox()).copy(right = odfBorder(v)).takeIf { !it.isEmpty })
+        "style:join-border" -> if (v == "false") l.box?.let { l.copy(box = it.copy(between = it.top ?: it.bottom)) } ?: l else l
+        "fo:padding" -> odfLength(v)?.let { d -> l.box?.let { l.copy(box = it.copy(padTop = d, padLeft = d, padBottom = d, padRight = d)) } } ?: l
+        "fo:padding-top" -> odfLength(v)?.let { d -> l.box?.let { l.copy(box = it.copy(padTop = d)) } } ?: l
+        "fo:padding-bottom" -> odfLength(v)?.let { d -> l.box?.let { l.copy(box = it.copy(padBottom = d)) } } ?: l
+        "fo:padding-left" -> odfLength(v)?.let { d -> l.box?.let { l.copy(box = it.copy(padLeft = d)) } } ?: l
+        "fo:padding-right" -> odfLength(v)?.let { d -> l.box?.let { l.copy(box = it.copy(padRight = d)) } } ?: l
         "fo:text-align" -> l.copy(align = when (v) { "center" -> DocAlign.Center; "end", "right" -> DocAlign.End; "justify" -> DocAlign.Justify; else -> DocAlign.Start })
         "fo:font-family" -> l.copy(font = v.trim('\'', '"'))
         "style:contextual-spacing", "fo:contextual-spacing" -> l.copy(contextual = v == "true")
@@ -757,6 +797,9 @@ internal object OfficePages {
         fun place(b: Block) { pieces += b.pieces; boxes += b.boxes; lines += b.lines }
         val counters = IntArray(9)
         var prevLook: ParaLook? = null; var prevStyle: String? = null
+        // Where the paragraph before ended (its text, before the space after it), on which page: a bordered box goes on
+        // down through the space between two paragraphs with the same borders.
+        var prevEnd = 0f; var prevEndPage = -1
         doc.paras.forEachIndexed { i, p ->
             // A new section: a new page (unless it goes on on the same one) of its own size, numbered as it says.
             sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
@@ -778,7 +821,7 @@ internal object OfficePages {
                     }
                     place(row.moved(page.left, y)); y += row.height
                 }
-                counters.fill(0); prevLook = null; prevStyle = null
+                counters.fill(0); prevLook = null; prevStyle = null; prevEndPage = -1
                 return@forEachIndexed
             }
             val list = p.list
@@ -810,6 +853,9 @@ internal object OfficePages {
                 var last = line
                 while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limit) last++
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
+                look.box?.let { box -> boxLines(box, look, page, y, y + layout.bottomPt(last) - top, line == 0, last == layout.lineCount - 1,
+                    box == prevLook?.box && prevEndPage == pages.size, box == doc.paras.getOrNull(i + 1)?.takeIf { it.table == null }?.let { styles.look(it).box },
+                    prevEnd, lines) }
                 // Floating pictures, placed where the paragraph starts: from the page, the margin, or the paragraph.
                 if (line == 0) for ((img, place) in floating) {
                     val f = floatAt(img, place, y, page, pictureBytes)
@@ -823,11 +869,33 @@ internal object OfficePages {
             }
             // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
             y += lastExtra
+            prevEnd = y; prevEndPage = pages.size
             if (!same || i + 1 >= doc.paras.size) y += look.after
             prevLook = look; prevStyle = style
         }
         pages += LaidPage(page, pieces, floats, section, number, firstOfSection, boxes, lines)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
+    }
+
+    /**
+     * A paragraph's borders around its lines from [y0] to [y1] (one piece of it on a page). With the paragraph before
+     * in the same box ([joinsAbove]) the sides go on up to where it ended and the line between them is drawn; the top
+     * line only where the box starts, the bottom one where it ends.
+     */
+    private fun boxLines(box: ParaBox, look: ParaLook, page: DocPage, y0: Float, y1: Float, first: Boolean, last: Boolean,
+        joinsAbove: Boolean, joinsBelow: Boolean, prevEnd: Float, out: MutableList<LaidPage.Line>) {
+        // The box stands out from the text by its sides' spacing, only where it has a side (a line under alone spans the text).
+        val x0 = page.left + minOf(look.left, look.left + look.firstLine) - (if (box.left != null) box.padLeft else 0f)
+        val x1 = page.left + page.textWidth - look.right + (if (box.right != null) box.padRight else 0f)
+        fun line(b: Border?, xa: Float, ya: Float, xb: Float, yb: Float) { if (b != null) out += LaidPage.Line(xa, ya, xb, yb, b.width, b.color) }
+        val top = when {
+            !first -> y0
+            joinsAbove -> { line(box.between, x0, y0 - box.padTop, x1, y0 - box.padTop); prevEnd }
+            else -> (y0 - box.padTop).also { line(box.top, x0, it, x1, it) }
+        }
+        val bottom = if (last && !joinsBelow) (y1 + box.padBottom).also { line(box.bottom, x0, it, x1, it) } else y1
+        line(box.left, x0, top, x0, bottom)
+        line(box.right, x1, top, x1, bottom)
     }
 
     /**

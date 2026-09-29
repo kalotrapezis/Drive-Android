@@ -5,7 +5,8 @@ import kotlin.math.roundToInt
 /**
  * The document's header and footer as Writer sets them (asked 2026-09-27, "header/footer/page numbers"): a line of
  * text each, where it stands, and the page number — in the header or the footer, left, centre or right, as "1",
- * "Page 1 of 3", "Σελίδα 1 από 3" or "1 / 3" — and whether the first page (a title page) has none.
+ * "Page 1 of 3" or "1 / 3" — and whether the first page (a title page) has none. The UI is English only (the user,
+ * 29 Sep: languages come later with string files); a file already saying "Σελίδα 1 από 3" keeps its own words.
  */
 internal data class HeaderFooter(
     val header: String = "", val headerAlign: DocAlign = DocAlign.Start,
@@ -17,7 +18,7 @@ internal data class HeaderFooter(
 
     companion object {
         /** How the page number reads: # is the page, N the pages. */
-        val FORMATS = listOf("#", "Page # of N", "Σελίδα # από N", "# / N")
+        val FORMATS = listOf("#", "Page # of N", "# / N")
 
         /** What a document's header and footer say now, as far as a line of text each tells it. */
         fun of(section: DocSection): HeaderFooter {
@@ -43,9 +44,9 @@ internal data class HeaderFooter(
             fun text(s: String) = s.replace(Regex("""\s*(Page|Σελίδα)?\s*${PAGE_FIELD}(\s*(of|από|/)\s*${PAGES_FIELD})?\s*"""), " ").trim()
             val format = when {
                 PAGE_FIELD !in withNumber -> "#"
-                Regex("""Σελίδα\s*${PAGE_FIELD}""").containsMatchIn(withNumber) -> FORMATS[2]
+                Regex("""Σελίδα\s*${PAGE_FIELD}""").containsMatchIn(withNumber) -> "Σελίδα # από N"
                 Regex("""Page\s*${PAGE_FIELD}""").containsMatchIn(withNumber) -> FORMATS[1]
-                Regex("""${PAGE_FIELD}\s*/\s*${PAGES_FIELD}""").containsMatchIn(withNumber) -> FORMATS[3]
+                Regex("""${PAGE_FIELD}\s*/\s*${PAGES_FIELD}""").containsMatchIn(withNumber) -> FORMATS[2]
                 else -> "#"
             }
             return HeaderFooter(text(h), if (text(h).isEmpty()) DocAlign.Start else align(section.headers["default"]),

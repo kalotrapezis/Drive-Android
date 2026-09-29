@@ -1,3 +1,17 @@
+# 29 September, afternoon — phone check; UI English only
+
+State: `writer-library`; all unit tests pass; the build is on the **phone** (208c8192) and the tablet (from noon).
+
+- **Phone check** (HF test.odt, a copy of Πάτερ Ημών Άσκηση.odt in Test-Words): opens clean in the editor; Insert ›
+  Header & footer on phone size works; header right + page number bottom-centre shown on the pages at once; saved;
+  LibreOffice shows both on all 3 pages; reopened, the dialog reads them back. That is also the ODT-through-the-UI
+  check the noon entry left open.
+- **UI is English only** (the user: languages come later with string files): the "Σελίδα 1 από 3" choice is gone.
+  A file that already says "Σελίδα 1 από 3" keeps its own words (read, not offered).
+- Next (user's list): undo for style/spacing changes, comments, table of contents, APA bibliography.
+
+---
+
 # 29 September, noon — header, footer and page numbers; a false "changed"; closing here
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37) and emulator,

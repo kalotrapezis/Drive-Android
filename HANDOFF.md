@@ -5,9 +5,19 @@ the **phone** (208c8192) and the **tablet** (971f6b37). The computer runs the in
 (`Drive/bidirectional-sync`, e42b506; the user installed the .deb). The phone-side sync fix is on both Android
 branches (`writer-library` and `bidirectional-sync`).
 
-**Next:** Insert › Comment — the last of Home and Insert (read the file's own comments and keep them on save instead of
-"copy-only"; mark the commented text; tap to read/delete; add one on the chosen text; Word and ODT; replies/resolved
-kept raw). Then the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
+**Comments (evening, done):** `DocRun.comments` (ids) + `OfficeDoc.comments` (`DocComment`: author, date, text, the
+file's own XML kept raw so Word's replies/resolved stay). Read: docx commentRangeStart/End + comments.xml; ODT
+office:annotation … annotation-end (`CommentedRuns` tags runs while a range is open). Written: ranges around the runs,
+one stretch per comment, ending across paragraphs by look-ahead (`nextFirst`); comments.xml rewritten (commentsExtended/
+Ids entries of deleted comments removed); ODT annotations with dc: declared. Through editing they ride `carryFonts`
+(letters typed inside join, all its letters deleted = gone). A comment on a point (no range) still makes the file
+copy-only. UI: tinted words; tablet — a pane of cards beside the page at their text's height (page shifted/zoomed to
+fit, View › Comments hides it); phone — View › Comments opens a right sidebar, a bar above the ribbon shows the comment
+at the cursor; Insert › Comment adds (name remembered in prefs "writer"/"author"). Checked: unit test both kinds +
+05_Review_and_Forms round trip; LibreOffice reads both comments (author/date/initials) from the tablet's saved copy;
+tablet pane and emulator sidebar seen. Not yet: reply/resolve, comments on the pages view, the phone itself.
+
+**Next:** the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
 bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
 (the user asked — it helps remember placement).
 

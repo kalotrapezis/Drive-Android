@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -591,16 +592,65 @@ internal fun NewCommentDialog(name: String, dismiss: () -> Unit, add: (String, S
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
-/** A comment read: who, when, what; Delete takes it off (its words stay). */
+/** A comment's date as the phone says dates, or null. */
+internal fun commentDate(c: DocComment): String? = c.date?.let { d -> runCatching { java.time.OffsetDateTime.parse(if (d.endsWith("Z") || d.contains('+')) d else d + "Z") }.getOrNull()
+    ?.atZoneSameInstant(java.time.ZoneId.systemDefault())?.format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)) }
+
+/** One comment as a card: who, when, what; tapping it goes to its words; Delete takes it off (the words stay). */
 @Composable
-internal fun CommentDialog(c: DocComment, dismiss: () -> Unit, delete: () -> Unit) {
-    val date = c.date?.let { d -> runCatching { java.time.OffsetDateTime.parse(if (d.endsWith("Z") || d.contains('+')) d else d + "Z") }.getOrNull()
-        ?.atZoneSameInstant(java.time.ZoneId.systemDefault())?.format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(c.author.ifBlank { "Comment" }) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            date?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Text(c.text, style = MaterialTheme.typography.bodyLarge)
-        } },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Close") } },
-        dismissButton = { TextButton(onClick = delete) { Text("Delete") } })
+internal fun CommentCard(c: DocComment, here: Boolean, open: () -> Unit, delete: () -> Unit, modifier: Modifier = Modifier) = Surface(
+    color = Color.White, contentColor = Color(0xFF202124), shape = RoundedCornerShape(10.dp),
+    border = androidx.compose.foundation.BorderStroke(if (here) 2.dp else 1.dp, if (here) Color(0xFFFFB300) else Color(0xFFDADCE0)),
+    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = open)) {
+    Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFFFFB300)), contentAlignment = Alignment.Center) {
+                Text(c.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Text(c.author.ifBlank { "Comment" }, style = MaterialTheme.typography.labelLarge)
+                commentDate(c)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368)) }
+            }
+        }
+        Text(c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp, end = 8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = delete) { Text("Delete", color = Color(0xFF1A73E8)) } }
+    }
+}
+
+/**
+ * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only
+ * as far as the one above needs.
+ */
+@Composable
+internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, open: (DocComment) -> Unit, delete: (DocComment) -> Unit) {
+    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
+    val tops = items.map { with(androidx.compose.ui.platform.LocalDensity.current) { it.second.roundToPx() } }
+    androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, { open(c) }, { delete(c) }) } }, modifier = modifier) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
+        var bottom = 0
+        val ys = placeables.mapIndexed { i, p -> maxOf(tops[i], bottom).also { bottom = it + p.height + gap } }
+        layout(constraints.maxWidth, bottom) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
+    }
+}
+
+/** A phone's comments: a sidebar over the page, every comment in the order of its words. */
+@Composable
+internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismiss: () -> Unit, open: (DocComment) -> Unit, delete: (DocComment) -> Unit) {
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().clickable(interactionSource = null, indication = null, onClick = dismiss)) {
+            Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.86f).clickable(interactionSource = null, indication = null) {}) {
+                Column(Modifier.systemBarsPadding().padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Comments", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = dismiss) { Text("Close") }
+                    }
+                    if (comments.isEmpty()) Text("No comments", modifier = Modifier.padding(top = 12.dp))
+                    Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        comments.forEach { c -> CommentCard(c, c == here, { open(c) }, { delete(c) }) }
+                    }
+                }
+            }
+        }
+    }
 }

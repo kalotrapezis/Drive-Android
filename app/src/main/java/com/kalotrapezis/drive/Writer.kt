@@ -157,6 +157,8 @@ private const val MAX_PICTURE_SP = 300f
 private const val SCRIPT_SIZE = 0.7f
 /** Writer's own changes kept for undo; each is the whole document, so not without end. */
 private const val UNDO_STEPS = 50
+/** How wide a tablet's comments pane is. */
+private val COMMENT_PANE = 260.dp
 
 /** The document as it was before one of Writer's own changes, for undo. */
 private class WriterSnapshot(val doc: OfficeDoc, val original: ByteArray?, val styles: DocStyles,
@@ -755,8 +757,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // A tablet edits on the page itself (asked 2026-09-29, as on a desktop): the page's width and margins at the
     // editor's text size, centred, the ruler above. A phone (or a page too wide) keeps the text to the screen's width.
     val sheet = documentStyles.page
-    val perPt = with(LocalDensity.current) { (BASE_SP * zoom / 100f / meta.basePt).sp.toDp() }
     val screen = LocalConfiguration.current.screenWidthDp.dp
+    // A tablet shows a document's comments in a pane beside the page, as Word does (asked 2026-09-29): the page made
+    // smaller when both would not fit.
+    val tablet = screen >= 700.dp
+    var panelHidden by remember { mutableStateOf(false) }
+    val paneOn = tablet && meta.comments.isNotEmpty() && !panelHidden
+    val perPt100 = with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }
+    val shownZoom = if (!paneOn) zoom else minOf(zoom, ((screen - COMMENT_PANE - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(50)
+    val perPt = with(LocalDensity.current) { (BASE_SP * shownZoom / 100f / meta.basePt).sp.toDp() }
     val onPage = screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
     WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
     // Else the page's text is the screen less its margins (10 + 22 dp a side, below).
@@ -1183,7 +1192,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     } }
     val hereComment by remember { derivedStateOf { state.selection.min.let { at -> commentsShown.firstOrNull { (_, r) -> at in r.first..r.last + 1 }?.first } } }
-    var commentOpen by remember { mutableStateOf<DocComment?>(null) }
+    var commentsOpen by remember { mutableStateOf(false) } // the phone's sidebar
+    var editorLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var commenting by remember { mutableStateOf(false) }
     /** Insert › Comment: on the chosen letters, or the word at the cursor. */
     fun addComment(author: String, text: String) = change {
@@ -1370,13 +1380,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             Column(Modifier.weight(1f).fillMaxWidth()) {
             val margins = if (onPage) androidx.compose.foundation.layout.PaddingValues(start = sheet.left * perPt, end = sheet.right * perPt, top = sheet.top * perPt, bottom = 180.dp)
                 else androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)
+            // With the comments' pane, page and pane are centred together.
+            val shift = if (paneOn && onPage) (COMMENT_PANE + 12.dp) / 2 else 0.dp
             if (onPage && loaded) BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val x = (maxWidth - sheet.width * perPt) / 2
+                val x = (maxWidth - sheet.width * perPt) / 2 - shift
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                if (paneOn && onPage && loaded) {
+                    val density = LocalDensity.current
+                    val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
+                    CommentPane(first.entries.sortedBy { it.value }.map { (c, at) ->
+                        c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at)) } ?: 0f).toDp() })
+                    }, hereComment, Modifier.align(Alignment.TopCenter).offset(x = sheet.width * perPt / 2 - shift + 12.dp + COMMENT_PANE / 2).width(COMMENT_PANE),
+                        open = { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+                }
                 Surface(color = Color.White, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
-                    modifier = (if (onPage) Modifier.align(Alignment.TopCenter).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
+                    modifier = (if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
@@ -1387,8 +1407,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
                             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
                                 if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
-                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * zoom / 100).sp),
-                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it },
+                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp),
+                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
@@ -1582,8 +1602,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             // The comment the cursor is in: who and what, a tap opens it.
-            hereComment?.let { c ->
-                Row(Modifier.fillMaxWidth().clickable { commentOpen = c }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            hereComment?.takeIf { !paneOn }?.let { c ->
+                Row(Modifier.fillMaxWidth().clickable { commentsOpen = true }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFFFB300)))
                     Text((if (c.author.isNotBlank()) c.author + ": " else "") + c.text.replace('\n', ' '), color = w, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
@@ -1754,7 +1774,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
-                    RibbonButton("Comment", w, enabled = loaded) { commenting = true }
+                    RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                     RibbonButton("Symbol", w, enabled = loaded) { symbolPage = true }
                     RibbonButton("Date", w, enabled = loaded) { datePage = true }
                 }, {
@@ -1838,6 +1858,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     })
                 }
                 WriterTab.View -> listOf({
+                    // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.
+                    RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
+                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
+                    }
+                    Divider(w)
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
                     Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
@@ -2073,7 +2098,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
         addComment(author, text)
     }
-    commentOpen?.let { c -> CommentDialog(c, { commentOpen = null }) { commentOpen = null; deleteComment(c.id) } }
+    if (commentsOpen) {
+        val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
+        CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
+            open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+    }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
     if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }

@@ -109,7 +109,7 @@ one pass once the tabs' features are done.
      style:wrap / style:run-through on its graphic style, fo:clip for crop.
 - [x] Page break, blank page (Insert: split at the cursor, the rest starts a page — Word's pageBreakBefore / ODT fo:break-before; a dashed "Page break" line in the editor; Backspace at its start removes it)
 - [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) — [ ] richer headers (several lines, pictures), odd/even
-- [ ] Comment (add one at the selection; reading, replying and deleting: Review)
+- [x] Comment (Insert: on the chosen words or the word at the cursor, your name remembered); comments read and kept in Word and ODT, tinted in the editor, following typing; tablet: cards in a pane beside the page (as Word), phone: View › Comments sidebar + a bar above the ribbon for the one at the cursor; delete, undo — [ ] reply, resolve (Review tab); show them on the pages view
 - [x] Symbol (Ω: punctuation, money, signs, maths, arrows), date and time (today in the phone's language and in English, numeric and ISO; typed at the cursor)
 - [ ] Later (they float over the text, which the editor cannot do yet): shapes, text box, WordArt; equations (√x,
       kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,

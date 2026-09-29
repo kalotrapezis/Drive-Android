@@ -522,3 +522,57 @@ internal fun transformedPicture(img: DocImage, bytes: ByteArray, turn: Int, flip
     val (w, h) = if (turn != 0) img.heightPt to img.widthPt else img.widthPt to img.heightPt
     return DocImage(img.key, null, w, h, null, encoded, if (png) "png" else "jpg", PictureXml.wrapOf(img))
 }
+
+/** Insert › Symbol (Word's Ω): what a phone keyboard lacks, a tap puts it at the cursor. */
+private val SYMBOLS = listOf(
+    "Punctuation" to "«»“”‘’„…–—•·¶§†‡‰′″",
+    "Money" to "€$£¥¢₿",
+    "Signs" to "©®™°№℮✓✗★☆",
+    "Maths" to "±×÷≠≈≤≥∞√∑∏∫∂∆πµΩ∈∉∩∪⊂⊃∅∀∃¬∧∨½¼¾⅓²³¹",
+    "Arrows" to "←→↑↓↔⇐⇒⇔↵",
+)
+
+@Composable
+internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Symbol", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    SYMBOLS.forEach { (title, chars) -> Section(title) {
+                        chars.codePoints().toArray().forEach { c -> val s = String(Character.toChars(c))
+                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { insert(s) },
+                                contentAlignment = Alignment.Center) { Text(s, style = MaterialTheme.typography.titleLarge) }
+                        }
+                    } }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+            }
+        }
+    }
+}
+
+/**
+ * Insert › Date and time: today as it will stand in the text. The long forms are the document's words, not the app's,
+ * so they come in the phone's language, and in English too (APA papers are often written in English).
+ */
+internal fun dateForms(now: java.time.LocalDateTime = java.time.LocalDateTime.now(), locale: java.util.Locale = java.util.Locale.getDefault()): List<String> {
+    fun f(p: String, l: java.util.Locale = locale) = now.format(java.time.format.DateTimeFormatter.ofPattern(p, l))
+    val long = listOf(locale, java.util.Locale.UK).distinctBy { it.language }.flatMap { l ->
+        listOf(f("d MMMM yyyy", l), now.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).withLocale(l))) }
+    return (listOf(f("dd/MM/yyyy"), f("yyyy-MM-dd")) + long + listOf(f("HH:mm"), f("dd/MM/yyyy HH:mm"))).distinct()
+}
+
+@Composable
+internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
+    val forms = remember { dateForms() }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Date and time", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.padding(vertical = 12.dp)) { Section("Put in the text") { forms.forEach { s -> Choice(s, false) { insert(s) } } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Cancel") } }
+            }
+        }
+    }
+}

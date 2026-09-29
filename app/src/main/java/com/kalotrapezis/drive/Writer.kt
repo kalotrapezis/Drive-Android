@@ -1084,6 +1084,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var stylesPage by remember { mutableStateOf(false) }
     var editingStyle by remember { mutableStateOf<StyleEntry?>(null) }
     var headerPage by remember { mutableStateOf(false) }
+    var symbolPage by remember { mutableStateOf(false) }
+    var datePage by remember { mutableStateOf(false) }
+    /** Symbol or date typed at the cursor, over what is chosen (as typing; the editor's own undo). */
+    fun typeIn(s: String) { if (!state.selection.collapsed) state.removeSelectedText(); state.addTextAfterSelection(s) }
     /** The document's header, footer and page numbers set (Word), into the file as it will be written; shown on the pages. */
     fun setHeaderFooter(hf: HeaderFooter) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1550,6 +1554,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
+                    RibbonButton("Symbol", w, enabled = loaded) { symbolPage = true }
+                    RibbonButton("Date", w, enabled = loaded) { datePage = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).
                     RibbonButton("Header & footer", w, enabled = loaded) { headerPage = true }
@@ -1861,6 +1867,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
+    if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
     if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }
     if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }, { editingStyle = it }) { stylesPage = false; applyStyle(it) }
     editingStyle?.let { entry ->

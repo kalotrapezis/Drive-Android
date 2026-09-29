@@ -29,11 +29,14 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
   paragraph between two breaks. The editor draws a dashed "Page break" line above such paragraphs (also the file's
   own breaks). Checked on the tablet (copies of 02 in Test-Words): pages view, saved → LibreOffice breaks at the same
   word (5 → 6 pages), XML `<w:pPr><w:pageBreakBefore/></w:pPr>`; blank page inside a heading; undone in one step.
+- **Symbol and Date** (Insert): a grid of symbols a phone keyboard lacks; today as 29/09/2026, 2026-09-29,
+  29 Σεπτεμβρίου 2026, Τρίτη 29 Σεπτεμβρίου 2026, 29 September 2026…, time — the long forms in the phone's language and
+  in English (document text, not UI). Typed at the cursor (the editor's undo). Checked on the tablet.
 - **Sync bug seen (flagged as a separate task, not fixed here):** saving over HF test.odt on the phone reached the
   computer as a new "HF test (2).odt" beside the old one, and the tablet got only the "(2)".
 - **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: borders (bottom/top/
   all/none/horizontal line; style and colour behind ⋯), change case behind ⋯; no font name on the ribbon (space).
-  Insert: comment, symbol, date. Later: text box/shape/WordArt, equations, SmartArt, charts,
+  Insert: comment. Later: text box/shape/WordArt, equations, SmartArt, charts,
   forms (content controls). Then a References tab: table of contents, citations, APA bibliography.
 
 ---

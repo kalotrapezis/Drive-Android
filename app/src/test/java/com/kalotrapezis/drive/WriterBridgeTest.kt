@@ -137,6 +137,14 @@ class WriterBridgeTest {
         assertEquals(listOf(0, text.indexOf("two")), WriterBridge.paragraphStarts(text, state.toRichTextDocument()))
     }
 
+    @Test fun `dates are offered in the phone's language and in English`() {
+        val forms = dateForms(java.time.LocalDateTime.of(2026, 9, 29, 15, 45), java.util.Locale.forLanguageTag("el-GR"))
+        assertEquals("29/09/2026", forms[0])
+        assert("29 Σεπτεμβρίου 2026" in forms) { forms.toString() }
+        assert("29 September 2026" in forms) { forms.toString() }
+        assert("15:45" in forms)
+    }
+
     @Test fun `a paragraph style's look shows in the editor and never comes back as the letters' own`() {
         val title = DocKeep(style = "Title")
         val styles = object : DocStyles() {

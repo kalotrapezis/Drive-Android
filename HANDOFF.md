@@ -1,6 +1,27 @@
-# 29 September, afternoon — phone check; UI English only
+# 29 September, afternoon and evening — Home and Insert nearly done; the sync "(2)" bug fixed; Beta 3 desktop
 
-State: `writer-library`; all unit tests pass; the build is on the **phone** (208c8192) and the tablet (from noon).
+State: `writer-library`, all committed; all unit tests pass (Android and the desktop's 86). Today's debug build is on
+the **phone** (208c8192) and the **tablet** (971f6b37). The computer runs the installed **desktop 0.3.0-beta.3**
+(`Drive/bidirectional-sync`, e42b506; the user installed the .deb). The phone-side sync fix is on both Android
+branches (`writer-library` and `bidirectional-sync`).
+
+**Next:** Insert › Comment — the last of Home and Insert (read the file's own comments and keep them on save instead of
+"copy-only"; mark the commented text; tap to read/delete; add one on the chosen text; Word and ODT; replies/resolved
+kept raw). Then the tabs in the agreed order (OFFICE_FEATURES.md top): Layout, References (TOC, citations, APA
+bibliography), Draw (a drawing box first), Design. **When the tabs are done: an icon for every ribbon button**
+(the user asked — it helps remember placement).
+
+The user's Test-Words folder has many test copies (HF test (2)/(3)/(4).odt, Sync edit test*.txt, Break/Border/Undo
+test…): **leave them be** (the user, 29 Sep: "not the problem").
+
+**Sync: an edit replaces, only a real conflict keeps both** (SYNC_PLAN.md 6ak, both repos). Found today: a Writer save
+on the phone reached the computer as "HF test (2).odt", then "(3)", "(4)" on every sync, and the tablet got only part
+of the folder. Now: changed on one side since both last agreed → it replaces the other side's copy, the old version
+kept in `Files history/` in each app's own data; changed on both → both kept, once; a copy a device keeps under another
+name still reaches it; the computer remembers per device (`self:<device>`), including what it offered and received.
+Writer stamps the save time on the file. Checked both ways with the tablet and the phone (md5s compared; history shows
+"updated"); a second sync moves nothing. How to run the desktop from source against the real library: memory
+`desktop-test-run`.
 
 - **Phone check** (HF test.odt, a copy of Πάτερ Ημών Άσκηση.odt in Test-Words): opens clean in the editor; Insert ›
   Header & footer on phone size works; header right + page number bottom-centre shown on the pages at once; saved;
@@ -42,8 +63,6 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
 - **Symbol and Date** (Insert): a grid of symbols a phone keyboard lacks; today as 29/09/2026, 2026-09-29,
   29 Σεπτεμβρίου 2026, Τρίτη 29 Σεπτεμβρίου 2026, 29 September 2026…, time — the long forms in the phone's language and
   in English (document text, not UI). Typed at the cursor (the editor's undo). Checked on the tablet.
-- **Sync bug seen (flagged as a separate task, not fixed here):** saving over HF test.odt on the phone reached the
-  computer as a new "HF test (2).odt" beside the old one, and the tablet got only the "(2)".
 - **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: border style/colour behind ⋯ (later); no font name on the ribbon (space).
   Insert: comment. Later: text box/shape/WordArt, equations, SmartArt, charts,
   forms (content controls). Then a References tab: table of contents, citations, APA bibliography.

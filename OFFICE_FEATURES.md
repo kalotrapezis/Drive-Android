@@ -31,6 +31,9 @@ Layout, References, Draw, Design; Review and View after. Word's "Format" is not 
 picture/shape/table is selected (Tetra's Picture and Table tabs are that). UI text English only (languages later,
 with string files).
 
+**After the tabs (asked 2026-09-29):** an icon for every ribbon button (they help remember where each one is) —
+one pass once the tabs' features are done.
+
 ### Top bar
 - [x] Back, name (• unsaved), Undo, Redo, Save
 - [x] Phone: hides when scrolling down the document, back when scrolling up (as Chrome/Docs); the ribbon stays while

@@ -117,6 +117,26 @@ class WriterBridgeTest {
         assertEquals(setOf(1), WriterBridge.paragraphsAt(text, state.toRichTextDocument(), text.indexOf("kept"), text.indexOf("kept")))
     }
 
+    @Test fun `a page break is kept and read back in both kinds, and a new line in the editor splits the paragraph`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val paras = listOf(DocPara(listOf(DocRun("before"))), DocPara(listOf(DocRun("after")), keep = OfficeFormats.withPageBreak(null, kind, true)))
+            val bytes = OfficeFormats.write(OfficeDoc(paras), kind)
+            val back = OfficeFormats.read(bytes, kind)
+            val styles = DocStyles.of(kind, bytes)
+            assertEquals(kind.name, listOf(false, true), back.paras.map { styles.look(it).pageBreakBefore })
+            // Taken out again.
+            val off = back.paras[1].copy(keep = OfficeFormats.withPageBreak(back.paras[1].keep, kind, false))
+            assertEquals(kind.name, false, styles.look(off).pageBreakBefore)
+        }
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("onetwo")))))))
+        state.selection = androidx.compose.ui.text.TextRange(3)
+        state.addTextAfterSelection("\n")
+        assertEquals(listOf("one", "two"), state.toRichTextDocument().blocks.map { it.text })
+        val text = state.annotatedString.text
+        assertEquals(listOf(0, text.indexOf("two")), WriterBridge.paragraphStarts(text, state.toRichTextDocument()))
+    }
+
     @Test fun `a paragraph style's look shows in the editor and never comes back as the letters' own`() {
         val title = DocKeep(style = "Title")
         val styles = object : DocStyles() {

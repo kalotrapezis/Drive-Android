@@ -416,6 +416,12 @@ internal object WriterBridge {
         blockSpans(text, rich) { k, from, to -> if (found == null && at in from..to) found = k }
         return found
     }
+    /** Where each paragraph starts in the editor's text (a line after a break is still its paragraph). */
+    fun paragraphStarts(text: String, rich: RichTextDocument): List<Int> {
+        val out = ArrayList<Int>()
+        blockSpans(text, rich) { k, from, _ -> if (!rich.blocks[k].isLineBreak) out += from }
+        return out
+    }
     /** Where in the editor's text the block the text at [at] is in stands. */
     fun blockRange(text: String, rich: RichTextDocument, at: Int): Pair<Int, Int>? {
         var found: Pair<Int, Int>? = null
@@ -1032,6 +1038,38 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel) }
     }
+    /**
+     * Insert › Page break (Word's Ctrl+Enter): the paragraph is split at the cursor and the part after it starts a page;
+     * at a paragraph's start, that paragraph does. [blank]: an empty page between (a break before an empty paragraph
+     * and before the text after it). Saved as "page break before" (both formats); Backspace at the paragraph's start
+     * joins it to the one before, which takes the break away, as in Word.
+     */
+    fun insertPageBreak(blank: Boolean) = change {
+        val text = state.annotatedString.text
+        val rich = state.toRichTextDocument()
+        val at = state.selection.min
+        val atStart = WriterBridge.blockRange(text, rich, at)?.first == at && rich.blocks.getOrNull(WriterBridge.blockAt(text, rich, at) ?: -1)?.isLineBreak == false
+        // The paragraph split: its part after the cursor keeps its style (the editor's Enter makes it Normal after a heading).
+        val before = current()
+        val split = WriterBridge.paragraphsAt(text, rich, at, at).singleOrNull()?.let { before.paras.getOrNull(it) }
+            ?.takeIf { rich.blocks.count { !it.isLineBreak } == before.paras.size }
+        state.selection = androidx.compose.ui.text.TextRange(at)
+        if (!atStart) state.addTextAfterSelection("\n")
+        if (blank) { state.addTextAfterSelection("\n") }
+        val cursor = state.selection.min
+        val now = state.toRichTextDocument()
+        val cur = current()
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, now, cursor, cursor).singleOrNull()
+            ?.takeIf { now.blocks.count { !it.isLineBreak } == cur.paras.size } ?: run { message = "Put the cursor in a paragraph of text"; return@change }
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> when {
+            p.table != null -> p
+            i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep) else p).let { it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) }
+            blank && i == here - 1 -> p.copy(heading = 0, list = null, keep = OfficeFormats.withPageBreak(null, kind, true)) // the empty page: a plain paragraph
+            else -> p
+        } })
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
+    }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
@@ -1226,6 +1264,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
+                                // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
+                                val breaks = remember(meta.paras, documentStyles) { meta.paras.indices.filter { it > 0 && meta.paras[it].table == null && documentStyles.look(meta.paras[it]).pageBreakBefore } }
+                                val starts = remember(text, breaks) { if (breaks.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
+                                    WriterBridge.paragraphStarts(text, rich).takeIf { it.size == meta.paras.size } } ?: emptyList() }
+                                if (starts.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                    val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+                                    breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
+                                        val y = l.getLineTop(l.getLineForOffset(o))
+                                        drawLine(Color(0xFF9AA0A6), Offset(0f, y), Offset(size.width, y), 1.dp.toPx(), pathEffect = dash)
+                                    } }
+                                }
+                                if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
+                                    breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
+                                        val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
+                                        Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(Color.White).padding(horizontal = 4.dp))
+                                    } }
+                                }
                                 Box(Modifier.matchParentSize().padding(margins)) {
                                     placed.forEach { (i, img, at) ->
                                         val (left, bottom) = at
@@ -1492,6 +1547,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     } }
+                    RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
+                    RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).

@@ -386,6 +386,14 @@ internal object OfficeFormats {
         return k.copy(parts = parts)
     }
 
+    /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
+    fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
+        val k = keep ?: DocKeep()
+        val rest = k.parts.filter { (name, xml) -> name != "pageBreakBefore" && !(name == "@" && xml.startsWith(" fo:break-before=")) }
+        val set = when { !on -> emptyList(); kind == OfficeKind.Docx -> listOf("pageBreakBefore" to "<w:pageBreakBefore/>"); else -> listOf("@" to " fo:break-before=\"page\"") }
+        return k.copy(parts = rest + set).takeIf { !it.isEmpty }
+    }
+
     /**
      * Which paragraph of [old] each paragraph of [new] is (-1: a new one). Unchanged paragraphs are matched first
      * (longest common run); between two matches, changed paragraphs pair up in order.

@@ -103,7 +103,7 @@ with string files).
       - Files: docx wp:inline ⇄ wp:anchor (positionH/positionV offsets, wrapSquare / wrapTopAndBottom / wrapNone +
      behindDoc), a:srcRect for crop, wp:extent + a:ext for size; ODT draw:frame svg:x/y, text:anchor-type,
      style:wrap / style:run-through on its graphic style, fo:clip for crop.
-- [ ] Page break, blank page
+- [x] Page break, blank page (Insert: split at the cursor, the rest starts a page — Word's pageBreakBefore / ODT fo:break-before; a dashed "Page break" line in the editor; Backspace at its start removes it)
 - [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) — [ ] richer headers (several lines, pictures), odd/even
 - [ ] Comment (add one at the selection; reading, replying and deleting: Review)
 - [ ] Symbol (Ω), date and time

@@ -26,8 +26,16 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [ ] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
       LibreOffice on the user's documents
 
+**Order (agreed 29 Sep 2026, from Word and OnlyOffice's ribbons the user sent):** finish Home and Insert first, then
+Layout, References, Draw, Design; Review and View after. Word's "Format" is not a tab of its own: it appears when a
+picture/shape/table is selected (Tetra's Picture and Table tabs are that). UI text English only (languages later,
+with string files).
+
 ### Top bar
 - [x] Back, name (• unsaved), Undo, Redo, Save
+- [ ] Phone: hides when scrolling down the document, back when scrolling up (as Chrome/Docs); the ribbon stays while
+      editing; the tablet keeps it
+- [x] Undo/redo for Writer's own changes too (style, spacing, picture, table, header…), not only typing
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
 - [x] Share the file (as last saved) — as PDF with Export
 - [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
@@ -49,7 +57,13 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
 - [x] Bullets, numbering, indent −/+
 - [x] Alignment: left, centre, right, justify
 - [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
-- [ ] Superscript, subscript; small caps; clear formatting
+- [x] Superscript, subscript
+- [ ] Clear formatting (Word's eraser: the letters back to their paragraph's style)
+- [ ] Borders (Word/OnlyOffice's menu): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
+      line; border style and colour — behind ⋯
+- [ ] Change case (Aa: Sentence case, lower, UPPER, Capitalise Each Word) — behind ⋯
+- [ ] Multilevel list — later
+- Not on the ribbon: the font name (the space is needed; a style's page sets fonts)
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
 - [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
@@ -89,23 +103,40 @@ to Claude). A document opens **view only** (as LibreOffice does), with **Edit** 
       - Files: docx wp:inline ⇄ wp:anchor (positionH/positionV offsets, wrapSquare / wrapTopAndBottom / wrapNone +
      behindDoc), a:srcRect for crop, wp:extent + a:ext for size; ODT draw:frame svg:x/y, text:anchor-type,
      style:wrap / style:run-through on its graphic style, fo:clip for crop.
-- [ ] Page break
-- [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / Σελίδα 1 από 3 / 1 / 3, different first page) — [ ] richer headers (several lines, pictures), odd/even
-- [ ] Footnotes and endnotes
-- [ ] Comments
-- [ ] Shapes, text box
-- [ ] Symbols, date and time
-- [ ] Table of contents (from the headings)
+- [ ] Page break, blank page
+- [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) — [ ] richer headers (several lines, pictures), odd/even
+- [ ] Comment (add one at the selection; reading, replying and deleting: Review)
+- [ ] Symbol (Ω), date and time
+- [ ] Later (they float over the text, which the editor cannot do yet): shapes, text box, WordArt; equations (√x,
+      kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
+      date picker, check box — OnlyOffice's last Insert button)
 
-### Draw
-- [ ] Pen, pencil, highlighter with the finger; colours and thickness
-- [ ] Stroke eraser, lasso select
-- [ ] Ink saved into the document (Word ink / an image)
+### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)
+- [ ] First: a **drawing box** (Word's Drawing Canvas) — drawn in, placed in the text like a picture, so Word and
+      LibreOffice show it
+- [ ] Select, two pens and a highlighter, each with its colour (a 5×4 palette + More colours) and size in mm (− 1 mm +);
+      Eraser — finger or the tablet's pen
+- [ ] Later: ink over the text itself (floats on the page: needs floating objects; Word saves it as InkML); Ink to
+      Shape / Ink to Math / Ink Replay not planned
 
-### Layout
-- [ ] Margins, orientation, paper size (today kept from the file, not changeable)
+### Design (Word's Design tab; OnlyOffice Σχεδίαση)
+- [ ] Page background: watermark (text/picture, remove), page colour, page borders
+- [ ] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double)
+- [ ] Style sets, theme colours and fonts, themes — rarely used; last
+
+### Layout (Word's Layout; OnlyOffice Διάταξη)
+- [ ] Margins, orientation, size (today kept from the file, not changeable) — APA: 1 inch all round
 - [ ] Columns
-- [ ] Page break / section break
+- [ ] Breaks: page, column, section (next page / continuous)
+- [ ] Line numbers, hyphenation
+- [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
+- [ ] Arrange (for floating objects): position, wrap, forward/backward, align, group, rotate — with floating objects
+
+### References
+- [ ] Table of contents (from the headings), update
+- [ ] Footnotes and endnotes
+- [ ] Citations and bibliography (APA 7 first)
+- [ ] Captions, cross-references — later
 
 ### Review
 - [ ] Spelling (Android's spell checker)

@@ -153,6 +153,17 @@ private const val MAX_PICTURE_SP = 300f
 private const val SCRIPT_SIZE = 0.7f
 private const val SCRIPT_SIZE_OWN = 0.69f
 
+/**
+ * A paragraph's style drawn in the editor (asked 2026-09-29: headings as the document has them, Title as a title):
+ * its size, weight, slant and colour put on its letters as marks told apart from the letters' own on the way back —
+ * the size by a few hundredths of a point (a letter's own size is in half points), the weight 701 (bold is 700), the
+ * colour one step short of opaque, slant with an invisible shadow beside it. So they are never saved as the letters'.
+ */
+private const val STYLE_SIZE = 0.037f
+private const val STYLE_WEIGHT = 701
+private const val STYLE_ALPHA = 0xFEL
+private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
+
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
 /** Typed where a picture is to go, then replaced by it (a private-use character: never in a document). */
@@ -163,6 +174,15 @@ internal const val PICTURE_URL = "tetra-picture:"
 
 /** OfficeDoc ↔ the editor's document. Kept apart from the screen so the two directions are easy to compare. */
 internal object WriterBridge {
+    /**
+     * The editor's own heading looks (Heading 1 twice the text's size, and so on) taken away, once: a heading shows as
+     * the document's style has it, drawn like any paragraph style's. The library has no setting for them.
+     */
+    fun documentHeadings() = runCatching {
+        val field = HeadingStyle::class.java.getDeclaredField("defaultSpanStyle").apply { isAccessible = true }
+        HeadingStyle.entries.filter { it != HeadingStyle.Normal }.forEach { field.set(it, SpanStyle()) }
+    }.onFailure { Log.w("Writer", "heading looks", it) }
+
     /** How a picture shows in the editor: its size, scaled with the text, and never wider than the page. */
     fun shownSize(img: DocImage, scale: Float): Pair<Float, Float> {
         val w = img.widthPt * scale
@@ -194,9 +214,17 @@ internal object WriterBridge {
         /** One line of the editor: a paragraph, or (after a line break inside it) the next line of one. */
         fun block(p: DocPara, runs: List<DocRun>, afterBreak: Boolean): RichTextBlock {
             val marks = ArrayList<RichTextSpanMark>()
+            val look = styles.look(p)
             var at = 0
             for (r in runs) {
                 val range = at until at + r.text.length
+                // The paragraph style's look, where the letters have none of their own.
+                if (r.image == null && r.text.isNotEmpty()) {
+                    if (r.sizePt == null && r.script == 0) look.sizePt?.takeIf { kotlin.math.abs(it - doc.basePt) > 0.01f }?.let { marks += RichTextSpanMark.FontSize(range, ((it + STYLE_SIZE) * scale).sp) }
+                    if (!r.bold && look.bold == true) marks += RichTextSpanMark.FontWeight(range, STYLE_WEIGHT)
+                    if (!r.italic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
+                    if (r.color == null) look.color?.takeIf { it != 0 }?.let { marks += RichTextSpanMark.TextColor(range, (STYLE_ALPHA shl 24) or it.toLong()) }
+                }
                 if (r.bold) marks += RichTextSpanMark.Bold(range)
                 if (r.italic) marks += RichTextSpanMark.Italic(range)
                 if (r.underline) marks += RichTextSpanMark.Underline(range)
@@ -234,7 +262,7 @@ internal object WriterBridge {
                 headingLevel = p.heading,
                 textAlign = when (p.align) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
                 // The paragraph's left and first-line indents shown (a list item's indent is the editor's own).
-                textIndent = if (p.list != null || p.table != null) null else styles.look(p).let { l ->
+                textIndent = if (p.list != null || p.table != null) null else look.let { l ->
                     val rest = l.left.coerceAtLeast(0f) * scale
                     val first = if (afterBreak) rest else (l.left + l.firstLine).coerceAtLeast(0f) * scale
                     if (rest == 0f && first == 0f) null else androidx.compose.ui.text.style.TextIndent(first.sp, rest.sp)
@@ -269,15 +297,17 @@ internal object WriterBridge {
             b.spans.forEach { cuts += it.range.first.coerceIn(0, b.text.length); cuts += (it.range.last + 1).coerceIn(0, b.text.length) }
             val runs = cuts.toList().zipWithNext().filter { (a, z) -> z > a }.map { (a, z) ->
                 var r = DocRun(b.text.substring(a, z))
+                // Slant drawn for the paragraph's style, not the letters' own.
+                val styleSlant = b.spans.any { it is RichTextSpanMark.Shadow && a in it.range && it.argb == STYLE_SLANT }
                 for (m in b.spans) if (a in m.range) r = when (m) {
                     is RichTextSpanMark.Bold -> r.copy(bold = true)
-                    is RichTextSpanMark.FontWeight -> r.copy(bold = m.weight >= 600)
-                    is RichTextSpanMark.Italic -> r.copy(italic = true)
+                    is RichTextSpanMark.FontWeight -> if (m.weight == STYLE_WEIGHT) r else r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.Italic -> if (styleSlant) r else r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
-                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }) // rounded below
+                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
                     is RichTextSpanMark.BaselineShift -> r.copy(script = if (m.multiplier > 0) 1 else if (m.multiplier < 0) -1 else 0)
-                    is RichTextSpanMark.TextColor -> r.copy(color = (m.argb and 0xFFFFFF).toInt())
+                    is RichTextSpanMark.TextColor -> if ((m.argb ushr 24) == STYLE_ALPHA) r else r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Link -> r.copy(link = m.url)
                     is RichTextSpanMark.Image -> pictures[m.url.removePrefix(PICTURE_URL)]?.let { img ->
@@ -317,17 +347,38 @@ internal object WriterBridge {
      * blocks one after another, a space between, a list item's "• " or "1. " before it: each block is found in turn.
      */
     fun paragraphsAt(text: String, rich: RichTextDocument, start: Int, end: Int): Set<Int> {
-        var pos = 0; var n = -1
+        var n = -1
         val out = HashSet<Int>()
-        for (b in rich.blocks) {
-            if (!b.isLineBreak) n++
-            val from = text.indexOf(b.text, pos).takeIf { it >= 0 } ?: return out
-            val to = from + b.text.length
-            if (start <= to && end >= from) out += n
-            pos = to + 1
-        }
+        blockSpans(text, rich) { k, from, to -> if (!rich.blocks[k].isLineBreak) n++; if (start <= to && end >= from) out += n }
         return out
     }
+    /** The editor's block the text at [at] is in. */
+    fun blockAt(text: String, rich: RichTextDocument, at: Int): Int? {
+        var found: Int? = null
+        blockSpans(text, rich) { k, from, to -> if (found == null && at in from..to) found = k }
+        return found
+    }
+    private fun blockSpans(text: String, rich: RichTextDocument, each: (Int, Int, Int) -> Unit) {
+        var pos = 0
+        rich.blocks.forEachIndexed { k, b ->
+            val from = text.indexOf(b.text, pos).takeIf { it >= 0 } ?: return
+            each(k, from, from + b.text.length)
+            pos = from + b.text.length + 1
+        }
+    }
+
+    /** A size (pt) drawn for a paragraph's style: a few hundredths over half points. */
+    fun isStyleSize(pt: Float) = ((pt - STYLE_SIZE) * 2).let { kotlin.math.abs(it - it.roundToInt()) < 0.01f }
+    /** Whether a look has a paragraph style's drawn marks in it, and those marks alone (to take them off). */
+    fun styleDrawn(s: SpanStyle, basePt: Float) = drawnPart(s, basePt) != SpanStyle()
+    fun drawnPart(s: SpanStyle, basePt: Float) = SpanStyle(
+        fontSize = s.fontSize.takeIf { it.isSp && isStyleSize(it.value / (BASE_SP / basePt)) } ?: TextUnit.Unspecified,
+        fontWeight = s.fontWeight?.takeIf { it.weight == STYLE_WEIGHT },
+        color = s.color.takeIf { it != Color.Unspecified && (it.toArgb().toLong() ushr 24 and 0xFF) == STYLE_ALPHA } ?: Color.Unspecified,
+        shadow = s.shadow?.takeIf { it.color.toArgb().toLong() and 0xFFFFFFFFL == STYLE_SLANT },
+        fontStyle = if (s.shadow?.let { it.color.toArgb().toLong() and 0xFFFFFFFFL == STYLE_SLANT } == true) s.fontStyle else null,
+    )
+
 
     /** How big a table stands in the editor: exactly the same layout as on its page. */
     fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles,
@@ -554,7 +605,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
-    remember { OfficeFonts.assets = context.applicationContext.assets; WriterUnits.load(context) }
+    remember { OfficeFonts.assets = context.applicationContext.assets; WriterUnits.load(context); WriterBridge.documentHeadings() }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
@@ -665,13 +716,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         pages = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles) { img -> img.bytes ?: img.part?.let { parts[it] } } }.onFailure { Log.e("Writer", "pages", it) }.getOrNull() }
         if (pages == null) viewing = false // could not lay it out: the editor still works
     }
-    // Enter after a heading starts a Normal paragraph, as in Word: the editor carries the heading's look on as a size
-    // relative to the text (em), which only a heading gives — so that look is taken off at once.
+    // Enter after a heading starts a Normal paragraph, as in Word: the editor carries the heading's drawn look (its
+    // style's marks) on into the new, empty paragraph — so that look is taken off at once. (After a Title or any other
+    // style the new paragraph keeps the style, as it is saved.)
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
         snapshotFlow { state.annotatedString to state.selection }.collect {
-            val carried = state.currentSpanStyle.fontSize
-            if (state.currentHeadingStyle == HeadingStyle.Normal && carried.isEm) state.removeSpanStyle(SpanStyle(fontSize = carried, fontWeight = FontWeight.Bold))
+            val carried = state.currentSpanStyle
+            if (state.currentHeadingStyle != HeadingStyle.Normal || !WriterBridge.styleDrawn(carried, meta.basePt)) return@collect
+            val rich = state.toRichTextDocument()
+            val b = WriterBridge.blockAt(state.annotatedString.text, rich, state.selection.min) ?: return@collect
+            val before = rich.blocks.subList(0, b).lastOrNull { !it.isLineBreak }
+            if (rich.blocks[b].text.isEmpty() && (before?.headingLevel ?: 0) > 0) state.removeSpanStyle(WriterBridge.drawnPart(carried, meta.basePt))
         }
     }
 

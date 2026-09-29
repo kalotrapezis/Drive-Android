@@ -88,4 +88,22 @@ class WriterBridgeTest {
         assertEquals(setOf(1, 2, 3), at("one", "x"))
         assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
     }
+
+    @Test fun `a paragraph style's look shows in the editor and never comes back as the letters' own`() {
+        val title = DocKeep(style = "Title")
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = if (p.keep?.style == "Title") ParaLook(sizePt = 28f, bold = true, italic = true, color = 0x2F5496) else ParaLook()
+        }
+        val paras = listOf(
+            DocPara(listOf(DocRun("A title "), DocRun("own", sizePt = 14f, color = 0xFF0000, italic = true, bold = true)), keep = title),
+            DocPara(listOf(DocRun("Plain text"))))
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(paras, basePt = 11f), styles = styles))
+        val back = WriterBridge.fromEditor(state.toRichTextDocument(), 11f)
+        assertEquals(paras.map { it.copy(keep = null) }, back)
+        // The style's look is drawn: bigger, bold, slanted, coloured.
+        val shown = state.toRichTextDocument().blocks[0].spans
+        assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.FontSize && 0 in it.range })
+        assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.Italic && 0 in it.range })
+    }
 }

@@ -154,6 +154,17 @@ class OfficeFormatsTest {
             // Each paragraph's own formatting comes back as it was read; tables, cell by cell.
             assertEquals(f.name, doc.paras.map { it.keep }, again.paras.map { it.keep })
             assertEquals(f.name, doc.paras.mapNotNull { it.table }, again.paras.mapNotNull { it.table })
+            // Through the editor with the document's own styles drawn: what comes back is what went in, as without them.
+            // (Tables left out: laying one out needs Android's text layout, which a unit test does not have.)
+            val text = doc.copy(paras = doc.paras.filter { it.table == null })
+            fun shown(styles: DocStyles): Boolean {
+                val pictures = HashMap<String, DocImage>()
+                val state = com.mohamedrejeb.richeditor.model.RichTextState()
+                state.setRichTextDocument(WriterBridge.toEditor(text, pictures, styles))
+                return WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), text.basePt, pictures)) == WriterBridge.comparable(text.paras)
+            }
+            val styles = DocStyles.of(kind, bytes)
+            assertEquals(f.name, shown(DocStyles.Plain), shown(styles))
         }
     }
 

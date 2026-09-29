@@ -14,7 +14,17 @@ State: `writer-library`; all unit tests pass; the build is on the **phone** (208
   changes is the editor's to undo, then one step back as a whole. Checked on the phone (Undo test.docx, a copy of 01):
   typed "xy" + Heading 1 → undo, undo → as opened; redo, redo; a header and line spacing 2 undone (pages agree).
   Known: typing undone just before one of these changes is not redone after it.
-- **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: clear formatting, borders (bottom/top/
+- **Clear formatting** (Home, the eraser after Highlight): the chosen letters — or with none chosen, the paragraph
+  at the cursor — lose their own bold/italic/underline/strike/size/script/colour/highlight; the style's look, links
+  and pictures stay (`WriterBridge.clearFormatting`, unit-tested). Checked on the tablet: a red/highlighted line
+  cleared and undone; a heading keeps its style. Known: a letter's own font (DocRun.font, carried by position) stays.
+- **Fixed (found writing the test):** the editor shows a picture/table as U+FFFD, its block holds U+FFFC — so
+  `paragraphsAt` (styles, spacing, the ruler, the style lit on the ribbon) found nothing from the first picture or
+  table on. `blockSpans` now matches them.
+- **Top bar hides on a phone** while scrolling down (pages and editor), back on scrolling up (nested scroll on the
+  screen; under 700 dp wide only). Checked on the emulator (phone size). Seen on the tablet, not from this: the
+  floating keyboard strip sometimes pans the whole screen up for a moment (top bar off screen), then it settles.
+- **Plan agreed with the user** (29 Sep): finish Home and Insert first. Home: borders (bottom/top/
   all/none/horizontal line; style and colour behind ⋯), change case behind ⋯; no font name on the ribbon (space).
   Insert: page break/blank page, comment, symbol, date. Later: text box/shape/WordArt, equations, SmartArt, charts,
   forms (content controls). Then a References tab: table of contents, citations, APA bibliography.

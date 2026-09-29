@@ -89,6 +89,34 @@ class WriterBridgeTest {
         assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
     }
 
+    @Test fun `clear formatting takes the letters' own looks off and leaves the style's`() {
+        val title = DocKeep(style = "Title")
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = if (p.keep?.style == "Title") ParaLook(sizePt = 28f, bold = true, italic = true, color = 0x2F5496) else ParaLook()
+        }
+        val img = DocImage("k", "word/media/a.png", 10f, 10f)
+        val paras = listOf(
+            DocPara(listOf(DocRun("Head "), DocRun("own", sizePt = 14f, color = 0xFF0000, underline = true)), keep = title),
+            DocPara(listOf(DocRun("a "), DocRun("bold", bold = true, italic = true, highlight = 0xFFFF00, link = "https://x"),
+                DocRun("$OBJECT_MARK", image = img), DocRun(" sup", script = 1), DocRun(" kept", bold = true))))
+        val doc = OfficeDoc(paras, basePt = 11f)
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, HashMap(), styles))
+        val text = state.annotatedString.text
+        val cleared = WriterBridge.clearFormatting(text, state.toRichTextDocument(), text.indexOf("own"), text.indexOf(" kept"), 11f)
+        // Shown again through the document (as the button does): the style's look where the letters' own was.
+        val back = WriterBridge.fromEditor(WriterBridge.toEditor(doc.copy(paras = OfficeFormats.carryKeep(paras,
+            WriterBridge.fromEditor(cleared, 11f, mapOf("k" to img)))), HashMap(), styles), 11f, mapOf("k" to img))
+        assertEquals(listOf(DocRun("Head own")), back[0].runs)
+        assertEquals(listOf("a ", "bold", "$OBJECT_MARK", " sup", " kept"), back[1].runs.map { it.text })
+        assertEquals(DocRun("bold", link = "https://x"), back[1].runs[1]) // the link stays
+        assertEquals(img, back[1].runs[2].image)
+        assertEquals(0, back[1].runs[3].script)
+        assertEquals(true, back[1].runs[4].bold) // outside the selection
+        // A picture's paragraph (and those after it) are found too: its character differs on the screen.
+        assertEquals(setOf(1), WriterBridge.paragraphsAt(text, state.toRichTextDocument(), text.indexOf("kept"), text.indexOf("kept")))
+    }
+
     @Test fun `a paragraph style's look shows in the editor and never comes back as the letters' own`() {
         val title = DocKeep(style = "Title")
         val styles = object : DocStyles() {

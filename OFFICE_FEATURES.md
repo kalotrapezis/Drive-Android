@@ -33,7 +33,7 @@ with string files).
 
 ### Top bar
 - [x] Back, name (• unsaved), Undo, Redo, Save
-- [ ] Phone: hides when scrolling down the document, back when scrolling up (as Chrome/Docs); the ribbon stays while
+- [x] Phone: hides when scrolling down the document, back when scrolling up (as Chrome/Docs); the ribbon stays while
       editing; the tablet keeps it
 - [x] Undo/redo for Writer's own changes too (style, spacing, picture, table, header…), not only typing
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
@@ -58,7 +58,7 @@ with string files).
 - [x] Alignment: left, centre, right, justify
 - [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
 - [x] Superscript, subscript
-- [ ] Clear formatting (Word's eraser: the letters back to their paragraph's style)
+- [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
 - [ ] Borders (Word/OnlyOffice's menu): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
       line; border style and colour — behind ⋯
 - [ ] Change case (Aa: Sentence case, lower, UPPER, Capitalise Each Word) — behind ⋯

@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.foundation.gestures.transformable
@@ -364,16 +365,68 @@ internal object WriterBridge {
         blockSpans(text, rich) { k, from, to -> if (!rich.blocks[k].isLineBreak) n++; if (start <= to && end >= from) out += n }
         return out
     }
+    /**
+     * Clear formatting (Word's eraser; LibreOffice's "clear direct formatting"): the letters' own looks taken off the
+     * text from [start] to [end] — bold, italic, underline, strike, size, super/subscript, colour, highlight. What their
+     * paragraph's style draws, links and pictures stay. Shown again through the document, the style's look comes back
+     * where the letters' own was.
+     */
+    fun clearFormatting(text: String, rich: RichTextDocument, start: Int, end: Int, basePt: Float): RichTextDocument {
+        val scale = BASE_SP / basePt
+        val blocks = rich.blocks.toMutableList()
+        blockSpans(text, rich) { k, from, to ->
+            val s = (start - from).coerceAtLeast(0); val e = (end - from).coerceAtMost(to - from)
+            if (e <= s) return@blockSpans
+            val b = rich.blocks[k]
+            val pictures = b.spans.filterIsInstance<RichTextSpanMark.Image>().map { it.range }.toSet()
+            val slanted = b.spans.filter { it is RichTextSpanMark.Shadow && it.argb == STYLE_SLANT }.map { it.range }.toSet()
+            fun own(m: RichTextSpanMark) = m.range !in pictures && when (m) {
+                is RichTextSpanMark.Bold, is RichTextSpanMark.Underline, is RichTextSpanMark.Strikethrough,
+                is RichTextSpanMark.BaselineShift, is RichTextSpanMark.Highlight -> true
+                is RichTextSpanMark.FontWeight -> m.weight != STYLE_WEIGHT
+                is RichTextSpanMark.Italic -> m.range !in slanted
+                is RichTextSpanMark.FontSize -> spOf(m.size)?.let { !isStyleSize(it / scale) } ?: false
+                is RichTextSpanMark.TextColor -> (m.argb ushr 24) != STYLE_ALPHA
+                else -> false
+            }
+            blocks[k] = b.copy(spans = b.spans.flatMap { m ->
+                if (!own(m) || m.range.last < s || m.range.first >= e) listOf(m)
+                else listOfNotNull((m.range.first until s).takeIf { !it.isEmpty() }?.let { m.withRange(it) },
+                    (e..m.range.last).takeIf { !it.isEmpty() }?.let { m.withRange(it) })
+            })
+        }
+        return rich.copy(blocks = blocks)
+    }
+    private fun RichTextSpanMark.withRange(r: IntRange): RichTextSpanMark = when (this) {
+        is RichTextSpanMark.Bold -> copy(range = r)
+        is RichTextSpanMark.Underline -> copy(range = r)
+        is RichTextSpanMark.Strikethrough -> copy(range = r)
+        is RichTextSpanMark.BaselineShift -> copy(range = r)
+        is RichTextSpanMark.Highlight -> copy(range = r)
+        is RichTextSpanMark.FontWeight -> copy(range = r)
+        is RichTextSpanMark.Italic -> copy(range = r)
+        is RichTextSpanMark.FontSize -> copy(range = r)
+        is RichTextSpanMark.TextColor -> copy(range = r)
+        else -> this
+    }
+
     /** The editor's block the text at [at] is in. */
     fun blockAt(text: String, rich: RichTextDocument, at: Int): Int? {
         var found: Int? = null
         blockSpans(text, rich) { k, from, to -> if (found == null && at in from..to) found = k }
         return found
     }
+    /** Where in the editor's text the block the text at [at] is in stands. */
+    fun blockRange(text: String, rich: RichTextDocument, at: Int): Pair<Int, Int>? {
+        var found: Pair<Int, Int>? = null
+        blockSpans(text, rich) { _, from, to -> if (found == null && at in from..to) found = from to to }
+        return found
+    }
     private fun blockSpans(text: String, rich: RichTextDocument, each: (Int, Int, Int) -> Unit) {
         var pos = 0
         rich.blocks.forEachIndexed { k, b ->
-            val from = text.indexOf(b.text, pos).takeIf { it >= 0 } ?: return
+            // A picture or table is one character in the block and another on the screen.
+            val from = text.indexOf(b.text.replace(OBJECT_MARK, EDITOR_PICTURE_CHAR), pos).takeIf { it >= 0 } ?: return
             each(k, from, from + b.text.length)
             pos = from + b.text.length + 1
         }
@@ -1062,7 +1115,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     val ink = Color.Black
     val w = islandContentColor()
-    Box(Modifier.fillMaxSize().background(Color(0xFF1B1D1E)).statusBarsPadding().imePadding()) {
+    // On a phone the top bar goes away while scrolling down the document and comes back when scrolling up (asked
+    // 2026-09-29, for room); a tablet has room and keeps it.
+    var barShown by remember { mutableStateOf(true) }
+    val phone = screen < 700.dp
+    val barScroll = remember(phone) { object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+        override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+            if (phone && available.y < -6f) barShown = false else if (available.y > 6f) barShown = true
+            return androidx.compose.ui.geometry.Offset.Zero
+        }
+    } }
+    LaunchedEffect(viewing, finding) { barShown = true }
+    Box(Modifier.fillMaxSize().background(Color(0xFF1B1D1E)).statusBarsPadding().imePadding()
+        .then(Modifier.nestedScroll(barScroll))) {
         Column(Modifier.fillMaxSize()) {
             // Find and Replace (Word's magnifier): the matches are found in the text as the editor holds it, so a
             // match's place is where the editor selects it.
@@ -1096,6 +1161,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             } else
             // Word's top bar: back, the name (a dot while unsaved), find, undo and redo.
+            androidx.compose.animation.AnimatedVisibility(barShown) { Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
@@ -1120,6 +1186,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
+            } }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
                 pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize()) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
@@ -1377,6 +1444,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
+                    // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
+                    Tool(R.drawable.ic_format_clear, "Clear formatting", w) { change {
+                        val text = state.annotatedString.text
+                        val rich = state.toRichTextDocument()
+                        val sel = state.selection
+                        val (from, to) = if (!sel.collapsed) sel.min to sel.max
+                            else WriterBridge.blockRange(text, rich, sel.min) ?: (0 to 0)
+                        state.setRichTextDocument(WriterBridge.clearFormatting(text, rich, from, to, meta.basePt), sel)
+                        state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), sel) // the style's look where the letters' own was
+                    } }
                 }, {
                     // The everyday styles; every other (Subtitle, Quote, Heading 4–6, the document's own) behind Styles….
                     val styles = documentStyles.paragraphStyles()

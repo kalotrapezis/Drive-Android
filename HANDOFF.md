@@ -45,6 +45,24 @@ Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a
 
 ---
 
+# 30 September, late evening — Review › Spelling (built; the tablet's checker does not answer)
+
+State: `writer-library`, committed; unit tests pass; latest build on the **tablet** and not the phone.
+
+- `WriterSpelling.kt`: the system spell checker (Gboard's) through `TextServicesManager`, a session per language
+  (Greek words → el-GR, the rest → en-US), words asked in batches of 40, answers remembered for the session. Android
+  12+ sessions (`SpellCheckerSessionParams`, answers on the main thread).
+- Editor: a red wavy line under words that look misspelled (not the one being typed); the cursor in one shows its
+  suggestions above the tabs (tap one to put it in; Ignore). Review › Spelling (on/off, remembered, pref
+  "spelling") and › Next spelling mistake. Nothing in the file changes; the pages do not show the lines.
+- **Not working yet on the tablet:** Gboard's spell checker never answers. `dumpsys textservices` shows the system's
+  bind group to it `mConnected=false`, our request pending — the system never reached the service (spell checking off
+  in Gboard/system settings, or HyperOS blocking it). Asked the user to check the settings (not changed by me —
+  system settings). Writer now says so on the screen ("The phone's spell checker is not answering — turn on…") and
+  stops asking after the first silence. Unverified: whether the marks and suggestions draw right once it answers.
+
+---
+
 # 30 September, evening — the phone at last: every ribbon tool reachable
 
 State: `writer-library`, all committed; unit tests pass; the latest build is on the **phone** (208c8192). The tablet

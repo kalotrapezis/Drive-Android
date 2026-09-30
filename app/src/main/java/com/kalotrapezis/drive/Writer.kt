@@ -54,6 +54,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -1303,6 +1304,46 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (r.reshow) state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(r.cursor))
         }
     }
+    // Review › Spelling (asked 2026-09-30): the phone's spell checker, Greek and English, as one types.
+    val speller = remember { WriterSpelling(context) }
+    DisposableEffect(Unit) { onDispose { speller.close() } }
+    var spelling by remember { mutableStateOf(prefs.getBoolean("spelling", true)) }
+    var ignored by remember { mutableStateOf(emptySet<String>()) }
+    /** The words that look misspelled: where, the word, its suggestions (as the text was when checked). */
+    var misspelled by remember { mutableStateOf<List<Triple<IntRange, String, List<String>>>>(emptyList()) }
+    var typingAt by remember { mutableIntStateOf(-1) } // the word being typed is not marked until one leaves it
+    LaunchedEffect(loaded) {
+        var last = ""
+        snapshotFlow { state.annotatedString.text to state.selection }.collect { (t, sel) -> typingAt = if (t != last) sel.min else -1; last = t }
+    }
+    LaunchedEffect(loaded, spelling, ignored) {
+        if (!loaded || !spelling) { misspelled = emptyList(); return@LaunchedEffect }
+        snapshotFlow { state.annotatedString.text }.collectLatest { text ->
+            delay(500)
+            val ranges = WriterSpelling.words(text)
+            val bad = speller.check(ranges.map { text.substring(it) }.toSet())
+            if (speller.silent || !speller.available) { speller.silent = false
+                message = "The phone's spell checker is not answering — turn on Spell checker (Gboard) in Settings › Languages & input, and Spell check in Gboard's Text correction"
+                delay(60_000) } // not said again at every letter
+            misspelled = ranges.mapNotNull { r -> text.substring(r).let { w -> if (w in ignored) null else bad[w]?.let { Triple(r, w, it) } } }
+        }
+    }
+    /** The marked words now: still as they were checked, and not the one being typed. */
+    val spellingShown by remember { derivedStateOf {
+        val text = state.annotatedString.text
+        misspelled.filter { (r, w) -> r.last < text.length && text.regionMatches(r.first, w, 0, w.length) && typingAt !in r.first..r.last + 1 }
+    } }
+    val hereWord by remember { derivedStateOf { state.selection.let { sel -> spellingShown.firstOrNull { (r) -> sel.min in r.first..r.last + 1 && sel.max <= r.last + 1 } } } }
+    fun replaceWord(r: IntRange, with: String) {
+        state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1)
+        state.removeSelectedText(); state.addTextAfterSelection(with)
+    }
+    fun nextMisspelled() {
+        val at = state.selection.max
+        val next = spellingShown.firstOrNull { it.first.first >= at } ?: spellingShown.firstOrNull()
+        if (next == null) { message = if (spelling) "No spelling mistakes found" else "Spelling is off"; return }
+        state.selection = androidx.compose.ui.text.TextRange(next.first.first, next.first.last + 1)
+    }
     /** The next (or previous) change, selected. */
     fun goChange(forward: Boolean, from: Int = state.selection.min) {
         val starts = changesShown.map { it.second to it.third }.distinct().sortedBy { it.first }
@@ -1675,6 +1716,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     commentsShown.forEach { (c, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
                                         if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300)) }
                                 }
+                                // Spelling: a red wavy line under each word that looks misspelled.
+                                if (spellingShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                    val red = Color(0xFFE53935); val step = 3.dp.toPx(); val amp = 1.2.dp.toPx()
+                                    spellingShown.forEach { (r) ->
+                                        if (r.last >= text.length) return@forEach
+                                        for (line in l.getLineForOffset(r.first)..l.getLineForOffset(r.last)) {
+                                            val a = maxOf(r.first, l.getLineStart(line)); val z = minOf(r.last + 1, l.getLineEnd(line, true))
+                                            if (z <= a) continue
+                                            val x1 = l.getBoundingBox(a).left; val x2 = l.getBoundingBox(z - 1).right
+                                            val y = l.getLineBaseline(line) + 2.5.dp.toPx()
+                                            val path = androidx.compose.ui.graphics.Path().apply {
+                                                moveTo(x1, y); var x = x1; var up = true
+                                                while (x < x2) { val nx = minOf(x + step, x2); lineTo(nx, if (up) y - amp else y + amp); x = nx; up = !up }
+                                            }
+                                            drawPath(path, red, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                                        }
+                                    }
+                                }
                                 // Tracked changes: inserted letters underlined, deleted struck through (their colour is the author's,
                                 // set on the letters), a paragraph mark's change a ¶, and a bar in the margin beside each changed line.
                                 if (changesShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -1883,6 +1942,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
+            hereWord?.let { (r, w, suggestions) ->
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_spellcheck), contentDescription = "Spelling", tint = Color(0xFFE57373), modifier = Modifier.size(20.dp))
+                    if (suggestions.isEmpty()) Text("No suggestions", color = w.let { Color.White.copy(alpha = 0.6f) }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 10.dp))
+                    suggestions.forEach { sug -> TextButton(onClick = { replaceWord(r, sug) }) { Text(sug, color = Color.White) } }
+                    TextButton(onClick = { ignored = ignored + w }) { Text("Ignore", color = Color.White.copy(alpha = 0.7f)) }
+                }
+            }
             // The tracked change the cursor is in: what, who and when (Review has Accept and Reject).
             hereChange?.let { c ->
                 Row(Modifier.fillMaxWidth().clickable { tab = WriterTab.Review }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2261,6 +2329,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
                 })
                 WriterTab.Review -> listOf({
+                    // Word's Proofing group: spelling marked as one types (on or off), and the next word marked.
+                    RibbonButton("Spelling", w, R.drawable.ic_spellcheck, enabled = loaded, on = spelling) {
+                        spelling = !spelling; prefs.edit().putBoolean("spelling", spelling).apply()
+                        message = if (spelling) "Spelling on — Greek and English, the phone's own checker" else "Spelling off"
+                    }
+                    Tool(R.drawable.ic_chevron_right, "Next spelling mistake", w, enabled = loaded && spelling) { nextMisspelled() }
+                }, {
                     // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
                     RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
                         if (tracking) { tracking = false; message = "Track changes off" }

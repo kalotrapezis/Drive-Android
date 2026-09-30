@@ -59,7 +59,12 @@ State: `writer-library`, committed; unit tests pass; latest build on the **table
   bind group to it `mConnected=false`, our request pending — the system never reached the service (spell checking off
   in Gboard/system settings, or HyperOS blocking it). Asked the user to check the settings (not changed by me —
   system settings). Writer now says so on the screen ("The phone's spell checker is not answering — turn on…") and
-  stops asking after the first silence. Unverified: whether the marks and suggestions draw right once it answers.
+  stops asking after the first silence.
+- **After the user restarted the tablet it works:** the stuck bind cleared; red wavy lines under speling, tset,
+  documnt…; the cursor in one showed "spelling · speaking · spellings · Ignore"; a tap replaced it. Greek not tried
+  from here (adb cannot type Greek) — the user can check. If it goes silent again, a restart fixes it; bundling our
+  own Hunspell dictionaries (LibreOffice's el_GR / en_US, ~5 MB) would remove the dependence on Gboard — offered, not
+  asked for yet.
 
 ---
 

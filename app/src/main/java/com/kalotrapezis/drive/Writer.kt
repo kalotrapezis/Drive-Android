@@ -1992,6 +1992,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
                         setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
                     }
+                    // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
+                    Box {
+                        var spacing by remember { mutableStateOf(false) }
+                        RibbonButton("Paragraph spacing", w, R.drawable.ic_format_line_spacing, enabled = loaded) { spacing = true }
+                        DropdownMenu(spacing, { spacing = false }) {
+                            SPACING_SETS.forEach { (label, after, line) ->
+                                DropdownMenuItem(text = { Column { Text(label); Text("After ${plain(after)} pt · line ${plain(line)}", style = MaterialTheme.typography.bodySmall) } }, onClick = {
+                                    spacing = false
+                                    editStyle(documentStyles.paragraphStyles()[0], StyleChange(line = line, before = 0f, after = after))
+                                    message = "$label — every Normal paragraph; shown on the pages"
+                                })
+                            }
+                        }
+                    }
                     Box {
                         var bordering by remember { mutableStateOf(false) }
                         RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { bordering = true }
@@ -2429,6 +2443,10 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 }
 
 @Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
+
+/** Design › Paragraph spacing: Word's sets — space after (pt) and line spacing of the Normal style. */
+private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("Compact", 4f, 1f), Triple("Tight", 6f, 1.15f),
+    Triple("Open", 10f, 1.15f), Triple("Relaxed", 6f, 1.5f), Triple("Double", 8f, 2f))
 
 /** Design › Page colour: Word's light theme tints, and white (a page coloured white is not the same as none in Word). */
 private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)

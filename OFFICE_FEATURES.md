@@ -124,7 +124,7 @@ one pass once the tabs' features are done.
       and PDF; the Picture tab sizes, wraps, replaces… it (wrapping now shows on the pages at once). Shapes in a file
       of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,
       changing fill/outline after.
-- [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] the letter's own font, shown in the editor
+- [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
 - [ ] Later (they float over the text, which the editor cannot do yet): text box, WordArt; equations (√x,
       kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
       date picker, check box — OnlyOffice's last Insert button)

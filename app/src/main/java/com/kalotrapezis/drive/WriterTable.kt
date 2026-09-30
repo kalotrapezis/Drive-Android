@@ -246,7 +246,7 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
 }
 
 /** The fonts offered for a style: Word's everyday ones (Writer draws them with their metric twins). */
-private val STYLE_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
+internal val STYLE_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
 private val STYLE_COLORS = listOf(0x000000, 0x404040, 0x595959, 0x1F3864, 0x2F5496, 0x4472C4, 0xC00000, 0x538135, 0x7030A0)
 
 /**

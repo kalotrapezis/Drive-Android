@@ -201,6 +201,14 @@ class OfficeFormatsTest {
             assertEquals(kind.name, back.paras.map { it.text to DropCap.of(it.keep) }, again.paras.map { it.text to DropCap.of(it.keep) })
             val off = again.copy(paras = again.paras.mapIndexed { i, p -> if (i == 0) p.copy(keep = OfficeFormats.withDropCap(p.keep, kind, null)) else p })
             assertEquals(kind.name, null, DropCap.of(OfficeFormats.read(OfficeFormats.write(off, kind, bytes), kind).paras[0].keep))
+            // Its own look: the letter in Cambria, red; the rest as it was.
+            val styled = back.copy(paras = back.paras.mapIndexed { i, p -> if (i == 0) OfficeFormats.withLettersLook(p, 1, kind, "Cambria", 0xC00000) else p })
+            val looked = OfficeFormats.read(OfficeFormats.write(styled, kind, bytes), kind)
+            val styles = DocStyles.of(kind, OfficeFormats.write(styled, kind, bytes))
+            assertEquals(kind.name, "Β" to 0xC00000, looked.paras[0].runs[0].let { it.text to it.color })
+            assertEquals(kind.name, "Cambria", styles.fontName(looked.paras[0].runs[0].font))
+            assertEquals(kind.name, null, looked.paras[0].runs[1].color)
+            assertEquals(kind.name, drop, DropCap.of(looked.paras[0].keep))
             // A new paragraph after it (Enter) does not get it.
             val entered = OfficeFormats.carryKeep(back.paras, back.paras + DocPara(listOf(DocRun("Typed after."))))
             assertEquals(kind.name, null, DropCap.of(entered.last().keep))

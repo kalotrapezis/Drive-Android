@@ -1169,10 +1169,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** Insert › Drop Cap on the paragraph at the cursor (null: taken off); the pages show it. */
     var dropCapPage by remember { mutableStateOf<Pair<Int, DropCap?>?>(null) } // the options page: its paragraph, as it is
-    fun setDropCap(at: Int, drop: DropCap?) = change {
+    fun setDropCap(at: Int, drop: DropCap?, font: String? = null, color: Int? = null) = change {
         val cur = current()
-        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> if (i != at || p.table != null) p else p.copy(keep = OfficeFormats.withDropCap(p.keep, kind, drop)) })
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> if (i != at || p.table != null) p
+            else p.copy(keep = OfficeFormats.withDropCap(p.keep, kind, drop)).let { q -> if (drop == null) q else OfficeFormats.withLettersLook(q, drop.length, kind, font, color) } })
         dirty = true
+        // The letters' colour is the editor's too: shown again.
+        if (font != null || color != null) state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
         message = if (drop == null) "Drop cap taken off" else "Drop cap — it shows on the pages"
     }
     /** Word's horizontal line: an empty paragraph with a line under it after this one, and a new paragraph to go on in. */
@@ -2185,7 +2188,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         },
     )
-    dropCapPage?.let { (at, now) -> DropCapDialog(now, kind == OfficeKind.Odt, { dropCapPage = null }) { d -> dropCapPage = null; setDropCap(at, d) } }
+    dropCapPage?.let { (at, now) ->
+        val first = current().paras.getOrNull(at)?.runs?.firstOrNull { it.image == null && it.text.isNotEmpty() }
+        DropCapDialog(now, kind == OfficeKind.Odt, documentStyles.fontName(first?.font), first?.color, { dropCapPage = null }) { d, font, color ->
+            dropCapPage = null
+            // Automatic chosen where the letters had a colour: taken off (-1).
+            setDropCap(at, d, font.takeIf { it != documentStyles.fontName(first?.font) }, color ?: if (first?.color != null) -1 else null)
+        }
+    }
     if (watermarking) {
         var text by remember { mutableStateOf(documentStyles.section.watermark ?: "") }
         AlertDialog(

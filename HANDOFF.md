@@ -18,7 +18,8 @@ State: `writer-library`, all committed; all unit tests pass; the build is on the
 - Checked: unit test both kinds (written, read back as one paragraph, again the same, taken off, not inherited);
   LibreOffice renders both as drop caps; tablet: Dropped (3 lines), then In margin / 2 lines / 0.2 cm, survives a
   restart.
-- Not yet: the letter's own font; the editor shows the paragraph plain (the pages show the drop cap); drop caps in
+- Font and colour of the letter (asked 2026-09-30, same window): `withLettersLook` restyles the first letters (Word rFonts / ODF fo:font-family; colour); unit-tested, seen on the tablet (red Times O).
+- Not yet: the editor shows the paragraph plain (the pages show the drop cap); drop caps in
   table cells/headers are left as text; Word itself not checked (its own XML form was followed).
 
 ---

@@ -207,7 +207,10 @@ internal object WriterBridge {
      */
     fun shownSize(img: DocImage, scale: Float): Pair<Float, Float> {
         val w = img.widthPt * scale
-        if (img.table != null) return w to img.heightPt * scale // laid out for the editor's width already, at its text size
+        // A table is laid out at the page's width (its columns as the file sets them, as the pages show it) and drawn
+        // smaller when the screen is narrower (a phone), as a picture is — laid out narrower, its columns grew to fit
+        // their longest words and the others broke words in two (the user's CV, 2026-09-30).
+        if (img.table != null) return (editorWidthSp / w).coerceAtMost(1f).let { fit -> w * fit to img.heightPt * scale * fit }
         val over = PictureXml.wrapOf(img).let { it == PictureWrap.InFront || it == PictureWrap.Behind }
         val fit = minOf(MAX_PICTURE_SP / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
@@ -533,8 +536,7 @@ internal object WriterBridge {
 
 
     /** How big a table stands in the editor: exactly the same layout as on its page. */
-    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles,
-        if (pageWidthPt != null) styles.page.textWidth else editorWidthSp / (BASE_SP / doc.basePt))
+    fun tableSize(doc: OfficeDoc, table: DocTable, styles: DocStyles) = OfficePages.tableSize(doc, table, styles, styles.page.textWidth)
     /** The text's width (pt) when the editor shows the page itself; null: it fits the screen. */
     var pageWidthPt: Float? = null
 
@@ -2171,7 +2173,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val size = (WriterBridge.spOf(span.fontSize) ?: BASE_SP) / shrink
                     // One point at a time, in the document's points (asked 2026-09-28: by 2 it skipped 13); − and + close
                     // together around a number of fixed width, so two digits fit on a phone as one does.
-                    val pt = (size / BASE_SP * meta.basePt).roundToInt()
+                    // At a picture or table the editor's character standing for it has its own (huge) size: the text's is told.
+                    val onObject = state.annotatedString.text.let { t -> val i = state.selection.min
+                        t.getOrNull(i) == EDITOR_PICTURE_CHAR && (!state.selection.collapsed || i == 0 || t.getOrNull(i - 1) == '\n') || t.getOrNull(i - 1) == EDITOR_PICTURE_CHAR }
+                    val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }

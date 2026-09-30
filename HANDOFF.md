@@ -1,48 +1,62 @@
-# 30 September — end of day: where things stand (read this first)
+# 30 September — end of the long day: where things stand (read this first)
 
-**Update, evening:** Review › Track changes done (show, accept/reject, record) and the phone checked — see the
-three evening entries below. The tablet needs the latest build.
-
-**State.** Branch `writer-library`, everything committed (last: 975c308). All unit tests pass
+**State.** Branch `writer-library`, everything committed. All unit tests pass
 (`ANDROID_HOME=~/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew testDebugUnitTest assembleDebug`).
-Today's build is on the **tablet** (971f6b37) only. **The phone (208c8192) was never connected today** — first thing
-next time: install `app-arm64-v8a-debug.apk` there and walk through today's features at phone size (every feature is
-for both screens — memory `writer-tablet-first`). The untracked `Assets/` screenshots are the user's: leave them.
-All tablet checks were done in new, unsaved documents, discarded after; none of the user's files were touched.
+The latest build is on the **tablet** (971f6b37). The **phone** (208c8192) has the build from before spelling, footnotes,
+the icons and comment threads — install `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` there first and check
+those at phone size (every feature is for both screens — memory `writer-tablet-first`). The untracked `Assets/`
+screenshots are the user's: leave them. Every device check today was done in new, unsaved documents (or my own test
+files), all removed after; none of the user's files were touched. Test prefs I set on the phone were removed.
 
-**Done today** (details in the entries below, newest first):
-- **Draw**: Draw on page (the page itself underneath, two fingers zoom/move, ‹ › other pages), drawing box; drawings
-  go **in front of the text** by default (the user), anchored at the paragraph start; Edit drawing (strokes kept inside
-  the PNG, so also after reopening), Move, pens remembered. Floating pictures are a line-tall thumbnail in the editor.
-- **Icons**: Insert (in Word's group order), Borders and its menu, Draw, Design, Drop cap, APA (Material Symbols SVGs
-  from google/material-design-icons → vector drawables; drop cap drawn by hand). Other tabs still words only.
-- **Design** tab (Word's order): APA 7 paper | Paragraph spacing | Watermark, Page colour, Page borders.
-- **Insert › Drop cap** (dropped / in margin / options: lines, distance, the letter's font and colour).
-- **References**: Table of contents | Insert citation (Word-like source form per kind), Sources, References list /
-  Update references, Update citations — **APA 7 only** (the user). **New documents: Times New Roman 12.**
-- **Design › APA 7 paper**: the student paper in one tap, optional title page and clearing hand-set formatting.
-- **Bugs found and fixed**: a blank page's following break moved away on any Writer change (paragraph matching);
-  Word drop caps lost their frame on reading; Word citation fields made files copy-only; drafts lost new pictures'
-  wrapping and the sources.
+**Done today, after the morning's Draw/Design/References/APA** (details in the entries below, newest first):
+- **Review › Comments: replies and Resolve** (last thing, see "Comment threads" below) — Word's commentsExtended,
+  LibreOffice's loext:parent-name / loext:resolved; checked on the tablet and through LibreOffice both ways.
+- **Icons** on Layout, References, Picture, Table; Delete row / Delete column drawn as the add icons with an ×
+  (the user: delete actions get their own icon, not one bin everywhere — memory `ribbon-icons`).
+- **References › Footnotes and endnotes** (both kinds, pages show them at the foot / after the text).
+- **Review › Spelling** (the system spell checker, Greek + English; worked after a tablet restart — Gboard's link was stuck).
+- **The phone:** every ribbon tool reachable (long groups split, a too-wide page scrolls).
+- **Review › Track changes**: show, accept/reject, record (Word files).
+
+**Asked by the user and not done yet — do this next:**
+1. **Word and character counter** (asked 30 Sep evening): on the **tablet** in the top bar, counting the whole document,
+   and the **selection** when text is selected (as Word's status bar). On the **phone** there is no room: in
+   **File › About this file** (it already shows the word count) — add characters (with and without spaces) and,
+   when text is selected, the selection's counts too. The user asked for exactly this split.
+2. Then the list's smaller items: the APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it;
+   more source kinds (report, thesis, video); a picture watermark; page border styles.
+3. Offered, not asked for yet: Tetra's own Hunspell dictionaries (spelling without Gboard); receiving shares from the
+   Claude / ChatGPT apps into Tetra (the user asked how the apps could connect; the share menu is the way on mobile).
 
 **Known gaps worth remembering**
 - Nothing checked in Word itself (no Word here); every Word form was written as Word writes it, and LibreOffice reads
   them all. The user can check with Word when convenient.
-- The editor (typing view) does not show: drop caps, watermarks, page borders, citations' fields, Times New Roman
-  (it uses its own font) — the pages view shows all of them.
-- Other Word fields (TOC field, PAGE in the body, cross-references), tracked changes and footnotes still make a file
-  copy-only.
-- ODT citations: one source each and no page (LibreOffice marks can't hold them).
+- ODT tracked changes still make a file copy-only; Word fields other than citations (TOC field, PAGE in the body,
+  cross-references) too.
+- Editing a footnote's words makes it plain text in its style; a new document's footnotes show at text size until saved.
+- Tracking (Track changes on) is not remembered in the file (Word's w:trackRevisions).
+- The editor (typing view) does not show drop caps, watermarks, page borders — the pages view does.
 
-**Next (the list the user chose from on 30 Sep; they picked APA first):**
-1. **Review › Track changes** — show/accept/reject and recording in Word files DONE (see the 30 Sep entries); still:
-   ODT, comments reply/resolve, remembering tracking in the file.
-2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
-3. **Footnotes / endnotes** — DONE 30 Sep night (see its entry).
-4. **Icons for the remaining tabs** — DONE 30 Sep night: Layout, References, Picture, Table (Material Symbols). Style
-   names (Normal, Title, H1…) and cm/inches stay words, as Word shows them.
-Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
-(report, thesis, video); a picture watermark; page border styles.
+---
+
+# 30 September, night — Review › Comment threads: replies and Resolve
+
+State: `writer-library`, committed; all unit tests pass; the build is on the **tablet**, not the phone.
+
+- `DocComment.parent` (a reply: the comment it answers) and `.done` (resolved). `OfficeFormats.withReply` (the reply
+  on the same letters as its comment), `withDone` (a thread resolved or reopened), `withoutComment` now takes a
+  comment's replies with it (Word's).
+- **Word:** read from commentsExtended.xml (w15:commentEx paraId / paraIdParent / done) by each comment's last
+  paragraph's w14:paraId; written anew — a paraId given to a comment's last paragraph when it needs one (w14 declared
+  on the comments root), the part and its relationship made when missing. **ODT:** LibreOffice 7's
+  `loext:parent-name` and `loext:resolved` on office:annotation (loext declared when used) — the forms taken from a
+  file LibreOffice itself wrote through UNO (a reply and a resolved comment).
+- Cards (tablet pane, phone sidebar): replies under their comment; Reply (name + text, the name remembered),
+  Resolve / Reopen, Delete; a resolved thread greyed with "Resolved", its words not tinted unless the cursor is in them.
+  Replies get no tint or card of their own.
+- Checked: `CommentThreadsTest` (both kinds: reply linked, parent resolved, again the same, reopened, deleted with its
+  reply); LibreOffice reads Writer's .docx and .odt threads as linked and resolved; tablet: comment → Reply →
+  Resolve, as described. Not checked: the phone's sidebar with a thread; Word itself.
 
 ---
 

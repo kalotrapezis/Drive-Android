@@ -50,7 +50,8 @@ internal data class DocRun(
  * the file had it ([raw]: Word's w:comment, or ODT's annotation contents) — replies and their links stay; a new one is
  * written from its fields.
  */
-internal data class DocComment(val id: String, val author: String, val date: String?, val text: String, val raw: String? = null, val initials: String? = null)
+internal data class DocComment(val id: String, val author: String, val date: String?, val text: String, val raw: String? = null, val initials: String? = null,
+    val parent: String? = null /* a reply: the comment it answers */, val done: Boolean = false /* resolved (Word's done, LibreOffice's resolved) */)
 
 /**
  * Review › Track changes (asked 2026-09-30): letters [deleted] or inserted by [author] at [date] (ISO). Word's w:ins /
@@ -620,11 +621,22 @@ internal object OfficeFormats {
             p.copy(runs = tidy(runs))
         })
     }
+    /** A reply to [parentId], on the same letters as it. */
+    fun withReply(doc: OfficeDoc, parentId: String, reply: DocComment): OfficeDoc {
+        fun walk(ps: List<DocPara>): List<DocPara> = ps.map { p -> p.copy(runs = p.runs.map { r -> if (parentId in r.comments) r.copy(comments = r.comments + reply.id) else r },
+            table = p.table?.let { t -> t.copy(rows = t.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = walk(c.paras)) }) }) }) }
+        return doc.copy(paras = walk(doc.paras), comments = doc.comments + reply.copy(parent = parentId))
+    }
+    /** A comment (and its thread's replies) resolved or open again. */
+    fun withDone(doc: OfficeDoc, id: String, done: Boolean): OfficeDoc =
+        doc.copy(comments = doc.comments.map { if (it.id == id || it.parent == id) it.copy(done = done) else it })
+
     /** A comment taken off (its letters stay). */
     fun withoutComment(doc: OfficeDoc, id: String): OfficeDoc {
-        fun strip(ps: List<DocPara>): List<DocPara> = ps.map { p -> p.copy(runs = tidy(p.runs.map { r -> if (id in r.comments) r.copy(comments = r.comments - id) else r }),
+        val ids = setOf(id) + doc.comments.filter { it.parent == id }.map { it.id } // its replies go with it (Word's)
+        fun strip(ps: List<DocPara>): List<DocPara> = ps.map { p -> p.copy(runs = tidy(p.runs.map { r -> if (r.comments.any { it in ids }) r.copy(comments = r.comments - ids) else r }),
             table = p.table?.let { t -> t.copy(rows = t.rows.map { row -> row.copy(cells = row.cells.map { cell -> cell.copy(paras = strip(cell.paras)) }) }) }) }
-        return doc.copy(paras = strip(doc.paras), comments = doc.comments.filter { it.id != id })
+        return doc.copy(paras = strip(doc.paras), comments = doc.comments.filter { it.id !in ids })
     }
     /** An id no comment of [doc] has: Word's are numbers, ODT's names. */
     fun newCommentId(doc: OfficeDoc, kind: OfficeKind): String = if (kind == OfficeKind.Docx)
@@ -935,6 +947,10 @@ private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocum
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+private const val REL_COMMENTS_EX = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
+private const val W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+private const val W15 = "http://schemas.microsoft.com/office/word/2012/wordml"
+internal const val LOEXT = "urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0"
 private const val REL_FOOTNOTES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
 private const val REL_ENDNOTES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes"
 
@@ -978,6 +994,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val counters = HashMap<String, IntArray>() // numId → the count at each level, as Word numbers them
     val openComments = LinkedHashSet<String>() // the comments whose range the reading is in
     val comments = LinkedHashMap<String, DocComment>()
+    private val commentByPara = HashMap<String, String>() // a comment's last paragraph's w14:paraId → its id
     /** The document's comments (comments.xml), and which have a range in the text; one without is not kept yet. */
     fun readComments(body: Element) {
         val ranged = HashSet<String>()
@@ -993,6 +1010,15 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             if (id !in ranged) continue
             comments[id] = DocComment(id, c.attr(W, "author") ?: "", c.attr(W, "date"),
                 c.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent }, OfficeFormats.xml(c), c.attr(W, "initials"))
+            c.kids().lastOrNull { it.localName == "p" }?.getAttributeNS(W14, "paraId")?.takeIf { it.isNotEmpty() }?.let { commentByPara[it] = id }
+        }
+        // Replies and resolved comments (Word 2013+'s commentsExtended): by each comment's last paragraph's id.
+        val ex = parts[relsPath(docPath)]?.let { r -> OfficeFormats.parse(r).documentElement.kids().firstOrNull { it.getAttribute("Type") == REL_COMMENTS_EX }?.getAttribute("Target") }
+            ?.let { parts[resolve(dir, it)] }?.let { OfficeFormats.parse(it).documentElement } ?: return
+        for (e in ex.kids().filter { it.localName == "commentEx" }) {
+            val id = commentByPara[e.getAttributeNS(W15, "paraId")] ?: continue
+            val parent = e.getAttributeNS(W15, "paraIdParent").takeIf { it.isNotEmpty() }?.let { commentByPara[it] }
+            comments[id] = comments.getValue(id).copy(parent = parent, done = e.getAttributeNS(W15, "done") == "1")
         }
     }
 
@@ -1750,11 +1776,36 @@ private object DocxWriter {
         val root = Regex("""<w:comments\b[^>]*>""").find(old)?.value ?: """<w:comments xmlns:w="$W">"""
         val gone = Regex("""<w:comment\b[^>]*w:id="([^"]+)"[\s\S]*?</w:comment>""").findAll(old).filter { m -> live.none { it.id == m.groupValues[1] } }
             .flatMap { m -> Regex("""w14:paraId="([0-9A-Fa-f]+)"""").findAll(m.value).map { it.groupValues[1] } }.toSet()
-        parts[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" + root + live.joinToString("") { c ->
-            c.raw ?: """<w:comment w:id="${c.id}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}${c.initials?.let { " w:initials=\"${OfficeFormats.esc(it)}\"" } ?: ""}>""" +
-                c.text.split('\n').joinToString("") { line -> """<w:p><w:r><w:t xml:space="preserve">${OfficeFormats.esc(line)}</w:t></w:r></w:p>""" } + "</w:comment>"
-        } + "</w:comments>").toByteArray()
-        if (gone.isNotEmpty()) for (name in listOf("commentsExtended.xml", "commentsIds.xml", "commentsExtensible.xml")) {
+        // Each comment's last paragraph has an id (w14:paraId): replies and resolved ones are said by it in commentsExtended.
+        val used = Regex("""w14:paraId="([0-9A-Fa-f]+)"""").findAll(old).map { it.groupValues[1].uppercase() }.toMutableSet()
+        fun freshPara() = generateSequence(0x1A2B0001) { it + 1 }.map { "%08X".format(it) }.first { it !in used }.also { used += it }
+        val paraOf = HashMap<String, String>()
+        val xmlOf = live.map { c ->
+            var x = c.raw ?: ("""<w:comment w:id="${c.id}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}${c.initials?.let { " w:initials=\"${OfficeFormats.esc(it)}\"" } ?: ""}>""" +
+                c.text.split('\n').joinToString("") { line -> """<w:p><w:r><w:t xml:space="preserve">${OfficeFormats.esc(line)}</w:t></w:r></w:p>""" } + "</w:comment>")
+            val last = Regex("""<w:p\b[^>]*>""").findAll(x).lastOrNull()
+            val para = last?.value?.let { Regex("""w14:paraId="([0-9A-Fa-f]+)"""").find(it)?.groupValues?.get(1) }
+            if (para != null) paraOf[c.id] = para
+            else if (last != null && (c.parent != null || c.done || live.any { it.parent == c.id })) {
+                val id = freshPara(); paraOf[c.id] = id
+                x = x.replaceRange(last.range, last.value.replaceFirst("<w:p", """<w:p w14:paraId="$id""""))
+            }
+            x
+        }
+        val rootWithW14 = if (paraOf.isNotEmpty() && "xmlns:w14=" !in root) root.replaceFirst("<w:comments", """<w:comments xmlns:w14="$W14"""") else root
+        parts[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" + rootWithW14 + xmlOf.joinToString("") + "</w:comments>").toByteArray()
+        // commentsExtended: which is a reply to which, which are resolved.
+        val exTarget = Regex("""<Relationship\b[^>]*Type="$REL_COMMENTS_EX"[^>]*>""").find(rels)?.value?.let { Regex("""Target="([^"]+)"""").find(it)?.groupValues?.get(1) }
+        if (exTarget != null || live.any { it.parent != null || it.done }) {
+            if (exTarget == null) ensurePart("commentsExtended.xml", REL_COMMENTS_EX, "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml", "")
+            val exPath = resolve(dir, exTarget ?: "commentsExtended.xml")
+            val exOld = parts[exPath]?.let { String(it, Charsets.UTF_8) }.orEmpty()
+            val exRoot = Regex("""<w15:commentsEx\b[^>]*>""").find(exOld)?.value
+                ?: """<w15:commentsEx xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w15="$W15" mc:Ignorable="w15">"""
+            parts[exPath] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" + exRoot + live.mapNotNull { c -> paraOf[c.id]?.let { p ->
+                """<w15:commentEx w15:paraId="$p"${c.parent?.let { paraOf[it] }?.let { " w15:paraIdParent=\"$it\"" } ?: ""} w15:done="${if (c.done) 1 else 0}"/>""" } }.joinToString("") + "</w15:commentsEx>").toByteArray()
+        }
+        if (gone.isNotEmpty()) for (name in listOf("commentsIds.xml", "commentsExtensible.xml")) { // commentsExtended: written anew above
             val p = parts.keys.firstOrNull { it.endsWith("/$name") || it == name } ?: continue
             parts[p] = String(parts.getValue(p), Charsets.UTF_8).replace(Regex("""<w1[56]\w*:comment\w*\b[^>]*?(?:paraId|durableId)="([0-9A-Fa-f]+)"[^>]*?/>""")) { m ->
                 if (gone.any { it in m.value }) "" else m.value }.toByteArray()
@@ -2131,7 +2182,9 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         if (name == null || name !in ended) notes += "comments" // on a point, not some letters: not kept yet
                         else {
                             comments[name] = DocComment(name, e.kid(DC, "creator")?.textContent ?: "", e.kid(DC, "date")?.textContent,
-                                e.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent }, e.kids().joinToString("") { OfficeFormats.xml(it) })
+                                e.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent }, e.kids().joinToString("") { OfficeFormats.xml(it) },
+                                // A reply, and whether it is resolved (LibreOffice 7's).
+                                parent = e.getAttributeNS(LOEXT, "parent-name").takeIf { it.isNotEmpty() }, done = e.getAttributeNS(LOEXT, "resolved") == "true")
                             openComments += name
                         }
                     } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
@@ -2288,7 +2341,7 @@ private object OdtWriter {
         fun StringBuilder.commentMarks(now: List<String>) {
             for (id in openComments.filter { it !in now }) { append("""<office:annotation-end office:name="${OfficeFormats.esc(id)}"/>"""); openComments -= id }
             for (id in now) if (id !in openComments && closedComments.add(id)) live[id]?.let { c ->
-                append("""<office:annotation office:name="${OfficeFormats.esc(id)}">""")
+                append("""<office:annotation office:name="${OfficeFormats.esc(id)}"${c.parent?.let { " loext:parent-name=\"${OfficeFormats.esc(it)}\"" } ?: ""}${if (c.parent != null || c.done) " loext:resolved=\"${c.done}\"" else ""}>""")
                 append(c.raw ?: ("<dc:creator>${OfficeFormats.esc(c.author)}</dc:creator>" + (c.date?.let { "<dc:date>$it</dc:date>" } ?: "") +
                     c.text.split('\n').joinToString("") { "<text:p>${spaces(it, true)}</text:p>" }))
                 append("</office:annotation>")
@@ -2430,6 +2483,7 @@ private object OdtWriter {
         out = if (autoRe.containsMatchIn(out)) out.replaceFirst(autoRe, Regex.escapeReplacement(autoXml)) else out.replaceFirst("<office:body>", "$autoXml<office:body>")
         if ("xmlns:xlink=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:xlink=\"$XLINK\"")
         if ("<office:annotation" in text && "xmlns:dc=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:dc=\"$DC\"")
+        if ("loext:" in text && "xmlns:loext=" !in out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:loext=\"$LOEXT\"")
         manifest?.let { parts["META-INF/manifest.xml"] = it.toByteArray() }
         if (frames > 0) listOf("draw" to "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "svg" to SVG).forEach { (prefix, ns) ->
             val head = out.substring(0, out.indexOf('>', out.indexOf("<office:document-content")))

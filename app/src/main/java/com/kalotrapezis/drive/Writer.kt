@@ -1212,11 +1212,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val byId = live.comments.associateBy { it.id }
             live.paras.flatMapIndexed { i, p ->
                 var at = 0
-                p.runs.flatMap { r -> r.comments.mapNotNull { id -> byId[id] }.flatMap { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { c to it } }.also { at += r.text.length } }
+                // Replies: shown in their comment's card, not over the letters again.
+                p.runs.flatMap { r -> r.comments.mapNotNull { id -> byId[id]?.takeIf { it.parent == null } }.flatMap { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { c to it } }.also { at += r.text.length } }
             }
         }
     } }
     val hereComment by remember { derivedStateOf { state.selection.min.let { at -> commentsShown.firstOrNull { (_, r) -> at in r.first..r.last + 1 }?.first } } }
+    var replyTo by remember { mutableStateOf<DocComment?>(null) }
+    fun replyComment(parent: DocComment, author: String, text: String) = change {
+        val cur = current()
+        meta = OfficeFormats.withReply(cur, parent.id, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text,
+            initials = author.split(' ').filter { it.isNotBlank() }.joinToString("") { it.take(1) }.uppercase()))
+        dirty = true
+    }
+    fun resolveComment(c: DocComment) = change { meta = OfficeFormats.withDone(current(), c.id, !c.done); dirty = true }
     var commentsOpen by remember { mutableStateOf(false) } // the phone's sidebar
     var editorLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var commenting by remember { mutableStateOf(false) }
@@ -1313,6 +1322,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         noteEditing = null
     }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
+    fun commentActions(open: (DocComment) -> Unit) = CommentActions({ c -> meta.comments.filter { it.parent == c.id } }, open, { deleteComment(it.id) }, { replyTo = it }, { resolveComment(it) })
     // Review › Track changes (asked 2026-09-30): where each change is in the editor's text, and the one at the cursor.
     val changesShown by remember { derivedStateOf {
         if (!TrackChanges.any(meta)) emptyList() else {
@@ -1722,7 +1732,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     CommentPane(first.entries.sortedBy { it.value }.map { (c, at) ->
                         c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at)) } ?: 0f).toDp() })
                     }, hereComment, Modifier.align(Alignment.TopCenter).offset(x = sheet.width * perPt / 2 - shift + 12.dp + COMMENT_PANE / 2).width(COMMENT_PANE),
-                        open = { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+                        commentActions { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
                     modifier = (if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
@@ -1753,7 +1763,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
                                 // Commented letters: tinted (the comment itself in the bar above the ribbon).
                                 if (commentsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
-                                    commentsShown.forEach { (c, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
+                                    // A resolved one only while the cursor is in it (Word hides them).
+                                    commentsShown.forEach { (c, r) -> if (r.last < text.length && (!c.done || c == hereComment)) drawPath(l.getPathForRange(r.first, r.last + 1),
                                         if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300)) }
                                 }
                                 // Spelling: a red wavy line under each word that looks misspelled.
@@ -2688,10 +2699,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
         addComment(author, text)
     }
+    replyTo?.let { parent ->
+        NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { replyTo = null }, title = "Reply to " + parent.author.ifBlank { "comment" }) { author, text ->
+            replyTo = null
+            context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
+            replyComment(parent, author, text)
+        }
+    }
     if (commentsOpen) {
         val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
-            open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
+            commentActions { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
     }
     drawing?.let { d ->
         DrawDialog(d.boxPt, { drawing = null }, d.pages, d.start, d.boxAspect, d.strokes) { bytes, wPt, hPt, place, k ->

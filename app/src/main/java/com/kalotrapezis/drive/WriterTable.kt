@@ -582,10 +582,10 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
     var text by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Comment") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
@@ -626,34 +626,51 @@ internal fun commentDate(c: DocComment): String? = c.date?.let { d -> runCatchin
 
 /** One comment as a card: who, when, what; tapping it goes to its words; Delete takes it off (the words stay). */
 @Composable
-internal fun CommentCard(c: DocComment, here: Boolean, open: () -> Unit, delete: () -> Unit, modifier: Modifier = Modifier) = Surface(
-    color = Color.White, contentColor = Color(0xFF202124), shape = RoundedCornerShape(10.dp),
+internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modifier: Modifier = Modifier) = Surface(
+    color = if (c.done) Color(0xFFF1F3F4) else Color.White, contentColor = Color(0xFF202124).copy(alpha = if (c.done) 0.6f else 1f), shape = RoundedCornerShape(10.dp),
     border = androidx.compose.foundation.BorderStroke(if (here) 2.dp else 1.dp, if (here) Color(0xFFFFB300) else Color(0xFFDADCE0)),
-    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = open)) {
+    modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = { act.open(c) })) {
+    @Composable fun who(x: DocComment) = Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFFFFB300)), contentAlignment = Alignment.Center) {
+            Text(x.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
+        }
+        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+            Text(x.author.ifBlank { "Comment" }, style = MaterialTheme.typography.labelLarge)
+            commentDate(x)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368)) }
+        }
+    }
     Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xFFFFB300)), contentAlignment = Alignment.Center) {
-                Text(c.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
-            }
-            Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                Text(c.author.ifBlank { "Comment" }, style = MaterialTheme.typography.labelLarge)
-                commentDate(c)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368)) }
+        who(c)
+        if (c.done) Text("Resolved", style = MaterialTheme.typography.labelSmall, color = Color(0xFF188038), modifier = Modifier.padding(top = 2.dp))
+        Text(c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp, end = 8.dp))
+        // Its replies, under it (Word's thread).
+        act.repliesOf(c).forEach { r ->
+            Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 8.dp)) {
+                who(r)
+                Text(r.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
             }
         }
-        Text(c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp, end = 8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = delete) { Text("Delete", color = Color(0xFF1A73E8)) } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { act.reply(c) }) { Text("Reply", color = Color(0xFF1A73E8)) }
+            TextButton(onClick = { act.resolve(c) }) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8)) }
+            TextButton(onClick = { act.delete(c) }) { Text("Delete", color = Color(0xFF1A73E8)) }
+        }
     }
 }
+
+/** What a comment card can do: its replies, go to its words, delete it (and its replies), reply, resolve or reopen. */
+internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, val open: (DocComment) -> Unit, val delete: (DocComment) -> Unit,
+    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit)
 
 /**
  * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only
  * as far as the one above needs.
  */
 @Composable
-internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, open: (DocComment) -> Unit, delete: (DocComment) -> Unit) {
+internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions) {
     val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
     val tops = items.map { with(androidx.compose.ui.platform.LocalDensity.current) { it.second.roundToPx() } }
-    androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, { open(c) }, { delete(c) }) } }, modifier = modifier) { measurables, constraints ->
+    androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }, modifier = modifier) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
         var bottom = 0
         val ys = placeables.mapIndexed { i, p -> maxOf(tops[i], bottom).also { bottom = it + p.height + gap } }
@@ -663,7 +680,7 @@ internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.D
 
 /** A phone's comments: a sidebar over the page, every comment in the order of its words. */
 @Composable
-internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismiss: () -> Unit, open: (DocComment) -> Unit, delete: (DocComment) -> Unit) {
+internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismiss: () -> Unit, act: CommentActions) {
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().clickable(interactionSource = null, indication = null, onClick = dismiss)) {
             Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp),
@@ -675,7 +692,7 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
                     }
                     if (comments.isEmpty()) Text("No comments", modifier = Modifier.padding(top = 12.dp))
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        comments.forEach { c -> CommentCard(c, c == here, { open(c) }, { delete(c) }) }
+                        comments.forEach { c -> CommentCard(c, c == here, act) }
                     }
                 }
             }

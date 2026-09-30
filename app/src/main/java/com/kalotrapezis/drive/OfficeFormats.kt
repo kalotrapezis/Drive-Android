@@ -40,6 +40,7 @@ internal data class DocRun(
     val comments: List<String> = emptyList(), // the ids of the comments over these letters (OfficeDoc.comments)
     val cite: String? = null, // a citation's letters: Word's field ("CITATION Smi20 \l 1033"), or an ODT bibliography mark's source tag
     val change: DocChange? = null, // Review › Track changes: letters someone inserted or deleted
+    val note: DocNote? = null, // a footnote's or endnote's reference: its number (superscript), the note itself here
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
 }
@@ -56,6 +57,13 @@ internal data class DocComment(val id: String, val author: String, val date: Str
  * w:del (a move counts as a deletion and an insertion, as Word's own Accept treats it).
  */
 internal data class DocChange(val deleted: Boolean, val author: String, val date: String?)
+
+/**
+ * A footnote or endnote (asked 2026-09-30): its paragraphs. In the text it is its reference, a run whose letters are its
+ * number — worked out from the order, as Word does ([OfficeFormats.numberNotes]). ponytail: two notes alike side by side,
+ * nothing between them, merge into one; give notes an id if that ever happens.
+ */
+internal data class DocNote(val end: Boolean, val paras: List<DocPara>)
 
 /** A list that tags every run added to it with the comments open at that moment (the readers' ranges). */
 internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }, private val change: () -> DocChange? = { null }) : ArrayList<DocRun>() {
@@ -346,6 +354,9 @@ internal data class StyleEntry(val name: String, val id: String?, val heading: I
  * styles.xml when a paragraph takes one ("NORMAL" becomes the document's own plain style). As Word 2016 makes them.
  */
 internal val DOCX_BUILTIN = mapOf(
+    // Footnotes and endnotes (Word 2016's): smaller, single-spaced, no space after.
+    "FootnoteText" to """<w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="NORMAL"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:firstLine="0"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>""",
+    "EndnoteText" to """<w:style w:type="paragraph" w:styleId="EndnoteText"><w:name w:val="endnote text"/><w:basedOn w:val="NORMAL"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:firstLine="0"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>""",
     // A reference list's entries (APA: a hanging indent of half an inch).
     "Bibliography" to """<w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr></w:style>""",
     "Title" to """<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="10"/><w:qFormat/><w:pPr><w:spacing w:after="80" w:line="240" w:lineRule="auto"/><w:contextualSpacing/></w:pPr><w:rPr><w:spacing w:val="-10"/><w:kern w:val="28"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>""",
@@ -358,6 +369,9 @@ internal val DOCX_BUILTIN = mapOf(
 )
 /** LibreOffice's Title, Subtitle and Quotations, likewise. */
 internal val ODT_BUILTIN = mapOf(
+    // Footnotes and endnotes (LibreOffice's): smaller, the number hanging.
+    "Footnote" to """<style:style style:name="Footnote" style:family="paragraph" style:parent-style-name="Standard" style:class="extra"><style:paragraph-properties fo:margin-left="0.598cm" fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm" fo:line-height="100%" fo:text-indent="-0.598cm"/><style:text-properties fo:font-size="10pt"/></style:style>""",
+    "Endnote" to """<style:style style:name="Endnote" style:family="paragraph" style:parent-style-name="Standard" style:class="extra"><style:paragraph-properties fo:margin-left="0.598cm" fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm" fo:line-height="100%" fo:text-indent="-0.598cm"/><style:text-properties fo:font-size="10pt"/></style:style>""",
     "Bibliography_20_1" to """<style:style style:name="Bibliography_20_1" style:display-name="Bibliography 1" style:family="paragraph" style:parent-style-name="Standard" style:class="index"><style:paragraph-properties fo:margin-left="1.27cm" fo:margin-right="0cm" fo:text-indent="-1.27cm"/></style:style>""",
     "Title" to """<style:style style:name="Title" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:text-align="center" fo:keep-with-next="always"/><style:text-properties fo:font-size="28pt" fo:font-weight="bold"/></style:style>""",
     "Subtitle" to """<style:style style:name="Subtitle" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.106cm" fo:margin-bottom="0.212cm" fo:text-align="center"/><style:text-properties fo:font-size="18pt"/></style:style>""",
@@ -429,10 +443,10 @@ internal object OfficeFormats {
 
     fun read(bytes: ByteArray, kind: OfficeKind): OfficeDoc {
         val parts = unzip(bytes)
-        return when (kind) {
+        return numberNotes(when (kind) {
             OfficeKind.Docx -> DocxReader(parts).read()
             OfficeKind.Odt -> OdtReader(parts).read()
-        }
+        })
     }
 
     /** The file's bytes: [doc] written into [original] (the file it came from), or into a new blank document. */
@@ -559,6 +573,35 @@ internal object OfficeFormats {
         })
     }
     /** The letters [spans] (paragraph, from, to) made the citation [cite] (References › Insert citation). */
+    /** Letters of [spans] made a note's reference (References › Insert footnote): superscript, the note on them. */
+    fun withNote(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, note: DocNote): OfficeDoc {
+        val byPara = spans.groupBy { it.first }
+        return doc.copy(paras = doc.paras.mapIndexed { i, p ->
+            val mine = byPara[i] ?: return@mapIndexed p
+            var at = 0
+            val runs = ArrayList<DocRun>()
+            for (r in p.runs) {
+                val cuts = sortedSetOf(0, r.text.length)
+                mine.forEach { (_, a, b) -> cuts += (a - at).coerceIn(0, r.text.length); cuts += (b - at).coerceIn(0, r.text.length) }
+                cuts.toList().zipWithNext().filter { (x, y) -> y > x }.forEach { (x, y) ->
+                    val inside = mine.any { (_, a, b) -> at + x >= a && at + y <= b }
+                    runs += if (inside) r.copy(text = r.text.substring(x, y), note = note, script = 1, change = null) else r.copy(text = r.text.substring(x, y))
+                }
+                at += r.text.length
+            }
+            p.copy(runs = tidy(runs))
+        })
+    }
+    /** [old] changed to [new] wherever it is (null: its reference taken out, the note with it). */
+    fun replaceNote(doc: OfficeDoc, old: DocNote, new: DocNote?): OfficeDoc {
+        fun walk(ps: List<DocPara>): List<DocPara> = ps.map { p ->
+            if (p.table != null) p.copy(table = p.table.copy(rows = p.table.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = walk(c.paras)) }) }))
+            else if (p.runs.none { it.note == old }) p
+            else p.copy(runs = tidy(p.runs.mapNotNull { r -> if (r.note != old) r else new?.let { r.copy(note = it) } }))
+        }
+        return numberNotes(doc.copy(paras = walk(doc.paras)))
+    }
+
     fun withCite(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, cite: String): OfficeDoc {
         val byPara = spans.groupBy { it.first }
         return doc.copy(paras = doc.paras.mapIndexed { i, p ->
@@ -670,7 +713,7 @@ internal object OfficeFormats {
      * neighbours carry it), one typed at its edge does not; all its letters deleted, the comment is gone.
      */
     fun carryFonts(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
-        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null || it.change != null } }) return new
+        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null || it.change != null || it.note != null } }) return new
         val from = pairParagraphs(old, new)
         var carried: String? = null // the font the previous paragraph ended with
         return new.mapIndexed { j, p ->
@@ -679,6 +722,7 @@ internal object OfficeFormats {
             val notes = arrayOfNulls<List<String>>(text.length)
             val cites = arrayOfNulls<String>(text.length)
             val changes = arrayOfNulls<DocChange>(text.length)
+            val noteAt = arrayOfNulls<DocNote>(text.length)
             val known = BooleanArray(text.length)
             from[j].takeIf { it >= 0 }?.let { old[it] }?.let { o ->
                 val oldText = o.text
@@ -686,7 +730,8 @@ internal object OfficeFormats {
                 val oldNotes = ArrayList<List<String>>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.comments) } } }
                 val oldCites = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.cite) } } }
                 val oldChanges = ArrayList<DocChange?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.change) } } }
-                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; changes[y] = oldChanges[x]; known[y] = true }
+                val oldNoteAt = ArrayList<DocNote?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.note) } } }
+                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; changes[y] = oldChanges[x]; noteAt[y] = oldNoteAt[x]; known[y] = true }
                 // Common start and end first; the changed middle by longest common subsequence (small, where one typed).
                 var a = 0
                 while (a < text.length && a < oldText.length && text[a] == oldText[a]) { take(a, a); a++ }
@@ -755,8 +800,9 @@ internal object OfficeFormats {
             val runs = ArrayList<DocRun>()
             for (r in p.runs) {
                 var start = 0
-                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start] || changes[at + k] != changes[at + start]) {
-                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start], change = changes[at + start])
+                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start] || changes[at + k] != changes[at + start] || noteAt[at + k] != noteAt[at + start]) {
+                    // A note's reference keeps its note (typed letters never join one).
+                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start], change = changes[at + start], note = noteAt[at + start])
                     start = k
                 }
                 at += r.text.length
@@ -834,6 +880,33 @@ internal object OfficeFormats {
     }
 
     internal fun hex(rgb: Int) = "%06X".format(rgb and 0xFFFFFF)
+    /**
+     * The notes numbered in the order they stand (tables' too), each kind on its own — footnotes 1, 2, 3; endnotes i, ii,
+     * iii, as Word and LibreOffice number them by default. Their letters are the numbers.
+     */
+    fun numberNotes(doc: OfficeDoc): OfficeDoc {
+        var foot = 0; var end = 0
+        fun walk(ps: List<DocPara>): List<DocPara> = ps.map { p ->
+            if (p.table != null) p.copy(table = p.table.copy(rows = p.table.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = walk(c.paras)) }) }))
+            else if (p.runs.none { it.note != null }) p
+            else p.copy(runs = p.runs.map { r -> r.note?.let { n -> r.copy(text = if (n.end) roman(++end) else (++foot).toString(), script = 1) } ?: r })
+        }
+        return doc.copy(paras = walk(doc.paras))
+    }
+    fun roman(n: Int): String {
+        var k = n; val out = StringBuilder()
+        for ((v, s) in listOf(1000 to "m", 900 to "cm", 500 to "d", 400 to "cd", 100 to "c", 90 to "xc", 50 to "l", 40 to "xl", 10 to "x", 9 to "ix", 5 to "v", 4 to "iv", 1 to "i"))
+            while (k >= v) { out.append(s); k -= v }
+        return out.toString()
+    }
+    /** Every note, in order. */
+    fun notesOf(doc: OfficeDoc): List<DocNote> {
+        val out = ArrayList<DocNote>()
+        fun walk(ps: List<DocPara>) { ps.forEach { p -> p.runs.forEach { r -> r.note?.let { out += it } }; p.table?.rows?.forEach { row -> row.cells.forEach { walk(it.paras) } } } }
+        walk(doc.paras)
+        return out
+    }
+
     /** Word letter formatting from an rPr's XML (a tracked change's formatting before it). */
     internal fun docxLook(rPr: String): DocRun = runCatching {
         val root = parse("""<x xmlns:w="$W" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">$rPr</x>""".toByteArray()).documentElement
@@ -862,6 +935,8 @@ private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocum
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+private const val REL_FOOTNOTES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
+private const val REL_ENDNOTES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes"
 
 /** A relationship's target, from the folder of the part that points at it, as a path in the package. */
 internal fun resolve(dir: String, target: String): String {
@@ -921,6 +996,26 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         }
     }
 
+    /** The document's footnotes and endnotes (footnotes.xml, endnotes.xml): each one's paragraphs, by its id. */
+    val footnotes = HashMap<String, DocNote>()
+    val endnotes = HashMap<String, DocNote>()
+    fun readNotes() {
+        val rels = parts[relsPath(docPath)]?.let { OfficeFormats.parse(it).documentElement.kids() }.orEmpty()
+        for ((type, end) in listOf(REL_FOOTNOTES to false, REL_ENDNOTES to true)) {
+            val path = rels.firstOrNull { it.getAttribute("Type") == type }?.getAttribute("Target")?.let { resolve(dir, it) } ?: continue
+            val root = parts[path]?.let { OfficeFormats.parse(it).documentElement } ?: continue
+            for (n in root.kids().filter { it.localName == "footnote" || it.localName == "endnote" }) {
+                if (n.attr(W, "type").let { it != null && it != "normal" }) continue // the separator lines: Word's own, written again
+                val id = n.attr(W, "id") ?: continue
+                val paras = ArrayList<DocPara>().also { block(n, it) }
+                // The space after the note's number (Word's): not its text — written again with the number.
+                paras.firstOrNull()?.let { p -> p.runs.firstOrNull()?.takeIf { it.text.startsWith(" ") }?.let { r ->
+                    paras[0] = p.copy(runs = OfficeFormats.tidy(listOf(r.copy(text = r.text.drop(1))) + p.runs.drop(1))) } }
+                (if (end) endnotes else footnotes)[id] = DocNote(end, paras.ifEmpty { listOf(DocPara(emptyList())) })
+            }
+        }
+    }
+
     /** Reading a header or footer for the pages: its page-number fields become [PAGE_FIELD] / [PAGES_FIELD]. */
     var fieldMarks = false
     private var fieldInstr = StringBuilder()
@@ -966,6 +1061,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         readStyles(); readNumbering()
         val body = root.kid(W, "body") ?: error("Not a Word document.")
         readComments(body)
+        readNotes()
         val paras = ArrayList<DocPara>()
         block(body, paras)
         return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts))
@@ -1189,7 +1285,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 }
                 "delText" -> runs += look.copy(text = e.textContent)
                 "delInstrText" -> if (fieldDepth == 1) fieldInstr.append(e.textContent) else notes += "fields (page numbers, dates, contents)"
-                "footnoteReference", "endnoteReference" -> notes += "footnotes"
+                "footnoteReference", "endnoteReference" -> (if (e.localName == "endnoteReference") endnotes else footnotes)[e.attr(W, "id")]
+                    ?.let { n -> runs += look.copy(text = "1", note = n, script = 1) } ?: run { notes += "footnotes" }
+                "footnoteRef", "endnoteRef" -> Unit // a note's own number: written again
                 "commentReference" -> Unit // written again after the comment's range
                 "annotationRef" -> notes += "comments"
                 "sym" -> notes += "symbols"
@@ -1218,7 +1316,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "rStyle" -> when (styleName[e.attr(W, "val")] ?: e.attr(W, "val")?.lowercase()) {
                         "strong" -> look = look.copy(bold = true)
                         "emphasis" -> look = look.copy(italic = true)
-                        "hyperlink", "internet link", "default paragraph font" -> Unit
+                        "hyperlink", "internet link", "default paragraph font", "footnote reference", "endnote reference" -> Unit
                         else -> notes += "character styles"
                     }
                     // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
@@ -1383,6 +1481,7 @@ private object DocxWriter {
                 paras.forEach { p -> all += p; p.table?.rows?.forEach { row -> row.cells.forEach { cell -> add(cell.paras) } } }
             }
             add(doc.paras)
+            OfficeFormats.notesOf(doc).forEach { add(it.paras) }
         }
         fun styleId(name: String, preferred: String, definition: (String) -> String): String = byName[name] ?: run {
             val id = if (preferred in ids) "Tetra$preferred" else preferred
@@ -1494,6 +1593,7 @@ private object DocxWriter {
             }
             body.append("</w:tbl>")
         }
+        val footList = ArrayList<DocNote>(); val endList = ArrayList<DocNote>()
         // Comments: their ranges around the letters they are on, then their part.
         val live = doc.liveComments.associateBy { it.id }
         val openComments = LinkedHashSet<String>()
@@ -1583,7 +1683,12 @@ private object DocxWriter {
                 for (r in runs.subList(k, end)) {
                     if (r.comments != openComments.toList() || link == null && r.cite != cite) changeTo(null)
                     commentMarks(r.comments); if (link == null) citeTo(r.cite); changeTo(r.change)
-                    body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
+                    // A note's reference: Word's, numbered by Word; the note itself into footnotes.xml / endnotes.xml.
+                    r.note?.let { n ->
+                        val list = if (n.end) endList else footList
+                        list += n
+                        body.append("""<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:${if (n.end) "endnote" else "footnote"}Reference w:id="${list.size}"/></w:r>""")
+                    } ?: body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
                 }
                 changeTo(null)
                 if (link != null) body.append("</w:hyperlink>")
@@ -1597,6 +1702,31 @@ private object DocxWriter {
         doc.paras.forEachIndexed { index, p -> paragraph(index, p) }
         if (openComments.isNotEmpty()) { body.append("<w:p>"); commentMarks(emptyList()); body.append("</w:p>") }
         writeComments(parts, dir, rels, live.values.toList(), ::ensurePart)
+        // Footnotes and endnotes: their paragraphs written as the body's, each note's number (Word's) first.
+        val docRoot = Regex("""<w:document\b[^>]*>""").find(xml)?.value.orEmpty()
+        for ((end, list) in listOf(false to footList, true to endList)) {
+            val tag = if (end) "endnote" else "footnote"
+            val name = "${tag}s.xml"
+            val target = Regex("""<Relationship\b[^>]*Type="${if (end) REL_ENDNOTES else REL_FOOTNOTES}"[^>]*>""").find(rels)?.value?.let { Regex("""Target="([^"]+)"""").find(it)?.groupValues?.get(1) }
+            if (target == null && list.isEmpty()) continue
+            if (target == null) ensurePart(name, if (end) REL_ENDNOTES else REL_FOOTNOTES, "application/vnd.openxmlformats-officedocument.wordprocessingml.$name".removeSuffix(".xml") + "+xml", "")
+            val path = resolve(dir, target ?: name)
+            val old = parts[path]?.let { String(it, Charsets.UTF_8) }.orEmpty()
+            val root = Regex("""<w:${tag}s\b[^>]*>""").find(old)?.value ?: docRoot.replace("<w:document", "<w:${tag}s").ifEmpty { """<w:${tag}s xmlns:w="$W" xmlns:r="$R">""" }
+            val separators = Regex("""<w:$tag\b[^>]*w:type="(separator|continuationSeparator|continuationNotice)"[\s\S]*?</w:$tag>""").findAll(old).joinToString("") { it.value }
+                .ifEmpty { """<w:$tag w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:$tag><w:$tag w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:$tag>""" }
+            val notesXml = StringBuilder()
+            list.forEachIndexed { i, n ->
+                val start = body.length
+                n.paras.forEach { paragraph(null, it) }
+                val text = body.substring(start).let { t -> body.setLength(start); t }
+                // The note's own number, first in its first paragraph (after its properties).
+                val mark = """<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:${tag}Ref/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>"""
+                val at = Regex("""^<w:p>(<w:pPr>[\s\S]*?</w:pPr>)?""").find(text)?.range?.last?.plus(1) ?: 0
+                notesXml.append("""<w:$tag w:id="${i + 1}">""").append(text.substring(0, at)).append(mark).append(text.substring(at)).append("</w:$tag>")
+            }
+            parts[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" + root + separators + notesXml + "</w:${tag}s>").toByteArray()
+        }
         var out = xml.substring(0, bodyStart) + body + sect + xml.substring(bodyEnd)
         if (linkIds.isNotEmpty() && !Regex("""<w:document[^>]*xmlns:r=""").containsMatchIn(out)) out = out.replaceFirst("<w:document", "<w:document xmlns:r=\"$R\"")
         parts[docPath] = out.toByteArray()
@@ -1985,7 +2115,11 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         "tab" -> runs += look.copy(text = "\t")
                         "line-break" -> runs += look.copy(text = LINE_BREAK.toString())
                         "soft-page-break", "bookmark", "bookmark-start", "bookmark-end", "reference-mark", "reference-mark-start", "reference-mark-end", "alphabetical-index-mark", "toc-mark" -> Unit
-                        "note" -> notes += "footnotes"
+                        // A footnote or endnote: its body's paragraphs; its number is worked out, not read.
+                        "note" -> e.kid(TEXT, "note-body")?.let { b ->
+                            val paras = ArrayList<DocPara>().also { block(b, it, null, 0) }
+                            runs += look.copy(text = "1", note = DocNote(e.attr(TEXT, "note-class") == "endnote", paras.ifEmpty { listOf(DocPara(emptyList())) }), script = 1)
+                        } ?: run { notes += "footnotes" }
                         "change", "change-start", "change-end" -> notes += "tracked changes"
                         "ruby" -> { notes += "other text effects"; e.kid(TEXT, "ruby-base")?.let { content(it, look, inLink) } }
                         "meta", "meta-field" -> content(e, look, inLink)
@@ -2045,7 +2179,7 @@ private object OdtWriter {
         // A heading style the document does not have is added, so its headings still look like headings.
         if (stylesXml != null && "</office:styles>" in stylesXml) {
             val add = (1..6).filter { n -> doc.paras.any { it.heading == n } && "Heading_20_$n" !in named }.joinToString("") { n -> odtHeadingStyle(n, body) }
-            val builtin = doc.paras.mapNotNull { it.keep?.style }.toSet().filter { it in ODT_BUILTIN && it !in named }.joinToString("") { ODT_BUILTIN.getValue(it) }
+            val builtin = (doc.paras + OfficeFormats.notesOf(doc).flatMap { it.paras }).mapNotNull { it.keep?.style }.toSet().filter { it in ODT_BUILTIN && it !in named }.joinToString("") { ODT_BUILTIN.getValue(it) }
             if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
             // Citations: LibreOffice shows a mark as its identifier between the document's brackets — round ones, so
             // "Smith & Jones, 2019" reads as APA's (Smith & Jones, 2019).
@@ -2161,6 +2295,7 @@ private object OdtWriter {
                 openComments += id
             }
         }
+        var noteCount = 0
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
             val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
@@ -2182,6 +2317,14 @@ private object OdtWriter {
                     val r = runs[q++]
                     commentMarks(r.comments)
                     if (r.image != null) { append(frame(r.image)); prev = "x"; continue }
+                    // A note, where its reference is: LibreOffice's, its number shown, its paragraphs inside.
+                    r.note?.let { n ->
+                        noteCount++
+                        append("""<text:note text:id="ftn$noteCount" text:note-class="${if (n.end) "endnote" else "footnote"}"><text:note-citation>${OfficeFormats.esc(r.text)}</text:note-citation><text:note-body>""")
+                        n.paras.forEach { append(paragraphXml(it)) }
+                        append("</text:note-body></text:note>")
+                        prev = "x"; continue
+                    }
                     // A citation: a bibliography mark holding its source, its letters inside as plain text.
                     r.cite?.let { tag ->
                         val text = StringBuilder(r.text)

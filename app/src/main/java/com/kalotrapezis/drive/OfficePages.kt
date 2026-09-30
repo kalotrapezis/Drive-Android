@@ -834,8 +834,19 @@ internal object OfficePages {
      * [pageOf], when given, learns the page number (as printed) each paragraph starts on — for a table of contents;
      * [pageIndexOf] the page itself (0 = the first), as the list has them.
      */
-    fun layout(doc: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pageIndexOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
-        val sections = styles.sections(doc.paras)
+    /** A note's paragraphs as laid out: its number (superscript) and a space before its first words. */
+    fun noteParas(n: DocNote, ref: DocRun): List<DocPara> = n.paras.mapIndexed { k, q ->
+        if (k > 0) q else q.copy(runs = listOf(DocRun(ref.text, script = 1), DocRun(" ")) + q.runs)
+    }
+
+    fun layout(given: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pageIndexOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
+        // Notes numbered as they stand now; endnotes laid out after the text, each its number then its words.
+        val numbered = OfficeFormats.numberNotes(given)
+        val bodyCount = numbered.paras.size
+        val endnotes = ArrayList<DocPara>()
+        numbered.paras.forEach { p -> p.runs.forEach { r -> r.note?.takeIf { it.end }?.let { n -> endnotes += noteParas(n, r) } } }
+        val doc = numbered.copy(paras = numbered.paras + endnotes)
+        val sections = styles.sections(numbered.paras)
         var section = sections.firstOrNull() ?: styles.section
         var frame = section.page // the sheet
         var col = 0
@@ -856,7 +867,23 @@ internal object OfficePages {
             while (moved) { moved = false; for ((a, b) in bands) if (yy < b && yy + h > a) { yy = b; moved = true } }
             return yy
         }
+        // Footnotes (asked 2026-09-30): at the foot of the page their reference is on, under a short line, as Word does.
+        var feet = ArrayList<StaticLayout>() // this page's (or column's) footnotes, laid out
+        var feetHeight = 0f
+        val sepGap = 12f // the line above the footnotes and the space around it
+        fun footLayouts(refs: List<DocRun>) = refs.flatMap { r -> noteParas(r.note!!, r).map { q ->
+            paragraph(doc, q, styles.look(q), styles, page, null, pictureBytes, ArrayList()).first } }
+        fun heightOf(ls: List<StaticLayout>) = ls.sumOf { (it.height / U).toDouble() }.toFloat()
+        fun placeFeet() {
+            if (feet.isEmpty()) return
+            var fy = page.height - page.bottom - feetHeight
+            lines += LaidPage.Line(page.left, fy + sepGap / 2, page.left + minOf(144f, page.textWidth / 3), fy + sepGap / 2, 0.5f, 0)
+            fy += sepGap
+            for (l in feet) { pieces += LaidPage.Piece(l, 0, l.lineCount - 1, page.left, fy); fy += l.height / U }
+            feet = ArrayList(); feetHeight = 0f
+        }
         fun newPage() {
+            placeFeet()
             bands.clear()
             // In columns: the next column first.
             if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
@@ -872,6 +899,12 @@ internal object OfficePages {
         // down through the space between two paragraphs with the same borders.
         var prevEnd = 0f; var prevEndPage = -1
         doc.paras.forEachIndexed { i, p ->
+            // The endnotes: after a short line below the text.
+            if (i == bodyCount) {
+                y += 12f
+                lines += LaidPage.Line(page.left, y, page.left + minOf(144f, page.textWidth / 3), y, 0.5f, 0)
+                y += 6f
+            }
             // A new section: a new page (unless it goes on on the same one) of its own size, numbered as it says.
             sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
                 if (!next.continuous) {
@@ -884,7 +917,7 @@ internal object OfficePages {
             p.table?.let { t ->
                 val rows = tableRows(doc, t, styles, page, page.textWidth, pictureBytes)
                 val heading = rows.takeWhile { it.second }.map { it.first }
-                val limit = page.height - page.bottom
+                val limit = page.height - page.bottom - feetHeight
                 rows.forEachIndexed { ri, (row, _) ->
                     if (y + row.height > limit && (pieces.isNotEmpty() || boxes.isNotEmpty() || lines.isNotEmpty())) {
                         newPage()
@@ -909,14 +942,23 @@ internal object OfficePages {
             val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val drops = ArrayList<DropLetters>()
-            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating, drops)
+            val notesAt = ArrayList<Pair<Int, DocRun>>()
+            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating, drops, notesAt)
+            // Each line's footnotes: they must fit on the page with it.
+            val feetOf = notesAt.filter { it.second.note?.end == false }.groupBy({ layout.getLineForOffset(it.first) }, { it.second })
             val style = p.keep?.style + "/" + p.heading
             // Space between paragraphs: after the one before, then before this one — none between two of the same
             // style that say so (contextual spacing).
             val same = look.contextual && prevLook?.contextual == true && style == prevStyle
             if (look.pageBreakBefore && pieces.isNotEmpty()) breakPage()
             if (pieces.isNotEmpty() && !same) y += look.before
-            val limit = page.height - page.bottom
+            fun limitNow() = page.height - page.bottom - (if (feet.isEmpty()) 0f else feetHeight)
+            /** How far the text may go with lines [from]..[to] on this page: their footnotes too below it. */
+            fun limitWith(from: Int, to: Int): Float {
+                val refs = (from..to).flatMap { feetOf[it].orEmpty() }
+                if (refs.isEmpty()) return limitNow()
+                return page.height - page.bottom - feetHeight - heightOf(footLayouts(refs)) - (if (feet.isEmpty()) sepGap else 0f)
+            }
             var line = 0
             // Where the paragraph starts as the text flows, before a picture's band pushes its lines down: what its
             // floating pictures are placed from (Word's "from the paragraph"; found 2026-09-29 — pen strokes on a
@@ -927,7 +969,7 @@ internal object OfficePages {
                 // As many lines as fit on this page (a line never splits; one taller than a page goes on a page of its own).
                 val top = layout.topPt(line)
                 y = clear(y, layout.bottomPt(line) - top)
-                if (y + (layout.bottomPt(line) - top) > limit && pieces.isNotEmpty()) { newPage(); if (line == 0) natural = y; continue }
+                if (y + (layout.bottomPt(line) - top) > limitWith(line, line) && pieces.isNotEmpty()) { newPage(); if (line == 0) natural = y; continue }
                 if (line == 0 && !floated) {
                     floated = true
                     for (d in drops) floats += LaidPage.Floating(DropDrawable(d, page.left, y), page.left, y, 1f, 1f, behind = false)
@@ -941,8 +983,13 @@ internal object OfficePages {
                     y = clear(y, layout.bottomPt(line) - top)
                 }
                 var last = line
-                while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limit) last++
+                while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limitWith(line, last + 1)) last++
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
+                (line..last).flatMap { feetOf[it].orEmpty() }.takeIf { it.isNotEmpty() }?.let { refs ->
+                    val ls = footLayouts(refs)
+                    if (feet.isEmpty()) feetHeight += sepGap
+                    feet.addAll(ls); feetHeight += heightOf(ls)
+                }
                 if (line == 0) { pageOf?.let { if (i < it.size) it[i] = number }; pageIndexOf?.let { if (i < it.size) it[i] = pages.size } }
                 look.box?.let { box -> boxLines(box, look, page, y, y + layout.bottomPt(last) - top, line == 0, last == layout.lineCount - 1,
                     box == prevLook?.box && prevEndPage == pages.size, box == doc.paras.getOrNull(i + 1)?.takeIf { it.table == null }?.let { styles.look(it).box },
@@ -957,6 +1004,7 @@ internal object OfficePages {
             if (!same || i + 1 >= doc.paras.size) y += look.after
             prevLook = look; prevStyle = style
         }
+        placeFeet()
         pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
@@ -1200,7 +1248,8 @@ internal object OfficePages {
     }
 
     private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, page: DocPage, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
-        floating: MutableList<Pair<DocImage, PictureXml.Place>>, drops: MutableList<DropLetters>? = null /* the body's: a drop cap drawn */): Triple<StaticLayout, Float, Float> {
+        floating: MutableList<Pair<DocImage, PictureXml.Place>>, drops: MutableList<DropLetters>? = null /* the body's: a drop cap drawn */,
+        notesAt: MutableList<Pair<Int, DocRun>>? = null /* the body's: where each note's reference is in the text */): Triple<StaticLayout, Float, Float> {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
@@ -1222,6 +1271,7 @@ internal object OfficePages {
             val start = text.length
             text.append(r.text.replace(LINE_BREAK, '\n'))
             val end = text.length
+            if (r.note != null) notesAt?.add(start to r)
             fun span(s: Any) = text.setSpan(s, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             r.image?.let { img ->
                 val width = page.textWidth - left.coerceAtLeast(0f)

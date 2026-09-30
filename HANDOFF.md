@@ -38,10 +38,35 @@ All tablet checks were done in new, unsaved documents, discarded after; none of 
 1. **Review › Track changes** — show/accept/reject and recording in Word files DONE (see the 30 Sep entries); still:
    ODT, comments reply/resolve, remembering tracking in the file.
 2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
-3. **Footnotes / endnotes** (References), both kinds.
+3. **Footnotes / endnotes** — DONE 30 Sep night (see its entry).
 4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
 Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
 (report, thesis, video); a picture watermark; page border styles.
+
+---
+
+# 30 September, night — References › Footnotes and endnotes
+
+State: `writer-library`, committed; all unit tests pass; latest build on the **tablet**, not the phone.
+
+- Model: `DocRun.note` = `DocNote(end, paras)`; the reference's letters are its number (`OfficeFormats.numberNotes`:
+  footnotes 1, 2…, endnotes i, ii… — Word's and LibreOffice's defaults), set on reading and before the pages.
+  Carried through typing like citations (typed letters never join a note).
+- Word: footnotes.xml / endnotes.xml read (separators skipped, the space after the number dropped) and written anew
+  (separators kept or made, each note's paragraphs written as the body's with its footnoteRef first, the part and its
+  relationship made when missing); references written as w:footnoteReference with superscript. `FootnoteText` /
+  `EndnoteText` added to styles when a new note uses them. ODT: `text:note` read and written inline; `Footnote` /
+  `Endnote` styles likewise. **Fixed on the way:** the new ODT builtin styles used a `text:` attribute the blank's
+  styles.xml does not declare — every ODT's page setup read as default until removed (caught by the unit tests).
+- Pages: a line's footnotes must fit on its page with it (`limitWith`); each page's footnotes at its foot under a
+  short line; endnotes after the text under a short line. Tables leave the footnotes' room.
+- Editor: References › Insert footnote / Insert endnote (at the cursor; the dialog opens for its words); the cursor at a
+  note's number shows "Footnote 1 · its words · Edit"; the dialog edits or deletes it.
+- Checked: `NotesInDocsTest` (both kinds round trip, again unchanged; the suite's 04 file keeps both notes, not
+  copy-only); LibreOffice renders Writer's files with the notes numbered 1 and i; tablet: a new document, Insert
+  footnote after "1905.", its words typed, the page shows ¹ in the text and the note at the foot under the line.
+- Not yet: a new document's notes show at text size until saved (the blank's styles lack Footnote Text); editing a
+  note's words makes it plain text in its style (its own bold/italics are kept only while unedited); the phone.
 
 ---
 

@@ -594,6 +594,19 @@ internal fun NewCommentDialog(name: String, dismiss: () -> Unit, add: (String, S
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
+/** A footnote's or endnote's words, to write or change; Delete takes the note out with its number. */
+@Composable
+internal fun NoteDialog(note: DocNote, number: String, dismiss: () -> Unit, save: (String) -> Unit, delete: () -> Unit) {
+    var text by remember { mutableStateOf(note.paras.joinToString("\n") { it.text }) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text((if (note.end) "Endnote " else "Footnote ") + number) },
+        text = { OutlinedTextField(text, { text = it }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { TextButton(onClick = { save(text) }) { Text("Done") } },
+        dismissButton = { Row {
+            TextButton(onClick = delete) { Text("Delete note", color = Color(0xFFE57373)) }
+            TextButton(onClick = dismiss) { Text("Cancel") }
+        } })
+}
+
 /** Review › Track changes, the first time: the name the changes are recorded under (the comments' too). */
 @Composable
 internal fun ReviewerNameDialog(name: String, dismiss: () -> Unit, done: (String) -> Unit) {

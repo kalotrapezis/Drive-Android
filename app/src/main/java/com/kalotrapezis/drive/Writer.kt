@@ -616,12 +616,12 @@ internal object WriterBridge {
             if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
         }
     }
-    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList(), cite = null, change = null) })
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList(), cite = null, change = null, note = null) })
 
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList(), cite = null, change = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList(), cite = null, change = null, note = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -1272,6 +1272,46 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = "References — in APA's order, from the sources cited"
     }
     fun updateCitations() = change { meta = Citations.update(current(), kind); dirty = true; reshow(); message = "Citations and references updated" }
+    // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
+    /** Each note's reference, where it is in the editor: the note and its number. */
+    val notesShown by remember { derivedStateOf {
+        if (meta.paras.none { p -> p.runs.any { it.note != null } }) emptyList() else {
+            val text = state.annotatedString.text
+            val places = WriterBridge.blockPlaces(text, state.toRichTextDocument())
+            current().paras.flatMapIndexed { i, p ->
+                var at = 0
+                p.runs.flatMap { r -> (r.note?.let { n -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { Triple(n, r.text, it) } } ?: emptyList()).also { at += r.text.length } }
+            }
+        }
+    } }
+    val hereNote by remember { derivedStateOf { state.selection.min.let { at -> notesShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
+    var noteEditing by remember { mutableStateOf<Pair<DocNote, String>?>(null) } // the note, its number
+    fun insertNote(end: Boolean) = change {
+        if (!state.selection.collapsed) state.selection = androidx.compose.ui.text.TextRange(state.selection.max)
+        val start = state.selection.min
+        state.addTextAfterSelection("1") // its number, worked out below
+        val t = state.annotatedString.text
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), start, start + 1)
+        val style = if (kind == OfficeKind.Docx) (if (end) "EndnoteText" else "FootnoteText") else (if (end) "Endnote" else "Footnote")
+        val note = DocNote(end, listOf(DocPara(emptyList(), keep = DocKeep(style))))
+        meta = OfficeFormats.numberNotes(OfficeFormats.withNote(current(), spans, note))
+        dirty = true
+        reshow()
+        state.selection = androidx.compose.ui.text.TextRange(start + 1)
+        noteEditing = note to (notesShown.firstOrNull { it.first == note }?.second ?: "")
+    }
+    fun saveNote(old: DocNote, text: String?) = change {
+        val new = text?.let { t ->
+            val keep = old.paras.firstOrNull()?.keep
+            // Unchanged words keep the note's own formatting; changed ones are its paragraphs anew, in its style.
+            if (t == old.paras.joinToString("\n") { it.text }) old
+            else DocNote(old.end, t.split('\n').map { line -> DocPara(if (line.isEmpty()) emptyList() else listOf(DocRun(line)), keep = keep) })
+        }
+        meta = OfficeFormats.replaceNote(current(), old, new)
+        dirty = true
+        reshow()
+        noteEditing = null
+    }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
     // Review › Track changes (asked 2026-09-30): where each change is in the editor's text, and the one at the cursor.
     val changesShown by remember { derivedStateOf {
@@ -1942,6 +1982,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            // A note's number, the cursor at it: the note's words (Edit opens them).
+            hereNote?.let { (n, number, _) ->
+                Row(Modifier.fillMaxWidth().clickable { noteEditing = n to number }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text((if (n.end) "Endnote " else "Footnote ") + number, color = w, style = MaterialTheme.typography.labelLarge)
+                    Text(n.paras.joinToString(" ") { it.text }.ifBlank { "(empty)" }, color = w.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                    Text("Edit", color = w, style = MaterialTheme.typography.labelLarge)
+                }
+            }
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
             hereWord?.let { (r, w, suggestions) ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2319,6 +2368,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
                     RibbonButton(if (has) "Update table" else "Table of contents", w, enabled = loaded) { insertContents() }
                 }, {
+                    // Word's Footnotes group.
+                    RibbonButton("Insert footnote", w, enabled = loaded) { insertNote(false) }
+                    RibbonButton("Insert endnote", w, enabled = loaded) { insertNote(true) }
+                }, {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
                     RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
@@ -2625,6 +2678,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    noteEditing?.let { (n, number) -> NoteDialog(n, number, { noteEditing = null }, { saveNote(n, it) }, { saveNote(n, null) }) }
     if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->
         prefs.edit().putString("author", name).apply()
         askingName = false; tracking = true; message = "Track changes on — your edits are marked"

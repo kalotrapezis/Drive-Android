@@ -1696,8 +1696,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val sel = state.selection
                     val all = remember(text) { TextCounts.of(text) }
                     val part = remember(text, sel) { if (sel.collapsed) null else TextCounts.of(text.substring(sel.min, sel.max)) }
-                    Text(if (part == null) "%,d words · %,d characters".format(all.words, all.withSpaces)
-                        else "%,d of %,d words · %,d of %,d characters".format(part.words, all.words, part.withSpaces, all.withSpaces),
+                    Text(if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
+                        else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
@@ -2785,11 +2785,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
                 val all = remember { TextCounts.of(current().paras.joinToString("\n") { it.text }) }
-                Text("${all.words} words · ${all.chars} characters (${all.withSpaces} with spaces) · ${current().paras.count { it.text.isNotBlank() }} paragraphs", style = MaterialTheme.typography.bodyMedium)
+                Text("${plural(all.words, "word")} · ${plural(all.chars, "character")} (${all.withSpaces} with spaces) · ${plural(current().paras.count { it.text.isNotBlank() }, "paragraph")}", style = MaterialTheme.typography.bodyMedium)
                 // The selection's counts too, as Word's Word Count does (asked 2026-09-30: the phone's counter is here).
                 val sel = state.selection
                 if (!sel.collapsed) TextCounts.of(state.annotatedString.text.substring(sel.min, sel.max)).let {
-                    Text("Selected: ${it.words} words · ${it.chars} characters (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
+                    Text("Selected: ${plural(it.words, "word")} · ${plural(it.chars, "character")} (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
@@ -2800,6 +2800,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
     )
 }
+
+/** "1 word", "1,234 words". */
+internal fun plural(n: Int, one: String) = "%,d %s".format(n, if (n == 1) one else one + "s")
 
 /** Word's counts: words, characters without spaces, characters with spaces (not paragraph marks or pictures). */
 internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {

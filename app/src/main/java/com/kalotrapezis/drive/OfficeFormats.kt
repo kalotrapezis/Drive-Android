@@ -538,20 +538,23 @@ internal object OfficeFormats {
 
     /**
      * Which paragraph of [old] each paragraph of [new] is (-1: a new one). Unchanged paragraphs are matched first
-     * (longest common run); between two matches, changed paragraphs pair up in order.
+     * (longest common run); between two matches, changed paragraphs pair up in order. Empty paragraphs are no sign
+     * of which is which (found 2026-09-30: after Blank page, text typed on the page after it — two empty paragraphs
+     * were matched crosswise and the page break went to the wrong one): they pair in order with the changed ones.
      */
     fun pairParagraphs(old: List<DocPara>, new: List<DocPara>): IntArray {
         val n = old.size; val m = new.size
+        fun same(i: Int, j: Int) = old[i].text == new[j].text && old[i].text.isNotBlank()
         val lcs = Array(n + 1) { IntArray(m + 1) }
         for (i in n - 1 downTo 0) for (j in m - 1 downTo 0)
-            lcs[i][j] = if (old[i].text == new[j].text) lcs[i + 1][j + 1] + 1 else maxOf(lcs[i + 1][j], lcs[i][j + 1])
+            lcs[i][j] = if (same(i, j)) lcs[i + 1][j + 1] + 1 else maxOf(lcs[i + 1][j], lcs[i][j + 1])
         val from = IntArray(m) { -1 }
         var i = 0; var j = 0
         val gapOld = ArrayList<Int>(); val gapNew = ArrayList<Int>()
         fun flush() { gapNew.forEachIndexed { k, jj -> gapOld.getOrNull(k)?.let { from[jj] = it } }; gapOld.clear(); gapNew.clear() }
         while (i < n && j < m) {
             when {
-                old[i].text == new[j].text && lcs[i][j] == lcs[i + 1][j + 1] + 1 -> { flush(); from[j] = i; i++; j++ }
+                same(i, j) && lcs[i][j] == lcs[i + 1][j + 1] + 1 -> { flush(); from[j] = i; i++; j++ }
                 lcs[i + 1][j] >= lcs[i][j + 1] -> gapOld += i++
                 else -> gapNew += j++
             }

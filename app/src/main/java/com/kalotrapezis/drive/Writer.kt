@@ -1254,32 +1254,71 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var symbolPage by remember { mutableStateOf(false) }
     var pagePage by remember { mutableStateOf(false) }
     var shapesPage by remember { mutableStateOf(false) }
-    var drawPage by remember { mutableStateOf(false) }
-    var drawOn by remember { mutableStateOf<LaidPage?>(null) }
     /**
-     * A drawing in front of the text (the user, 2026-09-30: drawings go on top of the text): anchored where the cursor's
-     * paragraph starts, as Word does — never between two letters of a word — at [place] on the page, or (from the
-     * drawing box) at the paragraph's top left; the Picture tab moves it into the text if wanted.
+     * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
+     * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
      */
-    fun putDrawing(bytes: ByteArray, wPt: Float, hPt: Float, place: Pair<Float, Float>?) {
+    class Drawing(val pages: List<LaidPage> = emptyList(), val anchors: List<Int> = emptyList(), val start: Int = 0, val edit: String? = null,
+        val strokes: List<InkStroke> = emptyList(), val boxPt: Float = 0f, val boxAspect: Float = 0.6f)
+    var drawing by remember { mutableStateOf<Drawing?>(null) }
+    /**
+     * A drawing in front of the text (the user, 2026-09-30: drawings go on top of the text): anchored where a paragraph
+     * starts, as Word does — never between two letters of a word — [anchor] or the cursor's; at [place] on the page, or
+     * (from the drawing box) at the paragraph's top left; the Picture tab moves it into the text if wanted.
+     */
+    fun putDrawing(bytes: ByteArray, wPt: Float, hPt: Float, place: Pair<Float, Float>?, anchor: Int?) {
         val img = DocImage("n" + java.util.UUID.randomUUID(), null, wPt, hPt, null, bytes, "png", PictureWrap.InFront, onPage = place)
         pictures[img.key] = img
+        val text = state.annotatedString.text; val rich = state.toRichTextDocument()
         val cursor = state.selection
-        WriterBridge.blockRange(state.annotatedString.text, state.toRichTextDocument(), cursor.min)?.let { state.selection = androidx.compose.ui.text.TextRange(it.first) }
+        val start = anchor?.let { WriterBridge.paragraphStarts(text, rich).getOrNull(it) } ?: WriterBridge.blockRange(text, rich, cursor.min)?.first
+        start?.let { state.selection = androidx.compose.ui.text.TextRange(it) }
         placePicture(img)
-        state.selection = androidx.compose.ui.text.TextRange(cursor.min + 1, cursor.max + 1)
+        val shift = if (start != null && cursor.min >= start) 1 else 0
+        state.selection = androidx.compose.ui.text.TextRange(cursor.min + shift, cursor.max + shift)
         message = "Drawn in front of the text — the pages show it in its place"
     }
+    /** The pages of [doc] as the pages view lays them out, and the page each paragraph starts on (-1: none). */
+    suspend fun laidOut(doc: OfficeDoc): Pair<List<LaidPage>, IntArray>? {
+        val parts = packageParts
+        val index = IntArray(doc.paras.size) { -1 }
+        return withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, pageIndexOf = index) { img -> img.bytes ?: img.part?.let { parts[it] } } }
+            .onFailure { Log.e("Writer", "draw", it) }.getOrNull() }?.let { it to index } ?: run { message = "The page could not be laid out."; null }
+    }
     /**
-     * Draw › Draw on page: the page the cursor's paragraph starts on, as the pages show it, to draw over; the drawing
-     * is anchored in that paragraph, placed from the page's corner. ponytail: only that page; a page chooser when asked.
+     * Draw › Draw on page: the page the cursor is on, as the pages show it, to draw over (‹ › for another); the drawing
+     * is anchored in the first paragraph of text that starts on its page, placed from the page's corner. A page no
+     * paragraph starts on (the middle of a long one) is left out.
      */
     fun drawOnPage() = chooseParagraphs { at, _ ->
-        val cur = current(); val parts = packageParts
+        val cur = current()
         scope.launch {
-            val starts = IntArray(cur.paras.size)
-            val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(cur, documentStyles, starts) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() }
-            drawOn = laid?.let { l -> l.firstOrNull { it.number == starts[at.min()] } ?: l.first() } ?: run { message = "The page could not be laid out."; null }
+            val (laid, index) = laidOut(cur) ?: return@launch
+            val anchors = laid.indices.map { k -> cur.paras.indices.firstOrNull { index[it] == k && cur.paras[it].table == null } ?: -1 }
+            val usable = laid.indices.filter { anchors[it] >= 0 }
+            drawing = Drawing(usable.map { laid[it] }, usable.map { anchors[it] }, usable.indexOf(index[at.min()]).coerceAtLeast(0))
+        }
+    }
+    /** A drawing made in Writer (its strokes ride in its PNG), drawn on again: on its page if it is placed on one, else in its box. */
+    fun editDrawing(key: String) {
+        val img = pictures[key] ?: return
+        val (strokes, drawnAspect) = (img.bytes ?: img.part?.let { packageParts[it] })?.let { InkPicture.strokesOf(it) } ?: return
+        val ky = img.heightPt / img.widthPt / drawnAspect // sized unevenly since: its strokes stretch with it
+        val place = PictureXml.placeOf(img)?.takeIf { it.fromH == "page" && it.fromV == "page" && it.x != null && it.y != null }
+        val cur = current()
+        val para = cur.paras.indexOfFirst { p -> p.runs.any { it.image?.key == key } }
+        if (place == null || para < 0) {
+            drawing = Drawing(edit = key, strokes = strokes.map { s -> InkStroke(s.points.map { Offset(it.x, it.y * ky) }, s.color, s.widthMm, s.highlighter) },
+                boxPt = img.widthPt, boxAspect = img.heightPt / img.widthPt)
+            return
+        }
+        scope.launch {
+            // Its page without it (it is drawn again), its strokes where they are on it.
+            val (laid, index) = laidOut(cur.copy(paras = cur.paras.map { p -> p.copy(runs = p.runs.filter { it.image?.key != key }) })) ?: return@launch
+            val page = laid.getOrNull(index[para]) ?: return@launch
+            val w = page.page.width
+            drawing = Drawing(listOf(page), listOf(para), edit = key, strokes = strokes.map { s ->
+                InkStroke(s.points.map { Offset((place.x!! + it.x * img.widthPt) / w, (place.y!! + it.y * ky * img.widthPt) / w) }, s.color, s.widthMm, s.highlighter) })
         }
     }
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
@@ -1864,7 +1903,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val img = pictures[key]
                     val editable = img != null && PictureXml.editable(img)
                     val hasBytes = img != null && pictureBytes(img) != null
+                    // A drawing made in Writer: drawn on again (its strokes ride in its picture).
+                    val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
+                        if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
                         RibbonButton("Size", w, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, enabled = hasBytes && editable) {
                             scope.launch {
@@ -1938,7 +1980,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
                     RibbonButton("Draw on page", w, R.drawable.ic_draw, enabled = loaded) { drawOnPage() }
                     // A drawing box: drawn in, then put in front of the text at its paragraph.
-                    RibbonButton("Drawing box", w, R.drawable.ic_ink_pen, enabled = loaded) { drawPage = true }
+                    RibbonButton("Drawing box", w, R.drawable.ic_ink_pen, enabled = loaded) { drawing = Drawing(boxPt = sheet.textWidth.coerceAtMost(450f)) }
                 })
                 WriterTab.Layout -> listOf({
                     // Word's Layout: margins, orientation, size (one page for all three), then breaks.
@@ -2213,9 +2255,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
     }
-    if (drawPage) DrawDialog(sheet.textWidth.coerceAtMost(450f), { drawPage = false }) { bytes, wPt, hPt, _ -> drawPage = false; putDrawing(bytes, wPt, hPt, null) }
-    drawOn?.let { page ->
-        DrawDialog(page.page.width, { drawOn = null }, page) { bytes, wPt, hPt, place -> drawOn = null; putDrawing(bytes, wPt, hPt, place) }
+    drawing?.let { d ->
+        DrawDialog(d.boxPt, { drawing = null }, d.pages, d.start, d.boxAspect, d.strokes) { bytes, wPt, hPt, place, k ->
+            drawing = null
+            val old = d.edit?.let { pictures[it] }
+            if (old == null) putDrawing(bytes, wPt, hPt, place, d.anchors.getOrNull(k))
+            else changePicture(old.key, DocImage(old.key, null, wPt, hPt, null, bytes, "png", PictureXml.wrapOf(old) ?: PictureWrap.InFront, onPage = place ?: old.onPage))
+        }
     }
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false

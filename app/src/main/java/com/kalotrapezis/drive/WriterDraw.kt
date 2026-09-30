@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,22 +87,71 @@ internal object InkPicture {
             if (s.points.size == 1) path.lineTo(s.points[0].x * w + 0.1f, s.points[0].y * w)
             canvas.drawPath(path, paint)
         }
-        return java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        return withStrokes(java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray(), strokes, aspect)
+    }
+
+    /*
+     * The strokes ride inside the PNG (a tEXt chunk Word and LibreOffice keep with the picture), so a drawing can be
+     * drawn on again after the file is closed: "aspect|color,mm,h:x y x y…;…" in the picture's widths.
+     */
+    private const val KEY = "tetra-ink"
+    fun withStrokes(png: ByteArray, strokes: List<InkStroke>, aspect: Float): ByteArray {
+        val text = "%.5f".format(java.util.Locale.ROOT, aspect) + "|" + strokes.joinToString(";") { s ->
+            "${s.color},${s.widthMm},${if (s.highlighter) 1 else 0}:" + s.points.joinToString(" ") { "%.4f %.4f".format(java.util.Locale.ROOT, it.x, it.y) } }
+        val data = (KEY + "\u0000" + text).toByteArray(Charsets.ISO_8859_1)
+        val body = "tEXt".toByteArray(Charsets.ISO_8859_1) + data
+        val crc = java.util.zip.CRC32().apply { update(body) }.value
+        val chunk = java.nio.ByteBuffer.allocate(4 + body.size + 4).putInt(data.size).put(body).putInt(crc.toInt()).array()
+        val afterHeader = 8 + 25 // the signature, then IHDR (13 bytes and its length, type and CRC)
+        return png.copyOfRange(0, afterHeader) + chunk + png.copyOfRange(afterHeader, png.size)
+    }
+    /** The strokes a drawing made in Writer keeps, in its widths, and the height / width it was drawn at; null: not one. */
+    fun strokesOf(png: ByteArray): Pair<List<InkStroke>, Float>? {
+        if (png.size < 8 || png[1] != 'P'.code.toByte()) return null
+        val b = java.nio.ByteBuffer.wrap(png)
+        var at = 8
+        while (at + 8 <= png.size) {
+            val len = b.getInt(at); val type = String(png, at + 4, 4, Charsets.ISO_8859_1)
+            if (len < 0 || at + 12 + len > png.size) return null
+            if (type == "tEXt") {
+                val t = String(png, at + 8, len, Charsets.ISO_8859_1)
+                if (t.startsWith(KEY + "\u0000")) return runCatching {
+                    val (aspect, list) = t.substring(KEY.length + 1).split('|', limit = 2)
+                    list.split(';').filter { it.isNotEmpty() }.map { one ->
+                        val (head, pts) = one.split(':', limit = 2)
+                        val (c, mm, h) = head.split(',')
+                        val n = pts.split(' ').map { it.toFloat() }
+                        InkStroke(n.chunked(2).map { Offset(it[0], it[1]) }, c.toInt(), mm.toFloat(), h == "1")
+                    } to aspect.toFloat()
+                }.getOrNull()
+            }
+            if (type == "IDAT" || type == "IEND") return null // written before the picture's data
+            at += 12 + len
+        }
+        return null
     }
 }
 
 private enum class Tool { Pen, Pen2, Highlighter, Eraser }
 
 /**
- * The drawing box, or with [page] the page itself as the pages show it (asked 2026-09-30: drawn on the document, the
- * page underneath to see how big it comes out). [insert] gets the PNG, its size in points and, on a page, its top left
- * there — the drawing cut to what was drawn.
+ * The drawing box ([boxAspect] = height / width, [boxPt] wide), or with [pages] a page itself as the pages show it
+ * (asked 2026-09-30: drawn on the document, the page underneath to see how big it comes out), [startPage] first, the
+ * others a tap away while nothing is drawn. [initial]: the strokes of a drawing drawn on again, in the box's (or the
+ * page's) widths. [insert] gets the PNG, its size in points and, on a page, its top left there — the drawing cut to
+ * what was drawn — and the page it was drawn on.
  */
 @Composable
-internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, page: LaidPage? = null, insert: (ByteArray, Float, Float, Pair<Float, Float>?) -> Unit) {
-    val aspect = page?.let { it.page.height / it.page.width } ?: 0.6f
-    val strokes = remember { mutableStateListOf<InkStroke>() }
+internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage> = emptyList(), startPage: Int = 0, boxAspect: Float = 0.6f,
+    initial: List<InkStroke> = emptyList(), insert: (ByteArray, Float, Float, Pair<Float, Float>?, Int) -> Unit) {
+    var pageAt by remember { mutableIntStateOf(startPage) }
+    val page = pages.getOrNull(pageAt)
+    val widthPt = page?.page?.width ?: boxPt
+    val aspect = page?.let { it.page.height / it.page.width } ?: boxAspect
+    val strokes = remember { mutableStateListOf<InkStroke>().apply { addAll(initial) } }
     var current by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
     var tool by remember { mutableStateOf(Tool.Pen) }
     // Each pen keeps its own colour and width (Word's pens).
     val colors = remember { mutableStateListOf(0xFF000000.toInt(), 0xFF1A73E8.toInt(), 0xFFFFC114.toInt()) }
@@ -118,6 +168,12 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, page: LaidPage? = n
                     Choice("Highlighter", tool == Tool.Highlighter) { tool = Tool.Highlighter }
                     Choice("Eraser", tool == Tool.Eraser) { tool = Tool.Eraser }
                     Choice("Undo", false) { strokes.removeLastOrNull() }
+                    // Another page: while nothing is drawn on this one (a drawing stays on its page).
+                    if (pages.size > 1) {
+                        Choice("‹", false) { if (strokes.isEmpty() && pageAt > 0) { pageAt--; zoom = 1f; pan = Offset.Zero } }
+                        Text("Page ${pageAt + 1} of ${pages.size}", style = MaterialTheme.typography.labelLarge)
+                        Choice("›", false) { if (strokes.isEmpty() && pageAt < pages.lastIndex) { pageAt++; zoom = 1f; pan = Offset.Zero } }
+                    }
                 }
                 if (slot >= 0) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     palette.forEach { c -> Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c))
@@ -130,12 +186,10 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, page: LaidPage? = n
                 // As big as fits with the tools and the buttons (a landscape tablet is short).
                 val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - if (page == null) 360.dp else 280.dp).coerceAtLeast(160.dp)
                 // On a page: the page across the whole width, two fingers to zoom and move it, one (or the pen) to draw.
-                var zoom by remember { mutableFloatStateOf(1f) }
-                var pan by remember { mutableStateOf(Offset.Zero) }
                 val area = if (page == null) Modifier.widthIn(max = room / aspect).fillMaxWidth().aspectRatio(1 / aspect).background(Color.White)
                     else Modifier.fillMaxWidth().height(room).background(Color(0xFF5F6368))
                 Box(Modifier.align(Alignment.CenterHorizontally).then(area).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFDADCE0), RoundedCornerShape(8.dp))) {
-                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(tool) {
+                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(tool, pageAt) {
                         fun at(p: Offset) = (p - pan) / (size.width * zoom) // in the box's widths
                         detectDraw(
                             start = { p -> val q = at(p)
@@ -175,11 +229,11 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, page: LaidPage? = n
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }
                     TextButton(enabled = strokes.isNotEmpty(), onClick = {
-                        if (page == null) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null)
+                        if (page == null) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null, 0)
                         else { val (cut, box) = InkPicture.cut(strokes, aspect, widthPt)
                             val w = box.width * widthPt
-                            insert(InkPicture.png(cut, box.height / box.width, w, (w * 4).toInt().coerceIn(64, 2400)), w, box.height * widthPt, box.left * widthPt to box.top * widthPt) }
-                    }) { Text("Insert") }
+                            insert(InkPicture.png(cut, box.height / box.width, w, (w * 4).toInt().coerceIn(64, 2400)), w, box.height * widthPt, box.left * widthPt to box.top * widthPt, pageAt) }
+                    }) { Text(if (initial.isEmpty()) "Insert" else "Done") }
                 }
             }
         }

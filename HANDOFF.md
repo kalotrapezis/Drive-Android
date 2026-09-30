@@ -1,3 +1,26 @@
+# 30 September, late morning — Draw: any page, drawings drawn on again; a blank page's break kept
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone
+(not connected).
+
+- **Draw on page: ‹ Page n of N ›** — opens on the cursor's page; another page while nothing is drawn yet. The drawing
+  is anchored in the first paragraph of text that starts on its page (`OfficePages.layout(pageIndexOf=)`: each
+  paragraph's page by index); pages no paragraph starts on (inside a long one) are left out. The cursor stays put.
+- **Edit drawing** (Picture tab, for drawings made in Writer): the strokes ride inside the PNG (a `tetra-ink` tEXt
+  chunk: aspect | colour,mm,highlighter:x y…, in the picture's widths — `InkPicture.withStrokes/strokesOf`), so it works
+  after saving and reopening too (unit test: through .docx and .odt). A drawing on a page opens on its page (the page
+  laid out without it), else in its box; "Done" replaces it in place (same key, anchor and wrap). Turn/Flip/Crop
+  re-encode the PNG and drop the strokes (it becomes a plain picture).
+- **Fixed (older than today):** after Blank page and typing on the page after it, any Writer change (a picture, a
+  style…) moved the page break off that text — the page after the blank page merged into it. `pairParagraphs` matched
+  the two empty paragraphs crosswise; empty paragraphs are no longer matched as unchanged, they pair in order.
+- Checked on the tablet (new unsaved documents, discarded): 3 pages, drawn on page 1 from page 3 (3 pages kept);
+  Edit drawing: the circle back where it was, a highlight added, one drawing on the pages in the same place.
+  Not checked on the device: reopening a saved file and editing its drawing (the unit test covers the file side).
+- Not yet: moving a drawing by dragging; pens remembered between drawings; the phone.
+
+---
+
 # 30 September, morning — draw on the page; icons on Insert and Borders
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.

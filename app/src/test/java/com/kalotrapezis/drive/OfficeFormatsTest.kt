@@ -285,6 +285,34 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a drawing keeps its strokes inside its picture, through the file`() {
+        val plain = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(10, 5, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }.toByteArray()
+        val strokes = listOf(InkStroke(listOf(androidx.compose.ui.geometry.Offset(0.1f, 0.2f), androidx.compose.ui.geometry.Offset(0.9f, 0.4f)), 0xFFE53935.toInt(), 0.75f, false),
+            InkStroke(listOf(androidx.compose.ui.geometry.Offset(0.5f, 0.25f)), 0xFFFFC114.toInt(), 5f, true))
+        val png = InkPicture.withStrokes(plain, strokes, 0.5f)
+        assertEquals(null, InkPicture.strokesOf(plain))
+        assertEquals(10, javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png)).width) // still a picture (its CRC right)
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = DocImage("n1", null, 100f, 50f, null, png, "png", PictureWrap.InFront, onPage = 10f to 20f))))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val img = OfficeFormats.read(bytes, kind).paras.single().runs.mapNotNull { it.image }.single()
+            val (back, aspect) = InkPicture.strokesOf(OfficeFormats.unzip(bytes).getValue(img.part!!))!!
+            assertEquals(kind.name, 0.5f, aspect)
+            assertEquals(kind.name, strokes.map { Triple(it.color, it.widthMm, it.highlighter) }, back.map { Triple(it.color, it.widthMm, it.highlighter) })
+            assertEquals(kind.name, strokes.map { it.points }, back.map { it.points })
+        }
+    }
+
+    @Test fun `empty paragraphs pair in order - a blank page keeps its breaks`() {
+        fun p(t: String) = DocPara(if (t.isEmpty()) emptyList() else listOf(DocRun(t)))
+        // After Blank page the paragraph after it was empty; then text was typed there and a picture put in the first.
+        assertEquals(listOf(0, 1, 2), OfficeFormats.pairParagraphs(listOf(p("First page."), p(""), p("")),
+            listOf(p("\uFFFCFirst page."), p(""), p("Third page."))).toList())
+        // An empty paragraph added (Enter) is a new one; one taken away leaves the others matched.
+        assertEquals(listOf(0, -1, 1), OfficeFormats.pairParagraphs(listOf(p("A"), p("B")), listOf(p("A"), p(""), p("B"))).toList())
+        assertEquals(listOf(0, 2), OfficeFormats.pairParagraphs(listOf(p("A"), p(""), p("B")), listOf(p("A"), p("B"))).toList())
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

@@ -43,6 +43,9 @@ one pass once the tabs' features are done.
 - [x] Share the file (as last saved) — as PDF with Export
 - [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
 - [ ] ⋯ menu: Save as, Rename, Print, Properties
+- [x] Word and character counter (1 Oct): tablet — in the top bar, of the selection when there is one ("12 of 1,234
+      words"), a tap opens About; phone — File › About this file (words, characters with and without spaces, and the
+      selection's). Tables' words count, pictures do not
 
 ### File
 - [x] Save over the file when nothing is lost; else a copy beside it
@@ -94,7 +97,7 @@ one pass once the tabs' features are done.
 - [x] Link
 - [x] Table (insert 5×5 picker, rows/columns at the cell, merge by tapping two cells, split, cell text in place with Home formatting; .odt tables kept, text only)
 - [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
-- [x] Pictures shown on the page (Writer draws them over the text; a chart or shape is a grey box; a floating picture shows in line for now)
+- [x] Pictures shown on the page (Writer draws them over the text; charts, shapes and text boxes drawn as they are; a floating one in line in the typing view, in its place on the pages)
 - [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt
 - [ ] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
       - **Resize** in a window: horizontal xx px · vertical xx px (not by hand), **Crop** in a window (Photos' crop), **Save picture as…** (take a picture out of a document
@@ -125,7 +128,21 @@ one pass once the tabs' features are done.
       of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,
       changing fill/outline after.
 - [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
-- [ ] Later (they float over the text, which the editor cannot do yet): text box, WordArt; equations (√x,
+- [x] **Floating objects** (1 Oct): Picture › **Position** drags a floating picture, shape, text box or chart on its page
+      (the page as laid out, the text re-flowing on letting go), saved from the page's corner (Word positionH/V
+      relativeFrom="page", ODT svg:x/y page-relative); **Square wrap flows the text beside it** on the pages (the side
+      with more room; too little room: below it, as Word) — also beside paragraphs before its anchor (a second pass)
+      — [ ] text on both sides of a picture in the middle; forward/backward, align, group, rotate
+- [x] **Text box** (Insert › Text box, Picture › Edit text): Word's wps text box / LibreOffice's rectangle with words;
+      files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
+      editor — [ ] editing a file's text box keeps only its first words' look
+- [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame — [ ] Word's text
+      effects (outline, shadow, glow, warp)
+- [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
+      title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
+      no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) — [ ] scatter as
+      x/y, axis titles, data labels; Word's own Edit data (it needs the embedded workbook)
+- [ ] Later: equations (√x,
       kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
       date picker, check box — OnlyOffice's last Insert button)
 
@@ -188,7 +205,7 @@ one pass once the tabs' features are done.
 - [ ] Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, VLOOKUP, dates, text; recalculation
 - [ ] Cell formatting: bold, colour, fill, borders, alignment, number/currency/date/percent
 - [ ] Sort and filter (by value, by colour); freeze panes
-- [ ] Charts: column, bar, line, pie, scatter
+- [ ] Charts: column, bar, line, pie, scatter (OfficeCharts.kt reads and draws DrawingML charts: Excel's are the same)
 - [ ] New sheet, rename, reorder; Find
 - [ ] Save back into the original package (same rule as Writer: copy when something would be lost)
 

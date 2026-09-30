@@ -1,4 +1,57 @@
-# 30 September — end of the long day: where things stand (read this first)
+# 30 September, late night (new 5-hour window) — counter, floating objects, text boxes, WordArt, charts (read this first)
+
+**State.** Branch `writer-library`, all committed; all unit tests pass. The latest build is on the **tablet**
+(971f6b37). The **phone** (208c8192) was not connected all session: it still has the build from before spelling,
+footnotes, icons, comment threads *and* everything below — install there first and check at phone size (the chart
+dialog's grid scrolls sideways; Position's page fits the screen). Every device check was in new, unsaved documents
+(discarded) or my own test file (tetra-chart-test.docx, pushed to /sdcard/Tetra/Documents and deleted after). Found
+there and left alone (not mine to judge): `Documents/Tetra track-changes test.docx`, `Documents/Test-Words/`,
+`hi-test.txt` — possibly old test files; ask the user before touching.
+
+**Done this session** (the plan below: "Word first — floating objects and charts first"):
+- **Word and character counter** (the user's item 1): tablet top bar "N words · N characters" (with spaces), "n of N"
+  for a selection, a tap opens About; About (the phone's place) adds the selection's counts. `TextCounts`,
+  `DocPara.countedText()` (tables' cell words count; picture characters \uFFFC/\uFFFD/\uE000 do not). Checked on the tablet.
+- **Picture › Position** (`PositionDialog`, WriterDraw.kt): the object's page as laid out, the object dragged with a
+  finger (two fingers zoom); on letting go it is placed there (`PictureXml.placed`: page-relative, docx positionH/V
+  relativeFrom="page", ODT svg:x/y with the `_20_page` style — Writer's shape styles now carry it too) and the page is
+  laid out again. `LaidPage.Floating.key` finds it; `LaidPage.draw(skip=)` leaves it out while dragging.
+- **Square wrap on the pages** (OfficePages.layoutPass): a Square object's lines are laid out again with per-line
+  indents (`StaticLayout.setIndents`) on the side with more room (`SIDE_GAP` 9 pt, Word's distL/R); under 72 pt of room
+  it becomes a band (no text beside it, as Word). A **second pass** seeds each page with its page-placed objects, so
+  paragraphs *before* the anchor wrap too. Lines crossing a band now stop at it (they used to run through a band
+  further down a paragraph). ponytail: one side only (Word's "both sides").
+- **Draft bug fixed:** a picture-only change (wrap, size, place, chart data) changed no text, so no draft was kept —
+  lost on a restart. `changePicture` now counts `styleEdits`.
+- **Text boxes** (`DocImage.box`: its paragraphs, read by both readers with `aside()` so a text box's contents never add
+  notes/comments to the document — copy-only stays as it was): drawn on the pages and in the editor
+  (`TextBoxDrawable`, `OfficePages.textBox`). **Insert › Text box** / **Picture › Edit text** (`PictureXml.newTextBox`,
+  `boxText`): Word's wps text box (txbxContent) / LibreOffice's rectangle custom-shape with text:p (its style gets
+  LibreOffice's text-area properties, else LibreOffice shrank it). Word's mc:AlternateContent text boxes read
+  (checked on one LibreOffice wrote).
+- **WordArt** (Insert › WordArt): a frameless text box, words bold 36 pt in one of Word's six colours; ODT via a text
+  style `Tetra_20_art_<RGB>` emitted on save.
+- **Charts** (`OfficeCharts.kt`: `DocChart`, readers `readDrawingml` / `readOdf`, `ChartWriter`, `ChartDrawable`;
+  `WriterChart.kt`: `ChartDialog`): files' charts drawn instead of grey boxes (column, bar, line, area, pie, doughnut;
+  stacked; title, legend when the file has one, colours incl. scheme accents); **Insert › Chart** (Word's sample data)
+  and **Picture › Edit data** (kind, title, stacked, categories × series grid, live preview). New/edited charts are
+  written anew: docx `word/charts/chartN.xml` with strLit/numLit data + rel + content type; ODT `Object tetra-N/content.xml`
+  with its local table + manifest. Test resources: `app/src/test/resources/charts/lo-charts.{odt,docx}` (made by
+  LibreOffice through UNO — the script is easy to redo: soffice --accept + TextEmbeddedObject with the chart CLSID).
+  ponytail: editing a file's chart rewrites it from what Writer reads (its data, kind, colours, title — not the file's
+  fonts or layout); Word's own Edit data will not open (no embedded workbook); LibreOffice draws Writer's ODT **pies
+  anticlockwise** (its own clockwise — chart:reverse-direction is written, LibreOffice ignores it for our files; not
+  found why). Our drawing and Word's go clockwise.
+
+**Next** (the plan stands — Word finished first): the rest of Word's list below (line numbers, hyphenation, style sets,
+captions and cross-references, multilevel lists, format painter, navigation pane, reading mode, AutoSave,
+.doc/.rtf), the smaller items, and for floating objects: Arrange (forward/backward, align, group, rotate), text on
+both sides, WordArt effects, chart axis titles / data labels / scatter. Then PowerPoint (it reuses Position, text
+boxes and charts), then Excel as a viewer.
+
+---
+
+# 30 September — end of the long day: where things stand
 
 **State.** Branch `writer-library`, everything committed. All unit tests pass
 (`ANDROID_HOME=~/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew testDebugUnitTest assembleDebug`).

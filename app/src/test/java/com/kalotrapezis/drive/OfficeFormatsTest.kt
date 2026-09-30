@@ -182,6 +182,43 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `citations and a reference list are kept in each kind's own words`() {
+        val book = DocSource("Παπ20", DocSource.Type.Book, listOf(DocSource.Person("Παπαδόπουλος", "Γιώργος")), "2020", "Εισαγωγή στην παιδαγωγική", publisher = "Gutenberg")
+        val article = DocSource("Smi19", DocSource.Type.Article, listOf(DocSource.Person("Smith", "John R."), DocSource.Person("Jones", "Anna")), "2019",
+            "Learning with tablets", "Journal of Education", volume = "12", issue = "3", pages = "45-60", doi = "10.1000/xyz123")
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            // Tags as each kind makes them: Word's Παπ20; an ODT's the citation (LibreOffice shows it).
+            val book = book.copy(tag = Citations.tagFor(kind, book, emptyList())); val article = article.copy(tag = Citations.tagFor(kind, article, emptyList()))
+            if (kind == OfficeKind.Odt) assertEquals("Smith & Jones, 2019", article.tag)
+            val c1 = Citations.cite(kind, listOf(book.tag), if (kind == OfficeKind.Docx) "12" else "")
+            val c2 = Citations.cite(kind, listOf(article.tag), "")
+            val doc0 = OfficeDoc(listOf(DocPara(listOf(DocRun("As research shows "), DocRun(Citations.text(c1, listOf(book)), cite = c1), DocRun(", and "),
+                DocRun(Citations.text(c2, listOf(article)), cite = c2), DocRun(" agrees."))), DocPara(emptyList())), sources = listOf(book, article))
+            val doc = Citations.insertList(doc0, kind, 1)
+            assertEquals(kind.name, listOf(Citations.HEADING, "Smith, J. R., & Jones, A. (2019). Learning with tablets. Journal of Education, 12(3), 45–60. https://doi.org/10.1000/xyz123",
+                "Παπαδόπουλος, Γ. (2020). Εισαγωγή στην παιδαγωγική. Gutenberg."), doc.paras.drop(1).map { it.text })
+            val bytes = OfficeFormats.write(doc, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("citations.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind)
+            // Not copy-only: the citations are kept, not simplified.
+            assertEquals(kind.name, emptySet<String>(), back.blocking)
+            assertEquals(kind.name, doc.paras.map { it.text }, back.paras.map { it.text })
+            assertEquals(kind.name, listOf(c1, c2), back.paras[0].runs.mapNotNull { it.cite }.distinct())
+            assertEquals(kind.name, listOf(book, article).map { it.copy(extra = "") }, back.sources.map { it.copy(extra = "") }.sortedBy { it.tag != book.tag })
+            assertEquals(kind.name, 1..3, Citations.find(back, kind))
+            // A source changed: Update rewrites its citation and the list.
+            val later = back.copy(sources = back.sources.map { if (it.tag == article.tag) it.copy(year = "2021") else it })
+            val updated = Citations.update(later, kind)
+            val c2now = if (kind == OfficeKind.Odt) "Smith & Jones, 2021" else c2 // an ODT's mark renamed with it
+            assertEquals(kind.name, "(Smith & Jones, 2021)", updated.paras[0].runs.first { it.cite == c2now }.text)
+            assert(updated.paras[2].text.startsWith("Smith, J. R., & Jones, A. (2021).")) { updated.paras[2].text }
+            assertEquals(kind.name, 4, updated.paras.size)
+            // Written again: the same.
+            val again = OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind)
+            assertEquals(kind.name, back.paras.map { p -> p.runs.map { it.text to it.cite } }, again.paras.map { p -> p.runs.map { it.text to it.cite } })
+        }
+    }
+
     @Test fun `a drop cap is written in each kind's own words and read back as one paragraph`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val text = "Βροχή έπεφτε όλη τη νύχτα πάνω στα κεραμίδια του σπιτιού, και το πρωί ο κήπος ήταν γεμάτος λάσπη και φύλλα που είχε ρίξει ο αέρας."

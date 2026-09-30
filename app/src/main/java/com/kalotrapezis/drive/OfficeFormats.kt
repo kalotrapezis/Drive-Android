@@ -38,6 +38,7 @@ internal data class DocRun(
     val font: String? = null, // the file's own letter settings Writer does not edit, raw: fonts, small caps, spacing, language… (Word's rPr elements; ODF's attributes)
     val script: Int = 0, // 1 superscript, -1 subscript
     val comments: List<String> = emptyList(), // the ids of the comments over these letters (OfficeDoc.comments)
+    val cite: String? = null, // a citation's letters: Word's field ("CITATION Smi20 \l 1033"), or an ODT bibliography mark's source tag
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
 }
@@ -50,8 +51,8 @@ internal data class DocRun(
 internal data class DocComment(val id: String, val author: String, val date: String?, val text: String, val raw: String? = null, val initials: String? = null)
 
 /** A list that tags every run added to it with the comments open at that moment (the readers' ranges). */
-internal class CommentedRuns(private val open: Collection<String>) : ArrayList<DocRun>() {
-    override fun add(element: DocRun) = super.add(if (open.isEmpty()) element else element.copy(comments = open.toList()))
+internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }) : ArrayList<DocRun>() {
+    override fun add(element: DocRun) = super.add((if (open.isEmpty()) element else element.copy(comments = open.toList())).let { r -> cite()?.let { r.copy(cite = it) } ?: r })
 }
 
 /** A picture, a chart or a shape stands in the text as this one character. */
@@ -337,6 +338,8 @@ internal data class StyleEntry(val name: String, val id: String?, val heading: I
  * styles.xml when a paragraph takes one ("NORMAL" becomes the document's own plain style). As Word 2016 makes them.
  */
 internal val DOCX_BUILTIN = mapOf(
+    // A reference list's entries (APA: a hanging indent of half an inch).
+    "Bibliography" to """<w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr></w:style>""",
     "Title" to """<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="10"/><w:qFormat/><w:pPr><w:spacing w:after="80" w:line="240" w:lineRule="auto"/><w:contextualSpacing/></w:pPr><w:rPr><w:spacing w:val="-10"/><w:kern w:val="28"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>""",
     "Subtitle" to """<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="11"/><w:qFormat/><w:pPr><w:spacing w:after="160"/></w:pPr><w:rPr><w:color w:val="595959"/><w:spacing w:val="15"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>""",
     "TOCHeading" to """<w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>""",
@@ -347,6 +350,7 @@ internal val DOCX_BUILTIN = mapOf(
 )
 /** LibreOffice's Title, Subtitle and Quotations, likewise. */
 internal val ODT_BUILTIN = mapOf(
+    "Bibliography_20_1" to """<style:style style:name="Bibliography_20_1" style:display-name="Bibliography 1" style:family="paragraph" style:parent-style-name="Standard" style:class="index"><style:paragraph-properties fo:margin-left="1.27cm" fo:margin-right="0cm" fo:text-indent="-1.27cm"/></style:style>""",
     "Title" to """<style:style style:name="Title" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:text-align="center" fo:keep-with-next="always"/><style:text-properties fo:font-size="28pt" fo:font-weight="bold"/></style:style>""",
     "Subtitle" to """<style:style style:name="Subtitle" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="chapter"><style:paragraph-properties fo:margin-top="0.106cm" fo:margin-bottom="0.212cm" fo:text-align="center"/><style:text-properties fo:font-size="18pt"/></style:style>""",
     "Contents_20_Heading" to """<style:style style:name="Contents_20_Heading" style:display-name="Contents Heading" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Standard" style:class="index"><style:paragraph-properties fo:margin-top="0.423cm" fo:margin-bottom="0.212cm" fo:keep-with-next="always"/><style:text-properties fo:font-size="16pt" fo:font-weight="bold"/></style:style>""",
@@ -374,6 +378,7 @@ internal data class OfficeDoc(
     val unsupported: Set<String> = emptySet(),
     val basePt: Float = 11f,
     val comments: List<DocComment> = emptyList(),
+    val sources: List<DocSource> = emptyList(), // References: Word's sources part, or an ODT's bibliography marks' sources
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {
@@ -638,19 +643,21 @@ internal object OfficeFormats {
      * neighbours carry it), one typed at its edge does not; all its letters deleted, the comment is gone.
      */
     fun carryFonts(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
-        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() } }) return new
+        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null } }) return new
         val from = pairParagraphs(old, new)
         var carried: String? = null // the font the previous paragraph ended with
         return new.mapIndexed { j, p ->
             val text = p.text
             val fonts = arrayOfNulls<String>(text.length)
             val notes = arrayOfNulls<List<String>>(text.length)
+            val cites = arrayOfNulls<String>(text.length)
             val known = BooleanArray(text.length)
             from[j].takeIf { it >= 0 }?.let { old[it] }?.let { o ->
                 val oldText = o.text
                 val oldFonts = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.font) } } }
                 val oldNotes = ArrayList<List<String>>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.comments) } } }
-                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; known[y] = true }
+                val oldCites = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.cite) } } }
+                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; known[y] = true }
                 // Common start and end first; the changed middle by longest common subsequence (small, where one typed).
                 var a = 0
                 while (a < text.length && a < oldText.length && text[a] == oldText[a]) { take(a, a); a++ }
@@ -689,13 +696,26 @@ internal object OfficeFormats {
                     k = e
                 }
             }
+            // …and the citation both known neighbours are in (letters typed at a citation's edge are not in it).
+            run {
+                var k = 0
+                while (k < text.length) {
+                    if (known[k]) { k++; continue }
+                    var e = k
+                    while (e < text.length && !known[e]) e++
+                    val left = if (k > 0) cites[k - 1] else null
+                    val right = if (e < text.length) cites[e] else null
+                    for (q in k until e) cites[q] = left.takeIf { it == right }
+                    k = e
+                }
+            }
             // The runs again, cut where the font or the comments change.
             var at = 0
             val runs = ArrayList<DocRun>()
             for (r in p.runs) {
                 var start = 0
-                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty()) {
-                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty())
+                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start]) {
+                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start])
                     start = k
                 }
                 at += r.text.length
@@ -858,6 +878,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     var fieldMarks = false
     private var fieldInstr = StringBuilder()
     private var fieldState = 0 // 0 outside a field, 1 in its instruction, 2 in its shown result
+    private var fieldDepth = 0 // fields inside fields
+    private var citeNow: String? = null // in a citation's shown text: its field (References › Citations)
     private fun fieldMark(instr: String): Char? = instr.trim().substringBefore(' ').uppercase().let { if (it == "PAGE") PAGE_FIELD else if (it == "NUMPAGES" || it == "SECTIONPAGES") PAGES_FIELD else null }
 
     /** A header's or footer's paragraphs, with their own relationships (a logo in a header is the header's picture). */
@@ -893,7 +915,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         readComments(body)
         val paras = ArrayList<DocPara>()
         block(body, paras)
-        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
+        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts))
     }
 
     /** A drop cap's framed letter paragraph and the paragraph it drops into, as one paragraph with a [DropCap]. */
@@ -1016,7 +1038,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A list numbered by its style shows as the list it is (asked 2026-09-28: the test suite's bullets did not show).
         if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
-        val runs = CommentedRuns(openComments)
+        val runs = CommentedRuns(openComments) { citeNow }
         // A page break inside a paragraph: the paragraph is split there and the part after it starts a page — Word's
         // own "page break before", which saves and shows the same (2026-09-28; it made files copy-only before).
         // A break at the paragraph's start: the paragraph starts a page. At its end (or alone in it): the next paragraph
@@ -1052,7 +1074,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         val mark = if (fieldMarks) fieldMark(e.attr(W, "instr") ?: "") else null
                         if (mark != null) runs += DocRun(mark.toString()) else content(e, link) }
                     "smartTag", "customXml" -> content(e, link)
-                    "sdt" -> { notes += "content controls"; e.kid(W, "sdtContent")?.let { content(it, link) } }
+                    // A citation's content control (Word's): only its field is kept.
+                    "sdt" -> { if (e.kid(W, "sdtPr")?.kid(W, "citation") == null) notes += "content controls"; e.kid(W, "sdtContent")?.let { content(it, link) } }
                     "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
@@ -1123,14 +1146,22 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
                         (0 until l.length).any { (l.item(it) as Element).getAttribute("id").startsWith(Watermark.NAME) } })) // a watermark: the pages draw it
                     runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
-                "fldChar", "instrText" -> {
-                    notes += "fields (page numbers, dates, contents)"
-                    if (fieldMarks) when {
-                        e.localName == "instrText" -> fieldInstr.append(e.textContent)
-                        e.attr(W, "fldCharType") == "begin" -> { fieldState = 1; fieldInstr.clear() }
-                        e.attr(W, "fldCharType") == "separate" -> { fieldState = 2; fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
-                        e.attr(W, "fldCharType") == "end" -> fieldState = 0
+                // Fields: a citation's is kept with its letters (written again as it was); other fields' shown text is
+                // read as text and the file said to have fields (saving makes a copy).
+                "fldChar", "instrText" -> when {
+                    e.localName == "instrText" -> if (fieldDepth == 1) fieldInstr.append(e.textContent) else notes += "fields (page numbers, dates, contents)"
+                    e.attr(W, "fldCharType") == "begin" -> { if (++fieldDepth == 1) { fieldState = 1; fieldInstr.clear() } else notes += "fields (page numbers, dates, contents)" }
+                    e.attr(W, "fldCharType") == "separate" -> if (fieldDepth == 1) {
+                        fieldState = 2
+                        val instr = fieldInstr.toString().trim()
+                        if (!fieldMarks && instr.startsWith("CITATION ")) citeNow = instr
+                        else { notes += "fields (page numbers, dates, contents)"; if (fieldMarks) fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
                     }
+                    e.attr(W, "fldCharType") == "end" -> {
+                        if (fieldDepth == 1) { if (fieldState == 1) notes += "fields (page numbers, dates, contents)"; fieldState = 0; citeNow = null }
+                        fieldDepth = (fieldDepth - 1).coerceAtLeast(0)
+                    }
+                    else -> notes += "fields (page numbers, dates, contents)"
                 }
                 "delText", "delInstrText" -> notes += "tracked changes"
                 "footnoteReference", "endnoteReference" -> notes += "footnotes"
@@ -1465,15 +1496,24 @@ private object DocxWriter {
             }
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
+            // A citation: its letters inside its field, as Word writes one (begin, instruction, separate, text, end).
+            var cite: String? = null
+            fun citeTo(c: String?) {
+                if (c == cite) return
+                if (cite != null) body.append("""<w:r><w:fldChar w:fldCharType="end"/></w:r>""")
+                if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c)} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
+                cite = c
+            }
             while (k < runs.size) {
                 val link = runs[k].link
                 var end = k
                 while (end < runs.size && runs[end].link == link) end++
-                if (link != null) body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""")
-                for (r in runs.subList(k, end)) { commentMarks(r.comments); body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt)) }
+                if (link != null) { citeTo(null); body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
+                for (r in runs.subList(k, end)) { commentMarks(r.comments); if (link == null) citeTo(r.cite); body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt)) }
                 if (link != null) body.append("</w:hyperlink>")
                 k = end
             }
+            citeTo(null)
             // A comment ends here unless the next paragraph goes on in it.
             commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
             body.append("</w:p>")
@@ -1486,6 +1526,7 @@ private object DocxWriter {
         parts[docPath] = out.toByteArray()
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
+        WordSources.write(parts, doc.sources)
         return OfficeFormats.zip(parts)
     }
 
@@ -1589,11 +1630,12 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         ended = text.getElementsByTagNameNS(OFFICE, "annotation-end").let { l -> (0 until l.length).mapNotNull { (l.item(it) as Element).attr(OFFICE, "name") }.toSet() }
         val out = ArrayList<DocPara>()
         block(text, out, null, -1)
-        return OfficeDoc(out.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
+        return OfficeDoc(out.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), sources.values.toList())
     }
 
     /** Reading a header or footer: its page number and count become [PAGE_FIELD] / [PAGES_FIELD]. */
     var fieldMarks = false
+    private val sources = LinkedHashMap<String, DocSource>() // the bibliography marks' sources, by tag
 
     fun readMaster(): Pair<Map<String, List<DocPara>>, Map<String, List<DocPara>>> {
         val root = OfficeFormats.parse(parts["styles.xml"] ?: return emptyMap<String, List<DocPara>>() to emptyMap()).documentElement
@@ -1858,6 +1900,11 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                             if (href == null || href.startsWith("#")) { notes += "links inside the document"; content(e, look, inLink) }
                             else content(e, look.copy(link = href), true)
                         }
+                        // A citation: the source it holds, its letters tagged with it.
+                        "bibliography-mark" -> Citations.odtSource { e.attr(TEXT, it) }?.let { src ->
+                            sources.putIfAbsent(src.tag, src)
+                            runs += look.copy(text = e.textContent, cite = src.tag)
+                        } ?: run { runs += look.copy(text = e.textContent) }
                         "s" -> runs += look.copy(text = " ".repeat(e.attr(TEXT, "c")?.toIntOrNull()?.coerceIn(1, 1000) ?: 1))
                         "tab" -> runs += look.copy(text = "\t")
                         "line-break" -> runs += look.copy(text = LINE_BREAK.toString())
@@ -1924,6 +1971,16 @@ private object OdtWriter {
             val add = (1..6).filter { n -> doc.paras.any { it.heading == n } && "Heading_20_$n" !in named }.joinToString("") { n -> odtHeadingStyle(n, body) }
             val builtin = doc.paras.mapNotNull { it.keep?.style }.toSet().filter { it in ODT_BUILTIN && it !in named }.joinToString("") { ODT_BUILTIN.getValue(it) }
             if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
+            // Citations: LibreOffice shows a mark as its identifier between the document's brackets — round ones, so
+            // "Smith & Jones, 2019" reads as APA's (Smith & Jones, 2019).
+            if (doc.paras.any { p -> p.runs.any { it.cite != null } }) {
+                val xml = stylesXml!!
+                val conf = Regex("""<text:bibliography-configuration\b[^>]*>""").find(xml)
+                stylesXml = if (conf != null) xml.replaceRange(conf.range, conf.value.replace(Regex("""\stext:(prefix|suffix)="[^"]*""""), "").replaceFirst("<text:bibliography-configuration", """<text:bibliography-configuration text:prefix="(" text:suffix=")""""))
+                    else { val at = xml.indexOf("<text:linenumbering-configuration").takeIf { it >= 0 } ?: xml.indexOf("</office:styles>")
+                        xml.substring(0, at) + """<text:bibliography-configuration text:prefix="(" text:suffix=")" text:numbered-entries="false" text:sort-by-position="true"/>""" + xml.substring(at) }
+                parts["styles.xml"] = stylesXml.toByteArray()
+            }
         }
 
         // The file's own automatic styles: what the new text still refers to stays (a picture's position and wrap, a
@@ -2044,9 +2101,20 @@ private object OdtWriter {
                 var end = k
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) append("""<text:a xlink:type="simple" xlink:href="${OfficeFormats.esc(link)}">""")
-                for (r in runs.subList(k, end)) {
+                var q = k
+                while (q < end) {
+                    val r = runs[q++]
                     commentMarks(r.comments)
                     if (r.image != null) { append(frame(r.image)); prev = "x"; continue }
+                    // A citation: a bibliography mark holding its source, its letters inside as plain text.
+                    r.cite?.let { tag ->
+                        val text = StringBuilder(r.text)
+                        while (q < end && runs[q].cite == tag && runs[q].image == null) text.append(runs[q++].text)
+                        val src = doc.sources.firstOrNull { it.tag == tag }
+                        append("<text:bibliography-mark${src?.let { Citations.odtAttributes(it) } ?: " text:identifier=\"${OfficeFormats.esc(tag)}\" text:bibliography-type=\"book\""}>${OfficeFormats.esc(text.toString())}</text:bibliography-mark>")
+                        prev = text.toString()
+                        continue
+                    }
                     val s = textStyle(r)
                     if (s != null) append("<text:span text:style-name=\"$s\">")
                     append(spaces(r.text, afterSpace = prev?.endsWith(' ') ?: true))

@@ -23,7 +23,9 @@ files), all removed after; none of the user's files were touched. Test prefs I s
    and the **selection** when text is selected (as Word's status bar). On the **phone** there is no room: in
    **File › About this file** (it already shows the word count) — add characters (with and without spaces) and,
    when text is selected, the selection's counts too. The user asked for exactly this split.
-2. **The plan the user agreed (30 Sep night) — Word only as far as the other two share it, then PowerPoint, then Excel:**
+2. **The plan (30 Sep night; the user's last word: "first the Word — we started it, we are going to finish it"):**
+   **Word is finished first**, all of it, then PowerPoint, then Excel. Within Word, floating objects and charts come
+   first (the biggest pieces, and the ones PowerPoint and Excel reuse), then the rest of the list:
    - **Word: floating objects** — pictures, shapes, text boxes and WordArt placed freely on the page (dragged,
      positioned, wrapped, in front/behind), then **charts** (Word's DrawingML chart, the same Excel and PowerPoint use).
      This is what PowerPoint's slides are made of, so it is built once for both.
@@ -31,10 +33,12 @@ files), all removed after; none of the user's files were touched. Test prefs I s
      presenting. (Estimated ~60% of it on Word's code once floating objects exist.)
    - **Excel** last, and **as a viewer first** (little in common with Word; the user's own wishes, 30 Sep):
      read a sheet comfortably **on the phone**; **fuzzy search** across the cells (typos and accents forgiven, Greek
-     and English); **filter columns**; and **pin columns side by side** — the user picks the columns they care about,
+     and English); **filter rows by a column — a tap on the column's header** opens its filter, as Excel's does; and
+     **pin columns side by side** — the user picks the columns they care about,
      e.g. A, J and ST, and they are brought to the start one after the other in the order pinned, the rest scrolling
      beside them, to compare them. Editing, formulas and charts only after that.
-   - Word-only extras (line numbers, hyphenation, style sets, captions, multilevel lists…) wait until after the three.
+   - Then the rest of Word: line numbers, hyphenation, style sets, captions and cross-references, multilevel lists,
+     format painter, navigation pane, reading mode, AutoSave, .doc/.rtf — until Word is complete.
    - Smaller Word items still open, to fit in when convenient: the APA abstract page and run-in Level 4–5 headings;
      tapping a citation to edit it; more source kinds (report, thesis, video); a picture watermark; page border styles.
 3. Offered, not asked for yet: Tetra's own Hunspell dictionaries (spelling without Gboard); receiving shares from the

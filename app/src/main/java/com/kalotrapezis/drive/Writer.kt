@@ -89,6 +89,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.layout.layout
 import androidx.compose.runtime.produceState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -740,6 +743,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }
+    var remeasured by remember { mutableStateOf(false) } // the text shown again with tables' true height (not an edit)
     var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style (or a picture: its wrap, size, place) changes
     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
     var loaded by remember { mutableStateOf(false) }
@@ -752,6 +756,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var linking by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
     var zoom by remember { mutableIntStateOf(100) }
+    // A phone's Print layout (the user, 2026-09-30: "there are no pages", zoom "does not go beyond the screen"): the page
+    // laid out whole and drawn [pageZoom] times the screen's width — pinched larger it goes past the screen and pans both
+    // ways, as the pages view. View › Mobile view keeps the text to the screen instead (remembered).
+    var pageZoom by remember { mutableFloatStateOf(1f) }
+    var mobileView by remember { mutableStateOf(context.getSharedPreferences("writer", Context.MODE_PRIVATE).getBoolean("mobileView", false)) }
     var finding by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
@@ -777,12 +786,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val paneOn = tablet && meta.comments.isNotEmpty() && !panelHidden
     val perPt100 = with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }
     // A tablet keeps the page whole (a landscape page, the pane beside it): shown smaller rather than reflowed.
-    val shownZoom = if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
+    val printPhone = !tablet && !mobileView
+    val shownZoom = if (printPhone) 100 else if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
     val perPt = with(LocalDensity.current) { (BASE_SP * shownZoom / 100f / meta.basePt).sp.toDp() }
-    val onPage = screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
+    val onPage = printPhone || screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
     WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
     // Else the page's text is the screen less its margins (10 + 22 dp a side, below).
-    WriterBridge.editorWidthSp = with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
+    WriterBridge.editorWidthSp = if (printPhone) sheet.textWidth * BASE_SP / meta.basePt
+        else with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
+    // The phone's page drawn this many times smaller or larger than laid out: the screen's width at pageZoom 1.
+    val pageScale = if (printPhone) (screen - 20.dp) / (sheet.width * perPt) * pageZoom else 1f
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
     var viewing by remember { mutableStateOf(open != null) }
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
@@ -921,6 +934,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed).
         snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, a.spanStyles, a.paragraphStyles.map { it.item.copy(textIndent = null) to it.start }) }, meta.paras, styleEdits) }
             .drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
+            if (remeasured) { remeasured = false; return@collectLatest } // tables shown again at their true height: no change
 
             dirty = true
             delay(1500)
@@ -1789,11 +1803,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 else androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)
             // With the comments' pane, page and pane are centred together.
             val shift = if (paneOn && onPage) (COMMENT_PANE + 12.dp) / 2 else 0.dp
-            if (onPage && loaded) BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (onPage && loaded && !printPhone) BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val x = (maxWidth - sheet.width * perPt) / 2 - shift
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)) {
+            val downScroll = rememberScrollState(); val sideScroll = rememberScrollState()
+            Box(Modifier.weight(1f).fillMaxWidth()
+                .then(if (printPhone) Modifier.pinchZoom({ pageZoom }, 1f, 5f, sideScroll, downScroll) { pageZoom = it } else Modifier)
+                .verticalScroll(downScroll)
+                .then(if (printPhone) Modifier.horizontalScroll(sideScroll) else Modifier)
+                .padding(horizontal = 10.dp, vertical = 8.dp)) {
                 if (paneOn && onPage && loaded) {
                     val density = LocalDensity.current
                     val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
@@ -1803,7 +1822,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         commentActions { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
-                    modifier = (if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
+                    modifier = (if (printPhone) Modifier.scaledBy(pageScale).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
+                        else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
@@ -1826,6 +1846,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
                                 val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
+                                }
+                                // A table's line must be exactly its height: the editor's line for its letter came out 0.77 of what the
+                                // font's measures promise (the user's CV, 2026-09-30 — each table's last line cut off by the next).
+                                // Learnt from the first table laid out, and the text shown again once with the real measure.
+                                LaunchedEffect(l) {
+                                    val (i, img) = placed.firstOrNull { it.second.table != null }?.let { it.first to it.second } ?: return@LaunchedEffect
+                                    val (_, h) = WriterBridge.shownSize(img, scale)
+                                    val line = l.getLineBottom(l.getLineForOffset(i)) - l.getLineTop(l.getLineForOffset(i))
+                                    val real = WriterBridge.lineRatio * line / with(density) { h.sp.toPx() }
+                                    if (kotlin.math.abs(real - WriterBridge.lineRatio) > 0.01f) {
+                                        WriterBridge.lineRatio = real
+                                        remeasured = true // not an edit
+                                        val sel = state.selection
+                                        state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), sel)
+                                    }
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
@@ -2552,9 +2587,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
                     }
                     Divider(w)
+                    if (printPhone) {
+                        // The page: its width on the screen, larger (two fingers do the same).
+                        Tool(R.drawable.ic_remove, "Zoom out", w, enabled = pageZoom > 1f) { pageZoom = (pageZoom - 0.25f).coerceAtLeast(1f) }
+                        Text("${(pageZoom * 100).roundToInt()}%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+                        Tool(R.drawable.ic_add, "Zoom in", w, enabled = pageZoom < 5f) { pageZoom = (pageZoom + 0.25f).coerceAtMost(5f) }
+                    } else {
                     Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
                     Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                    }
+                    // A phone: the page as it prints (Print layout), or the text to the screen's width (Mobile view).
+                    if (!tablet) RibbonButton("Mobile view", w, R.drawable.ic_wrap_text, on = mobileView) {
+                        mobileView = !mobileView
+                        context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putBoolean("mobileView", mobileView).apply()
+                    }
                 }, {
                     // Centimetres or inches for the rulers and every length (APA's margins are given in inches).
                     RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
@@ -2978,6 +3025,41 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
 }
 /** A paragraph's letters as Word counts them: a table's are its cells'. */
 internal fun DocPara.countedText(): String = table?.rows?.joinToString("\n") { r -> r.cells.joinToString("\n") { c -> c.paras.joinToString("\n") { it.countedText() } } } ?: text
+
+/**
+ * Drawn [k] times its laid-out size from its top left, and taking that much room — the phone's page in Print layout
+ * (laid out whole, shown at the screen's width or larger). Touches and the cursor follow the drawing.
+ */
+private fun Modifier.scaledBy(k: Float) = this.layout { m, c ->
+    val p = m.measure(androidx.compose.ui.unit.Constraints())
+    layout((p.width * k).roundToInt(), (p.height * k).roundToInt()) {
+        p.placeWithLayer(0, 0) { scaleX = k; scaleY = k; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
+    }
+}
+
+/**
+ * Two fingers zoom between [min] and [max] (the point between them stays put, the scrolls following); one finger is
+ * left to the scrolling and the editor underneath. [now] reads the zoom as it is.
+ */
+private fun Modifier.pinchZoom(now: () -> Float, min: Float, max: Float, side: androidx.compose.foundation.ScrollState, down: androidx.compose.foundation.ScrollState,
+    set: (Float) -> Unit) = this.pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            if (e.changes.count { it.pressed } < 2) continue
+            val z = now()
+            val next = (z * e.calculateZoom()).coerceIn(min, max)
+            val ratio = next / z
+            if (ratio != 1f) {
+                val centre = e.calculateCentroid()
+                set(next)
+                side.dispatchRawDelta((side.value + centre.x) * ratio - centre.x - side.value)
+                down.dispatchRawDelta((down.value + centre.y) * ratio - centre.y - down.value)
+            }
+            e.changes.forEach { it.consume() }
+        }
+    }
+}
 
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable

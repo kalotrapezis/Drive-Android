@@ -60,7 +60,14 @@ there and left alone (not mine to judge): `Documents/Tetra track-changes test.do
   (offered before; ask the user).
 
 **Do first next session (the user, 30 Sep near midnight, on the phone with his CV — `Test-Words/CV test copy.docx`):**
-1. **Print layout on the phone** (Word mobile's): the editor on the page itself as the tablet has it (onPage is
+1. ~~**Print layout on the phone**~~ **DONE (same night):** the phone edits on the page, laid out whole and drawn fitted
+   to the screen (`Modifier.scaledBy`), pinch or View's − % + zooms 100–500% past the screen with sideways and down
+   scrolling (`Modifier.pinchZoom`, the point between the fingers kept); View › Mobile view (pref "mobileView") keeps
+   the old reflowing editor. Also fixed: every table's last line was cut off by the next — the editor's line for a
+   table's letter came out 0.77 of the font's measure; the real ratio is now learnt from the first table laid out and
+   the text shown again once (`remeasured`: not counted as an edit). Checked on the phone with the CV copy (whole rows,
+   175% panned sideways) and typing in the test document. Pinch itself not tried (adb cannot do two fingers) — ask
+   the user. Was (Word mobile's): the editor on the page itself as the tablet has it (onPage is
    tablet-only now), the page fitted to the screen's width at first; **pinch-zoom enlarges the page past the screen and
    pans both ways** (now zoom only enlarges the text and reflows it — "it goes vertically only"); page breaks shown.
    View › Mobile view keeps today's reflowing editor as a choice. The user's words: "there are no pages".

@@ -1,3 +1,34 @@
+# 30 September, morning — draw on the page; icons on Insert and Borders
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.
+
+- **Draw › Draw on page** (the user: draw on the document, the page underneath to see the size): `DrawDialog(page=)`
+  shows the page the cursor's paragraph starts on, as the pages lay it out, across the whole width; one finger or the
+  pen draws, two fingers zoom (1–6×) and move it. Insert cuts the PNG to what was drawn (`InkPicture.cut`) and puts it
+  **in front of the text** at that place on the page: `DocImage.onPage` (pt from the page's corner) → docx
+  `wp:anchor` positionH/V relativeFrom="page" (`PictureXml.docxOnPage`), ODT a char-anchored frame with svg:x/y and the
+  style `Tetra_20_wrap_20_InFront_20_page` (from-left/from-top, page-relative), read back by `placeOf`/`wrapOf`.
+- **Drawings go on top of the text by default** (the user): the drawing box too is now in front of the text (at its
+  paragraph's top left), not a paragraph of its own. Both are anchored at the start of the cursor's paragraph
+  (`putDrawing`), as Word does. Resize/wrap/delete: tap it → Picture tab.
+- **Editor**: a picture in front of / behind the text shows as a thumbnail a line tall (it moves no text; the pages
+  show it in place) — was full size inline, splitting words. Applies to files' floating pictures too.
+- **Fixed:** a new picture restored from a draft lost its wrapping (came back in line) — now keeps wrap and place.
+- New pictures that are floating but not on a page (raw == null) are now drawn floating at their paragraph on the
+  pages (as they are written), not in line.
+- **Icons** (Material Symbols, fetched as SVG from google/material-design-icons → vector drawables): every Insert
+  button, Insert regrouped in Word's order (Pages, Table | Picture, Shapes, Link, Comment | Header & footer, Page
+  numbers | Date, Line break, Symbol); Borders button + each item of its menu; Draw's two buttons.
+- Checked on the tablet (a new unsaved document, discarded after): circle + arrow drawn over a word land on the same
+  word on the pages, also after the app restarts (draft); drawing box zigzag in front of the text. Unit test both
+  kinds; LibreOffice renders both at 200 × 300 pt as written.
+- Not yet: choosing another page to draw on (only the cursor's); editing a drawing again; dragging floats to move them;
+  the phone.
+- **Insert vs Word, still missing** (agreed "later"): text box, WordArt, drop cap, equation, chart, SmartArt, icons,
+  bookmark/cross-reference, cover page, signature line.
+
+---
+
 # 29 September, afternoon and evening — Home and Insert nearly done; the sync "(2)" bug fixed; Beta 3 desktop
 
 State: `writer-library`, all committed; all unit tests pass (Android and the desktop's 86). Today's debug build is on

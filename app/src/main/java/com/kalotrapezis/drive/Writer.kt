@@ -197,11 +197,15 @@ internal object WriterBridge {
         HeadingStyle.entries.filter { it != HeadingStyle.Normal }.forEach { field.set(it, SpanStyle()) }
     }.onFailure { Log.w("Writer", "heading looks", it) }
 
-    /** How a picture shows in the editor: its size, scaled with the text, and never wider than the page. */
+    /**
+     * How a picture shows in the editor: its size, scaled with the text, and never wider than the page. One in front of
+     * or behind the text moves none of it (the pages show it in its place): here a thumbnail a line tall, to tap.
+     */
     fun shownSize(img: DocImage, scale: Float): Pair<Float, Float> {
         val w = img.widthPt * scale
         if (img.table != null) return w to img.heightPt * scale // laid out for the editor's width already, at its text size
-        val fit = (MAX_PICTURE_SP / w).coerceAtMost(1f)
+        val over = PictureXml.wrapOf(img).let { it == PictureWrap.InFront || it == PictureWrap.Behind }
+        val fit = minOf(MAX_PICTURE_SP / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
     }
 
@@ -858,7 +862,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // A picture added before the app closed lives only in the draft: it is new again, with its bytes.
                     OfficeFormats.read(draftBytes, kind).let { dd -> dd.copy(paras = dd.paras.map { p -> p.copy(runs = p.runs.map { r ->
                         val img = r.image
-                        if (img?.part != null && img.part !in originalParts) r.copy(image = DocImage("d" + img.key, null, img.widthPt, img.heightPt, null, draftParts[img.part], img.part.substringAfterLast('.'))) else r
+                        // Its wrapping and its place on the page (Draw on page) kept.
+                        val place = PictureXml.placeOf(img ?: return@map r)?.takeIf { it.fromH == "page" && it.fromV == "page" && it.x != null && it.y != null }
+                        if (img.part != null && img.part !in originalParts) r.copy(image = DocImage("d" + img.key, null, img.widthPt, img.heightPt, null, draftParts[img.part],
+                            img.part.substringAfterLast('.'), PictureXml.wrapOf(img)?.takeIf { it != PictureWrap.InLine }, onPage = place?.let { it.x!! to it.y!! })) else r
                     }) }) }
                 }.getOrNull() }
                 packageParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
@@ -1248,6 +1255,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var pagePage by remember { mutableStateOf(false) }
     var shapesPage by remember { mutableStateOf(false) }
     var drawPage by remember { mutableStateOf(false) }
+    var drawOn by remember { mutableStateOf<LaidPage?>(null) }
+    /**
+     * A drawing in front of the text (the user, 2026-09-30: drawings go on top of the text): anchored where the cursor's
+     * paragraph starts, as Word does — never between two letters of a word — at [place] on the page, or (from the
+     * drawing box) at the paragraph's top left; the Picture tab moves it into the text if wanted.
+     */
+    fun putDrawing(bytes: ByteArray, wPt: Float, hPt: Float, place: Pair<Float, Float>?) {
+        val img = DocImage("n" + java.util.UUID.randomUUID(), null, wPt, hPt, null, bytes, "png", PictureWrap.InFront, onPage = place)
+        pictures[img.key] = img
+        val cursor = state.selection
+        WriterBridge.blockRange(state.annotatedString.text, state.toRichTextDocument(), cursor.min)?.let { state.selection = androidx.compose.ui.text.TextRange(it.first) }
+        placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(cursor.min + 1, cursor.max + 1)
+        message = "Drawn in front of the text — the pages show it in its place"
+    }
+    /**
+     * Draw › Draw on page: the page the cursor's paragraph starts on, as the pages show it, to draw over; the drawing
+     * is anchored in that paragraph, placed from the page's corner. ponytail: only that page; a page chooser when asked.
+     */
+    fun drawOnPage() = chooseParagraphs { at, _ ->
+        val cur = current(); val parts = packageParts
+        scope.launch {
+            val starts = IntArray(cur.paras.size)
+            val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(cur, documentStyles, starts) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() }
+            drawOn = laid?.let { l -> l.firstOrNull { it.number == starts[at.min()] } ?: l.first() } ?: run { message = "The page could not be laid out."; null }
+        }
+    }
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1779,45 +1813,51 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Borders (Word's menu, for paragraphs): each side on or off, a box, none, a horizontal line.
                     Box {
                         var bordering by remember { mutableStateOf(false) }
-                        RibbonButton("Borders", w) { bordering = true }
+                        RibbonButton("Borders", w, R.drawable.ic_border_bottom) { bordering = true }
                         DropdownMenu(bordering, { bordering = false }) {
                             val thin = Border(0.5f, 0)
-                            listOf<Pair<String, (ParaBox) -> ParaBox>>(
-                                "Bottom border" to { b -> b.copy(bottom = if (b.bottom == null) thin else null) },
-                                "Top border" to { b -> b.copy(top = if (b.top == null) thin else null) },
-                                "Left border" to { b -> b.copy(left = if (b.left == null) thin else null) },
-                                "Right border" to { b -> b.copy(right = if (b.right == null) thin else null) },
-                                "No border" to { _ -> ParaBox() },
-                                "All borders" to { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = thin) },
-                                "Outside borders" to { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = null) },
-                                "Inside horizontal border" to { b -> b.copy(between = if (b.between == null) thin else null) },
-                            ).forEach { (label, f) -> DropdownMenuItem(text = { Text(label) }, onClick = { bordering = false; chooseParagraphs { at, look -> setBorders(at, f(look.box ?: ParaBox())) } }) }
-                            DropdownMenuItem(text = { Text("Horizontal line") }, onClick = { bordering = false; horizontalLine() })
+                            @Composable fun icon(id: Int) = Icon(painterResource(id), contentDescription = null, modifier = Modifier.size(20.dp))
+                            listOf<Triple<String, Int, (ParaBox) -> ParaBox>>(
+                                Triple("Bottom border", R.drawable.ic_border_bottom) { b -> b.copy(bottom = if (b.bottom == null) thin else null) },
+                                Triple("Top border", R.drawable.ic_border_top) { b -> b.copy(top = if (b.top == null) thin else null) },
+                                Triple("Left border", R.drawable.ic_border_left) { b -> b.copy(left = if (b.left == null) thin else null) },
+                                Triple("Right border", R.drawable.ic_border_right) { b -> b.copy(right = if (b.right == null) thin else null) },
+                                Triple("No border", R.drawable.ic_border_clear) { _ -> ParaBox() },
+                                Triple("All borders", R.drawable.ic_border_all) { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = thin) },
+                                Triple("Outside borders", R.drawable.ic_border_outer) { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = null) },
+                                Triple("Inside horizontal border", R.drawable.ic_border_horizontal) { b -> b.copy(between = if (b.between == null) thin else null) },
+                            ).forEach { (label, id, f) -> DropdownMenuItem(text = { Text(label) }, leadingIcon = { icon(id) }, onClick = { bordering = false; chooseParagraphs { at, look -> setBorders(at, f(look.box ?: ParaBox())) } }) }
+                            DropdownMenuItem(text = { Text("Horizontal line") }, leadingIcon = { icon(R.drawable.ic_horizontal_rule) }, onClick = { bordering = false; horizontalLine() })
                         }
                     }
                     RibbonButton("More…", w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                 })
+                // Word's groups, in its order: Pages, Tables, Illustrations, Links, Comments, Header & Footer, Text, Symbols.
                 WriterTab.Insert -> listOf({
-                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                    RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
+                    RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
+                    Divider(w)
+                    RibbonButton("Table", w, R.drawable.ic_table, enabled = loaded) { insertingTable = true }
                 }, {
+                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
+                    Divider(w)
+                    RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
+                    RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
+                }, {
+                    // Header, footer and page numbers: one page for all three (APA: the number top right).
+                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { headerPage = true }
+                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { headerPage = true }
+                }, {
+                    RibbonButton("Date", w, R.drawable.ic_calendar_today, enabled = loaded) { datePage = true }
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
-                    RibbonButton("Line break", w) { change {
+                    RibbonButton("Line break", w, R.drawable.ic_wrap_text) { change {
                         state.addTextAfterSelection(LINE_BREAK.toString())
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     } }
-                    RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
-                    RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
-                    RibbonButton("Table", w, enabled = loaded) { insertingTable = true }
-                    RibbonButton("Shapes", w, enabled = loaded) { shapesPage = true }
-                    RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
-                    RibbonButton("Symbol", w, enabled = loaded) { symbolPage = true }
-                    RibbonButton("Date", w, enabled = loaded) { datePage = true }
-                }, {
-                    // Header, footer and page numbers: one page for all three (APA: the number top right).
-                    RibbonButton("Header & footer", w, enabled = loaded) { headerPage = true }
-                    RibbonButton("Page numbers", w, enabled = loaded) { headerPage = true }
+                    Divider(w)
+                    RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -1895,8 +1935,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     })
                 }
                 WriterTab.Draw -> listOf({
-                    // A drawing box first (as agreed): drawn in, then put in the text as a picture.
-                    RibbonButton("Drawing box", w, enabled = loaded) { drawPage = true }
+                    // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
+                    RibbonButton("Draw on page", w, R.drawable.ic_draw, enabled = loaded) { drawOnPage() }
+                    // A drawing box: drawn in, then put in front of the text at its paragraph.
+                    RibbonButton("Drawing box", w, R.drawable.ic_ink_pen, enabled = loaded) { drawPage = true }
                 })
                 WriterTab.Layout -> listOf({
                     // Word's Layout: margins, orientation, size (one page for all three), then breaks.
@@ -2171,22 +2213,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             open = { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
     }
-    if (drawPage) DrawDialog(sheet.textWidth.coerceAtMost(450f), { drawPage = false }) { bytes, wPt, hPt ->
-        drawPage = false
-        val img = DocImage("n" + java.util.UUID.randomUUID(), null, wPt, hPt, null, bytes, "png")
-        pictures[img.key] = img
-        // A drawing is a paragraph of its own (inside a title it split the title's words around it): a new line before
-        // it unless the cursor starts one, after it unless one ends there. ponytail: two steps for undo, not one.
-        change {
-            val t = state.annotatedString.text
-            val sel = state.selection.max
-            val range = WriterBridge.blockRange(t, state.toRichTextDocument(), sel)
-            state.selection = androidx.compose.ui.text.TextRange(sel)
-            if (range != null && sel > range.first) state.addTextAfterSelection("\n")
-            if (range != null && sel < range.second) { state.addTextAfterSelection("\n"); state.selection = androidx.compose.ui.text.TextRange(state.selection.min - 1) }
-        }
-        val at = placePicture(img)
-        state.selection = androidx.compose.ui.text.TextRange(at + 1)
+    if (drawPage) DrawDialog(sheet.textWidth.coerceAtMost(450f), { drawPage = false }) { bytes, wPt, hPt, _ -> drawPage = false; putDrawing(bytes, wPt, hPt, null) }
+    drawOn?.let { page ->
+        DrawDialog(page.page.width, { drawOn = null }, page) { bytes, wPt, hPt, place -> drawOn = null; putDrawing(bytes, wPt, hPt, place) }
     }
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false

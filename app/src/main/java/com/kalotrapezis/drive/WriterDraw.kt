@@ -25,18 +25,26 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -45,12 +53,22 @@ import androidx.compose.ui.window.DialogProperties
 /**
  * Draw (asked 2026-09-29, Word's and OnlyOffice's Draw tab — a drawing box first): a box to draw in with a finger or
  * the tablet's pen — two pens and a highlighter, each its colour and width in mm, an eraser that takes a whole stroke —
- * put in the text as a picture (a PNG, see-through where nothing is drawn), so Word and LibreOffice show it too.
+ * put in front of the text as a picture (a PNG, see-through where nothing is drawn), so Word and LibreOffice show it too.
  * Strokes are kept in the box's own units: its width is 1.
  */
 internal class InkStroke(val points: List<Offset>, val color: Int, val widthMm: Float, val highlighter: Boolean)
 
 internal object InkPicture {
+    /** The strokes cut to what they cover (their width round them) in a box [widthPt] wide: moved into it, and where it is in the box. */
+    fun cut(strokes: List<InkStroke>, aspect: Float, widthPt: Float): Pair<List<InkStroke>, androidx.compose.ui.geometry.Rect> {
+        val mm = widthPt / 72f * 25.4f // millimetres across the box
+        var x0 = 1f; var y0 = aspect; var x1 = 0f; var y1 = 0f
+        for (s in strokes) { val r = s.widthMm / mm * 0.75f; for (p in s.points) { x0 = minOf(x0, p.x - r); y0 = minOf(y0, p.y - r); x1 = maxOf(x1, p.x + r); y1 = maxOf(y1, p.y + r) } }
+        val box = androidx.compose.ui.geometry.Rect(x0.coerceAtLeast(0f), y0.coerceAtLeast(0f), x1.coerceAtMost(1f), y1.coerceAtMost(aspect))
+        val bw = box.width.coerceAtLeast(1e-4f)
+        return strokes.map { s -> InkStroke(s.points.map { Offset((it.x - box.left) / bw, (it.y - box.top) / bw) }, s.color, s.widthMm, s.highlighter) } to box
+    }
+
     /** The drawing as a PNG [px] wide ([aspect] = height / width), strokes at their width for a box [widthPt] wide. */
     fun png(strokes: List<InkStroke>, aspect: Float, widthPt: Float, px: Int = 1600): ByteArray {
         val w = px; val h = (px * aspect).toInt().coerceAtLeast(1)
@@ -74,9 +92,14 @@ internal object InkPicture {
 
 private enum class Tool { Pen, Pen2, Highlighter, Eraser }
 
+/**
+ * The drawing box, or with [page] the page itself as the pages show it (asked 2026-09-30: drawn on the document, the
+ * page underneath to see how big it comes out). [insert] gets the PNG, its size in points and, on a page, its top left
+ * there — the drawing cut to what was drawn.
+ */
 @Composable
-internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, insert: (ByteArray, Float, Float) -> Unit) {
-    val aspect = 0.6f
+internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, page: LaidPage? = null, insert: (ByteArray, Float, Float, Pair<Float, Float>?) -> Unit) {
+    val aspect = page?.let { it.page.height / it.page.width } ?: 0.6f
     val strokes = remember { mutableStateListOf<InkStroke>() }
     var current by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var tool by remember { mutableStateOf(Tool.Pen) }
@@ -88,7 +111,7 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, insert: (ByteArray,
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Draw", style = MaterialTheme.typography.titleLarge)
+                if (page == null) Text("Draw", style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Choice("Pen", tool == Tool.Pen) { tool = Tool.Pen }
                     Choice("Pen 2", tool == Tool.Pen2) { tool = Tool.Pen2 }
@@ -105,21 +128,43 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, insert: (ByteArray,
                     Choice("+", false) { widths[slot] = (widths[slot] + if (widths[slot] < 1f) 0.25f else 1f).coerceAtMost(12f) }
                 }
                 // As big as fits with the tools and the buttons (a landscape tablet is short).
-                val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 360.dp).coerceAtLeast(160.dp)
-                Box(Modifier.align(Alignment.CenterHorizontally).widthIn(max = room / aspect).fillMaxWidth().aspectRatio(1 / aspect).clip(RoundedCornerShape(8.dp)).background(Color.White).border(1.dp, Color(0xFFDADCE0), RoundedCornerShape(8.dp))) {
-                    Canvas(Modifier.matchParentSize().pointerInput(tool) {
+                val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - if (page == null) 360.dp else 280.dp).coerceAtLeast(160.dp)
+                // On a page: the page across the whole width, two fingers to zoom and move it, one (or the pen) to draw.
+                var zoom by remember { mutableFloatStateOf(1f) }
+                var pan by remember { mutableStateOf(Offset.Zero) }
+                val area = if (page == null) Modifier.widthIn(max = room / aspect).fillMaxWidth().aspectRatio(1 / aspect).background(Color.White)
+                    else Modifier.fillMaxWidth().height(room).background(Color(0xFF5F6368))
+                Box(Modifier.align(Alignment.CenterHorizontally).then(area).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFDADCE0), RoundedCornerShape(8.dp))) {
+                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(tool) {
+                        fun at(p: Offset) = (p - pan) / (size.width * zoom) // in the box's widths
                         detectDraw(
-                            start = { p -> val q = Offset(p.x / size.width, p.y / size.width)
-                                if (tool == Tool.Eraser) erase(strokes, q, 12f / size.width) else current = listOf(q) },
-                            move = { p -> val q = Offset(p.x / size.width, p.y / size.width)
-                                if (tool == Tool.Eraser) erase(strokes, q, 12f / size.width) else current = current + q },
-                            end = { if (tool != Tool.Eraser && current.isNotEmpty()) strokes += InkStroke(current, colors[slot], widths[slot], tool == Tool.Highlighter); current = emptyList() })
+                            start = { p -> val q = at(p)
+                                if (tool == Tool.Eraser) erase(strokes, q, 12f / (size.width * zoom)) else current = listOf(q) },
+                            move = { p -> val q = at(p)
+                                if (tool == Tool.Eraser) erase(strokes, q, 12f / (size.width * zoom)) else current = current + q },
+                            end = { if (tool != Tool.Eraser && current.isNotEmpty()) strokes += InkStroke(current, colors[slot], widths[slot], tool == Tool.Highlighter); current = emptyList() },
+                            cancel = { current = emptyList() },
+                            transform = if (page == null) null else { centre, move, by ->
+                                val z = (zoom * by).coerceIn(1f, 6f)
+                                val w = size.width * z
+                                val p = centre - (centre - pan) * (z / zoom) + move
+                                // The page kept in view: no further than its edges.
+                                pan = Offset(p.x.coerceIn(size.width - w, 0f), p.y.coerceIn(minOf(0f, size.height - w * aspect), 0f))
+                                zoom = z
+                            })
                     }) {
-                        val perMm = size.width / (widthPt / 72f * 25.4f)
+                        val across = size.width * zoom // the box's width on screen
+                        page?.let { laid -> drawIntoCanvas { c -> val n = c.nativeCanvas; val k = across / laid.page.width
+                            n.save(); n.translate(pan.x, pan.y); n.scale(k, k)
+                            n.drawRect(0f, 0f, laid.page.width, laid.page.height, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+                            laid.draw(n); n.restore() } }
+                        val perMm = across / (widthPt / 72f * 25.4f)
                         fun draw(points: List<Offset>, color: Int, mm: Float, highlighter: Boolean) {
                             if (points.isEmpty()) return
-                            val path = Path().apply { points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x * size.width, p.y * size.width) else lineTo(p.x * size.width, p.y * size.width) }
-                                if (points.size == 1) lineTo(points[0].x * size.width + 0.1f, points[0].y * size.width) }
+                            fun x(p: Offset) = pan.x + p.x * across
+                            fun y(p: Offset) = pan.y + p.y * across
+                            val path = Path().apply { points.forEachIndexed { i, p -> if (i == 0) moveTo(x(p), y(p)) else lineTo(x(p), y(p)) }
+                                if (points.size == 1) lineTo(x(points[0]) + 0.1f, y(points[0])) }
                             drawPath(path, if (highlighter) Color(color).copy(alpha = 0.4f) else Color(color),
                                 style = Stroke(mm * perMm, cap = if (highlighter) StrokeCap.Square else StrokeCap.Round, join = StrokeJoin.Round))
                         }
@@ -129,7 +174,12 @@ internal fun DrawDialog(widthPt: Float, dismiss: () -> Unit, insert: (ByteArray,
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(enabled = strokes.isNotEmpty(), onClick = { insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect) }) { Text("Insert") }
+                    TextButton(enabled = strokes.isNotEmpty(), onClick = {
+                        if (page == null) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null)
+                        else { val (cut, box) = InkPicture.cut(strokes, aspect, widthPt)
+                            val w = box.width * widthPt
+                            insert(InkPicture.png(cut, box.height / box.width, w, (w * 4).toInt().coerceIn(64, 2400)), w, box.height * widthPt, box.left * widthPt to box.top * widthPt) }
+                    }) { Text("Insert") }
                 }
             }
         }
@@ -141,16 +191,29 @@ private fun erase(strokes: MutableList<InkStroke>, at: Offset, radius: Float) {
     strokes.removeAll { s -> s.points.any { (it - at).getDistance() < radius + s.widthMm * 0.002f } }
 }
 
-/** Down, move, up of one finger or pen — the drawing's own, so the dialog does not scroll or close under it. */
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDraw(start: (Offset) -> Unit, move: (Offset) -> Unit, end: () -> Unit) {
+/**
+ * Down, move, up of one finger or pen — the drawing's own, so the dialog does not scroll or close under it. With
+ * [transform], a second finger turns it into zoom and move (centre, moved by, zoomed by); the stroke begun is dropped.
+ */
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDraw(start: (Offset) -> Unit, move: (Offset) -> Unit, end: () -> Unit,
+    cancel: () -> Unit = {}, transform: ((Offset, Offset, Float) -> Unit)? = null) {
     awaitPointerEventScope {
         while (true) {
             val down = awaitPointerEvent().changes.firstOrNull { it.pressed } ?: continue
             start(down.position); down.consume()
+            var drawing = true
             while (true) {
                 val e = awaitPointerEvent()
-                val c = e.changes.firstOrNull { it.id == down.id } ?: break
-                if (!c.pressed) { end(); break }
+                if (e.changes.none { it.pressed }) { if (drawing) end(); break }
+                if (transform != null && e.changes.count { it.pressed } >= 2) {
+                    if (drawing) { cancel(); drawing = false }
+                    transform(e.calculateCentroid(), e.calculatePan(), e.calculateZoom())
+                    e.changes.forEach { it.consume() }
+                    continue
+                }
+                if (!drawing) continue
+                val c = e.changes.firstOrNull { it.id == down.id }
+                if (c == null || !c.pressed) { end(); drawing = false; continue }
                 move(c.position); c.consume()
             }
         }

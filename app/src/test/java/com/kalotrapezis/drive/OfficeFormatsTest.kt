@@ -263,6 +263,28 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a drawing made on a page stays where it was drawn`() {
+        val png = java.io.ByteArrayOutputStream().also { out ->
+            val b = java.awt.image.BufferedImage(40, 20, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            b.createGraphics().apply { color = java.awt.Color.RED; fillOval(0, 0, 40, 20); dispose() }
+            javax.imageio.ImageIO.write(b, "png", out)
+        }.toByteArray()
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val ink = DocImage("n1", null, 120f, 60f, null, png, "png", PictureWrap.InFront, onPage = 200f to 300f)
+            // New: placed from the page's corner at once.
+            assertEquals(kind.name, PictureXml.Place("page", 200f, null, "page", 300f, null, PictureWrap.InFront), PictureXml.placeOf(ink))
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Text "), DocRun(OBJECT_MARK.toString(), image = ink), DocRun(" more")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("drawn-on-page.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind)
+            val img = back.paras.single().runs.mapNotNull { it.image }.single()
+            assertEquals(kind.name, PictureXml.Place("page", 200f, null, "page", 300f, null, PictureWrap.InFront), PictureXml.placeOf(img))
+            // Written again unchanged: still there.
+            val again = OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind).paras.single().runs.mapNotNull { it.image }.single()
+            assertEquals(kind.name, PictureXml.placeOf(img), PictureXml.placeOf(again))
+        }
+    }
+
     @Test fun `real documents read`() {
         val home = File(System.getProperty("user.home"), "Έγγραφα")
         // And the Word test suite the user made (28 Sep): every feature of Word, one file per area.

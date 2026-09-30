@@ -1587,6 +1587,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
     }
+    /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
+    fun setLineNumbers(restart: String?) = change {
+        val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
+            .onFailure { Log.e("Writer", "line numbers", it) }.getOrNull() ?: run { message = "The line numbers could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+        if (restart != null) message = "Line numbers — they show on the pages (the eye at the top)"
+    }
     var datePage by remember { mutableStateOf(false) }
     /** Symbol or date typed at the cursor, over what is chosen (as typing; the editor's own undo). */
     fun typeIn(s: String) { if (!state.selection.collapsed) state.removeSelectedText(); state.addTextAfterSelection(s) }
@@ -2428,6 +2437,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        val now = documentStyles.section.lineNumbers?.restart
+                        RibbonButton("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            (listOf(null to "None", "continuous" to "Continuous", "newPage" to "Restart each page") + if (kind == OfficeKind.Docx) listOf("newSection" to "Restart each section") else emptyList())
+                                .forEach { (mode, label) -> DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (mode == now) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    onClick = { open = false; if (mode != now) setLineNumbers(mode) }) }
+                        }
+                    }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }

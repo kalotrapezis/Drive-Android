@@ -82,6 +82,40 @@ internal object PageSetup {
     }
 
     /**
+     * Layout › Line numbers: [restart] ("continuous", "newPage", "newSection") or none (null) — in every section of a
+     * Word document (w:lnNumType, in Word's place: after the page borders, before the page numbering); in an
+     * OpenDocument for the whole of it (LibreOffice's line numbering, in styles.xml; no "each section" there).
+     */
+    fun lineNumbers(source: Map<String, ByteArray>, kind: OfficeKind, restart: String?): LinkedHashMap<String, ByteArray> {
+        val parts = LinkedHashMap(source)
+        if (kind == OfficeKind.Odt) {
+            var xml = String(parts.getValue("styles.xml"), Charsets.UTF_8).replace(Regex("""<text:linenumbering-configuration\b[^>]*?(?:/>|>[\s\S]*?</text:linenumbering-configuration>)"""), "")
+            val conf = """<text:linenumbering-configuration text:number-lines="${restart != null}" text:offset="0.25in" style:num-format="1" text:number-position="left" text:increment="1" text:count-empty-lines="true" text:count-in-text-boxes="false" text:restart-on-page="${restart == "newPage"}"/>"""
+            xml = if ("</office:styles>" in xml) xml.replace("</office:styles>", "$conf</office:styles>") else xml.replace(Regex("""<office:styles\s*/>"""), "<office:styles>$conf</office:styles>")
+            parts["styles.xml"] = xml.toByteArray()
+            return parts
+        }
+        val docPath = documentPath(parts)
+        var xml = String(parts.getValue(docPath), Charsets.UTF_8)
+        fun section(sect: String): String {
+            val self = sect.endsWith("/>") && !sect.contains("</w:sectPr>")
+            val open = if (self) sect.dropLast(2) + ">" else sect.substring(0, sect.indexOf('>') + 1)
+            var inner = if (self) "" else sect.substring(sect.indexOf('>') + 1, sect.length - "</w:sectPr>".length)
+            inner = inner.replace(Regex("""<w:lnNumType\b[^>]*/>"""), "")
+            if (restart != null) {
+                val at = Regex("""<w:(pgNumType|cols|formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
+                inner = inner.substring(0, at) + """<w:lnNumType w:countBy="1" w:restart="$restart"/>""" + inner.substring(at)
+            }
+            return open + inner + "</w:sectPr>"
+        }
+        val sections = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""")
+        if (!sections.containsMatchIn(xml)) xml = xml.replace("</w:body>", "<w:sectPr/></w:body>")
+        xml = sections.replace(xml) { section(it.value) }
+        parts[docPath] = xml.toByteArray()
+        return parts
+    }
+
+    /**
      * The same in an OpenDocument: every page layout. ODF's top margin is where the header starts; the text starts
      * below the header's band, so that band is taken off to put the text where it is asked for ([now]: as it is now).
      */

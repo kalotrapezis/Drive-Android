@@ -354,6 +354,20 @@ class OfficeFormatsTest {
         assert("""w:header="708"""" in set) // its header distance kept
     }
 
+    @Test fun `Line numbers are set, read back and taken away, in both kinds`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), kind)
+            fun set(from: ByteArray, mode: String?) = OfficeFormats.zip(PageSetup.lineNumbers(OfficeFormats.unzip(from), kind, mode), if (kind == OfficeKind.Odt) "mimetype" else null)
+            assertEquals(kind.name, null, DocStyles.of(kind, bytes).section.lineNumbers)
+            for (mode in listOf("continuous", "newPage") + if (kind == OfficeKind.Docx) listOf("newSection") else emptyList()) {
+                val out = set(bytes, mode)
+                assertEquals("$kind $mode", mode, DocStyles.of(kind, out).section.lineNumbers?.restart)
+                assertEquals("$kind $mode none", null, DocStyles.of(kind, set(set(out, mode), null)).section.lineNumbers) // again, then none
+            }
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("lines.${kind.extension}").writeBytes(set(bytes, "newPage"))
+        }
+    }
+
     @Test fun `a table of contents lists the headings with their pages, in the file's contents styles, and updates in place`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Title page"))), DocPara(emptyList()),

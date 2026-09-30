@@ -89,7 +89,14 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
  */
 internal data class DocSection(val page: DocPage, val headers: Map<String, List<DocPara>> = emptyMap(), val footers: Map<String, List<DocPara>> = emptyMap(),
     val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false,
-    val watermark: String? = null /* Design › Watermark: its text */)
+    val watermark: String? = null /* Design › Watermark: its text */,
+    val lineNumbers: LineNumbers? = null /* Layout › Line numbers */)
+
+/**
+ * Layout › Line numbers (Word's): each line of the text numbered in the margin, [countBy] shown, starting again on each
+ * page ("newPage"), each section ("newSection") or never ("continuous"); [distance] from the text (null: Word's ¼ inch).
+ */
+internal data class LineNumbers(val restart: String = "newPage", val countBy: Int = 1, val distance: Float? = null)
 
 /**
  * A table as the pages need it: column widths, indent and alignment; each row's height ("at least", or exact) and
@@ -300,7 +307,8 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         return DocSection(page, headers, footers, watermark = watermark,
             titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false,
             pageStart = numbers?.attr(W, "start")?.toIntOrNull(), pageFormat = numbers?.attr(W, "fmt") ?: "decimal",
-            continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous")
+            continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous",
+            lineNumbers = sect?.kid(W, "lnNumType")?.let { l -> LineNumbers(l.attr(W, "restart") ?: "newPage", l.attr(W, "countBy")?.toIntOrNull()?.coerceAtLeast(1) ?: 1, twips(l, "distance")) })
     }
 
     override fun tableSpec(t: DocTable): TableSpec {
@@ -576,6 +584,10 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             // LibreOffice draws a page's border round its margins.
             border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom) }),
             headers, footers, titlePage = "first" in headers || "first" in footers,
+            // LibreOffice numbers lines for the whole document (styles.xml), from page to page or on each page anew.
+            lineNumbers = parts["styles.xml"]?.let { String(it, Charsets.UTF_8) }?.let { Regex("""<text:linenumbering-configuration\b[^>]*""").find(it)?.value }
+                ?.takeIf { "text:number-lines=\"false\"" !in it }?.let { c -> fun a(n: String) = Regex("""\s$n="([^"]*)"""").find(c)?.groupValues?.get(1)
+                    LineNumbers(if (a("text:restart-on-page") == "true") "newPage" else "continuous", a("text:increment")?.toIntOrNull()?.coerceAtLeast(1) ?: 1, odfLength(a("text:offset"))) },
             watermark = master?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "custom-shape")?.let { l ->
                 (0 until l.length).map { l.item(it) as Element }.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "name").startsWith(Watermark.NAME) }?.textContent?.trim() })
     }
@@ -742,7 +754,9 @@ internal fun odfLength(v: String?): Float? = v?.let { Regex("""^(-?[\d.]+)(cm|mm
 /** One page, laid out: pieces of paragraphs (some of their lines) and where they go, and floating pictures. */
 internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: List<Floating> = emptyList(),
     val section: DocSection = DocSection(page), val number: Int = 1, val firstOfSection: Boolean = false,
-    val boxes: List<Box> = emptyList(), val lines: List<Line> = emptyList()) {
+    val boxes: List<Box> = emptyList(), val lines: List<Line> = emptyList(), val lineNumbers: List<LineNumber> = emptyList()) {
+    /** A line's number in the margin: right-aligned at [x], its baseline at [y]. */
+    class LineNumber(val x: Float, val y: Float, val text: String, val paint: android.graphics.Paint)
     /** [turn]: drawn turned that many degrees about ([tx], [ty]), its x and y then counted in the turned frame. */
     class Piece(val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float,
         val turn: Int = 0, val tx: Float = 0f, val ty: Float = 0f)
@@ -772,6 +786,7 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
         }
         floats(behind = true)
         drawParts(canvas, pieces, boxes, lines)
+        for (n in lineNumbers) canvas.drawText(n.text, n.x - n.paint.measureText(n.text), n.y, n.paint)
         floats(behind = false)
     }
     companion object {
@@ -913,6 +928,13 @@ internal object OfficePages {
         var floats = ArrayList<LaidPage.Floating>()
         var boxes = ArrayList<LaidPage.Box>(); var lines = ArrayList<LaidPage.Line>()
         var y = page.top
+        // Layout › Line numbers: the lines numbered so far, and this page's numbers.
+        var lineNo = 0
+        var lineNums = ArrayList<LaidPage.LineNumber>()
+        val numberPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            val look = styles.look(DocPara(emptyList())) // Word's Line Number style is the text's own font
+            typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), false, false); textSize = look.sizePt ?: doc.basePt; color = android.graphics.Color.BLACK
+        }
         // The page's pictures that no text may stand beside (top-and-bottom wrap), top to bottom.
         val bands = ArrayList<Pair<Float, Float>>()
         // …and those it goes around (Square), with the pictures already counted (seeded from the page's first pass).
@@ -949,8 +971,9 @@ internal object OfficePages {
             // In columns: the next column first (the page's pictures still stand where they are).
             if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
             bands.clear(); squares.clear(); walled.clear()
-            pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
-            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); col = 0; page = frame.column(0); y = page.top; number++; firstOfSection = false
+            pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines, lineNums)
+            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); lineNums = ArrayList(); col = 0; page = frame.column(0); y = page.top; number++; firstOfSection = false
+            if (section.lineNumbers?.restart == "newPage") lineNo = 0
             seedPage()
         }
         /** A page break: a whole new page, whatever column the text is in. */
@@ -973,6 +996,7 @@ internal object OfficePages {
                 if (!next.continuous) {
                     if (pieces.isNotEmpty() || floats.isNotEmpty()) breakPage()
                     section = next; frame = next.page; col = 0; page = frame.column(0); y = page.top; firstOfSection = true
+                    if (next.lineNumbers?.restart != "continuous") lineNo = 0
                     next.pageStart?.let { number = it }
                 } else section = next
             }
@@ -1084,6 +1108,11 @@ internal object OfficePages {
                     && !crosses(y + layout.topPt(last + 1) - top, y + layout.bottomPt(last + 1) - top)) last++
                 val atBand = last + 1 < layout.lineCount && crosses(y + layout.topPt(last + 1) - top, y + layout.bottomPt(last + 1) - top)
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
+                // Line numbers: the text's lines (not a table's, a note's or a header's), in the margin left of them.
+                section.lineNumbers?.takeIf { i < bodyCount }?.let { ln -> for (k in line..last) {
+                    lineNo++
+                    if (lineNo % ln.countBy == 0) lineNums += LaidPage.LineNumber(page.left - (ln.distance ?: 18f), y + layout.getLineBaseline(k) / U - top, lineNo.toString(), numberPaint)
+                } }
                 (line..last).flatMap { feetOf[it].orEmpty() }.takeIf { it.isNotEmpty() }?.let { refs ->
                     val ls = footLayouts(refs)
                     if (feet.isEmpty()) feetHeight += sepGap
@@ -1104,7 +1133,7 @@ internal object OfficePages {
             prevLook = look; prevStyle = style
         }
         placeFeet()
-        pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
+        pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines, lineNums)
         return pages.mapIndexed { i, laid -> withHeaderAndFooter(doc, styles, laid, i, pages.size, pictureBytes) }
     }
 
@@ -1180,7 +1209,7 @@ internal object OfficePages {
         val f = stack(doc, filled(which(section.footers)), styles, page, page.textWidth, pictureBytes, null, 0f, 0f)
         val footer = f.moved(page.left, page.height - page.footer - f.height)
         return LaidPage(page, header.pieces + footer.pieces + laid.pieces, laid.floats + extraFloats, section, laid.number, laid.firstOfSection,
-            header.boxes + footer.boxes + laid.boxes, laid.lines + header.lines + footer.lines)
+            header.boxes + footer.boxes + laid.boxes, laid.lines + header.lines + footer.lines, laid.lineNumbers)
     }
 
     /**

@@ -60,6 +60,12 @@ not connected.
   Enter and join through a Word file, typing over a selection); tablet, a new unsaved document: "The cat sat well.",
   Track changes on, Backspace ×4, "badly" → the draft's Word XML has w:ins "badly", w:del "well"; LibreOffice reads
   them as insertion/deletion by the name. The test draft was removed after.
+- **Phone (208c8192), same evening:** installed; Review fits the paged ribbon (Track changes | ‹ › Accept Reject |
+  Accept all Reject all | Comments), the name dialog, recording with Gboard — all as on the tablet. **Found there:** with
+  the cursor exactly between two changes (after typing "badly" before a struck "well"), Accept/Reject took both —
+  rejecting the deletion too. Now one: the change the cursor is inside, else the one just before it (`changeAt`, also
+  the bar's). The phone's test draft and the test reviewer name ("Test") were removed after; the phone has no Writer
+  name saved, so the user is asked the first time.
 - Not yet: tracking is not remembered in the file (Word's w:trackRevisions in settings.xml) nor across reopening;
   newly typed insertions are underlined at once but take the author's colour only at the next redraw; changes made by
   Writer's own tools (paste is typing, but a citation, a style…) are recorded only as far as their letters go;

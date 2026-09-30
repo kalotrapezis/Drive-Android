@@ -1282,7 +1282,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         }
     } }
-    val hereChange by remember { derivedStateOf { state.selection.let { sel -> changesShown.firstOrNull { (_, a, z) -> sel.min in a..z }?.first } } }
+    /** The change at a cursor: the one it is inside, else the one just before it (between two, never both). */
+    fun changeAt(at: Int) = (changesShown.firstOrNull { (_, a, z) -> at in a until z } ?: changesShown.lastOrNull { (_, a, z) -> at in a..z })?.first
+    val hereChange by remember { derivedStateOf { changeAt(state.selection.min) } }
     // Track changes on (Word files): each edit recorded as the reviewer's, compared with the document as it was.
     val prefs = remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE) }
     var tracking by remember { mutableStateOf(false) }
@@ -1311,7 +1313,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun decideChanges(accept: Boolean, all: Boolean = false) = change {
         val cur = current()
         val sel = state.selection
-        val chosen = if (all) emptyList() else changesShown.filter { (_, a, z) -> if (sel.collapsed) sel.min in a..z else a < sel.max && z > sel.min || a == z && a in sel.min..sel.max }.map { it.first }.distinct()
+        val chosen = if (all) emptyList() else if (sel.collapsed) listOfNotNull(changeAt(sel.min))
+            else changesShown.filter { (_, a, z) -> a < sel.max && z > sel.min || a == z && a in sel.min..sel.max }.map { it.first }.distinct()
         if (!all && chosen.isEmpty()) { message = "No change here — Next finds one"; return@change }
         val at = if (all) sel.min else changesShown.filter { it.first in chosen }.minOfOrNull { it.second } ?: sel.min // before meta changes (it is read again then)
         meta = if (all) TrackChanges.all(cur, accept) else TrackChanges.decide(cur, chosen, accept)

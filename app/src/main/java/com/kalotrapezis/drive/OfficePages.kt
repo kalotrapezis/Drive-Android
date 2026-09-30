@@ -34,7 +34,8 @@ import org.w3c.dom.Element
 /** A page: its size and margins in points. */
 internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9f, val top: Float = 56.7f, val bottom: Float = 56.7f,
     val left: Float = 56.7f, val right: Float = 56.7f, val header: Float = 35.4f, val footer: Float = 35.4f /* from the page's edge */,
-    val columns: Int = 1, val columnGap: Float = 36f) {
+    val columns: Int = 1, val columnGap: Float = 36f,
+    val color: Int? = null /* Design › Page colour (RGB); null: white */, val border: PageBorder? = null /* Design › Page borders */) {
     val textWidth get() = (width - left - right).coerceAtLeast(8f)
     /** Column [k] of the text, as a page of its own width (the text flows down one, then the next). */
     fun column(k: Int): DocPage {
@@ -44,6 +45,9 @@ internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9
         return copy(left = l, right = width - l - w)
     }
 }
+
+/** A box round the page: its line, and how far in from each edge of the page it runs (pt). */
+internal data class PageBorder(val line: Border, val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 /** How a paragraph is laid out: spacing (pt), line spacing (a multiple, or exact pt), indents (pt), its text's look. */
 internal data class ParaLook(
@@ -213,6 +217,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private var minorFont: String? = null; private var majorFont: String? = null // the theme's body and heading fonts
     override var evenAndOdd = false
     private var bodySect: Element? = null
+    private var background: Int? = null
     private val targets: Map<String, String> // relationship id → part (headers, footers)
     private val parts = parts
     private fun theme(name: String?) = when { name == null -> null; name.startsWith("minor") -> minorFont; name.startsWith("major") -> majorFont; else -> null }
@@ -258,6 +263,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             minorFont = latin("minorFont"); majorFont = latin("majorFont")
         }
         val doc = OfficeFormats.parse(parts.getValue(documentPath(parts))).documentElement
+        background = doc.kid(W, "background")?.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) }
         bodySect = doc.kid(W, "body")?.kid(W, "sectPr")
         targets = parts[relsPath(documentPath(parts))]?.let { OfficeFormats.parse(it).documentElement.kids().associate { r -> r.getAttribute("Id") to resolve(dir, r.getAttribute("Target")) } }.orEmpty()
         evenAndOdd = parts[dir + "settings.xml"]?.let { "<w:evenAndOddHeaders" in String(it, Charsets.UTF_8) } ?: false
@@ -271,7 +277,15 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val d = DocPage()
         val page = DocPage(twips(size, "w") ?: d.width, twips(size, "h") ?: d.height, twips(mar, "top") ?: d.top, twips(mar, "bottom") ?: d.bottom,
             twips(mar, "left") ?: d.left, twips(mar, "right") ?: d.right, twips(mar, "header") ?: d.header, twips(mar, "footer") ?: d.footer,
-            sect?.kid(W, "cols")?.attr(W, "num")?.toIntOrNull()?.coerceIn(1, 6) ?: 1, twips(sect?.kid(W, "cols"), "space") ?: 36f)
+            sect?.kid(W, "cols")?.attr(W, "num")?.toIntOrNull()?.coerceIn(1, 6) ?: 1, twips(sect?.kid(W, "cols"), "space") ?: 36f).let { pg ->
+            // Page borders: the top one's line for the box; from the page's edge, or (Word's default) from the text.
+            val borders = sect?.kid(W, "pgBorders")
+            val line = borders?.kids()?.firstNotNullOfOrNull { wordBorder(it) }
+            fun space(side: String) = borders?.kid(W, side)?.attr(W, "space")?.toFloatOrNull() ?: 0f
+            val box = line?.let { l -> if (borders.attr(W, "offsetFrom") == "page") PageBorder(l, space("left"), space("top"), space("right"), space("bottom"))
+                else PageBorder(l, pg.left - space("left"), pg.top - space("top"), pg.right - space("right"), pg.bottom - space("bottom")) }
+            pg.copy(color = background, border = box)
+        }
         val headers = HashMap(before?.headers.orEmpty()); val footers = HashMap(before?.footers.orEmpty())
         sect?.kids()?.forEach { e ->
             val into = when (e.localName) { "headerReference" -> headers; "footerReference" -> footers; else -> null } ?: return@forEach
@@ -545,11 +559,17 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             return maxOf(odfLength(hf?.attr(FO, "min-height")) ?: 0f, paras.size.coerceAtLeast(1) * 14f) + (odfLength(hf?.attr(FO, gap)) ?: 0f)
         }
         val top = len("margin-top") ?: d.top; val bottom = len("margin-bottom") ?: d.bottom
+        // A page's border stands at the margins; the text starts its padding inside it.
+        val edge = odfBorder(props?.attr(FO, "border") ?: props?.attr(FO, "border-top"))
+        fun pad(side: String) = if (edge == null) 0f else len("padding-$side") ?: len("padding") ?: 0f
         section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height,
-            top + band(headers["default"], "header-style", "margin-bottom"), bottom + band(footers["default"], "footer-style", "margin-top"),
-            len("margin-left") ?: d.left, len("margin-right") ?: d.right, header = top, footer = bottom,
+            top + pad("top") + band(headers["default"], "header-style", "margin-bottom"), bottom + pad("bottom") + band(footers["default"], "footer-style", "margin-top"),
+            (len("margin-left") ?: d.left) + pad("left"), (len("margin-right") ?: d.right) + pad("right"), header = top, footer = bottom,
             columns = props?.kid(STYLE, "columns")?.attr(FO, "column-count")?.toIntOrNull()?.coerceIn(1, 6) ?: 1,
-            columnGap = odfLength(props?.kid(STYLE, "columns")?.attr(FO, "column-gap")) ?: 36f),
+            columnGap = odfLength(props?.kid(STYLE, "columns")?.attr(FO, "column-gap")) ?: 36f,
+            color = props?.attr(FO, "background-color")?.takeIf { it.startsWith("#") }?.let { OfficeFormats.parseHex(it.removePrefix("#")) },
+            // LibreOffice draws a page's border round its margins.
+            border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom) }),
             headers, footers, titlePage = "first" in headers || "first" in footers)
     }
 
@@ -724,8 +744,11 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
     class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean)
 
-    /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's). */
+    /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
     fun draw(canvas: Canvas) {
+        page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
+        page.border?.let { b -> canvas.drawRect(b.left, b.top, page.width - b.right, page.height - b.bottom, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE; strokeWidth = b.line.width; color = 0xFF000000.toInt() or b.line.color }) }
         fun floats(behind: Boolean) = floats.filter { it.behind == behind }.forEach { f ->
             val shape = f.picture as? ShapePicture
             if (shape != null) shape.drawAt(canvas, f.x, f.y, f.w, f.h)

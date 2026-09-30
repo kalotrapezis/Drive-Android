@@ -717,7 +717,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -761,6 +761,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // A tablet edits on the page itself (asked 2026-09-29, as on a desktop): the page's width and margins at the
     // editor's text size, centred, the ruler above. A phone (or a page too wide) keeps the text to the screen's width.
     val sheet = documentStyles.page
+    val paper = Color(0xFF000000 or (sheet.color ?: 0xFFFFFF).toLong()) // Design › Page colour, in the editor too
     val screen = LocalConfiguration.current.screenWidthDp.dp
     // A tablet shows a document's comments in a pane beside the page, as Word does (asked 2026-09-29): the page made
     // smaller when both would not fit.
@@ -1321,6 +1322,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 InkStroke(s.points.map { Offset((place.x!! + it.x * img.widthPt) / w, (place.y!! + it.y * ky * img.widthPt) / w) }, s.color, s.widthMm, s.highlighter) })
         }
     }
+    /** Design › Page colour and Page borders: into the file as it will be written; shown on the pages at once. */
+    fun setDesign(color: Int?, border: Border?) = change {
+        val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
+            if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border) else PageDesign.odt(it, color, border) } }
+            .onFailure { Log.e("Writer", "design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+        message = "Shown on the pages (the eye at the top)"
+    }
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1497,7 +1508,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }, hereComment, Modifier.align(Alignment.TopCenter).offset(x = sheet.width * perPt / 2 - shift + 12.dp + COMMENT_PANE / 2).width(COMMENT_PANE),
                         open = { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } }, delete = { deleteComment(it.id) })
                 }
-                Surface(color = Color.White, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
+                Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
                     modifier = (if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
@@ -1558,7 +1569,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
                                         val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
-                                        Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(Color.White).padding(horizontal = 4.dp))
+                                        Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
                                 Box(Modifier.matchParentSize().padding(margins)) {
@@ -1976,6 +1987,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
                     })
                 }
+                // Word's Design: the page's background — its colour and a box round it.
+                WriterTab.Design -> listOf({
+                    Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
+                        setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
+                    }
+                    Box {
+                        var bordering by remember { mutableStateOf(false) }
+                        RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { bordering = true }
+                        DropdownMenu(bordering, { bordering = false }) {
+                            listOf("No border" to null, "Box, thin (½ pt)" to 0.5f, "Box, medium (1½ pt)" to 1.5f, "Box, thick (3 pt)" to 3f).forEach { (label, width) ->
+                                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(if (width == null) R.drawable.ic_border_clear else R.drawable.ic_border_outer), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                    onClick = { bordering = false; setDesign(sheet.color, width?.let { Border(it, sheet.border?.line?.color ?: 0) }) })
+                            }
+                        }
+                    }
+                })
                 WriterTab.Draw -> listOf({
                     // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
                     RibbonButton("Draw on page", w, R.drawable.ic_draw, enabled = loaded) { drawOnPage() }
@@ -2402,6 +2429,9 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
 }
 
 @Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
+
+/** Design › Page colour: Word's light theme tints, and white (a page coloured white is not the same as none in Word). */
+private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
 
 /** A named tool of the ribbon (Save, Heading 1…). */
 @Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(

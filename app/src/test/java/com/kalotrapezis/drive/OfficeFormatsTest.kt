@@ -182,6 +182,27 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `page colour and page border are set in both kinds, read back and taken away`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a colour and a box round it.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            fun set(from: ByteArray, color: Int?, border: Border?) = OfficeFormats.zip(OfficeFormats.unzip(from).let {
+                if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border) else PageDesign.odt(it, color, border) }, if (kind == OfficeKind.Odt) "mimetype" else null)
+            val out = set(bytes, 0xFFF2CC, Border(1.5f, 0x2F5496))
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("page-design.${kind.extension}").writeBytes(out)
+            val page = DocStyles.of(kind, out).page
+            assertEquals(kind.name, 0xFFF2CC, page.color)
+            assertEquals(kind.name, Border(1.5f, 0x2F5496), page.border?.line)
+            if (kind == OfficeKind.Docx) assertEquals(24f, page.border?.left) else assertEquals(page.left - 4f, page.border?.left) // the text 4 pt inside it
+            // Set twice: still one of each; then taken away.
+            val again = set(out, 0xFFF2CC, Border(1.5f, 0x2F5496))
+            assertEquals(kind.name, page, DocStyles.of(kind, again).page)
+            if (kind == OfficeKind.Docx) String(OfficeFormats.unzip(again).getValue("word/settings.xml")).let { assertEquals(1, Regex("displayBackgroundShape").findAll(it).count()) }
+            val none = DocStyles.of(kind, set(again, null, null)).page
+            assertEquals(kind.name, null to null, none.color to none.border)
+        }
+    }
+
     @Test fun `the page's size, orientation and margins are set in both kinds and read back`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page set from the Layout tab.")))))

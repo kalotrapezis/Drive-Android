@@ -908,7 +908,8 @@ internal object OfficePages {
             val look = styles.look(p)
             val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
-            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating)
+            val drops = ArrayList<DropLetters>()
+            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating, drops)
             val style = p.keep?.style + "/" + p.heading
             // Space between paragraphs: after the one before, then before this one — none between two of the same
             // style that say so (contextual spacing).
@@ -929,6 +930,7 @@ internal object OfficePages {
                 if (y + (layout.bottomPt(line) - top) > limit && pieces.isNotEmpty()) { newPage(); if (line == 0) natural = y; continue }
                 if (line == 0 && !floated) {
                     floated = true
+                    for (d in drops) floats += LaidPage.Floating(DropDrawable(d, page.left, y), page.left, y, 1f, 1f, behind = false)
                     for ((img, place) in floating) {
                         val f = floatAt(img, place, natural, page, pictureBytes)
                         floats += f
@@ -1181,8 +1183,24 @@ internal object OfficePages {
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind)
     }
 
+    /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */
+    class DropLetters(val text: String, val paint: TextPaint, val x: Float, val baseline: Float)
+    /** Drawn where it was placed (the float's box only says it is there). */
+    private class DropDrawable(val d: DropLetters, val left: Float, val top: Float) : android.graphics.drawable.Drawable() {
+        override fun draw(canvas: Canvas) { canvas.drawText(d.text, left + d.x, top + d.baseline, d.paint) }
+        override fun setAlpha(alpha: Int) {}
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {}
+        @Deprecated("Deprecated in Java") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+    }
+    /** The first lines of a paragraph beside a drop cap: indented by its width. */
+    private class DropMargin(val px: Int, val lines: Int) : LeadingMarginSpan.LeadingMarginSpan2 {
+        override fun getLeadingMargin(first: Boolean) = if (first) px else 0 // "first": the lines it counts
+        override fun drawLeadingMargin(c: Canvas, p: android.graphics.Paint, x: Int, dir: Int, top: Int, baseline: Int, bottom: Int, text: CharSequence, start: Int, end: Int, first: Boolean, layout: Layout?) {}
+        override fun getLeadingMarginLineCount() = lines
+    }
+
     private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, page: DocPage, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
-        floating: MutableList<Pair<DocImage, PictureXml.Place>>): Triple<StaticLayout, Float, Float> {
+        floating: MutableList<Pair<DocImage, PictureXml.Place>>, drops: MutableList<DropLetters>? = null /* the body's: a drop cap drawn */): Triple<StaticLayout, Float, Float> {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
@@ -1270,7 +1288,33 @@ internal object OfficePages {
             val gap = when (stop.type) { 'r' -> stop.pos - x - after; 'c' -> stop.pos - x - after / 2; else -> stop.pos - x }
             text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        val laid = build()
+        var laid = build()
+        // A drop cap: its letters out of the first line, as tall as the lines they drop through (their capitals from
+        // the first line's top to the last one's baseline), the first lines indented by their width.
+        DropCap.of(p.keep)?.takeIf { drops != null }?.let { drop ->
+            val from = marker?.let { it.length + 1 } ?: 0
+            val n = drop.length.coerceAtMost(text.length - from)
+            val letters = if (n > 0) text.substring(from, from + n) else ""
+            if (letters.isBlank() || '\n' in letters || text.getSpans(from, from + n, ImageSpan::class.java).isNotEmpty()) return@let
+            val r0 = p.runs.firstOrNull { it.image == null && it.text.isNotEmpty() }
+            val letterPaint = TextPaint(TextPaint.ANTI_ALIAS_FLAG or TextPaint.SUBPIXEL_TEXT_FLAG).apply {
+                typeface = OfficeFonts.styled(r0?.let { OfficeFonts.typeface(styles.fontName(it.font)) } ?: OfficeFonts.typeface(look.font), r0?.bold == true || look.bold == true, r0?.italic == true || look.italic == true)
+                color = (r0?.color ?: look.color)?.let { 0xFF000000.toInt() or it } ?: Color.BLACK
+                textSize = 100f
+            }
+            val bounds = android.graphics.Rect(); letterPaint.getTextBounds("H", 0, 1, bounds)
+            val capRatio = (bounds.height() / 100f).coerceAtLeast(0.3f)
+            val base0 = laid.getLineBaseline(0) / U
+            val lineStep = if (laid.lineCount > 1) (laid.getLineBaseline(1) - laid.getLineBaseline(0)) / U else laid.bottomPt(0) - laid.topPt(0)
+            val baseN = base0 + (drop.lines - 1) * lineStep
+            val capTop = base0 - (r0?.sizePt ?: size) * capRatio
+            letterPaint.textSize = ((baseN - capTop) / capRatio).coerceAtLeast(size)
+            val w = letterPaint.measureText(letters)
+            text.delete(from, from + n)
+            if (!drop.margin) text.setSpan(DropMargin(Math.round((w + drop.distance) * U), drop.lines), 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+            laid = build()
+            drops!! += DropLetters(letters, letterPaint, (if (drop.margin) -w - drop.distance else 0f) + first, baseN - laid.topPt(0))
+        }
         // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
         val lastExtra = if (look.lineExact == null && laid.lineCount > 0) laid.lineCount.minus(1).let { last -> (multiple - 1f) * (laid.bottomPt(last) - laid.topPt(last)) + gap / U } else 0f
         return Triple(laid, shift, lastExtra)

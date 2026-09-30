@@ -182,6 +182,31 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a drop cap is written in each kind's own words and read back as one paragraph`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val text = "Βροχή έπεφτε όλη τη νύχτα πάνω στα κεραμίδια του σπιτιού, και το πρωί ο κήπος ήταν γεμάτος λάσπη και φύλλα που είχε ρίξει ο αέρας."
+            val drop = DropCap(lines = 3, margin = false, distance = 2f, length = 1)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun(text)), keep = OfficeFormats.withDropCap(null, kind, drop)), DocPara(listOf(DocRun("The next paragraph.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("drop-cap.${kind.extension}").writeBytes(bytes)
+            if (kind == OfficeKind.Docx) String(OfficeFormats.unzip(bytes).getValue("word/document.xml")).let { xml ->
+                assert("w:dropCap=\"drop\"" in xml && ">Β</w:t></w:r></w:p>" in xml) { xml }
+            }
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, listOf(text, "The next paragraph."), back.paras.map { it.text })
+            assertEquals(kind.name, drop, DropCap.of(back.paras[0].keep))
+            assertEquals(kind.name, null, DropCap.of(back.paras[1].keep))
+            // Written again: the same; taken off: gone.
+            val again = OfficeFormats.read(OfficeFormats.write(back, kind, bytes), kind)
+            assertEquals(kind.name, back.paras.map { it.text to DropCap.of(it.keep) }, again.paras.map { it.text to DropCap.of(it.keep) })
+            val off = again.copy(paras = again.paras.mapIndexed { i, p -> if (i == 0) p.copy(keep = OfficeFormats.withDropCap(p.keep, kind, null)) else p })
+            assertEquals(kind.name, null, DropCap.of(OfficeFormats.read(OfficeFormats.write(off, kind, bytes), kind).paras[0].keep))
+            // A new paragraph after it (Enter) does not get it.
+            val entered = OfficeFormats.carryKeep(back.paras, back.paras + DocPara(listOf(DocRun("Typed after."))))
+            assertEquals(kind.name, null, DropCap.of(entered.last().keep))
+        }
+    }
+
     @Test fun `a watermark is set in both kinds, replaced, read back and taken away`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a watermark behind its text.")))))

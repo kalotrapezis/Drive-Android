@@ -280,6 +280,34 @@ internal data class DocKeep(val style: String? = null, val parts: List<Pair<Stri
     val isEmpty get() = style == null && parts.isEmpty() && list == null
 }
 
+/**
+ * Insert › Drop Cap (asked 2026-09-30): the paragraph's first [length] letters [lines] lines tall, beside its first
+ * lines ([margin]: out in the margin), [distance] pt from the text. Kept with the paragraph's own formatting: an ODT's
+ * style:drop-cap; in Word the letters are a framed paragraph of their own before it — read in, written out again.
+ */
+internal data class DropCap(val lines: Int = 3, val margin: Boolean = false, val distance: Float = 0f, val length: Int = 1) {
+    companion object {
+        /** The paragraph's drop cap, from either kind's words; null: none. */
+        fun of(keep: DocKeep?): DropCap? {
+            val parts = keep?.parts ?: return null
+            parts.firstOrNull { it.first == "dropCap" }?.second?.let { v ->
+                val (n, xml) = v.split('|', limit = 2)
+                fun a(name: String) = Regex("""\sw:$name="([^"]*)"""").find(xml)?.groupValues?.get(1)
+                return DropCap(a("lines")?.toIntOrNull()?.coerceIn(1, 10) ?: 3, a("dropCap") == "margin", (a("hSpace")?.toFloatOrNull() ?: 0f) / 20f, n.toIntOrNull()?.coerceAtLeast(1) ?: 1)
+            }
+            parts.firstOrNull { it.first == "child" && it.second.startsWith("<style:drop-cap") }?.second?.let { xml ->
+                fun a(name: String) = Regex("""\sstyle:$name="([^"]*)"""").find(xml)?.groupValues?.get(1)
+                val lines = a("lines")?.toIntOrNull() ?: 1
+                if (lines < 2) return null // one line: no drop cap
+                return DropCap(lines.coerceIn(2, 10), false, odfLength(a("distance")) ?: 0f, a("length")?.toIntOrNull()?.coerceAtLeast(1) ?: 1)
+            }
+            return null
+        }
+        /** Is this one of a drop cap's own parts (not carried to a new paragraph)? */
+        fun isPart(part: Pair<String, String>) = part.first == "dropCap" || (part.first == "child" && part.second.startsWith("<style:drop-cap"))
+    }
+}
+
 internal data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val list: DocList? = null, val align: DocAlign = DocAlign.Start, val keep: DocKeep? = null,
     val table: DocTable? = null /* then this "paragraph" is a table, its one run OBJECT_MARK */) {
     val text: String get() = runs.joinToString("") { it.text }
@@ -424,7 +452,7 @@ internal object OfficeFormats {
         val source = Array(m) { k -> from[k].takeIf { it >= 0 }?.let { old[it].keep } }
         return new.mapIndexed { k, p ->
             val keep = if (matched[k]) source[k] else (k - 1 downTo 0).firstOrNull { matched[it] }?.let { source[it] }?.let { inherited ->
-                inherited.copy(parts = inherited.parts.filter { (name, xml) -> name != "pageBreakBefore" && name != "sectPr" && name != "master" && !("break-before" in xml && "page" in xml) })
+                inherited.copy(parts = inherited.parts.filter { (name, xml) -> name != "pageBreakBefore" && name != "sectPr" && name != "master" && !("break-before" in xml && "page" in xml) && !DropCap.isPart(name to xml) })
             } ?: (k + 1 until m).firstOrNull { matched[it] }?.let { source[it] }?.copy(parts = emptyList())
             p.copy(keep = keep?.takeIf { !it.isEmpty })
         }
@@ -527,6 +555,21 @@ internal object OfficeFormats {
     fun newCommentId(doc: OfficeDoc, kind: OfficeKind): String = if (kind == OfficeKind.Docx)
         ((doc.comments.mapNotNull { it.id.toIntOrNull() }.maxOrNull() ?: -1) + 1).toString()
         else generateSequence(1) { it + 1 }.map { "__Annotation__Tetra_$it" }.first { n -> doc.comments.none { it.id == n } }
+
+    /** A drop cap put on the paragraph (null: taken off), in the file's own words (see [DropCap]). */
+    fun withDropCap(keep: DocKeep?, kind: OfficeKind, drop: DropCap?): DocKeep? {
+        val k = keep ?: DocKeep()
+        val rest = k.parts.filter { !DropCap.isPart(it) }
+        val set = when {
+            drop == null -> emptyList()
+            kind == OfficeKind.Docx -> listOf("dropCap" to "${drop.length}|<w:framePr w:dropCap=\"${if (drop.margin) "margin" else "drop"}\" w:lines=\"${drop.lines}\" w:hSpace=\"${Math.round(drop.distance * 20)}\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"${if (drop.margin) "page" else "text"}\"/>")
+            else -> listOf("child" to "<style:drop-cap style:lines=\"${drop.lines}\" style:length=\"${drop.length}\" style:distance=\"${OdtWriter.fmt(drop.distance)}pt\"/>")
+        }
+        // ODT's order inside the paragraph's properties: tab stops, then the drop cap, then a background picture.
+        val at = rest.indexOfLast { it.first == "child" && it.second.startsWith("<style:tab-stops") } + 1
+        val parts = if (kind == OfficeKind.Odt && set.isNotEmpty() && at > 0) rest.toMutableList().apply { addAll(at, set) } else rest + set
+        return k.copy(parts = parts).takeIf { !it.isEmpty }
+    }
 
     /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
     fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
@@ -830,7 +873,28 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         readComments(body)
         val paras = ArrayList<DocPara>()
         block(body, paras)
-        return OfficeDoc(paras.ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
+        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList())
+    }
+
+    /** A drop cap's framed letter paragraph and the paragraph it drops into, as one paragraph with a [DropCap]. */
+    private fun joinDropCaps(paras: List<DocPara>): List<DocPara> {
+        val out = ArrayList<DocPara>()
+        var i = 0
+        while (i < paras.size) {
+            val p = paras[i]
+            val frame = p.keep?.parts?.firstOrNull { it.first == "dropFrame" }
+            val next = paras.getOrNull(i + 1)
+            if (frame == null || next == null || next.table != null || p.text.isEmpty()) {
+                out += if (frame != null) p.copy(keep = p.keep.copy(parts = p.keep.parts - frame).takeIf { !it.isEmpty }) else p
+                i++; continue
+            }
+            // The letters in the look of the text they begin (their own great size is the drop cap's).
+            val letters = p.runs.filter { it.image == null }.map { it.copy(sizePt = null, script = 0) }
+            val keep = next.keep ?: DocKeep()
+            out += next.copy(runs = OfficeFormats.tidy(letters + next.runs), keep = keep.copy(parts = keep.parts + ("dropCap" to "${p.text.length}|${frame.second}")))
+            i += 2
+        }
+        return out
     }
 
     /** Paragraph styles that number their paragraphs themselves (Word's List Bullet, List Number…): styleId → numPr. */
@@ -922,7 +986,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
                 // A section break (page size, margins, headers of the part before it): kept as the file has it (2026-09-28).
                 "sectPr" -> keepParts += e.localName to OfficeFormats.xml(e)
-                "framePr" -> notes += "shapes and text boxes"
+                // A drop cap's letter (a framed paragraph of its own): joined to the paragraph after it, below.
+                "framePr" -> if (e.attr(W, "dropCap").let { it == "drop" || it == "margin" }) keepParts += "dropFrame" to OfficeFormats.xml(e) else notes += "shapes and text boxes"
                 "pPrChange" -> notes += "tracked changes"
                 // The rest — spacing, indents, tab stops, borders, a page break before it… — goes back as it was.
                 else -> keepParts += e.localName to OfficeFormats.xml(e)
@@ -1335,6 +1400,30 @@ private object DocxWriter {
         }
         fun paragraph(index: Int?, p: DocPara) {
             p.table?.let { t -> table(t) { paragraph(null, it) }; return }
+            // A drop cap: its letters first, in a framed paragraph of their own as Word writes one.
+            p.keep?.parts?.firstOrNull { it.first == "dropCap" }?.let { part ->
+                val drop = DropCap.of(p.keep)!!
+                val frame = part.second.substringAfter('|')
+                val runs = OfficeFormats.tidy(p.runs)
+                val letters = ArrayList<DocRun>(); val rest = ArrayList<DocRun>()
+                var left = drop.length
+                for (r in runs) when {
+                    left <= 0 || r.image != null -> rest += r
+                    r.text.length <= left -> { letters += r; left -= r.text.length }
+                    else -> { letters += r.copy(text = r.text.take(left)); rest += r.copy(text = r.text.drop(left)); left = 0 }
+                }
+                if (letters.isNotEmpty()) {
+                    // Word's sizes: the letter's capitals as tall as the lines it drops through, a line of that height.
+                    val base = letters.first().sizePt ?: doc.basePt
+                    val line = base * 1.2f * 1.08f
+                    val size = ((drop.lines - 1) * line + base * 0.66f) / 0.66f
+                    val style = (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep.style)?.let { """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" } ?: ""
+                    body.append("<w:p><w:pPr>$style<w:keepNext/>$frame<w:spacing w:before=\"0\" w:after=\"0\" w:line=\"${Math.round(drop.lines * line * 20)}\" w:lineRule=\"exact\"/><w:textAlignment w:val=\"baseline\"/></w:pPr>")
+                    for (r in letters) body.append(run(r.copy(sizePt = Math.round(size * 2) / 2f), null, doc.basePt).replaceFirst("<w:sz ", "<w:position w:val=\"-${Math.round(size * 0.2f)}\"/><w:sz "))
+                    body.append("</w:p>")
+                }
+                return paragraph(index, p.copy(runs = rest, keep = p.keep.copy(parts = p.keep.parts - part).takeIf { !it.isEmpty }))
+            }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
             val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first != "runFonts" })

@@ -1167,6 +1167,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
         message = "Borders — they show on the pages"
     }
+    /** Insert › Drop Cap on the paragraph at the cursor (null: taken off); the pages show it. */
+    var dropCapPage by remember { mutableStateOf<Pair<Int, DropCap?>?>(null) } // the options page: its paragraph, as it is
+    fun setDropCap(at: Int, drop: DropCap?) = change {
+        val cur = current()
+        meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> if (i != at || p.table != null) p else p.copy(keep = OfficeFormats.withDropCap(p.keep, kind, drop)) })
+        dirty = true
+        message = if (drop == null) "Drop cap taken off" else "Drop cap — it shows on the pages"
+    }
     /** Word's horizontal line: an empty paragraph with a line under it after this one, and a new paragraph to go on in. */
     fun horizontalLine() = change {
         val text = state.annotatedString.text
@@ -1910,6 +1918,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { headerPage = true }
                     RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { headerPage = true }
                 }, {
+                    // Word's Drop Cap: none, dropped, in the margin, or its options page.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        RibbonButton("Drop cap", w, R.drawable.ic_drop_cap, enabled = loaded) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            fun here(then: (Int, DropCap?) -> Unit) { open = false; chooseParagraphs { at, _ -> at.min().let { i -> then(i, DropCap.of(current().paras.getOrNull(i)?.keep)) } } }
+                            DropdownMenuItem(text = { Text("None") }, onClick = { here { i, _ -> setDropCap(i, null) } })
+                            DropdownMenuItem(text = { Text("Dropped") }, leadingIcon = { Icon(painterResource(R.drawable.ic_drop_cap), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                onClick = { here { i, now -> setDropCap(i, (now ?: DropCap()).copy(margin = false)) } })
+                            if (kind == OfficeKind.Docx) DropdownMenuItem(text = { Text("In margin") }, onClick = { here { i, now -> setDropCap(i, (now ?: DropCap()).copy(margin = true)) } })
+                            DropdownMenuItem(text = { Text("Drop cap options…") }, onClick = { here { i, now -> dropCapPage = i to now } })
+                        }
+                    }
                     RibbonButton("Date", w, R.drawable.ic_calendar_today, enabled = loaded) { datePage = true }
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
                     RibbonButton("Line break", w, R.drawable.ic_wrap_text) { change {
@@ -2164,6 +2185,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         },
     )
+    dropCapPage?.let { (at, now) -> DropCapDialog(now, kind == OfficeKind.Odt, { dropCapPage = null }) { d -> dropCapPage = null; setDropCap(at, d) } }
     if (watermarking) {
         var text by remember { mutableStateOf(documentStyles.section.watermark ?: "") }
         AlertDialog(

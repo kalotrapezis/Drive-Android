@@ -1,3 +1,28 @@
+# 30 September, afternoon — Insert › Drop cap
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.
+
+- The user asked (OnlyOffice's Αρχίγραμμα screenshot): **Insert › Drop cap** (Word's Text group, before Date):
+  None · Dropped · In margin (Word files only — ODF has none) · Drop cap options… (`DropCapDialog`: position, lines
+  to drop 2–10, distance from text in cm/in). The paragraph at the cursor.
+- Model: `DropCap` (lines, margin, distance, length) read from the paragraph's `DocKeep` — Word: part "dropCap" =
+  "length|<w:framePr …/>"; ODT: the "child" `<style:drop-cap>` that paragraph styles already carry. `withDropCap`
+  sets/takes it; a new paragraph (Enter) does not inherit it (`carryKeep`).
+- **Word files**: the drop cap is a framed paragraph of its own (framePr dropCap) holding the letters. Read: joined
+  into the paragraph after it (`joinDropCaps`, letters at the text's size). Written: split out again with Word's
+  pieces (keepNext, framePr, exact line, big sz, lowered position). **Fixed on the way:** before this the frame was
+  dropped on reading — saving a Word file with a drop cap turned it into a paragraph with one huge letter.
+- **Pages** (`OfficePages.paragraph`, body only): the letters taken out of the first line, sized so their capitals run
+  from the first line's cap top to the last dropped line's baseline, drawn as a float (`DropDrawable`); the first
+  lines indented by their width + distance (`DropMargin`, a LeadingMarginSpan2); in the margin, drawn left of it.
+- Checked: unit test both kinds (written, read back as one paragraph, again the same, taken off, not inherited);
+  LibreOffice renders both as drop caps; tablet: Dropped (3 lines), then In margin / 2 lines / 0.2 cm, survives a
+  restart.
+- Not yet: the letter's own font; the editor shows the paragraph plain (the pages show the drop cap); drop caps in
+  table cells/headers are left as text; Word itself not checked (its own XML form was followed).
+
+---
+
 # 30 September, midday — the Design tab
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.

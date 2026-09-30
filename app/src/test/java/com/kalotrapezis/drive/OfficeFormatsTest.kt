@@ -368,6 +368,19 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a style set restyles Normal, Title and the headings, in both kinds`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for (set in StyleSet.entries) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Head")), heading = 1), DocPara(listOf(DocRun("text"))))), kind)
+            val parts = OfficeFormats.unzip(bytes)
+            val path = if (kind == OfficeKind.Docx) "word/styles.xml" else "styles.xml"
+            parts[path] = set.applyTo(String(parts.getValue(path), Charsets.UTF_8), kind, DocStyles.of(kind, bytes)).toByteArray()
+            val styles = DocStyles.of(kind, OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null))
+            val h1 = styles.look(DocPara(emptyList(), heading = 1)); val want = set.changes.getValue("Heading 1")
+            assertEquals("$kind $set", listOf(want.sizePt, want.bold == true, want.color.takeIf { it != -1 }), listOf(h1.sizePt, h1.bold == true, h1.color))
+            assertEquals("$kind $set normal", set.changes.getValue("Normal").sizePt, styles.look(DocPara(emptyList())).sizePt)
+        }
+    }
+
     @Test fun `Hyphenation is set and taken away, in both kinds`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), kind)

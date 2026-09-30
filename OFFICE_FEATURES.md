@@ -138,6 +138,12 @@ one pass once the tabs' features are done.
       editor — [ ] editing a file's text box keeps only its first words' look
 - [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame — [ ] Word's text
       effects (outline, shadow, glow, warp)
+- [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
+      no per-section); drawn on the pages
+- [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages
+      hyphenate by the paragraph's language (Greek or English) — [ ] manual hyphenation, hyphenation zone/limits
+- [x] **Style sets** (Design, 1 Oct): Basic (Word), Classic (Times), Modern (Arial), Elegant (Georgia) — Normal, Title,
+      Headings 1–3 at once — [ ] Word's theme fonts/colours, more sets
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
       no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) — [ ] scatter as

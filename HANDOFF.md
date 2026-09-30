@@ -1,4 +1,4 @@
-# 30 September, late night (new 5-hour window) — counter, floating objects, text boxes, WordArt, charts (read this first)
+# 30 September, late night (new 5-hour window) — counter, floating objects, text boxes, WordArt, charts, line numbers, hyphenation, style sets (read this first)
 
 **State.** Branch `writer-library`, all committed; all unit tests pass. The latest build is on the **tablet**
 (971f6b37). The **phone** (208c8192) was not connected all session: it still has the build from before spelling,
@@ -43,8 +43,17 @@ there and left alone (not mine to judge): `Documents/Tetra track-changes test.do
   anticlockwise** (its own clockwise — chart:reverse-direction is written, LibreOffice ignores it for our files; not
   found why). Our drawing and Word's go clockwise.
 
-**Next** (the plan stands — Word finished first): the rest of Word's list below (line numbers, hyphenation, style sets,
-captions and cross-references, multilevel lists, format painter, navigation pane, reading mode, AutoSave,
+- **Layout › Line numbers** (`LineNumbers` on `DocSection`, `PageSetup.lineNumbers`), **Layout › Hyphenation**
+  (`DocStyles.hyphenate`, `PageDesign.hyphenation`, `PageDesign.settings` makes Word's settings part; the pages need
+  BREAK_STRATEGY_HIGH_QUALITY — Android's simple breaker never hyphenates), **Design › Style set** (`StyleSet` in
+  StyleEdit.kt; in ODT Normal is written to Standard too — Text body alone missed plain paragraphs). All checked on the
+  tablet and through LibreOffice.
+- **Test document on the tablet** (the user: stop making and discarding documents for every check — memory
+  `device-test-document`): `/sdcard/Tetra/Documents/Test-Words/Tetra test.docx`, first in Office's recent list.
+- Seen on the tablet, not looked into: in that document the Greek paragraph is all underlined red by spelling (the
+  Greek spell-check session answers "wrong" for every word — or Gboard has no Greek dictionary).
+
+**Next** (the plan stands — Word finished first): the rest of Word's list below (captions and cross-references, multilevel lists, format painter, navigation pane, reading mode, AutoSave,
 .doc/.rtf), the smaller items, and for floating objects: Arrange (forward/backward, align, group, rotate), text on
 both sides, WordArt effects, chart axis titles / data labels / scatter. Then PowerPoint (it reuses Position, text
 boxes and charts), then Excel as a viewer.

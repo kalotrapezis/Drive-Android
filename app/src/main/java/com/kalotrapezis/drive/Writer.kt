@@ -1633,6 +1633,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
     }
+    /** Design › Style sets: Normal, Title and Headings 1–3 changed together, one step to undo. */
+    fun applyStyleSet(set: StyleSet) = change {
+        val cur = current()
+        val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
+        val path = stylesPath(parts, kind)
+        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
+        parts[path] = runCatching { set.applyTo(xml, kind, documentStyles) }.onFailure { Log.e("Writer", "style set", it) }.getOrNull()?.toByteArray()
+            ?: run { message = "The style set could not be applied."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        meta = cur
+        dirty = true; styleEdits++
+        state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
+        message = "${set.label}: Normal, Title and the headings"
+    }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
     fun setIndents(now: RulerIndents) {
         val (at, look) = rulerAt ?: return
@@ -2374,6 +2389,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
                     RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
+                    // Word's Document Formatting gallery: a set of looks for Normal, Title and the headings at once.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            StyleSet.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyStyleSet(set) }) }
+                        }
+                    }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {

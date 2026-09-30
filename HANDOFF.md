@@ -71,7 +71,15 @@ there and left alone (not mine to judge): `Documents/Tetra track-changes test.do
    tablet-only now), the page fitted to the screen's width at first; **pinch-zoom enlarges the page past the screen and
    pans both ways** (now zoom only enlarges the text and reflows it — "it goes vertically only"); page breaks shown.
    View › Mobile view keeps today's reflowing editor as a choice. The user's words: "there are no pages".
-2. **Gaps between tables** in the editor: a CV of many one-row tables with empty paragraphs between — the empty lines
+2. **Gaps between tables — still open (checked 1 Oct ~00:00 on the phone):** in Print layout each table's line is
+   exactly its height (logged: line == h, the next table's top == this top + h), yet a white gap shows under every
+   table — so the table's *drawing* (tableLaid → LaidPage drawn scaled into its Box) comes out shorter than the box.
+   Log `tableLaid(...).page.height` vs `img.heightPt` next (was about to). Earlier the same night the opposite showed
+   (rows cut off, line 0.77 × h) — the two are one mismatch; the lineRatio calibration (`remeasured`) may be masking it.
+   A debug line reading `getLineTop(line + 1)` crashed the app on the CV's last table — never read past the last line.
+   Also wanted: **page ends in Print layout** (the user: "why is there no page view on edit") — the editor is one long
+   sheet; draw a page gap with "Page N" where the pages view breaks (laidOut's pageIndexOf per paragraph).
+   Was: **Gaps between tables** in the editor: a CV of many one-row tables with empty paragraphs between — the empty lines
    are drawn at full text size while the tables are drawn smaller (since tonight's fix), so the shaded label column
    looks "chopped". Page-scale drawing (1.) should fix it; check.
 3. **Pages view of a letterhead report** (the user's screenshot, a medical report — ask before pulling any such file):

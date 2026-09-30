@@ -32,13 +32,38 @@ All tablet checks were done in new, unsaved documents, discarded after; none of 
 - ODT citations: one source each and no page (LibreOffice marks can't hold them).
 
 **Next (the list the user chose from on 30 Sep; they picked APA first):**
-1. **Review › Track changes** — show/accept/reject in Word files DONE (see its 30 Sep entry); still: record my own
-   changes, ODT, comments reply/resolve.
+1. **Review › Track changes** — show/accept/reject and recording in Word files DONE (see the 30 Sep entries); still:
+   ODT, comments reply/resolve, remembering tracking in the file.
 2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
 3. **Footnotes / endnotes** (References), both kinds.
 4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
 Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
 (report, thesis, video); a picture watermark; page border styles.
+
+---
+
+# 30 September, evening — Review › Track changes: recording my own changes
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37); phone still
+not connected.
+
+- **Track changes** button first on the Review tab (Word files only): asks the reviewer's name once (prefs
+  "writer"/"author", shared with comments). On: every edit is compared with the document before it
+  (`TrackChanges.record`): typed letters are my insertions; deleted letters come back struck through as my deletions
+  (my own insertions just go); Enter / a join are a paragraph mark inserted / deleted; a table deleted is deleted.
+  The cursor lands before letters struck through, so Backspace walks on past them, as in Word.
+- The edit is found by common start and end, **bounded by the cursor** (found on the tablet: in "well" Backspace
+  struck the wrong l — two equal letters side by side are ambiguous without it); letters that stayed keep their
+  inserted/deleted state from before the edit. The baseline is taken when tracking is switched on (found on the
+  tablet: text typed before counted as my insertion).
+- Checked: `TrackChangesTest` (typing, Backspace twice, over a deleted letter, the doubled letter, own insertion,
+  Enter and join through a Word file, typing over a selection); tablet, a new unsaved document: "The cat sat well.",
+  Track changes on, Backspace ×4, "badly" → the draft's Word XML has w:ins "badly", w:del "well"; LibreOffice reads
+  them as insertion/deletion by the name. The test draft was removed after.
+- Not yet: tracking is not remembered in the file (Word's w:trackRevisions in settings.xml) nor across reopening;
+  newly typed insertions are underlined at once but take the author's colour only at the next redraw; changes made by
+  Writer's own tools (paste is typing, but a citation, a style…) are recorded only as far as their letters go;
+  someone else's insertion deleted goes outright (Word marks it deleted-inserted).
 
 ---
 

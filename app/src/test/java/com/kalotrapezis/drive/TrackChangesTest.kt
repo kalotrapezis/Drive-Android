@@ -70,4 +70,61 @@ class TrackChangesTest {
         val carried = OfficeFormats.carryFonts(doc.paras, typed)
         assertEquals(listOf(true to "sat", false to "slept"), carried[0].runs.mapNotNull { r -> r.change?.let { it.deleted to r.text } })
     }
+
+    // ——— Recording (Track changes on)
+    private val me = DocChange(false, "Teo", "2026-09-30T18:00:00Z")
+    private fun p(vararg runs: DocRun) = DocPara(runs.toList())
+    private fun shown(ps: List<DocPara>) = ps.joinToString(" ¶ ") { q -> q.runs.joinToString("") { r -> when (r.change?.deleted) { true -> "[-${r.text}]"; false -> "[+${r.text}]"; null -> r.text } } }
+
+    @Test fun `typing is recorded as an insertion`() {
+        val r = TrackChanges.record(listOf(p(DocRun("The cat"))), listOf(p(DocRun("The big cat"))), me, 8)
+        assertEquals("The [+big ]cat", shown(r.paras))
+        assertFalse(r.reshow)
+    }
+
+    @Test fun `backspace strikes letters through and walks on past them`() {
+        var doc = listOf(p(DocRun("The cat")))
+        // Backspace after "c": it comes back deleted, the cursor before it.
+        var r = TrackChanges.record(doc, listOf(p(DocRun("The at"))), me, 4)
+        assertEquals("The [-c]at", shown(r.paras)); assertEquals(4, r.cursor); assertTrue(r.reshow)
+        doc = r.paras
+        // Backspace again: the space goes the same way, the cursor before both.
+        r = TrackChanges.record(doc, listOf(p(DocRun("The"), DocRun("c", change = me.copy(deleted = true)), DocRun("at"))), me, 3)
+        assertEquals("The[- c]at", shown(r.paras)); assertEquals(3, r.cursor)
+        // Deleting a letter already deleted only moves the cursor over it.
+        r = TrackChanges.record(listOf(p(DocRun("The "), DocRun("c", change = me.copy(deleted = true)), DocRun("at"))), listOf(p(DocRun("The at"))), me, 4)
+        assertEquals("The [-c]at", shown(r.paras)); assertEquals(4, r.cursor)
+    }
+
+    @Test fun `backspace over a doubled letter strikes the right one`() {
+        // "well" with its last l already deleted, the cursor before that l: Backspace takes the first l.
+        val before = listOf(p(DocRun("wel"), DocRun("l", change = me.copy(deleted = true)), DocRun(".")))
+        val typed = listOf(p(DocRun("we"), DocRun("l"), DocRun("."))) // what the editor holds now (its carried looks may be wrong)
+        val r = TrackChanges.record(before, typed, me, 2)
+        assertEquals("we[-ll].", shown(r.paras)); assertEquals(2, r.cursor)
+    }
+
+    @Test fun `one's own insertion deleted just goes`() {
+        val r = TrackChanges.record(listOf(p(DocRun("The "), DocRun("big ", change = me), DocRun("cat"))), listOf(p(DocRun("The "), DocRun("ig ", change = me), DocRun("cat"))), me, 4)
+        assertEquals("The [+ig ]cat", shown(r.paras))
+    }
+
+    @Test fun `enter and a join are paragraph marks, kept through a Word file`() {
+        val split = TrackChanges.record(listOf(p(DocRun("abcdef"))), listOf(p(DocRun("abc")), p(DocRun("def"))), me, 4)
+        assertEquals(TrackChanges.Kind.ParagraphInserted, TrackChanges.list(OfficeDoc(split.paras)).single().kind)
+        val join = TrackChanges.record(listOf(p(DocRun("abc")), p(DocRun("def"))), listOf(p(DocRun("abcdef"))), me, 3)
+        assertEquals("abc ¶ def", shown(join.paras)); assertEquals(3, join.cursor)
+        val doc = OfficeFormats.read(OfficeFormats.write(OfficeDoc(join.paras), OfficeKind.Docx), OfficeKind.Docx)
+        assertEquals(listOf(TrackChanges.Kind.ParagraphDeleted), TrackChanges.list(doc).map { it.kind })
+        assertEquals(listOf("abcdef"), TrackChanges.all(doc, true).paras.map { it.text })
+        assertEquals(listOf("abc", "def"), TrackChanges.all(doc, false).paras.map { it.text })
+    }
+
+    @Test fun `typed over a selection, the old then the new`() {
+        // "bad" chosen, "g" typed over it; then "ood" typed after it (one keystroke at a time, as the editor sends them).
+        var r = TrackChanges.record(listOf(p(DocRun("It was bad."))), listOf(p(DocRun("It was g."))), me, 8)
+        assertEquals("It was [-bad][+g].", shown(r.paras)); assertEquals(11, r.cursor)
+        r = TrackChanges.record(r.paras, listOf(p(DocRun("It was "), DocRun("bad", change = me.copy(deleted = true)), DocRun("go", change = me), DocRun("."))), me, 12)
+        assertEquals("It was [-bad][+go].", shown(r.paras)); assertEquals(12, r.cursor)
+    }
 }

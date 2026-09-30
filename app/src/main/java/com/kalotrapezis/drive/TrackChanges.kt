@@ -168,6 +168,81 @@ internal object TrackChanges {
         return out.ifEmpty { listOf(DocPara(emptyList())) }
     }
 
+    /**
+     * Track changes on (asked 2026-09-30, as Word records): the document [old] was, edited into [new], recorded as [me]'s
+     * changes. Letters typed are [me]'s insertions; letters deleted come back struck through as [me]'s deletions (one's
+     * own insertions just go, as in Word); a paragraph split or joined is a paragraph mark inserted or deleted. [cursor]
+     * is where the editor's cursor is in [new] (a letter or paragraph end each one place, as the editor counts them);
+     * the result gives where it goes — before deleted letters it lands on, so Backspace walks on past them.
+     */
+    class Recorded(val paras: List<DocPara>, val cursor: Int, val reshow: Boolean)
+
+    fun record(old: List<DocPara>, new: List<DocPara>, me: DocChange, cursor: Int): Recorded {
+        val a = units(old); val b = units(new)
+        // The edit: common start and end; what is between them was deleted, then typed (Word's "old new"). Each keystroke
+        // is recorded on its own, so the middle is the few letters changed.
+        // The edit is at the cursor: neither side goes past it (in "well" a second l deleted is not taken for the first).
+        var s = 0
+        while (s < a.size && s < b.size && s < cursor && a[s].same(b[s])) s++
+        var e = 0
+        while (e < a.size - s && e < b.size - s && e < b.size - cursor && a[a.size - 1 - e].same(b[b.size - 1 - e])) e++
+        val on = a.size - s - e
+        val sorted = (0 until s).map { it to it } + (s until s + on).map { it to -1 } + (s until b.size - e).map { -1 to it } +
+            (0 until e).map { (a.size - e + it) to (b.size - e + it) }
+        val out = ArrayList<Unit>(b.size + on)
+        var at = -1; var gapStart = 0; var typedInGap = false; var reshow = false
+        fun place(newIndex: Int) { if (newIndex == cursor && at < 0) at = if (typedInGap) out.size else gapStart }
+        for ((x, y) in sorted) {
+            // A letter left as it was: what it was (inserted, deleted) from before the edit, its look from now.
+            if (x >= 0 && y >= 0) { place(y); out += b[y].let { u -> if (u.run != null) u.copy(run = u.run.copy(change = a[x].run?.change)) else u }; gapStart = out.size; typedInGap = false; continue }
+            if (y >= 0) { place(y); typedInGap = true; out += b[y].let { u -> if (u.table) u else if (u.mark != null) u.withMark(me) else u.copy(run = u.run!!.copy(change = me)) }; continue }
+            // Deleted: a letter or paragraph end of the file's comes back, struck through; one's own typing goes.
+            val u = a[x]
+            val back = when {
+                u.table -> null // a table deleted is deleted
+                u.mark != null -> if (markOf(u.mark)?.groupValues?.get(1).let { it == "ins" || it == "moveTo" }) null else u.withMark(me.copy(deleted = true))
+                u.run!!.change?.deleted == true -> u
+                u.run.change != null -> null // ponytail: someone else's insertion deleted goes outright (Word marks it deleted-inserted)
+                else -> u.copy(run = u.run.copy(change = me.copy(deleted = true)))
+            }
+            if (back != null) { out += back; reshow = true }
+        }
+        place(b.size)
+        if (at < 0) at = out.size
+        if (out.size != b.size) reshow = true
+        return Recorded(paras(out), at, reshow)
+    }
+
+    /** A letter (its run, one letter long) or a paragraph's end (the paragraph, without its letters). */
+    private data class Unit(val ch: Char, val run: DocRun?, val mark: DocPara?, val table: Boolean = false) {
+        fun same(o: Unit) = ch == o.ch && (mark == null) == (o.mark == null) && table == o.table
+        /** The paragraph end marked inserted or deleted by [c] (Word's w:ins / w:del in its mark's rPr). */
+        fun withMark(c: DocChange): Unit {
+            val keep = mark!!.keep ?: DocKeep()
+            val tag = """<w:${if (c.deleted) "del" else "ins"} w:id="${markId++}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}/>"""
+            val rPr = keep.parts.firstOrNull { it.first == "rPr" }?.second?.let { MARK.replace(it, "").replaceFirst(Regex("""^<w:rPr>"""), "<w:rPr>$tag").let { x -> if (x == "<w:rPr/>") "<w:rPr>$tag</w:rPr>" else x } } ?: "<w:rPr>$tag</w:rPr>"
+            val parts = keep.parts.filter { it.first != "rPr" } + ("rPr" to rPr)
+            return copy(mark = mark.copy(keep = keep.copy(parts = parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } })))
+        }
+    }
+    private var markId = 80000
+
+    private fun units(ps: List<DocPara>): List<Unit> = ps.flatMap { p ->
+        if (p.table != null) listOf(Unit(OBJECT_MARK, DocRun(OBJECT_MARK.toString()), null, true), Unit('\n', null, p, true))
+        else p.runs.flatMap { r -> r.text.map { c -> Unit(c, r.copy(text = c.toString()), null) } } + Unit('\n', null, p.copy(runs = emptyList()))
+    }
+
+    private fun paras(us: List<Unit>): List<DocPara> {
+        val out = ArrayList<DocPara>()
+        val runs = ArrayList<DocRun>()
+        for (u in us) if (u.mark == null) runs += u.run!! else {
+            out += if (u.table) u.mark else u.mark.copy(runs = OfficeFormats.tidy(runs))
+            runs.clear()
+        }
+        if (runs.isNotEmpty()) out += DocPara(OfficeFormats.tidy(runs))
+        return out
+    }
+
     /** A table's, row's or cell's properties: a change's record taken out (accepted), or its properties before it back. */
     private fun props(raw: String, accept: Boolean): String = if (accept) ANY_CHANGE.replace(raw, "") else
         Regex("""<w:(\w+)\b([^>]*)>([\s\S]*?)<w:\1Change\b[^>]*>\s*(?:<w:\1\b[^>]*?/>|<w:\1\b[^>]*>([\s\S]*?)</w:\1>)\s*</w:\1Change>([\s\S]*?)</w:\1>""").replace(raw) { m ->

@@ -1283,6 +1283,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     } }
     val hereChange by remember { derivedStateOf { state.selection.let { sel -> changesShown.firstOrNull { (_, a, z) -> sel.min in a..z }?.first } } }
+    // Track changes on (Word files): each edit recorded as the reviewer's, compared with the document as it was.
+    val prefs = remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE) }
+    var tracking by remember { mutableStateOf(false) }
+    var askingName by remember { mutableStateOf(false) }
+    LaunchedEffect(loaded, tracking) {
+        if (!loaded || !tracking) return@LaunchedEffect
+        val author = prefs.getString("author", "").orEmpty()
+        meta = current() // what was typed before it was switched on is the document, not an edit
+        snapshotFlow { state.annotatedString.text }.drop(1).collect {
+            val now = current()
+            if (now.paras.map { it.text } == meta.paras.map { it.text }) return@collect // a Writer change, shown (Accept, a style…): not an edit
+            val me = DocChange(false, author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES).toString())
+            val r = TrackChanges.record(meta.paras, now.paras, me, state.selection.min)
+            meta = now.copy(paras = r.paras)
+            if (r.reshow) state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(r.cursor))
+        }
+    }
     /** The next (or previous) change, selected. */
     fun goChange(forward: Boolean, from: Int = state.selection.min) {
         val starts = changesShown.map { it.second to it.third }.distinct().sortedBy { it.first }
@@ -2238,6 +2255,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
                 })
                 WriterTab.Review -> listOf({
+                    // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
+                    RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
+                        if (tracking) { tracking = false; message = "Track changes off" }
+                        else if (prefs.getString("author", "").isNullOrBlank()) askingName = true
+                        else { tracking = true; message = "Track changes on — your edits are marked" }
+                    }
+                }, {
                     // Word's Changes group: go through them, each accepted or rejected, or all at once.
                     Tool(R.drawable.ic_chevron_left, "Previous change", w, enabled = loaded) { goChange(false) }
                     Tool(R.drawable.ic_chevron_right, "Next change", w, enabled = loaded) { goChange(true) }
@@ -2514,6 +2538,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 confirmButton = { TextButton(onClick = { wrapping = false }) { Text("Close") } },
             )
         }
+    }
+    if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->
+        prefs.edit().putString("author", name).apply()
+        askingName = false; tracking = true; message = "Track changes on — your edits are marked"
     }
     if (commenting) NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { commenting = false }) { author, text ->
         commenting = false

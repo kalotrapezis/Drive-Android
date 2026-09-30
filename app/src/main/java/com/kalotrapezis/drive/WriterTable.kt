@@ -594,6 +594,19 @@ internal fun NewCommentDialog(name: String, dismiss: () -> Unit, add: (String, S
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
+/** Review › Track changes, the first time: the name the changes are recorded under (the comments' too). */
+@Composable
+internal fun ReviewerNameDialog(name: String, dismiss: () -> Unit, done: (String) -> Unit) {
+    var author by remember { mutableStateOf(name) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Track changes") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Your changes are shown with your name, as Word shows each reviewer's.")
+            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        } },
+        confirmButton = { TextButton(enabled = author.isNotBlank(), onClick = { done(author.trim()) }) { Text("Track changes") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
 /** A comment's date as the phone says dates, or null. */
 internal fun commentDate(c: DocComment): String? = c.date?.let { d -> runCatching { java.time.OffsetDateTime.parse(if (d.endsWith("Z") || d.contains('+')) d else d + "Z") }.getOrNull()
     ?.atZoneSameInstant(java.time.ZoneId.systemDefault())?.format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)) }

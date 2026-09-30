@@ -50,8 +50,14 @@ there and left alone (not mine to judge): `Documents/Tetra track-changes test.do
   tablet and through LibreOffice.
 - **Test document on the tablet** (the user: stop making and discarding documents for every check — memory
   `device-test-document`): `/sdcard/Tetra/Documents/Test-Words/Tetra test.docx`, first in Office's recent list.
-- Seen on the tablet, not looked into: in that document the Greek paragraph is all underlined red by spelling (the
-  Greek spell-check session answers "wrong" for every word — or Gboard has no Greek dictionary).
+- **Phone (end of session):** latest build installed; the test document pushed there too (same path). Insert's new
+  buttons had made a group wider than the phone (Picture off-screen) — split into groups; Layout's and the Picture
+  tab's likewise. Chart dialog fits the phone. Not yet walked on the phone: Position, text box/WordArt insert, line
+  numbers, hyphenation, style sets (the tablet has them all).
+- **Spelling marks the wrong language:** on the tablet the Greek paragraph is all red, on the phone the English one —
+  Gboard seems to check every word in the keyboard's current language whatever locale the session asks for
+  (WriterSpelling asks el-GR / en-US separately and looks right). The fix is Tetra's own Hunspell dictionaries
+  (offered before; ask the user).
 
 **Next** (the plan stands — Word finished first): the rest of Word's list below (captions and cross-references, multilevel lists, format painter, navigation pane, reading mode, AutoSave,
 .doc/.rtf), the smaller items, and for floating objects: Arrange (forward/backward, align, group, rotate), text on

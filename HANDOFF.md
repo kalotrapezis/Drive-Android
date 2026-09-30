@@ -17,7 +17,10 @@ State: `writer-library`, all committed; all unit tests pass; the build is on the
 - Checked on the tablet (new unsaved documents, discarded): 3 pages, drawn on page 1 from page 3 (3 pages kept);
   Edit drawing: the circle back where it was, a highlight added, one drawing on the pages in the same place.
   Not checked on the device: reopening a saved file and editing its drawing (the unit test covers the file side).
-- Not yet: moving a drawing by dragging; pens remembered between drawings; the phone.
+- **Move** (a tool beside Eraser): drags the whole drawing; with Edit drawing that is how one is moved on its page.
+  The pens' colours and widths are remembered between drawings (prefs "writer"/"pens"). Checked on the tablet.
+- Not yet: the phone; undo of a move inside the drawing (Undo takes the last stroke); dragging a shape/picture from a
+  file (Move is for Writer's drawings).
 
 ---
 

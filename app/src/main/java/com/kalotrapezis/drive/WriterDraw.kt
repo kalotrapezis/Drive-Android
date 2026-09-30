@@ -132,7 +132,7 @@ internal object InkPicture {
     }
 }
 
-private enum class Tool { Pen, Pen2, Highlighter, Eraser }
+private enum class Tool { Pen, Pen2, Highlighter, Eraser, Move }
 
 /**
  * The drawing box ([boxAspect] = height / width, [boxPt] wide), or with [pages] a page itself as the pages show it
@@ -154,10 +154,15 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
     var pan by remember { mutableStateOf(Offset.Zero) }
     var tool by remember { mutableStateOf(Tool.Pen) }
     // Each pen keeps its own colour and width (Word's pens).
-    val colors = remember { mutableStateListOf(0xFF000000.toInt(), 0xFF1A73E8.toInt(), 0xFFFFC114.toInt()) }
-    val widths = remember { mutableStateListOf(0.5f, 1f, 5f) }
+    // Remembered from one drawing to the next, as Word keeps its pens.
+    val prefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE)
+    val kept = remember { prefs.getString("pens", null)?.split(';')?.mapNotNull { runCatching { it.split(',').let { (c, w) -> c.toInt() to w.toFloat() } }.getOrNull() }?.takeIf { it.size == 3 } }
+    val colors = remember { mutableStateListOf(*(kept?.map { it.first } ?: listOf(0xFF000000.toInt(), 0xFF1A73E8.toInt(), 0xFFFFC114.toInt())).toTypedArray()) }
+    val widths = remember { mutableStateListOf(*(kept?.map { it.second } ?: listOf(0.5f, 1f, 5f)).toTypedArray()) }
+    androidx.compose.runtime.LaunchedEffect(colors.toList(), widths.toList()) { prefs.edit().putString("pens", colors.indices.joinToString(";") { "${colors[it]},${widths[it]}" }).apply() }
+    var last by remember { mutableStateOf(Offset.Zero) } // Move: where the finger was
     val palette = listOf(0xFF000000, 0xFF1A73E8, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFFFF9800, 0xFFFFC114, 0xFF00BCD4).map { it.toInt() }
-    val slot = when (tool) { Tool.Pen -> 0; Tool.Pen2 -> 1; Tool.Highlighter -> 2; Tool.Eraser -> -1 }
+    val slot = when (tool) { Tool.Pen -> 0; Tool.Pen2 -> 1; Tool.Highlighter -> 2; Tool.Eraser, Tool.Move -> -1 }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -167,6 +172,7 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                     Choice("Pen 2", tool == Tool.Pen2) { tool = Tool.Pen2 }
                     Choice("Highlighter", tool == Tool.Highlighter) { tool = Tool.Highlighter }
                     Choice("Eraser", tool == Tool.Eraser) { tool = Tool.Eraser }
+                    Choice("Move", tool == Tool.Move) { tool = Tool.Move } // the whole drawing, dragged
                     Choice("Undo", false) { strokes.removeLastOrNull() }
                     // Another page: while nothing is drawn on this one (a drawing stays on its page).
                     if (pages.size > 1) {
@@ -193,10 +199,16 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                         fun at(p: Offset) = (p - pan) / (size.width * zoom) // in the box's widths
                         detectDraw(
                             start = { p -> val q = at(p)
-                                if (tool == Tool.Eraser) erase(strokes, q, 12f / (size.width * zoom)) else current = listOf(q) },
+                                when (tool) { Tool.Eraser -> erase(strokes, q, 12f / (size.width * zoom)); Tool.Move -> last = q; else -> current = listOf(q) } },
                             move = { p -> val q = at(p)
-                                if (tool == Tool.Eraser) erase(strokes, q, 12f / (size.width * zoom)) else current = current + q },
-                            end = { if (tool != Tool.Eraser && current.isNotEmpty()) strokes += InkStroke(current, colors[slot], widths[slot], tool == Tool.Highlighter); current = emptyList() },
+                                when (tool) {
+                                    Tool.Eraser -> erase(strokes, q, 12f / (size.width * zoom))
+                                    Tool.Move -> { val d = q - last; last = q
+                                        val moved = strokes.map { s -> InkStroke(s.points.map { it + d }, s.color, s.widthMm, s.highlighter) }
+                                        strokes.clear(); strokes.addAll(moved) }
+                                    else -> current = current + q
+                                } },
+                            end = { if (tool != Tool.Eraser && tool != Tool.Move && current.isNotEmpty()) strokes += InkStroke(current, colors[slot], widths[slot], tool == Tool.Highlighter); current = emptyList() },
                             cancel = { current = emptyList() },
                             transform = if (page == null) null else { centre, move, by ->
                                 val z = (zoom * by).coerceIn(1f, 6f)

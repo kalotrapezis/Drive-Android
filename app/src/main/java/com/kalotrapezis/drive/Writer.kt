@@ -1459,6 +1459,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Insert › Text box (the key null) or Picture › Edit text (a text box's key): its words being typed. */
     var boxing by remember { mutableStateOf<Pair<String?, String>?>(null) }
     var wordArt by remember { mutableStateOf(false) } // Insert › WordArt: its words and colour being chosen
+    /** Insert › Chart (the key null) or Picture › Edit data (a chart's key): the chart being made. */
+    var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) }
     /**
      * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
      * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
@@ -2237,6 +2239,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
                     RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { wordArt = true }
+                    RibbonButton("Chart", w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
                 }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
@@ -2277,6 +2280,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
+                        img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
                         img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
@@ -2805,6 +2809,27 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val old = key?.let { pictures[it] }
             if (old?.raw != null) changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines), box = PictureXml.boxParas(old, lines)))
             else putTextBox(lines, null)
+        }
+    }
+    charting?.let { (key, start) ->
+        ChartDialog(start, key != null, { charting = null }) { ch ->
+            charting = null
+            val old = key?.let { pictures[it] }
+            if (old != null) {
+                // Written anew (Word's chart part, LibreOffice's object) where it was, as big, wrapped and placed as it was.
+                // ponytail: a file's chart keeps only what Writer reads of it (its data, kind, colours, title), and one
+                // placed from its paragraph goes to the paragraph's top left.
+                val place = PictureXml.placeOf(old)?.takeIf { it.fromH == "page" && it.fromV == "page" && it.x != null && it.y != null }?.let { it.x!! to it.y!! } ?: old.onPage
+                changePicture(old.key, DocImage(old.key, null, old.widthPt, old.heightPt, null, wrap = PictureXml.wrapOf(old)?.takeIf { it != PictureWrap.InLine }, onPage = place, chart = ch))
+                return@ChartDialog
+            }
+            // New: Word's size (5½ × 3.2 inches, or the text's width), in line with the text as Word puts it.
+            val w = minOf(396f, sheet.textWidth)
+            val img = DocImage("c${System.nanoTime()}", null, w, w * 230f / 396f, chart = ch)
+            pictures[img.key] = img
+            val at = placePicture(img)
+            state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+            tab = WriterTab.Picture
         }
     }
     if (wordArt) TextBoxDialog("", { wordArt = false }, art = true) { text, color -> wordArt = false; putTextBox(text.split('\n'), color) }

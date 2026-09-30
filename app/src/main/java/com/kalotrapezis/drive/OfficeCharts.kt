@@ -100,6 +100,110 @@ internal object OfficeCharts {
     }.getOrNull()
 }
 
+/** New charts, written as each program writes its own. */
+internal object ChartWriter {
+    private fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+    private fun num(v: Double) = if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()
+    private fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+    private fun colorOf(ch: DocChart, k: Int) = ch.series[k].color ?: OfficeCharts.PALETTE[k % OfficeCharts.PALETTE.size]
+
+    /**
+     * Word's chart part (c:chartSpace), its data written in it (Word draws a chart from the numbers its part keeps).
+     * ponytail: no spreadsheet inside, so Word's own "Edit data" cannot open one — Writer's Edit data can.
+     */
+    fun drawingml(ch: DocChart): String {
+        val round = ch.kind == ChartKind.Pie || ch.kind == ChartKind.Doughnut
+        val n = ch.categories.size
+        val sb = StringBuilder("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart>""")
+        ch.title?.let { sb.append("""<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${esc(it)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>""") }
+        sb.append("""<c:autoTitleDeleted val="${if (ch.title == null) 1 else 0}"/><c:plotArea><c:layout/>""")
+        val tag = when (ch.kind) { ChartKind.Column, ChartKind.Bar -> "barChart"; ChartKind.Line -> "lineChart"; ChartKind.Area -> "areaChart"; ChartKind.Pie -> "pieChart"; ChartKind.Doughnut -> "doughnutChart" }
+        sb.append("<c:$tag>")
+        if (ch.kind == ChartKind.Column || ch.kind == ChartKind.Bar) sb.append("""<c:barDir val="${if (ch.kind == ChartKind.Bar) "bar" else "col"}"/>""")
+        if (!round) sb.append("""<c:grouping val="${if (ch.stacked) "stacked" else if (ch.kind == ChartKind.Column || ch.kind == ChartKind.Bar) "clustered" else "standard"}"/>""")
+        sb.append("""<c:varyColors val="${if (round) 1 else 0}"/>""")
+        ch.series.forEachIndexed { k, s ->
+            val fill = """<a:solidFill><a:srgbClr val="${hex(colorOf(ch, k))}"/></a:solidFill>"""
+            sb.append("""<c:ser><c:idx val="$k"/><c:order val="$k"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>""")
+            sb.append(when {
+                ch.kind == ChartKind.Line -> """<c:spPr><a:ln w="28575" cap="rnd">$fill<a:round/></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr>$fill</c:spPr></c:marker>"""
+                round -> "" // a slice each: Word colours them (varyColors); the points' own below
+                else -> """<c:spPr>$fill</c:spPr>"""
+            })
+            if (ch.kind == ChartKind.Bar || ch.kind == ChartKind.Column) sb.append("""<c:invertIfNegative val="0"/>""")
+            if (round) for (i in 0 until n) sb.append("""<c:dPt><c:idx val="$i"/><c:bubble3D val="0"/><c:spPr><a:solidFill><a:srgbClr val="${hex(s.pointColors[i] ?: OfficeCharts.PALETTE[i % OfficeCharts.PALETTE.size])}"/></a:solidFill><a:ln w="12700"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr></c:dPt>""")
+            sb.append("""<c:cat><c:strLit><c:ptCount val="$n"/>""")
+            ch.categories.forEachIndexed { i, c -> sb.append("""<c:pt idx="$i"><c:v>${esc(c)}</c:v></c:pt>""") }
+            sb.append("""</c:strLit></c:cat><c:val><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="$n"/>""")
+            s.values.forEachIndexed { i, v -> if (v != null && i < n) sb.append("""<c:pt idx="$i"><c:v>${num(v)}</c:v></c:pt>""") }
+            sb.append("</c:numLit></c:val>")
+            if (ch.kind == ChartKind.Line) sb.append("""<c:smooth val="0"/>""")
+            sb.append("</c:ser>")
+        }
+        when (ch.kind) {
+            ChartKind.Column, ChartKind.Bar -> sb.append("""<c:gapWidth val="150"/>${if (ch.stacked) """<c:overlap val="100"/>""" else ""}<c:axId val="50010001"/><c:axId val="50010002"/>""")
+            ChartKind.Line -> sb.append("""<c:marker val="1"/><c:axId val="50010001"/><c:axId val="50010002"/>""")
+            ChartKind.Area -> sb.append("""<c:axId val="50010001"/><c:axId val="50010002"/>""")
+            ChartKind.Pie -> sb.append("""<c:firstSliceAng val="0"/>""")
+            ChartKind.Doughnut -> sb.append("""<c:firstSliceAng val="0"/><c:holeSize val="50"/>""")
+        }
+        sb.append("</c:$tag>")
+        if (!round) {
+            val (catPos, valPos) = if (ch.kind == ChartKind.Bar) "l" to "b" else "b" to "l"
+            val line = """<c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln></c:spPr>"""
+            sb.append("""<c:catAx><c:axId val="50010001"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="$catPos"/><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>$line<c:crossAx val="50010002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>""")
+            sb.append("""<c:valAx><c:axId val="50010002"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="$valPos"/><c:majorGridlines>$line</c:majorGridlines><c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:crossAx val="50010001"/><c:crosses val="autoZero"/><c:crossBetween val="${if (ch.kind == ChartKind.Line) "midCat" else "between"}"/></c:valAx>""")
+        }
+        sb.append("</c:plotArea>")
+        if (ch.legend) sb.append("""<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>""")
+        sb.append("""<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:solidFill><a:srgbClr val="595959"/></a:solidFill></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:chartSpace>""")
+        return sb.toString()
+    }
+
+    /** LibreOffice's chart object: its content.xml, the data in its own table (the first column the categories). */
+    fun odf(ch: DocChart, widthPt: Float, heightPt: Float): String {
+        val n = ch.categories.size
+        val round = ch.kind == ChartKind.Pie || ch.kind == ChartKind.Doughnut
+        val cls = when (ch.kind) { ChartKind.Column, ChartKind.Bar -> "chart:bar"; ChartKind.Line -> "chart:line"; ChartKind.Area -> "chart:area"; ChartKind.Pie -> "chart:circle"; ChartKind.Doughnut -> "chart:ring" }
+        fun col(k: Int): String { var i = k; var s = ""; do { s = ('A' + i % 26) + s; i = i / 26 - 1 } while (i >= 0); return s }
+        val last = col(ch.series.size)
+        val sb = StringBuilder("""<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:chart="urn:oasis:names:tc:opendocument:xmlns:chart:1.0" office:version="1.3"><office:automatic-styles>""")
+        sb.append("""<style:style style:name="pa" style:family="chart"><style:chart-properties chart:vertical="${ch.kind == ChartKind.Bar}" chart:stacked="${ch.stacked}"${if (ch.kind == ChartKind.Line) """ chart:symbol-type="automatic"""" else ""}/></style:style>""")
+        ch.series.forEachIndexed { k, _ -> val c = "#" + hex(colorOf(ch, k))
+            sb.append("""<style:style style:name="s$k" style:family="chart"><style:graphic-properties draw:fill-color="$c" svg:stroke-color="$c"${if (ch.kind == ChartKind.Line) """ svg:stroke-width="0.08cm"""" else """ draw:stroke="none""""}/></style:style>""") }
+        if (round) for (i in 0 until n) sb.append("""<style:style style:name="p$i" style:family="chart"><style:graphic-properties draw:fill-color="#${hex(ch.series.getOrNull(0)?.pointColors?.get(i) ?: OfficeCharts.PALETTE[i % OfficeCharts.PALETTE.size])}" svg:stroke-color="#FFFFFF"/></style:style>""")
+        sb.append("""<style:style style:name="axis" style:family="chart"><style:chart-properties chart:display-label="true"/><style:graphic-properties svg:stroke-color="#D9D9D9"/><style:text-properties fo:font-size="9pt" fo:color="#595959"/></style:style>""")
+        // A pie clockwise, as LibreOffice writes its own. ponytail: LibreOffice 7 still draws Writer's .odt pies anticlockwise
+        // (its own it draws clockwise — something else in its files decides it); the slices and their colours are right.
+        sb.append("""<style:style style:name="round" style:family="chart"><style:chart-properties chart:reverse-direction="true"/></style:style>""")
+        sb.append("""<style:style style:name="grid" style:family="chart"><style:graphic-properties svg:stroke-color="#D9D9D9"/></style:style>""")
+        sb.append("""<style:style style:name="wall" style:family="chart"><style:graphic-properties draw:stroke="none" draw:fill="none"/></style:style>""")
+        sb.append("""</office:automatic-styles><office:body><office:chart><chart:chart svg:width="${widthPt}pt" svg:height="${heightPt}pt" chart:class="$cls">""")
+        ch.title?.let { sb.append("<chart:title><text:p>${esc(it)}</text:p></chart:title>") }
+        if (ch.legend) sb.append("""<chart:legend chart:legend-position="bottom" style:legend-expansion="wide"/>""")
+        sb.append("""<chart:plot-area chart:style-name="pa" table:cell-range-address="local-table.${'$'}A${'$'}1:.${'$'}$last${'$'}${n + 1}" chart:data-source-has-labels="both">""")
+        if (!round) sb.append("""<chart:axis chart:dimension="x" chart:name="primary-x" chart:style-name="axis"><chart:categories table:cell-range-address="local-table.${'$'}A${'$'}2:.${'$'}A${'$'}${n + 1}"/></chart:axis><chart:axis chart:dimension="y" chart:name="primary-y" chart:style-name="axis"><chart:grid chart:style-name="grid" chart:class="major"/></chart:axis>""")
+        else sb.append("""<chart:axis chart:dimension="x" chart:name="primary-x" chart:style-name="round"><chart:categories table:cell-range-address="local-table.${'$'}A${'$'}2:.${'$'}A${'$'}${n + 1}"/></chart:axis><chart:axis chart:dimension="y" chart:name="primary-y"/>""")
+        ch.series.forEachIndexed { k, _ ->
+            val c = col(k + 1)
+            sb.append("""<chart:series chart:style-name="s$k" chart:values-cell-range-address="local-table.${'$'}$c${'$'}2:.${'$'}$c${'$'}${n + 1}" chart:label-cell-address="local-table.${'$'}$c${'$'}1" chart:class="$cls">""")
+            if (round && k == 0) for (i in 0 until n) sb.append("""<chart:data-point chart:style-name="p$i"/>""") else sb.append("""<chart:data-point chart:repeated="$n"/>""")
+            sb.append("</chart:series>")
+        }
+        sb.append("""<chart:wall chart:style-name="wall"/></chart:plot-area><table:table table:name="local-table"><table:table-header-columns><table:table-column/></table:table-header-columns><table:table-columns><table:table-column table:number-columns-repeated="${ch.series.size}"/></table:table-columns><table:table-header-rows><table:table-row><table:table-cell><text:p/></table:table-cell>""")
+        ch.series.forEach { sb.append("""<table:table-cell office:value-type="string"><text:p>${esc(it.name)}</text:p></table:table-cell>""") }
+        sb.append("</table:table-row></table:table-header-rows><table:table-rows>")
+        ch.categories.forEachIndexed { i, cat ->
+            sb.append("""<table:table-row><table:table-cell office:value-type="string"><text:p>${esc(cat)}</text:p></table:table-cell>""")
+            ch.series.forEach { s -> val v = s.values.getOrNull(i)
+                sb.append(if (v == null) "<table:table-cell/>" else """<table:table-cell office:value-type="float" office:value="${num(v)}"><text:p>${num(v)}</text:p></table:table-cell>""") }
+            sb.append("</table:table-row>")
+        }
+        sb.append("</table:table-rows></table:table></chart:chart></office:chart></office:body></office:document-content>")
+        return sb.toString()
+    }
+}
+
 /**
  * A chart drawn in its bounds, which count in points: its title at the top, its legend at the foot, the plot between —
  * value gridlines and labels, the categories along the other axis. As Word draws a clustered or stacked chart, flat.

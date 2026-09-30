@@ -113,9 +113,10 @@ internal object PictureXml {
 
     /** A picture Writer can resize and re-wrap: a new one, or a file's picture — not a chart, shape or old VML drawing. */
     fun editable(img: DocImage): Boolean {
-        val raw = img.raw ?: return img.bytes != null
+        val raw = img.raw ?: return img.bytes != null || img.chart != null
         if (raw.startsWith("<draw:custom-shape")) return true
-        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw || "<draw:text-box" in raw else ("<pic:pic" in raw || "<wps:wsp" in raw) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
+        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw || "<draw:text-box" in raw || img.chart != null
+            else ("<pic:pic" in raw || "<wps:wsp" in raw || img.chart != null) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
@@ -1658,7 +1659,15 @@ private object DocxWriter {
         // Pictures added in Writer: each a new part in word/media, a relationship, and an inline drawing.
         var docPrId = 9000
         var changeId = 90000 // a tracked change's id (Word's own are renumbered on its next save)
-        picture = { img -> (img.raw ?: run {
+        picture = { img -> (img.raw ?: img.chart?.let { ch ->
+                // A new chart (Insert › Chart, or one whose data Writer changed): its own part, as Word keeps one.
+                val name = generateSequence(1) { it + 1 }.map { "${dir}charts/chart$it.xml" }.first { it !in parts }
+                parts[name] = ChartWriter.drawingml(ch).toByteArray()
+                types = types.replace("</Types>", """<Override PartName="/$name" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>""")
+                val rel = newRel(REL_CHART, name.removePrefix(dir), false)
+                val cx = (img.widthPt * 12700).toLong(); val cy = (img.heightPt * 12700).toLong(); val id = docPrId++
+                """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Chart $id"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="$R" r:id="$rel"/></a:graphicData></a:graphic></wp:inline></w:drawing>"""
+            } ?: run {
                 val bytes = img.bytes ?: return@run ""
                 val name = generateSequence(1) { it + 1 }.map { "${dir}media/tetra-$it.${img.extension}" }.first { it !in parts }
                 parts[name] = bytes
@@ -2397,7 +2406,14 @@ private object OdtWriter {
         var frames = 0
         val wraps = HashSet<Pair<PictureWrap, Boolean>>()
         val shapeStyles = HashSet<String>()
-        fun frame(img: DocImage): String = (img.raw ?: run {
+        fun frame(img: DocImage): String = (img.raw ?: img.chart?.let { ch ->
+            // A new chart: an object of its own in the package (its content.xml), as LibreOffice keeps one.
+            val name = generateSequence(1) { it + 1 }.map { "Object tetra-$it" }.first { "$it/content.xml" !in parts }
+            parts["$name/content.xml"] = ChartWriter.odf(ch, img.widthPt, img.heightPt).toByteArray()
+            manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.chart"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
+            val n = ++frames
+            """<draw:frame draw:name="Tetra chart $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+        } ?: run {
             val bytes = img.bytes ?: return@run ""
             val name = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.${img.extension}" }.first { it !in parts }
             parts[name] = bytes

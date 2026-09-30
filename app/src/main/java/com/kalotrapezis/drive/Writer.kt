@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
@@ -2061,7 +2062,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
-                    Divider(w)
+                }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                 }, {
@@ -2089,7 +2090,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     } }
-                    Divider(w)
+                }, {
                     RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
                 })
                 WriterTab.Picture -> {
@@ -2173,7 +2174,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
                     RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
-                    Divider(w)
+                }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
                         var spacing by remember { mutableStateOf(false) }
@@ -2188,7 +2189,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                         }
                     }
-                    Divider(w)
+                }, {
                     // Word's Watermark: its words, one of your own, or none.
                     Box {
                         var open by remember { mutableStateOf(false) }
@@ -2229,6 +2230,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
                     RibbonButton("Landscape", w, enabled = loaded, on = PageSetup.landscape(sheet)) {
                         if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
+                }, {
                     RibbonButton("Size", w, enabled = loaded) { pagePage = true }
                     // Columns: the pages show them (the editor keeps one column of text).
                     Box {
@@ -2252,6 +2254,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
                     RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
+                }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
                     RibbonButton("Update citations", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
@@ -2303,7 +2306,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             else androidx.compose.runtime.key(tab) {
                 val pager = rememberPagerState { pages.size }
                 HorizontalPager(pager, Modifier.fillMaxWidth()) { page ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
+                    // Spread over the width; a page wider than the phone scrolls sideways (found 2026-09-30: Design's last
+                    // three tools were off the screen, out of reach), then the next swipe turns the page.
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
+                    }
                 }
                 if (pages.size > 1) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.Center) {
                     repeat(pages.size) { i -> Box(Modifier.padding(horizontal = 3.dp).size(6.dp).clip(CircleShape).background(w.copy(alpha = if (i == pager.currentPage) 0.9f else 0.3f))) }

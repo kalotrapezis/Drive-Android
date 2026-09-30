@@ -1,5 +1,8 @@
 # 30 September — end of day: where things stand (read this first)
 
+**Update, evening:** Review › Track changes done (show, accept/reject, record) and the phone checked — see the
+three evening entries below. The tablet needs the latest build.
+
 **State.** Branch `writer-library`, everything committed (last: 975c308). All unit tests pass
 (`ANDROID_HOME=~/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew testDebugUnitTest assembleDebug`).
 Today's build is on the **tablet** (971f6b37) only. **The phone (208c8192) was never connected today** — first thing
@@ -39,6 +42,24 @@ All tablet checks were done in new, unsaved documents, discarded after; none of 
 4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
 Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
 (report, thesis, video); a picture watermark; page border styles.
+
+---
+
+# 30 September, evening — the phone at last: every ribbon tool reachable
+
+State: `writer-library`, all committed; unit tests pass; the latest build is on the **phone** (208c8192). The tablet
+was unplugged before the last two builds (it lacks the between-changes fix and this ribbon fix) — install there next.
+
+- Phone walk (new unsaved documents, discarded): Review (all pages, name dialog, recording, Accept/Reject), Design ›
+  APA 7 paper (dialog fits; pages show TNR, number top right, indent), Draw on page (tools row scrolls to Move/Undo;
+  the stroke lands where drawn). Drop cap / citations dialogs not opened on the phone.
+- **Found on the phone:** Design was one page wider than the screen — Watermark, Page colour and Page borders could
+  not be reached at all; Insert's Comment and Symbol, Layout's Columns and References' list were cut off.
+  Fixed two ways: groups split where their dividers were (Design: APA | spacing | watermark·colour·borders; Insert:
+  pictures | link·comment, drop cap·date·line break | symbol; Layout: margins·orientation | size·columns;
+  References: citation·sources | list·update) — the tablet looks the same, the dividers now between groups; and a
+  phone page wider than the screen scrolls sideways before the swipe turns the page.
+- Removed from the phone after: the test drafts, the test reviewer name, the pens the test drawing saved.
 
 ---
 

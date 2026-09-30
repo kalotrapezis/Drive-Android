@@ -137,8 +137,8 @@ one pass once the tabs' features are done.
       Shape / Ink to Math / Ink Replay not planned
 
 ### Design (Word's Design tab; OnlyOffice Σχεδίαση)
-- [ ] Page background: watermark (text/picture, remove), page colour, page borders
-- [ ] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double)
+- [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick) — [ ] a picture watermark, border styles and colours, borders on some sides only
+- [x] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double) — the Normal style's
 - [ ] Style sets, theme colours and fonts, themes — rarely used; last
 
 ### Layout (Word's Layout; OnlyOffice Διάταξη)

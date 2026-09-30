@@ -182,6 +182,32 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a watermark is set in both kinds, replaced, read back and taken away`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a watermark behind its text.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val page = DocStyles.of(kind, bytes).page
+            fun set(from: ByteArray, text: String?) = OfficeFormats.zip(OfficeFormats.unzip(from).let {
+                if (kind == OfficeKind.Docx) Watermark.docx(it, text, page) else Watermark.odt(it, text, page) }, if (kind == OfficeKind.Odt) "mimetype" else null)
+            val draft = set(bytes, "DRAFT")
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("watermark.${kind.extension}").writeBytes(draft)
+            val styles = DocStyles.of(kind, draft)
+            assertEquals(kind.name, "DRAFT", styles.section.watermark)
+            // Not a picture in the header's text: the pages draw it.
+            assertEquals(kind.name, false, styles.section.headers.values.flatten().any { p -> p.runs.any { it.image != null } })
+            // Replaced, not added; then taken away.
+            val other = set(draft, "CONFIDENTIAL & CO")
+            assertEquals(kind.name, "CONFIDENTIAL & CO", DocStyles.of(kind, other).section.watermark)
+            val all = OfficeFormats.unzip(other).values.sumOf { Regex(Watermark.NAME).findAll(String(it, Charsets.UTF_8)).count() }
+            // Word: one in its header; an ODT: one in each page style (as LibreOffice does), the old one gone.
+            val pageStyles = Regex("<style:master-page\\b").findAll(String(OfficeFormats.unzip(other).getValue(if (kind == OfficeKind.Docx) "word/document.xml" else "styles.xml"))).count()
+            assertEquals(kind.name, if (kind == OfficeKind.Docx) 1 else pageStyles, all)
+            assertEquals(kind.name, null, DocStyles.of(kind, set(other, null)).section.watermark)
+            // The text still reads.
+            assertEquals(kind.name, doc.paras.single().text, OfficeFormats.read(other, kind).paras.single().text)
+        }
+    }
+
     @Test fun `page colour and page border are set in both kinds, read back and taken away`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a colour and a box round it.")))))

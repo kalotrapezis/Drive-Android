@@ -1332,6 +1332,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         message = "Shown on the pages (the eye at the top)"
     }
+    /** Design › Watermark: [text] across every page (null: none), into the file's headers as it will be written. */
+    fun setWatermark(text: String?) = change {
+        val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
+            if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet) else Watermark.odt(it, text, sheet) } }
+            .onFailure { Log.e("Writer", "watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+        message = if (text == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+    }
+    var watermarking by remember { mutableStateOf(false) } // the custom watermark's page
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -1989,9 +2000,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
-                    Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
-                        setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
-                    }
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
                         var spacing by remember { mutableStateOf(false) }
@@ -2005,6 +2013,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 })
                             }
                         }
+                    }
+                    Divider(w)
+                    // Word's Watermark: its words, one of your own, or none.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        val now = documentStyles.section.watermark
+                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            Watermark.PRESETS.forEach { t -> DropdownMenuItem(text = { Text(t) }, trailingIcon = { if (t == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
+                                onClick = { open = false; setWatermark(t) }) }
+                            DropdownMenuItem(text = { Text("Custom watermark…") }, onClick = { open = false; watermarking = true })
+                            if (now != null) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                onClick = { open = false; setWatermark(null) })
+                        }
+                    }
+                    Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
+                        setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
                     }
                     Box {
                         var bordering by remember { mutableStateOf(false) }
@@ -2139,6 +2164,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         },
     )
+    if (watermarking) {
+        var text by remember { mutableStateOf(documentStyles.section.watermark ?: "") }
+        AlertDialog(
+            onDismissRequest = { watermarking = false },
+            title = { Text("Watermark") },
+            text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text across every page") }) },
+            confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { watermarking = false; setWatermark(text.trim()) }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { watermarking = false }) { Text("Cancel") } },
+        )
+    }
     if (linking) {
         var url by remember { mutableStateOf(state.selectedLinkUrl ?: "https://") }
         var text by remember { mutableStateOf(state.selectedLinkText ?: "") }

@@ -1,3 +1,26 @@
+# 30 September, midday — the Design tab
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.
+
+- **Design** (between Draw and Layout, Word's order inside): Paragraph spacing | Watermark, Page colour, Page borders.
+- **Paragraph spacing**: Word's six sets as the Normal style's spacing (`editStyle`), headings keep their own.
+- **Page colour** (`PageDesign`): Word's `w:background` + settings' `displayBackgroundShape` (a settings part made when
+  the file has none — Writer's new documents); ODT page layouts' `fo:background-color` (+ draw:fill). Read into
+  `DocPage.color`; drawn on the pages, the PDF, and as the editor's page.
+- **Page borders**: a box — Word's `pgBorders` offsetFrom page, 24 pt in, every section; ODT `fo:border` at the
+  margins, text 4 pt inside (`fo:padding`; the reader counts it). `DocPage.border` = `PageBorder` (line + insets).
+- **Watermark** (`Watermark.kt`): Word's own WordArt VML (PowerPlusWaterMarkObject) in every header the sections use, a
+  header made for a section without; ODT — copied from LibreOffice's own Format › Watermark file (made with UNO,
+  2026-09-30): the fontwork custom-shape in every page style's header, graphic + text styles. Read into
+  `DocSection.watermark`; the shape is left out of the header's text; the pages draw the word diagonally, grey, half
+  see-through. Checked: unit tests (set, replace, remove, both kinds); LibreOffice renders both alike; tablet: DRAFT on
+  a coloured, boxed, double-spaced page; it survives a restart (draft).
+- Not yet: a picture watermark; the editor does not show the watermark (the pages do); border style/colour/sides;
+  Word itself not checked (no Word here) — the XML is Word's own form.
+- Next: References (citations — `parked/Citations.kt`), then Review, then the icon pass for the other tabs.
+
+---
+
 # 30 September, late morning — Draw: any page, drawings drawn on again; a blank page's break kept
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone

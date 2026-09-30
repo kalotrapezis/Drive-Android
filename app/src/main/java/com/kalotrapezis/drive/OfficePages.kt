@@ -88,7 +88,8 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
  * "even"), where its page numbers start (null: they go on) and their style, and whether it starts a new page.
  */
 internal data class DocSection(val page: DocPage, val headers: Map<String, List<DocPara>> = emptyMap(), val footers: Map<String, List<DocPara>> = emptyMap(),
-    val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false)
+    val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false,
+    val watermark: String? = null /* Design › Watermark: its text */)
 
 /**
  * A table as the pages need it: column widths, indent and alignment; each row's height ("at least", or exact) and
@@ -292,7 +293,11 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             targets[e.attr(RELATIONSHIPS, "id")]?.let { into[e.attr(W, "type") ?: "default"] = OfficeFormats.docxPart(parts, it) }
         }
         val numbers = sect?.kid(W, "pgNumType")
-        return DocSection(page, headers, footers,
+        // Its watermark: in one of its own headers, or (having none) the section before's.
+        val refs = sect?.kids()?.filter { it.localName == "headerReference" }.orEmpty()
+        val watermark = if (refs.isEmpty()) before?.watermark
+            else refs.firstNotNullOfOrNull { r -> targets[r.attr(RELATIONSHIPS, "id")]?.let { parts[it] }?.let { Watermark.textIn(String(it, Charsets.UTF_8)) } }
+        return DocSection(page, headers, footers, watermark = watermark,
             titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false,
             pageStart = numbers?.attr(W, "start")?.toIntOrNull(), pageFormat = numbers?.attr(W, "fmt") ?: "decimal",
             continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous")
@@ -570,7 +575,9 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             color = props?.attr(FO, "background-color")?.takeIf { it.startsWith("#") }?.let { OfficeFormats.parseHex(it.removePrefix("#")) },
             // LibreOffice draws a page's border round its margins.
             border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom) }),
-            headers, footers, titlePage = "first" in headers || "first" in footers)
+            headers, footers, titlePage = "first" in headers || "first" in footers,
+            watermark = master?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "custom-shape")?.let { l ->
+                (0 until l.length).map { l.item(it) as Element }.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "name").startsWith(Watermark.NAME) }?.textContent?.trim() })
     }
 
     /**
@@ -753,6 +760,14 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             val shape = f.picture as? ShapePicture
             if (shape != null) shape.drawAt(canvas, f.x, f.y, f.w, f.h)
             else { f.picture.setBounds(f.x.toInt(), f.y.toInt(), (f.x + f.w).toInt(), (f.y + f.h).toInt()); f.picture.draw(canvas) }
+        }
+        section.watermark?.let { text ->
+            // Across the text's width, turned 45° up, light grey and half see-through, behind the text (Word's look).
+            val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x80C0C0C0.toInt(); typeface = android.graphics.Typeface.DEFAULT; textSize = 100f }
+            p.textSize = 100f * page.textWidth / p.measureText(text).coerceAtLeast(1f)
+            canvas.save(); canvas.rotate(-45f, page.width / 2, page.height / 2)
+            canvas.drawText(text, (page.width - p.measureText(text)) / 2, page.height / 2 - (p.ascent() + p.descent()) / 2, p)
+            canvas.restore()
         }
         floats(behind = true)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)

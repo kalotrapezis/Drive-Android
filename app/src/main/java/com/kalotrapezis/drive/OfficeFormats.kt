@@ -1035,7 +1035,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "column" -> { notes += "columns"; breakLine(false) }
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
-                "drawing", "pict", "object" -> runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
+                "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
+                        (0 until l.length).any { (l.item(it) as Element).getAttribute("id").startsWith(Watermark.NAME) } })) // a watermark: the pages draw it
+                    runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
                 "fldChar", "instrText" -> {
                     notes += "fields (page numbers, dates, contents)"
                     if (fieldMarks) when {
@@ -1767,6 +1769,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                             openComments += name
                         }
                     } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
+                    else if (e.localName == "custom-shape" && e.getAttributeNS(e.namespaceURI, "name").startsWith(Watermark.NAME)) Unit // the pages draw it
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))
                     else notes += "other content"
                 }

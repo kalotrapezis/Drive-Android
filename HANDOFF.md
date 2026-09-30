@@ -39,7 +39,8 @@ All tablet checks were done in new, unsaved documents, discarded after; none of 
    ODT, comments reply/resolve, remembering tracking in the file.
 2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
 3. **Footnotes / endnotes** — DONE 30 Sep night (see its entry).
-4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
+4. **Icons for the remaining tabs** — DONE 30 Sep night: Layout, References, Picture, Table (Material Symbols). Style
+   names (Normal, Title, H1…) and cm/inches stay words, as Word shows them.
 Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
 (report, thesis, video); a picture watermark; page border styles.
 

@@ -2219,18 +2219,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
-                        RibbonButton("Size", w, enabled = editable) { sizing = true }
-                        RibbonButton("Crop", w, enabled = hasBytes && editable) {
+                        RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
+                        RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
                                 cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { decodePicture(it, 2400) }.getOrNull() } }
                                 if (cropping == null) message = "Writer cannot crop this kind of picture."
                             }
                         }
-                        RibbonButton("Wrap text", w, enabled = editable) { wrapping = true }
+                        RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
                     }, {
-                        RibbonButton("Turn left", w, enabled = hasBytes && editable) { transform(-90, false) }
-                        RibbonButton("Turn right", w, enabled = hasBytes && editable) { transform(90, false) }
-                        RibbonButton("Flip", w, enabled = hasBytes && editable) { transform(0, true) }
+                        RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
+                        RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
+                        RibbonButton("Flip", w, R.drawable.ic_flip, enabled = hasBytes && editable) { transform(0, true) }
                     }, {
                         RibbonButton("Replace", w, R.drawable.ic_gallery, enabled = editable) { replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                         RibbonButton("Save as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
@@ -2256,24 +2256,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     if (from != null) listOf({
                         val n = table?.let { t -> TableEdit.cellsBetween(t, from.row to from.cell, (mergeTo ?: from).let { it.row to it.cell }).size } ?: 0
                         Text(if (mergeTo == null) "Tap the last cell to merge" else "$n cells", color = w, style = MaterialTheme.typography.labelLarge)
-                        RibbonButton("Merge", w, enabled = mergeTo != null && n > 1) {
+                        RibbonButton("Merge", w, R.drawable.ic_cell_merge, enabled = mergeTo != null && n > 1) {
                             val to = mergeTo!!
                             change("These cells cannot be merged.") { t, _ -> TableEdit.merge(t, from.row to from.cell, to.row to to.cell) }
                             selectedCell = from; mergeFrom = null; mergeTo = null
                         }
-                        RibbonButton("Cancel", w) { mergeFrom = null; mergeTo = null }
+                        RibbonButton("Cancel", w, R.drawable.ic_close) { mergeFrom = null; mergeTo = null }
                     }) else listOf({
                         // Everyday tools on the ribbon, the rest behind ⋯ (asked 2026-09-28); three to a page, as a phone fits them.
-                        RibbonButton("Row above", w, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
-                        RibbonButton("Row below", w, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
-                        RibbonButton("Merge", w, enabled = table != null) { commitCell(); mergeFrom = here(); mergeTo = null }
+                        RibbonButton("Row above", w, R.drawable.ic_add_row_above, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
+                        RibbonButton("Row below", w, R.drawable.ic_add_row_below, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
+                        RibbonButton("Merge", w, R.drawable.ic_cell_merge, enabled = table != null) { commitCell(); mergeFrom = here(); mergeTo = null }
                     }, {
-                        RibbonButton("Column left", w, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = false) } }
-                        RibbonButton("Column right", w, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
-                        RibbonButton("Split", w, enabled = table != null) { commitCell(); tableDialog = "split" }
+                        RibbonButton("Column left", w, R.drawable.ic_add_column_left, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = false) } }
+                        RibbonButton("Column right", w, R.drawable.ic_add_column_right, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
+                        RibbonButton("Split", w, R.drawable.ic_call_split, enabled = table != null) { commitCell(); tableDialog = "split" }
                     }, {
-                        RibbonButton("Delete row", w, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
-                        RibbonButton("Delete column", w, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton("Delete row", w, R.drawable.ic_delete, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton("Delete column", w, R.drawable.ic_delete, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
                         RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = selectedPicture != null) {
                             commitCell()
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home
@@ -2342,17 +2342,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 })
                 WriterTab.Layout -> listOf({
                     // Word's Layout: margins, orientation, size (one page for all three), then breaks.
-                    RibbonButton("Margins", w, enabled = loaded) { pagePage = true }
-                    RibbonButton("Portrait", w, enabled = loaded, on = !PageSetup.landscape(sheet)) {
+                    RibbonButton("Margins", w, R.drawable.ic_margin, enabled = loaded) { pagePage = true }
+                    RibbonButton("Portrait", w, R.drawable.ic_crop_portrait, enabled = loaded, on = !PageSetup.landscape(sheet)) {
                         if (PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
-                    RibbonButton("Landscape", w, enabled = loaded, on = PageSetup.landscape(sheet)) {
+                    RibbonButton("Landscape", w, R.drawable.ic_crop_landscape, enabled = loaded, on = PageSetup.landscape(sheet)) {
                         if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
                 }, {
-                    RibbonButton("Size", w, enabled = loaded) { pagePage = true }
+                    RibbonButton("Size", w, R.drawable.ic_fit_page, enabled = loaded) { pagePage = true }
                     // Columns: the pages show them (the editor keeps one column of text).
                     Box {
                         var columning by remember { mutableStateOf(false) }
-                        RibbonButton(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, enabled = loaded) { columning = true }
+                        RibbonButton(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, R.drawable.ic_view_column, enabled = loaded) { columning = true }
                         DropdownMenu(columning, { columning = false }) {
                             listOf(1 to "One", 2 to "Two", 3 to "Three").forEach { (n, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { columning = false
@@ -2361,16 +2361,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                     }
                 }, {
-                    RibbonButton("Page break", w, enabled = loaded) { insertPageBreak(false) }
-                    RibbonButton("Blank page", w, enabled = loaded) { insertPageBreak(true) }
+                    RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
+                    RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
-                    RibbonButton(if (has) "Update table" else "Table of contents", w, enabled = loaded) { insertContents() }
+                    RibbonButton(if (has) "Update table" else "Table of contents", w, R.drawable.ic_toc, enabled = loaded) { insertContents() }
                 }, {
                     // Word's Footnotes group.
-                    RibbonButton("Insert footnote", w, enabled = loaded) { insertNote(false) }
-                    RibbonButton("Insert endnote", w, enabled = loaded) { insertNote(true) }
+                    RibbonButton("Insert footnote", w, R.drawable.ic_superscript, enabled = loaded) { insertNote(false) }
+                    RibbonButton("Insert endnote", w, R.drawable.ic_last_page, enabled = loaded) { insertNote(true) }
                 }, {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }

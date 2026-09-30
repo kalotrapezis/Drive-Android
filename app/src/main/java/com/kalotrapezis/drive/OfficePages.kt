@@ -1326,7 +1326,7 @@ internal object OfficePages {
             "top" -> if (place.fromV == "page") 0f else page.top
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
-        val picture = textBox(doc, styles, img, pictureBytes) ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
+        val picture = textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key)
     }
 
@@ -1386,7 +1386,7 @@ internal object OfficePages {
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
-                val drawable = textBox(doc, styles, img, pictureBytes)?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                val drawable = (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img.raw)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))

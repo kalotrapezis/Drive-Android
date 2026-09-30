@@ -1937,6 +1937,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
                                                 } }
+                                            } else if (img.chart != null) {
+                                                // A chart: drawn from what it shows, as the pages draw it.
+                                                val drawn = remember(img.chart) { ChartDrawable(img.chart) }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
+                                                    n.save(); n.scale(k, k); drawn.setBounds(0, 0, img.widthPt.toInt(), img.heightPt.toInt()); drawn.draw(n); n.restore()
+                                                } }
                                             } else if (img.box != null) {
                                                 // A text box: its words in it, as the pages draw it.
                                                 val drawn = remember(img, documentStyles) { OfficePages.textBox(OfficeDoc(emptyList(), basePt = meta.basePt), documentStyles, img) { pictureBytes(it) } }
@@ -1953,7 +1960,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
-                                            if (pictureBytes(img) == null && img.table == null && ShapePicture.of(img.raw) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.box == null && ShapePicture.of(img.raw) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
                                             if (table != null && tab == WriterTab.Table) {
                                                 val from = mergeFrom?.takeIf { it.key == img.key }

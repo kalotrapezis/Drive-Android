@@ -93,9 +93,10 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */,
     val table: DocTable? = null /* the editor's stand-in for a table */,
     val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */,
-    val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */) {
+    val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
+    val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -244,7 +245,7 @@ internal object PictureXml {
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
         val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
-        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box), wrap, file)
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart), wrap, file)
     }
 
     /**
@@ -1013,6 +1014,7 @@ private const val REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocum
 private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+private const val REL_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
 private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 private const val REL_COMMENTS_EX = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 private const val W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
@@ -1052,6 +1054,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val dir = docPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
     val links = HashMap<String, String>()
     val images = HashMap<String, String>() // relationship id → the picture's part in the package
+    val charts = HashMap<String, String>() // relationship id → a chart's part
     val styleName = HashMap<String, String>() // styleId → name, lowercased
     var defaultParaStyle: String? = null
     var basePt = 10f
@@ -1148,6 +1151,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 when (it.getAttribute("Type")) {
                     REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
                     REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
+                    REL_CHART -> charts[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
                 }
             }
         }
@@ -1453,7 +1457,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         val h = (if (ink) vmlLength("height") else null) ?: extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("height")?.takeIf { it > 0 } ?: 96f
         // A text box: its words (Word's own, not the older-Word copy in the fallback), for the pages to show.
         val box = (e.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } }
-        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box)
+        val chart = (e.getElementsByTagNameNS("*", "chart").item(0) as Element?)?.getAttributeNS(R, "id")?.let { charts[it] }?.let { parts[it] }?.let { OfficeCharts.readDrawingml(it) }
+        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box, chart = chart)
     }
     var imageCount = 0
 
@@ -2187,7 +2192,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         // rectangles with words) — a shape only when it has some.
         val box = (e.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "text-box").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }
             ?: e.takeIf { it.localName == "custom-shape" }?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
-        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box)
+        val chart = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }?.let { OfficeCharts.readOdf(it) }
+        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart)
     }
     var imageCount = 0
 

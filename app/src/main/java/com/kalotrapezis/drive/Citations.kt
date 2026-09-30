@@ -252,12 +252,12 @@ internal object Citations {
         return start..last
     }
 
-    /** The reference list's paragraphs: the heading (Heading 1, centred, as APA puts it), then the entries in APA's order. */
+    /** The reference list's paragraphs: the heading (APA 7: bold, centred, the text's size), then the entries in APA's order. */
     fun paragraphs(doc: OfficeDoc, kind: OfficeKind): List<DocPara> {
         val used = usedTags(doc)
         // The sources cited, in APA's order; with none cited yet, every source (a list made first, cited after).
         val list = doc.sources.filter { it.tag in used }.ifEmpty { doc.sources }
-        val heading = DocPara(listOf(DocRun(HEADING)), heading = 1, align = DocAlign.Center)
+        val heading = DocPara(listOf(DocRun(HEADING, bold = true)), align = DocAlign.Center)
         val entries = Apa.sorted(list).map { DocPara(Apa.entry(it), keep = DocKeep(style = entryStyle(kind))) }
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }
@@ -308,8 +308,9 @@ internal object Citations {
     fun insertList(doc: OfficeDoc, kind: OfficeKind, at: Int): OfficeDoc {
         find(doc, kind)?.let { return update(doc, kind) }
         val paras = doc.paras.toMutableList()
-        val here = at.coerceIn(0, paras.size)
-        if (here < paras.size && paras[here].text.isEmpty() && paras[here].table == null) paras.removeAt(here)
+        var here = at.coerceIn(0, paras.size)
+        // An empty paragraph at the cursor becomes the list; one with text keeps it, the list after it.
+        if (here < paras.size && paras[here].text.isEmpty() && paras[here].table == null) paras.removeAt(here) else if (here < paras.size) here++
         paras.addAll(here, paragraphs(doc, kind))
         return doc.copy(paras = paras)
     }

@@ -853,7 +853,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = file?.readBytes()
-                val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 11f)
+                val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
                 var draftPackage: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
@@ -889,7 +889,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             dirty = false
             if (draft != null) {
                 state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
-                meta = meta.copy(paras = draft.paras, comments = draft.comments) // the draft's paragraph formatting and comments, not the file's
+                meta = meta.copy(paras = draft.paras, comments = draft.comments, sources = draft.sources) // the draft's paragraph formatting, comments and sources, not the file's
                 dirty = true; message = "Your unsaved changes are back"
             }
             state.history.clear(); undone.clear(); redone.clear()
@@ -1232,6 +1232,41 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         meta = OfficeFormats.withComment(cur, spans, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text, initials = initials))
         dirty = true
     }
+    // References › Citations (APA 7): the sources, a citation at the cursor, the reference list, Update.
+    var citing by remember { mutableStateOf(false) }
+    var sourcesOpen by remember { mutableStateOf(false) }
+    var sourceEdit by remember { mutableStateOf<DocSource?>(null) }
+    var sourceNew by remember { mutableStateOf(false) }
+    /** Shown again after a Writer change of the citations' letters. */
+    fun reshow() = state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
+    fun saveSource(s: DocSource) = change {
+        val cur = current()
+        val tagged = if (s.tag.isBlank()) s.copy(tag = Citations.tagFor(kind, s, cur.sources.map { it.tag })) else s
+        val list = if (cur.sources.any { it.tag == tagged.tag }) cur.sources.map { if (it.tag == tagged.tag) tagged else it } else cur.sources + tagged
+        meta = Citations.update(cur.copy(sources = list), kind)
+        dirty = true; reshow()
+    }
+    fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
+    fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
+        val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
+        val text = Citations.text(cite, meta.sources)
+        if (!state.selection.collapsed) state.removeSelectedText()
+        // After a word, a space first (Word's), not part of the citation.
+        state.annotatedString.text.getOrNull(state.selection.min - 1)?.takeIf { !it.isWhitespace() && it != '(' }?.let { state.addTextAfterSelection(" ") }
+        val start = state.selection.min
+        state.addTextAfterSelection(text)
+        val t = state.annotatedString.text
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), start, start + text.length)
+        meta = OfficeFormats.withCite(current(), spans, cite)
+        dirty = true
+    }
+    fun insertReferenceList() = change {
+        val cur = current()
+        meta = Citations.insertList(cur, kind, chosen()?.first?.minOrNull() ?: cur.paras.size)
+        dirty = true; reshow()
+        message = "References — in APA's order, from the sources cited"
+    }
+    fun updateCitations() = change { meta = Citations.update(current(), kind); dirty = true; reshow(); message = "Citations and references updated" }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
     /**
      * References › Table of contents: put at the cursor's paragraph (or, if the document has one, brought up to date),
@@ -2098,6 +2133,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
                     RibbonButton(if (has) "Update table" else "Table of contents", w, enabled = loaded) { insertContents() }
+                }, {
+                    // Word's Citations & Bibliography, APA 7.
+                    RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
+                    RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
+                    val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
+                    RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
+                    RibbonButton("Update citations", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
+                    Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
                 })
                 WriterTab.View -> listOf({
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.
@@ -2188,6 +2231,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         },
     )
+    if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
+        citing = false; insertCitation(list, page)
+    }
+    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }) { deleteSource(it) }
+    if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
     dropCapPage?.let { (at, now) ->
         val first = current().paras.getOrNull(at)?.runs?.firstOrNull { it.image == null && it.text.isNotEmpty() }
         DropCapDialog(now, kind == OfficeKind.Odt, documentStyles.fontName(first?.font), first?.color, { dropCapPage = null }) { d, font, color ->

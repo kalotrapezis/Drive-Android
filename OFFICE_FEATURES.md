@@ -153,7 +153,7 @@ one pass once the tabs' features are done.
 ### References
 - [x] Table of contents (References: from Heading 1–3, at the cursor; Update table rewrites it in place with fresh page numbers) — written as plain paragraphs in the file's TOC 1–3 / Contents 1–3 styles with a dot leader, not a field: Word/LibreOffice show it as written — [ ] clickable entries, levels chosen
 - [ ] Footnotes and endnotes
-- [ ] Citations and bibliography (APA 7 first)
+- [x] Citations and bibliography, APA 7 (References › Insert citation, Sources, References list / Update references, Update citations): Word's form — the kind of source, then its fields; APA writes the citation "(Smith & Jones, 2019, p. 47)" and the reference entry. Kept as each program keeps them: Word's CITATION fields and its sources part (Source Manager); LibreOffice's bibliography marks — [ ] other styles (the user: APA 7 only for now), more source kinds (report, thesis, video…), a citation's own options (no author, suppress year), tapping a citation to edit it
 - [ ] Captions, cross-references — later
 
 ### Review

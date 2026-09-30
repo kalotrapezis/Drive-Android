@@ -1,3 +1,32 @@
+# 30 September, afternoon — References: citations and the reference list (APA 7); Times New Roman 12
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.
+
+- **The user (2026-09-30):** like Word — a form: choose the kind of source, fill what you know, the style stitches it
+  together; **APA 7 only for now**; **Times New Roman 12 the default**. LibreOffice's bibliography database confused them.
+- **References tab**: Table of contents | Insert citation · Sources · References list (Update references once there)
+  · Update citations · "APA 7".
+- `Citations.kt` (from `parked/`): `DocSource` + `Apa` (as parked), `WordSources` (customXml/itemN.xml b:Sources, +
+  itemProps + rels + content type; unknown children kept in `extra`, Word's other source types in `wordType`),
+  `Citations` (CITATION instruction parse/make, APA text, the list found by its entry style Bibliography /
+  Bibliography_20_1 after a "References" line, `update`, `insertList`, ODT mark attributes). `CitationsUi.kt`: the
+  source form (fields per kind; not closed by a stray tap), the citation chooser (page for Word files; one source per
+  citation in ODT), the sources list.
+- Letters carry `DocRun.cite`; carried through editing like comments (`carryFonts`); `OfficeFormats.withCite`.
+  **Word**: CITATION fields read (no longer "fields" → copy-only; a citation's content control too) and written
+  (begin/instr/separate/result/end); other fields still make the file copy-only. **ODT**: `text:bibliography-mark`
+  holding the source; LibreOffice shows a mark as its identifier, so an ODT's tags are the citations themselves
+  ("Smith & Jones, 2019", renamed on Update) and the document's brackets set to ( ) (`bibliography-configuration`).
+- New documents: **Times New Roman 12** (both blanks; `basePt` 12).
+- Fixed: a draft restored without its sources.
+- Checked: unit test both kinds (sources, citations with page, list, reopen not copy-only, update after a year
+  change, written again the same); LibreOffice renders both (citations and list alike); tablet: new source form,
+  citation with and without page, list after the paragraph, restart, Sources › Edit year → citation and entry follow.
+  Not checked: Word itself (no Word here).
+- Not yet: other styles; more source kinds; tapping a citation to edit it; the editor shows citations as plain text.
+
+---
+
 # 30 September, afternoon — Insert › Drop cap
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.

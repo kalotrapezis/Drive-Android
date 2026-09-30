@@ -59,6 +59,27 @@ there and left alone (not mine to judge): `Documents/Tetra track-changes test.do
   (WriterSpelling asks el-GR / en-US separately and looks right). The fix is Tetra's own Hunspell dictionaries
   (offered before; ask the user).
 
+**Do first next session (the user, 30 Sep near midnight, on the phone with his CV — `Test-Words/CV test copy.docx`):**
+1. **Print layout on the phone** (Word mobile's): the editor on the page itself as the tablet has it (onPage is
+   tablet-only now), the page fitted to the screen's width at first; **pinch-zoom enlarges the page past the screen and
+   pans both ways** (now zoom only enlarges the text and reflows it — "it goes vertically only"); page breaks shown.
+   View › Mobile view keeps today's reflowing editor as a choice. The user's words: "there are no pages".
+2. **Gaps between tables** in the editor: a CV of many one-row tables with empty paragraphs between — the empty lines
+   are drawn at full text size while the tables are drawn smaller (since tonight's fix), so the shaded label column
+   looks "chopped". Page-scale drawing (1.) should fix it; check.
+3. **Pages view of a letterhead report** (the user's screenshot, a medical report — ask before pulling any such file):
+   huge empty bands at the top and bottom of each page (the text stops a third of the way down page 1), the letterhead
+   box too low, blue shapes running off the page's right edge. Likely: floating shapes in the header/footer counted as
+   in-line (the header/footer bands made tall), and their positions taken from the wrong origin.
+4. **Forms** — the next Word feature the user needs ("the next thing missing I have on my words is forms"): find
+   which kind his documents use (content controls w:sdt — checkbox, drop-down, date, text — or legacy FORMTEXT /
+   FORMCHECKBOX fields); both make a file copy-only today.
+- Done tonight: tables in the editor laid out at the page's width and drawn smaller on a phone (the columns kept their
+  proportions — the CV's name no longer broke mid-word); the size box at a table/picture tells the text's size.
+- Release question (the user asked): recommended an early beta labelled Office (preview) after one hardening session —
+  the phone walk, real documents round-tripped (Word if he has it), spelling fixed or off by default, merge to main,
+  release build. Not decided yet.
+
 **Next** (the plan stands — Word finished first): the rest of Word's list below (captions and cross-references, multilevel lists, format painter, navigation pane, reading mode, AutoSave,
 .doc/.rtf), the smaller items, and for floating objects: Arrange (forward/backward, align, group, rotate), text on
 both sides, WordArt effects, chart axis titles / data labels / scatter. Then PowerPoint (it reuses Position, text

@@ -1,3 +1,47 @@
+# 30 September — end of day: where things stand (read this first)
+
+**State.** Branch `writer-library`, everything committed (last: 975c308). All unit tests pass
+(`ANDROID_HOME=~/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew testDebugUnitTest assembleDebug`).
+Today's build is on the **tablet** (971f6b37) only. **The phone (208c8192) was never connected today** — first thing
+next time: install `app-arm64-v8a-debug.apk` there and walk through today's features at phone size (every feature is
+for both screens — memory `writer-tablet-first`). The untracked `Assets/` screenshots are the user's: leave them.
+All tablet checks were done in new, unsaved documents, discarded after; none of the user's files were touched.
+
+**Done today** (details in the entries below, newest first):
+- **Draw**: Draw on page (the page itself underneath, two fingers zoom/move, ‹ › other pages), drawing box; drawings
+  go **in front of the text** by default (the user), anchored at the paragraph start; Edit drawing (strokes kept inside
+  the PNG, so also after reopening), Move, pens remembered. Floating pictures are a line-tall thumbnail in the editor.
+- **Icons**: Insert (in Word's group order), Borders and its menu, Draw, Design, Drop cap, APA (Material Symbols SVGs
+  from google/material-design-icons → vector drawables; drop cap drawn by hand). Other tabs still words only.
+- **Design** tab (Word's order): APA 7 paper | Paragraph spacing | Watermark, Page colour, Page borders.
+- **Insert › Drop cap** (dropped / in margin / options: lines, distance, the letter's font and colour).
+- **References**: Table of contents | Insert citation (Word-like source form per kind), Sources, References list /
+  Update references, Update citations — **APA 7 only** (the user). **New documents: Times New Roman 12.**
+- **Design › APA 7 paper**: the student paper in one tap, optional title page and clearing hand-set formatting.
+- **Bugs found and fixed**: a blank page's following break moved away on any Writer change (paragraph matching);
+  Word drop caps lost their frame on reading; Word citation fields made files copy-only; drafts lost new pictures'
+  wrapping and the sources.
+
+**Known gaps worth remembering**
+- Nothing checked in Word itself (no Word here); every Word form was written as Word writes it, and LibreOffice reads
+  them all. The user can check with Word when convenient.
+- The editor (typing view) does not show: drop caps, watermarks, page borders, citations' fields, Times New Roman
+  (it uses its own font) — the pages view shows all of them.
+- Other Word fields (TOC field, PAGE in the body, cross-references), tracked changes and footnotes still make a file
+  copy-only.
+- ODT citations: one source each and no page (LibreOffice marks can't hold them).
+
+**Next (the list the user chose from on 30 Sep; they picked APA first):**
+1. **Review › Track changes** — show, accept/reject, record; comments reply/resolve (a professor's corrected .docx is
+   copy-only today).
+2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
+3. **Footnotes / endnotes** (References), both kinds.
+4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
+Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
+(report, thesis, video); a picture watermark; page border styles.
+
+---
+
 # 30 September, afternoon — Design › APA 7 paper
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.

@@ -161,7 +161,7 @@ one pass once the tabs' features are done.
 - [ ] Spelling (Android's spell checker)
 - [x] Word count (File › About this file)
 - [ ] Comments: read, reply, delete
-- [ ] Track changes: show, accept, reject, record
+- [x] Track changes in Word files (Review tab): shown as Word's All Markup (inserted underlined, deleted struck through, in the author's colour; a bar beside changed lines; ¶ for split/joined paragraphs), the change at the cursor named (what · who · when), Previous / Next, Accept / Reject (then on to the next), Accept all / Reject all (tables' row and formatting changes too); kept on saving — a corrected .docx is no longer copy-only — [ ] record my own changes, ODT's tracked changes (still copy-only), reject restoring a paragraph's style/list
 - [ ] Read aloud (Android text-to-speech)
 
 ### View

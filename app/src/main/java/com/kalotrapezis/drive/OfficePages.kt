@@ -1245,6 +1245,8 @@ internal object OfficePages {
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
             (r.color ?: if (r.link != null) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
+            // Tracked changes, as Word shows all markup: inserted underlined, deleted struck through, in the author's colour.
+            r.change?.let { c -> span(ForegroundColorSpan(0xFF000000.toInt() or TrackChanges.color(c.author))); span(if (c.deleted) StrikethroughSpan() else UnderlineSpan()) }
             OfficeFonts.typeface(styles.fontName(r.font))?.let { span(TypefaceSpan(OfficeFonts.styled(it, r.bold || look.bold == true, r.italic || look.italic == true))) }
         }
         if (text.isEmpty()) text.append(" ") // an empty paragraph is still a line

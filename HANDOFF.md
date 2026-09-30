@@ -32,13 +32,43 @@ All tablet checks were done in new, unsaved documents, discarded after; none of 
 - ODT citations: one source each and no page (LibreOffice marks can't hold them).
 
 **Next (the list the user chose from on 30 Sep; they picked APA first):**
-1. **Review › Track changes** — show, accept/reject, record; comments reply/resolve (a professor's corrected .docx is
-   copy-only today).
+1. **Review › Track changes** — show/accept/reject in Word files DONE (see its 30 Sep entry); still: record my own
+   changes, ODT, comments reply/resolve.
 2. **Review › Spelling** — Android's spell checker (Greek and English) in the editor.
 3. **Footnotes / endnotes** (References), both kinds.
 4. **Icons for the remaining tabs** (Home's words, Layout, References, View, Picture, Table) — memory `ribbon-icons`.
 Smaller follow-ups: APA abstract page and run-in Level 4–5 headings; tapping a citation to edit it; more source kinds
 (report, thesis, video); a picture watermark; page border styles.
+
+---
+
+# 30 September, late afternoon — Review › Track changes (Word files)
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37). The phone was
+still not connected — first thing next time: install there and check Review (and the 30 Sep features) at phone size.
+
+- The next item on the 30 Sep list (the user had picked APA first): **Review › Track changes** — a professor's
+  corrected .docx was copy-only.
+- Model: `DocRun.change` = `DocChange(deleted, author, date)`; Word's w:ins/w:del (and moveTo/moveFrom) read and
+  written (`delText`, ids from 90000); rPrChange carried raw in `DocRun.font` (written last in rPr); pPrChange a kept
+  paragraph part; a paragraph mark's w:ins/w:del stays in the kept "rPr" part. Carried through typing like comments
+  (`carryFonts`: typed letters inside someone's insertion join it; never a deletion).
+- `TrackChanges.kt`: `list` (for the editor), `decide` (chosen changes), `all` (tables' rows and table/row/cell
+  property changes too), `color(author)`. Rejecting a formatting change reads the old rPr (`OfficeFormats.docxLook`);
+  a paragraph's old spacing/indents/alignment come back (its style and list stay — ponytail note).
+- Editor: the author's colour as a mark with alpha 0xFD (never saved); underline/strike, a margin bar and ¶ drawn over
+  the text. Pages (and PDF): coloured underline/strikethrough. **Review tab**: ‹ › Accept Reject | Accept all Reject all |
+  Comments; a bar above the tabs names the change at the cursor.
+- Fixed on the way: `comparable` ignored neither `cite` nor `change` — a file with citations could have opened as
+  "formatting it cannot show exactly" (copy-only) in the app.
+- Checked: unit tests (`TrackChangesTest`: read, write the same, all/one accept/reject, carry); a LibreOffice-recorded
+  file (insert, delete, bold, joined paragraphs, new paragraph) — every change listed, accept/reject all right,
+  rewritten file seen by LibreOffice with the same changes; fixture 05 no longer notes tracked changes. Tablet: the
+  test file showed the markup on the pages and in the editor, Next ×2, Reject, Reject, Accept all, Save over the
+  file; LibreOffice read the saved file right with no changes left. The test file was mine and was removed after.
+  A crash found there (Accept/Reject read the changes after changing them) was fixed.
+- Not yet: recording my own changes (typing as insertions, deleting as deletions, the author's name); ODT's tracked
+  changes (still copy-only); comments reply/resolve (the other half of the Review item); Word itself not checked.
 
 ---
 

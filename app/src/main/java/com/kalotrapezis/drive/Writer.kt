@@ -174,6 +174,8 @@ private const val SCRIPT_SIZE_OWN = 0.69f
 private const val STYLE_SIZE = 0.037f
 private const val STYLE_WEIGHT = 701
 private const val STYLE_ALPHA = 0xFEL
+/** A tracked change's letters: its author's colour, two steps short of opaque (never saved as the letters' own). */
+private const val CHANGE_ALPHA = 0xFDL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
 /** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
@@ -252,6 +254,7 @@ internal object WriterBridge {
                     marks += RichTextSpanMark.FontSize(range, ((r.sizePt ?: doc.basePt) * scale * (if (r.sizePt != null) SCRIPT_SIZE else SCRIPT_SIZE_OWN)).sp)
                 } else r.sizePt?.let { marks += RichTextSpanMark.FontSize(range, (it * scale).sp) }
                 r.color?.let { marks += RichTextSpanMark.TextColor(range, 0xFF000000L or it.toLong()) }
+                r.change?.let { c -> if (r.image == null) marks += RichTextSpanMark.TextColor(range, (CHANGE_ALPHA shl 24) or TrackChanges.color(c.author).toLong()) }
                 r.highlight?.let { marks += RichTextSpanMark.Highlight(range, 0xFF000000L or it.toLong()) }
                 r.link?.let { marks += RichTextSpanMark.Link(range, it) }
                 r.image?.let { img ->
@@ -327,7 +330,7 @@ internal object WriterBridge {
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
                     is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
                     is RichTextSpanMark.BaselineShift -> r.copy(script = if (m.multiplier > 0) 1 else if (m.multiplier < 0) -1 else 0)
-                    is RichTextSpanMark.TextColor -> if ((m.argb ushr 24) == STYLE_ALPHA) r else r.copy(color = (m.argb and 0xFFFFFF).toInt())
+                    is RichTextSpanMark.TextColor -> if ((m.argb ushr 24).let { it == STYLE_ALPHA || it == CHANGE_ALPHA }) r else r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Link -> r.copy(link = m.url)
                     is RichTextSpanMark.Image -> pictures[m.url.removePrefix(PICTURE_URL)]?.let { img ->
@@ -394,7 +397,7 @@ internal object WriterBridge {
                 is RichTextSpanMark.FontWeight -> m.weight != STYLE_WEIGHT
                 is RichTextSpanMark.Italic -> m.range !in slanted
                 is RichTextSpanMark.FontSize -> spOf(m.size)?.let { !isStyleSize(it / scale) } ?: false
-                is RichTextSpanMark.TextColor -> (m.argb ushr 24) != STYLE_ALPHA
+                is RichTextSpanMark.TextColor -> (m.argb ushr 24).let { it != STYLE_ALPHA && it != CHANGE_ALPHA }
                 else -> false
             }
             blocks[k] = b.copy(spans = b.spans.flatMap { m ->
@@ -611,12 +614,12 @@ internal object WriterBridge {
             if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
         }
     }
-    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList()) })
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList(), cite = null, change = null) })
 
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList()) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList(), cite = null, change = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -717,7 +720,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -1268,6 +1271,38 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     fun updateCitations() = change { meta = Citations.update(current(), kind); dirty = true; reshow(); message = "Citations and references updated" }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
+    // Review › Track changes (asked 2026-09-30): where each change is in the editor's text, and the one at the cursor.
+    val changesShown by remember { derivedStateOf {
+        if (!TrackChanges.any(meta)) emptyList() else {
+            val text = state.annotatedString.text
+            val places = WriterBridge.blockPlaces(text, state.toRichTextDocument())
+            TrackChanges.list(current()).flatMap { c ->
+                if (c.from == c.to) listOfNotNull(places.lastOrNull { it.para == c.para }?.let { Triple(c, it.to, it.to) }) // a paragraph mark: its end
+                else WriterBridge.editorSpans(places, c.para, c.from, c.to).map { Triple(c, it.first, it.last + 1) }
+            }
+        }
+    } }
+    val hereChange by remember { derivedStateOf { state.selection.let { sel -> changesShown.firstOrNull { (_, a, z) -> sel.min in a..z }?.first } } }
+    /** The next (or previous) change, selected. */
+    fun goChange(forward: Boolean, from: Int = state.selection.min) {
+        val starts = changesShown.map { it.second to it.third }.distinct().sortedBy { it.first }
+        val to = if (forward) starts.firstOrNull { it.first > from } else starts.lastOrNull { it.first < from }
+        if (to == null) { message = if (starts.isEmpty()) "No tracked changes" else if (forward) "No more changes after this" else "No changes before this"; return }
+        state.selection = androidx.compose.ui.text.TextRange(to.first, to.second)
+    }
+    /** The changes at the cursor (or in the selection) accepted or rejected — or all of them — then on to the next. */
+    fun decideChanges(accept: Boolean, all: Boolean = false) = change {
+        val cur = current()
+        val sel = state.selection
+        val chosen = if (all) emptyList() else changesShown.filter { (_, a, z) -> if (sel.collapsed) sel.min in a..z else a < sel.max && z > sel.min || a == z && a in sel.min..sel.max }.map { it.first }.distinct()
+        if (!all && chosen.isEmpty()) { message = "No change here — Next finds one"; return@change }
+        val at = if (all) sel.min else changesShown.filter { it.first in chosen }.minOfOrNull { it.second } ?: sel.min // before meta changes (it is read again then)
+        meta = if (all) TrackChanges.all(cur, accept) else TrackChanges.decide(cur, chosen, accept)
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(at.coerceIn(0, state.annotatedString.text.length)))
+        message = when { all && accept -> "All changes accepted"; all -> "All changes rejected"; accept -> "Accepted"; else -> "Rejected" }
+        if (!all) goChange(true, at - 1)
+    }
     /**
      * References › Table of contents: put at the cursor's paragraph (or, if the document has one, brought up to date),
      * its page numbers from the pages as Writer lays them out. ponytail: laid out on the main thread; fine for a
@@ -1619,6 +1654,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     commentsShown.forEach { (c, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
                                         if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300)) }
                                 }
+                                // Tracked changes: inserted letters underlined, deleted struck through (their colour is the author's,
+                                // set on the letters), a paragraph mark's change a ¶, and a bar in the margin beside each changed line.
+                                if (changesShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = (BASE_SP * shownZoom / 100).sp.toPx() * 0.8f }
+                                    changesShown.forEach { (c, a, z) ->
+                                        if (z > text.length) return@forEach
+                                        val color = Color(0xFF000000 or TrackChanges.color(c.author).toLong())
+                                        val first = l.getLineForOffset(a); val last = l.getLineForOffset(if (z > a) z - 1 else a)
+                                        for (line in first..last) {
+                                            drawLine(color, Offset(-8.dp.toPx(), l.getLineTop(line)), Offset(-8.dp.toPx(), l.getLineBottom(line)), 1.5.dp.toPx())
+                                            if (z == a) {
+                                                paint.color = color.toArgb()
+                                                drawContext.canvas.nativeCanvas.drawText("¶", l.getHorizontalPosition(a, true) + 2.dp.toPx(), l.getLineBaseline(line), paint)
+                                                continue
+                                            }
+                                            val s = maxOf(a, l.getLineStart(line)); val e = minOf(z, l.getLineEnd(line, true))
+                                            if (e <= s) continue
+                                            val x1 = l.getBoundingBox(s).left; val x2 = l.getBoundingBox(e - 1).right
+                                            val base = l.getLineBaseline(line)
+                                            when (c.kind) {
+                                                TrackChanges.Kind.Inserted -> drawLine(color, Offset(x1, base + 2.dp.toPx()), Offset(x2, base + 2.dp.toPx()), 1.dp.toPx())
+                                                TrackChanges.Kind.Deleted -> (base - (base - l.getLineTop(line)) * 0.3f).let { y -> drawLine(color, Offset(x1, y), Offset(x2, y), 1.dp.toPx()) }
+                                                else -> Unit
+                                            }
+                                        }
+                                    }
+                                }
                                 // …and a paragraph's borders, as a light outline (the pages draw them as they print).
                                 val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
                                 val breaks = remember(looks) { looks.indices.filter { it > 0 && looks[it]?.pageBreakBefore == true } }
@@ -1800,6 +1862,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
+            // The tracked change the cursor is in: what, who and when (Review has Accept and Reject).
+            hereChange?.let { c ->
+                Row(Modifier.fillMaxWidth().clickable { tab = WriterTab.Review }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF000000 or TrackChanges.color(c.author).toLong())))
+                    Text(c.label + (if (c.author.isNotBlank()) " · " + c.author else "") + (c.date?.let { d -> runCatching { " · " + java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+                        .format(java.time.OffsetDateTime.parse(d).atZoneSameInstant(java.time.ZoneId.systemDefault())) }.getOrNull() } ?: ""),
+                        color = w, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                }
+            }
             // The comment the cursor is in: who and what, a tap opens it.
             hereComment?.takeIf { !paneOn }?.let { c ->
                 Row(Modifier.fillMaxWidth().clickable { commentsOpen = true }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2165,6 +2236,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
                     RibbonButton("Update citations", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                     Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                })
+                WriterTab.Review -> listOf({
+                    // Word's Changes group: go through them, each accepted or rejected, or all at once.
+                    Tool(R.drawable.ic_chevron_left, "Previous change", w, enabled = loaded) { goChange(false) }
+                    Tool(R.drawable.ic_chevron_right, "Next change", w, enabled = loaded) { goChange(true) }
+                    RibbonButton("Accept", w, R.drawable.ic_check, enabled = loaded && hereChange != null) { decideChanges(true) }
+                    RibbonButton("Reject", w, R.drawable.ic_close, enabled = loaded && hereChange != null) { decideChanges(false) }
+                }, {
+                    val any = changesShown.isNotEmpty()
+                    RibbonButton("Accept all", w, R.drawable.ic_done_all, enabled = loaded && any) { decideChanges(true, all = true) }
+                    RibbonButton("Reject all", w, R.drawable.ic_remove_done, enabled = loaded && any) { decideChanges(false, all = true) }
+                }, {
+                    RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
+                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
+                    }
                 })
                 WriterTab.View -> listOf({
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.

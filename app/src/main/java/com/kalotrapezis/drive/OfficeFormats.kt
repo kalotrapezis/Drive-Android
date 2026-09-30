@@ -39,6 +39,7 @@ internal data class DocRun(
     val script: Int = 0, // 1 superscript, -1 subscript
     val comments: List<String> = emptyList(), // the ids of the comments over these letters (OfficeDoc.comments)
     val cite: String? = null, // a citation's letters: Word's field ("CITATION Smi20 \l 1033"), or an ODT bibliography mark's source tag
+    val change: DocChange? = null, // Review › Track changes: letters someone inserted or deleted
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
 }
@@ -50,9 +51,16 @@ internal data class DocRun(
  */
 internal data class DocComment(val id: String, val author: String, val date: String?, val text: String, val raw: String? = null, val initials: String? = null)
 
+/**
+ * Review › Track changes (asked 2026-09-30): letters [deleted] or inserted by [author] at [date] (ISO). Word's w:ins /
+ * w:del (a move counts as a deletion and an insertion, as Word's own Accept treats it).
+ */
+internal data class DocChange(val deleted: Boolean, val author: String, val date: String?)
+
 /** A list that tags every run added to it with the comments open at that moment (the readers' ranges). */
-internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }) : ArrayList<DocRun>() {
-    override fun add(element: DocRun) = super.add((if (open.isEmpty()) element else element.copy(comments = open.toList())).let { r -> cite()?.let { r.copy(cite = it) } ?: r })
+internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }, private val change: () -> DocChange? = { null }) : ArrayList<DocRun>() {
+    override fun add(element: DocRun) = super.add((if (open.isEmpty()) element else element.copy(comments = open.toList())).let { r -> cite()?.let { r.copy(cite = it) } ?: r }
+        .let { r -> change()?.let { r.copy(change = it) } ?: r })
 }
 
 /** A picture, a chart or a shape stands in the text as this one character. */
@@ -662,7 +670,7 @@ internal object OfficeFormats {
      * neighbours carry it), one typed at its edge does not; all its letters deleted, the comment is gone.
      */
     fun carryFonts(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
-        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null } }) return new
+        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null || it.change != null } }) return new
         val from = pairParagraphs(old, new)
         var carried: String? = null // the font the previous paragraph ended with
         return new.mapIndexed { j, p ->
@@ -670,13 +678,15 @@ internal object OfficeFormats {
             val fonts = arrayOfNulls<String>(text.length)
             val notes = arrayOfNulls<List<String>>(text.length)
             val cites = arrayOfNulls<String>(text.length)
+            val changes = arrayOfNulls<DocChange>(text.length)
             val known = BooleanArray(text.length)
             from[j].takeIf { it >= 0 }?.let { old[it] }?.let { o ->
                 val oldText = o.text
                 val oldFonts = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.font) } } }
                 val oldNotes = ArrayList<List<String>>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.comments) } } }
                 val oldCites = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.cite) } } }
-                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; known[y] = true }
+                val oldChanges = ArrayList<DocChange?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.change) } } }
+                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; changes[y] = oldChanges[x]; known[y] = true }
                 // Common start and end first; the changed middle by longest common subsequence (small, where one typed).
                 var a = 0
                 while (a < text.length && a < oldText.length && text[a] == oldText[a]) { take(a, a); a++ }
@@ -728,13 +738,25 @@ internal object OfficeFormats {
                     k = e
                 }
             }
+            // …and the insertion both known neighbours are in (typed inside someone's inserted words: theirs too).
+            run {
+                var k = 0
+                while (k < text.length) {
+                    if (known[k]) { k++; continue }
+                    var e = k
+                    while (e < text.length && !known[e]) e++
+                    val left = if (k > 0) changes[k - 1] else null
+                    for (q in k until e) changes[q] = left?.takeIf { !it.deleted && it == (if (e < text.length) changes[e] else null) }
+                    k = e
+                }
+            }
             // The runs again, cut where the font or the comments change.
             var at = 0
             val runs = ArrayList<DocRun>()
             for (r in p.runs) {
                 var start = 0
-                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start]) {
-                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start])
+                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start] || changes[at + k] != changes[at + start]) {
+                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start], change = changes[at + start])
                     start = k
                 }
                 at += r.text.length
@@ -812,6 +834,12 @@ internal object OfficeFormats {
     }
 
     internal fun hex(rgb: Int) = "%06X".format(rgb and 0xFFFFFF)
+    /** Word letter formatting from an rPr's XML (a tracked change's formatting before it). */
+    internal fun docxLook(rPr: String): DocRun = runCatching {
+        val root = parse("""<x xmlns:w="$W" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">$rPr</x>""".toByteArray()).documentElement
+        DocxReader(emptyMap()).lookOf(root.kids().firstOrNull { it.localName == "rPr" }, null)
+    }.getOrDefault(DocRun(""))
+
     internal fun parseHex(s: String?): Int? = s?.removePrefix("#")?.takeIf { it.length == 6 }?.toIntOrNull(16)
 }
 
@@ -899,6 +927,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     private var fieldState = 0 // 0 outside a field, 1 in its instruction, 2 in its shown result
     private var fieldDepth = 0 // fields inside fields
     private var citeNow: String? = null // in a citation's shown text: its field (References › Citations)
+    private var changeNow: DocChange? = null // inside a w:ins / w:del
+    private fun <T> changed(e: Element, deleted: Boolean, f: () -> T): T {
+        val outer = changeNow
+        changeNow = DocChange(deleted, e.attr(W, "author") ?: "", e.attr(W, "date"))
+        try { return f() } finally { changeNow = outer }
+    }
     private fun fieldMark(instr: String): Char? = instr.trim().substringBefore(' ').uppercase().let { if (it == "PAGE") PAGE_FIELD else if (it == "NUMPAGES" || it == "SECTIONPAGES") PAGES_FIELD else null }
 
     /** A header's or footer's paragraphs, with their own relationships (a logo in a header is the header's picture). */
@@ -1049,7 +1083,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "sectPr" -> keepParts += e.localName to OfficeFormats.xml(e)
                 // A drop cap's letter (a framed paragraph of its own): joined to the paragraph after it, below.
                 "framePr" -> if (e.attr(W, "dropCap").let { it == "drop" || it == "margin" }) keepParts += "dropFrame" to OfficeFormats.xml(e) else notes += "shapes and text boxes"
-                "pPrChange" -> notes += "tracked changes"
+                // A paragraph's formatting changed (tracked): kept, for Accept or Reject.
+                "pPrChange" -> keepParts += e.localName to OfficeFormats.xml(e)
                 // The rest — spacing, indents, tab stops, borders, a page break before it… — goes back as it was.
                 else -> keepParts += e.localName to OfficeFormats.xml(e)
             }
@@ -1057,7 +1092,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A list numbered by its style shows as the list it is (asked 2026-09-28: the test suite's bullets did not show).
         if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
-        val runs = CommentedRuns(openComments) { citeNow }
+        val runs = CommentedRuns(openComments, { citeNow }, { changeNow })
         // A page break inside a paragraph: the paragraph is split there and the part after it starts a page — Word's
         // own "page break before", which saves and shows the same (2026-09-28; it made files copy-only before).
         // A break at the paragraph's start: the paragraph starts a page. At its end (or alone in it): the next paragraph
@@ -1087,8 +1122,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         if (url == null) notes += "links inside the document"
                         content(e, url ?: link)
                     }
-                    "ins", "moveTo" -> { notes += "tracked changes"; content(e, link) }
-                    "del", "moveFrom" -> notes += "tracked changes"
+                    "ins", "moveTo" -> changed(e, false) { content(e, link) }
+                    "del", "moveFrom" -> changed(e, true) { content(e, link) }
                     "fldSimple" -> { notes += "fields (page numbers, dates, contents)"
                         val mark = if (fieldMarks) fieldMark(e.attr(W, "instr") ?: "") else null
                         if (mark != null) runs += DocRun(mark.toString()) else content(e, link) }
@@ -1098,6 +1133,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
+                    // A move's two ends are named: its deletion and insertion are kept, the pairing is not.
+                    "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd" -> Unit
                     else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
                 }
             }
@@ -1112,39 +1149,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
 
     /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
     fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: (page: Boolean) -> Unit) {
-        var look = DocRun("", link = link)
-        val kept = StringBuilder() // what Writer carries without editing, as the file has it
-        r.kid(W, "rPr")?.let { rPr ->
-            for (e in rPr.kids()) {
-                val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
-                when (e.localName) {
-                    "b" -> look = look.copy(bold = on)
-                    "i" -> look = look.copy(italic = on)
-                    "strike" -> look = look.copy(strike = on)
-                    "u" -> {
-                        look = look.copy(underline = e.attr(W, "val") != "none")
-                        if (e.attr(W, "val") !in setOf(null, "single", "none")) kept.append(OfficeFormats.xml(e)) // double, dotted, wavy…
-                    }
-                    "sz" -> e.attr(W, "val")?.toFloatOrNull()?.let { look = look.copy(sizePt = it / 2) } // a size set on purpose stays, even the normal one (inside a heading it matters)
-                    "color" -> look = look.copy(color = OfficeFormats.parseHex(e.attr(W, "val")))
-                    "highlight" -> look = look.copy(highlight = WORD_HIGHLIGHTS[e.attr(W, "val")])
-                    "rStyle" -> when (styleName[e.attr(W, "val")] ?: e.attr(W, "val")?.lowercase()) {
-                        "strong" -> look = look.copy(bold = true)
-                        "emphasis" -> look = look.copy(italic = true)
-                        "hyperlink", "internet link", "default paragraph font" -> Unit
-                        else -> notes += "character styles"
-                    }
-                    // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
-                    in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
-                    "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
-                    "vanish" -> if (on) notes += "hidden text"
-                    "rPrChange" -> notes += "tracked changes"
-                    else -> if (e.namespaceURI != W) kept.append(OfficeFormats.xml(e)) // Word 2010's own (w14:ligatures…), last in the list
-                        else if (on) notes += "other text effects"
-                }
-            }
-        }
-        if (kept.isNotEmpty()) look = look.copy(font = kept.toString())
+        val look = lookOf(r.kid(W, "rPr"), link)
         for (e in r.kids()) {
             if (e.namespaceURI != W) {
                 // Word wraps newer drawings in mc:AlternateContent (a shape, and a fallback for older readers): kept whole.
@@ -1182,7 +1187,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     }
                     else -> notes += "fields (page numbers, dates, contents)"
                 }
-                "delText", "delInstrText" -> notes += "tracked changes"
+                "delText" -> runs += look.copy(text = e.textContent)
+                "delInstrText" -> if (fieldDepth == 1) fieldInstr.append(e.textContent) else notes += "fields (page numbers, dates, contents)"
                 "footnoteReference", "endnoteReference" -> notes += "footnotes"
                 "commentReference" -> Unit // written again after the comment's range
                 "annotationRef" -> notes += "comments"
@@ -1190,6 +1196,43 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> notes += "other content"
             }
         }
+    }
+    /** A run's letter formatting (its rPr): what Writer edits, and the rest carried raw in [DocRun.font]. */
+    fun lookOf(rPr: Element?, link: String?): DocRun {
+        var look = DocRun("", link = link)
+        val kept = StringBuilder() // what Writer carries without editing, as the file has it
+        rPr?.let { rPr ->
+            for (e in rPr.kids()) {
+                val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
+                when (e.localName) {
+                    "b" -> look = look.copy(bold = on)
+                    "i" -> look = look.copy(italic = on)
+                    "strike" -> look = look.copy(strike = on)
+                    "u" -> {
+                        look = look.copy(underline = e.attr(W, "val") != "none")
+                        if (e.attr(W, "val") !in setOf(null, "single", "none")) kept.append(OfficeFormats.xml(e)) // double, dotted, wavy…
+                    }
+                    "sz" -> e.attr(W, "val")?.toFloatOrNull()?.let { look = look.copy(sizePt = it / 2) } // a size set on purpose stays, even the normal one (inside a heading it matters)
+                    "color" -> look = look.copy(color = OfficeFormats.parseHex(e.attr(W, "val")))
+                    "highlight" -> look = look.copy(highlight = WORD_HIGHLIGHTS[e.attr(W, "val")])
+                    "rStyle" -> when (styleName[e.attr(W, "val")] ?: e.attr(W, "val")?.lowercase()) {
+                        "strong" -> look = look.copy(bold = true)
+                        "emphasis" -> look = look.copy(italic = true)
+                        "hyperlink", "internet link", "default paragraph font" -> Unit
+                        else -> notes += "character styles"
+                    }
+                    // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
+                    in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
+                    "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
+                    "vanish" -> if (on) notes += "hidden text"
+                    "rPrChange" -> kept.append(OfficeFormats.xml(e)) // formatting changed (tracked): carried, for Accept or Reject
+                    else -> if (e.namespaceURI != W) kept.append(OfficeFormats.xml(e)) // Word 2010's own (w14:ligatures…), last in the list
+                        else if (on) notes += "other text effects"
+                }
+            }
+        }
+        if (kept.isNotEmpty()) look = look.copy(font = kept.toString())
+        return look
     }
 
     fun paragraphStyle(id: String): Int {
@@ -1415,6 +1458,7 @@ private object DocxWriter {
 
         // Pictures added in Writer: each a new part in word/media, a relationship, and an inline drawing.
         var docPrId = 9000
+        var changeId = 90000 // a tracked change's id (Word's own are renumbered on its next save)
         picture = { img -> (img.raw ?: run {
                 val bytes = img.bytes ?: return@run ""
                 val name = generateSequence(1) { it + 1 }.map { "${dir}media/tetra-$it.${img.extension}" }.first { it !in parts }
@@ -1523,12 +1567,25 @@ private object DocxWriter {
                 if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c)} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
                 cite = c
             }
+            // Tracked changes: the letters inside Word's w:ins / w:del.
+            var change: DocChange? = null
+            fun changeTo(c: DocChange?) {
+                if (c == change) return
+                if (change != null) body.append(if (change!!.deleted) "</w:del>" else "</w:ins>")
+                if (c != null) body.append("""<w:${if (c.deleted) "del" else "ins"} w:id="${changeId++}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}>""")
+                change = c
+            }
             while (k < runs.size) {
                 val link = runs[k].link
                 var end = k
                 while (end < runs.size && runs[end].link == link) end++
-                if (link != null) { citeTo(null); body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
-                for (r in runs.subList(k, end)) { commentMarks(r.comments); if (link == null) citeTo(r.cite); body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt)) }
+                if (link != null) { changeTo(null); citeTo(null); body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
+                for (r in runs.subList(k, end)) {
+                    if (r.comments != openComments.toList() || link == null && r.cite != cite) changeTo(null)
+                    commentMarks(r.comments); if (link == null) citeTo(r.cite); changeTo(r.change)
+                    body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
+                }
+                changeTo(null)
                 if (link != null) body.append("</w:hyperlink>")
                 k = end
             }
@@ -1590,7 +1647,7 @@ private object DocxWriter {
         r.highlight?.let { props += "highlight" to """<w:highlight w:val="${nearestHighlight(it)}"/>""" }
         if (r.underline && props.none { it.first == "u" }) props += "u" to """<w:u w:val="single"/>"""
         if (r.script != 0) props += "vertAlign" to """<w:vertAlign w:val="${if (r.script > 0) "superscript" else "subscript"}"/>"""
-        val rPr = props.sortedBy { RPR_ORDER.indexOf(it.first).let { i -> if (i < 0) RPR_ORDER.size else i } }.joinToString("") { it.second } // extensions last
+        val rPr = props.sortedBy { if (it.first == "rPrChange") RPR_ORDER.size + 1 else RPR_ORDER.indexOf(it.first).let { i -> if (i < 0) RPR_ORDER.size else i } }.joinToString("") { it.second } // extensions, then a tracked change, last
         append("<w:r>")
         if (rPr.isNotEmpty()) append("<w:rPr>").append(rPr).append("</w:rPr>")
         if (r.image != null) { append(picture(r.image)); append("</w:r>"); return@buildString }
@@ -1598,7 +1655,7 @@ private object DocxWriter {
             when (m.value) {
                 "\t" -> append("<w:tab/>")
                 LINE_BREAK.toString() -> append("<w:br/>")
-                else -> append("""<w:t xml:space="preserve">""").append(OfficeFormats.esc(m.value)).append("</w:t>")
+                else -> (if (r.change?.deleted == true) "delText" else "t").let { t -> append("""<w:$t xml:space="preserve">""").append(OfficeFormats.esc(m.value)).append("</w:$t>") }
             }
         }
         append("</w:r>")

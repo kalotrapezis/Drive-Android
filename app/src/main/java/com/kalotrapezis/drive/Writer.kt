@@ -2272,8 +2272,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Column right", w, R.drawable.ic_add_column_right, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
                         RibbonButton("Split", w, R.drawable.ic_call_split, enabled = table != null) { commitCell(); tableDialog = "split" }
                     }, {
-                        RibbonButton("Delete row", w, R.drawable.ic_delete, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
-                        RibbonButton("Delete column", w, R.drawable.ic_delete, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton("Delete row", w, R.drawable.ic_delete_row, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton("Delete column", w, R.drawable.ic_delete_column, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
                         RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = selectedPicture != null) {
                             commitCell()
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home

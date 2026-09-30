@@ -10,4 +10,9 @@ class TextCountsTest {
         assertEquals(34, c.chars)
         assertEquals(40, c.withSpaces)
     }
+    @Test fun aTableCountsItsCells() {
+        fun p(t: String) = DocPara(listOf(DocRun(t)))
+        val table = DocTable("", "", listOf(DocRow("", listOf(DocCell("", listOf(p("one two"))), DocCell("", listOf(p("three")))))))
+        assertEquals(3, TextCounts.of(DocPara(listOf(DocRun(OBJECT_MARK.toString())), table = table).countedText()).words)
+    }
 }

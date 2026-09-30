@@ -749,18 +749,19 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     /** A table cell's shading, and a border. */
     class Box(val x: Float, val y: Float, val w: Float, val h: Float, val color: Int)
     class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
-    class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean)
+    /** [key]: the picture's (DocImage.key), for Picture › Position to find it. */
+    class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val key: String? = null) {
+        fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) {
+            (picture as? ShapePicture)?.drawAt(canvas, x, y, w, h) ?: run { picture.setBounds(x.toInt(), y.toInt(), (x + w).toInt(), (y + h).toInt()); picture.draw(canvas) }
+        }
+    }
 
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
-    fun draw(canvas: Canvas) {
+    fun draw(canvas: Canvas, skip: String? = null /* a float's key: left out (it is being moved) */) {
         page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
         page.border?.let { b -> canvas.drawRect(b.left, b.top, page.width - b.right, page.height - b.bottom, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE; strokeWidth = b.line.width; color = 0xFF000000.toInt() or b.line.color }) }
-        fun floats(behind: Boolean) = floats.filter { it.behind == behind }.forEach { f ->
-            val shape = f.picture as? ShapePicture
-            if (shape != null) shape.drawAt(canvas, f.x, f.y, f.w, f.h)
-            else { f.picture.setBounds(f.x.toInt(), f.y.toInt(), (f.x + f.w).toInt(), (f.y + f.h).toInt()); f.picture.draw(canvas) }
-        }
+        fun floats(behind: Boolean) = floats.filter { it.behind == behind && (skip == null || it.key != skip) }.forEach { it.drawAt(canvas) }
         section.watermark?.let { text ->
             // Across the text's width, turned 45° up, light grey and half see-through, behind the text (Word's look).
             val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x80C0C0C0.toInt(); typeface = android.graphics.Typeface.DEFAULT; textSize = 100f }
@@ -829,6 +830,10 @@ internal object OfficePages {
 
     /** Word's default tab stops: every half inch. */
     private const val TAB = 36f
+    /** Between a Square picture and the text beside it: Word's 0.13" (distL/distR 114300). */
+    private const val SIDE_GAP = 9f
+    /** Less room than this beside a Square picture: no text there. */
+    private const val MIN_BESIDE = 72f
 
     /**
      * [pageOf], when given, learns the page number (as printed) each paragraph starts on — for a table of contents;
@@ -839,7 +844,19 @@ internal object OfficePages {
         if (k > 0) q else q.copy(runs = listOf(DocRun(ref.text, script = 1), DocRun(" ")) + q.runs)
     }
 
+    /** A floating picture the text goes around on its page (Square wrap), or under (a [band]: no text beside it). */
+    private class Wall(val key: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val band: Boolean)
+
     fun layout(given: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pageIndexOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
+        // Pictures placed on the page itself (not from their paragraph) may stand beside text that comes before them:
+        // laid out once to find where they are, then again with the text going around them from the page's top.
+        val found = HashMap<Int, MutableList<Wall>>()
+        val once = layoutPass(given, styles, pageOf, pageIndexOf, pictureBytes, emptyMap(), found)
+        return if (found.isEmpty()) once else layoutPass(given, styles, pageOf, pageIndexOf, pictureBytes, found, HashMap())
+    }
+
+    private fun layoutPass(given: OfficeDoc, styles: DocStyles, pageOf: IntArray?, pageIndexOf: IntArray?, pictureBytes: (DocImage) -> ByteArray?,
+        seed: Map<Int, List<Wall>>, found: MutableMap<Int, MutableList<Wall>>): List<LaidPage> {
         // Notes numbered as they stand now; endnotes laid out after the text, each its number then its words.
         val numbered = OfficeFormats.numberNotes(given)
         val bodyCount = numbered.paras.size
@@ -860,6 +877,13 @@ internal object OfficePages {
         var y = page.top
         // The page's pictures that no text may stand beside (top-and-bottom wrap), top to bottom.
         val bands = ArrayList<Pair<Float, Float>>()
+        // …and those it goes around (Square), with the pictures already counted (seeded from the page's first pass).
+        val squares = ArrayList<Wall>()
+        val walled = HashSet<String>()
+        fun seedPage() { seed[pages.size]?.forEach { w -> walled += w.key; if (w.band) bands += w.y0 to w.y1 else squares += w } }
+        seedPage()
+        /** Does a line from [t] to [b] cross a band? */
+        fun crosses(t: Float, b: Float) = bands.any { (a, e) -> t < e && b > a }
         /** [at] moved below any band a line of height [h] there would cross. */
         fun clear(at: Float, h: Float): Float {
             var yy = at
@@ -884,11 +908,12 @@ internal object OfficePages {
         }
         fun newPage() {
             placeFeet()
-            bands.clear()
-            // In columns: the next column first.
+            // In columns: the next column first (the page's pictures still stand where they are).
             if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
+            bands.clear(); squares.clear(); walled.clear()
             pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines)
             pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); col = 0; page = frame.column(0); y = page.top; number++; firstOfSection = false
+            seedPage()
         }
         /** A page break: a whole new page, whatever column the text is in. */
         fun breakPage() { col = frame.columns; newPage() }
@@ -943,7 +968,25 @@ internal object OfficePages {
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val drops = ArrayList<DropLetters>()
             val notesAt = ArrayList<Pair<Int, DocRun>>()
-            val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating, drops, notesAt)
+            var (layout, shift, lastExtra) = paragraph(doc, p, look, styles, page, marker, pictureBytes, floating, drops, notesAt)
+            /**
+             * Square wrap: each line of [l], laid out from [at], indented past the pictures beside it — on the side with more
+             * room. ponytail: one side only (Word's "both sides" puts text on each side of a picture in the middle).
+             */
+            fun besides(l: StaticLayout, at: Float): Pair<IntArray, IntArray>? {
+                val x0 = page.left - shift; val x1 = x0 + l.width / U
+                val lefts = IntArray(l.lineCount + 1); val rights = IntArray(l.lineCount + 1)
+                var any = false
+                for (k in 0 until l.lineCount) {
+                    val t = at + l.topPt(k) - l.topPt(0); val b = at + l.bottomPt(k) - l.topPt(0)
+                    for (w in squares) if (t < w.y1 && b > w.y0 && w.x1 > x0 && w.x0 < x1) {
+                        any = true
+                        if (w.x0 - SIDE_GAP - x0 >= x1 - w.x1 - SIDE_GAP) rights[k] = maxOf(rights[k], Math.round((x1 - w.x0 + SIDE_GAP) * U))
+                        else lefts[k] = maxOf(lefts[k], Math.round((w.x1 + SIDE_GAP - x0) * U))
+                    }
+                }
+                return if (any) lefts to rights else null
+            }
             // Each line's footnotes: they must fit on the page with it.
             val feetOf = notesAt.filter { it.second.note?.end == false }.groupBy({ layout.getLineForOffset(it.first) }, { it.second })
             val style = p.keep?.style + "/" + p.heading
@@ -976,14 +1019,32 @@ internal object OfficePages {
                     for ((img, place) in floating) {
                         val f = floatAt(img, place, natural, page, pictureBytes)
                         floats += f
-                        // Top and bottom: no text beside it — lines that would cross it go on below it.
-                        // ponytail: square wrap does not yet flow the text beside it.
-                        if (place.wrap == PictureWrap.TopBottom) bands += f.y to f.y + f.h
+                        if (place.wrap != PictureWrap.TopBottom && place.wrap != PictureWrap.Square) continue
+                        // Top and bottom: no text beside it — lines that would cross it go on below it. Square: the text
+                        // beside it, unless there is too little room beside it for words (then as top and bottom, as Word).
+                        val room = maxOf(f.x - SIDE_GAP - page.left, page.left + page.textWidth - f.x - f.w - SIDE_GAP)
+                        val wall = Wall(img.key, f.x, f.y, f.x + f.w, f.y + f.h, place.wrap == PictureWrap.TopBottom || room < MIN_BESIDE)
+                        if (place.fromV != "paragraph") found.getOrPut(pages.size) { ArrayList() } += wall
+                        if (!walled.add(img.key)) continue
+                        if (wall.band) bands += f.y to f.y + f.h else squares += wall
                     }
                     y = clear(y, layout.bottomPt(line) - top)
                 }
+                // Beside a Square picture: laid out again, the lines beside it narrower (again while that moves lines).
+                if (line == 0 && squares.isNotEmpty()) {
+                    var was: Pair<IntArray, IntArray>? = null
+                    for (pass in 0 until 3) {
+                        val ind = besides(layout, y) ?: break
+                        if (was != null && ind.first.contentEquals(was.first) && ind.second.contentEquals(was.second)) break
+                        was = ind
+                        layout = paragraph(doc, p, look, styles, page, marker, pictureBytes, ArrayList(), ArrayList(), ArrayList(), ind).first
+                    }
+                }
                 var last = line
-                while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limitWith(line, last + 1)) last++
+                // Lines that fit and cross no band (a picture no text stands beside, further down).
+                while (last + 1 < layout.lineCount && y + (layout.bottomPt(last + 1) - top) <= limitWith(line, last + 1)
+                    && !crosses(y + layout.topPt(last + 1) - top, y + layout.bottomPt(last + 1) - top)) last++
+                val atBand = last + 1 < layout.lineCount && crosses(y + layout.topPt(last + 1) - top, y + layout.bottomPt(last + 1) - top)
                 pieces += LaidPage.Piece(layout, line, last, page.left - shift, y)
                 (line..last).flatMap { feetOf[it].orEmpty() }.takeIf { it.isNotEmpty() }?.let { refs ->
                     val ls = footLayouts(refs)
@@ -996,7 +1057,7 @@ internal object OfficePages {
                     prevEnd, lines) }
                 y += layout.bottomPt(last) - top
                 line = last + 1
-                if (line < layout.lineCount) newPage()
+                if (line < layout.lineCount && !atBand) newPage() // at a band: the next lines go on below it (clear)
             }
             // Word spaces every line, the last one too; Android's layout leaves the last line unspaced.
             y += lastExtra
@@ -1228,7 +1289,7 @@ internal object OfficePages {
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
         val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
-        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind)
+        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key)
     }
 
     /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */
@@ -1249,7 +1310,8 @@ internal object OfficePages {
 
     private fun paragraph(doc: OfficeDoc, p: DocPara, look: ParaLook, styles: DocStyles, page: DocPage, marker: String?, pictureBytes: (DocImage) -> ByteArray?,
         floating: MutableList<Pair<DocImage, PictureXml.Place>>, drops: MutableList<DropLetters>? = null /* the body's: a drop cap drawn */,
-        notesAt: MutableList<Pair<Int, DocRun>>? = null /* the body's: where each note's reference is in the text */): Triple<StaticLayout, Float, Float> {
+        notesAt: MutableList<Pair<Int, DocRun>>? = null /* the body's: where each note's reference is in the text */,
+        indents: Pair<IntArray, IntArray>? = null /* each line's left and right, beside a picture (layout units) */): Triple<StaticLayout, Float, Float> {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
@@ -1326,6 +1388,7 @@ internal object OfficePages {
         fun build() = StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setAlignment(align)
             .setLineSpacing(gap, multiple).setIncludePad(false)
             .setJustificationMode(if (aligned == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
+            .apply { indents?.let { (l, r) -> setIndents(l, r) } }
             .build()
         // Tabs, left to right (Android's layout knows only left stops): each goes to the next stop after where it
         // starts — the paragraph's own, a list's text position, then every half inch — the text after it lined up to

@@ -285,3 +285,60 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDr
         }
     }
 }
+
+/**
+ * Picture › Position (the plan, 2026-10-01: floating objects placed freely on the page, as in Word): [page] as the pages
+ * lay it out and the picture [key] on it, dragged with a finger or the pen; let go and it is [place]d there (pt from the
+ * page's top left) — the page comes back laid out again, the text around it. Two fingers zoom and move the page.
+ */
+@Composable
+internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, place: (Float, Float) -> Unit) {
+    val float = page.floats.firstOrNull { it.key == key }
+    val aspect = page.page.height / page.page.width
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    var moved by remember { mutableStateOf(Offset.Zero) } // pt, while dragging and until the page comes back
+    var last by remember { mutableStateOf<Offset?>(null) }
+    androidx.compose.runtime.LaunchedEffect(page) { moved = Offset.Zero }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Drag it where it goes", style = MaterialTheme.typography.titleMedium)
+                val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 200.dp).coerceAtLeast(160.dp)
+                // The whole page in view (two fingers zoom in).
+                Box(Modifier.align(Alignment.CenterHorizontally).height(room).aspectRatio(1 / aspect).clip(RoundedCornerShape(8.dp)).background(Color(0xFF5F6368))) {
+                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(page) {
+                        fun at(p: Offset) = (p - pan) / (size.width * zoom) * page.page.width // in points on the page
+                        detectDraw(
+                            start = { p -> val q = at(p); last = q.takeIf { float != null && it.x in float.x..float.x + float.w && it.y in float.y..float.y + float.h } },
+                            move = { p -> last?.let { l -> val q = at(p); moved += q - l; last = q } },
+                            end = { if (last != null && float != null && moved != Offset.Zero) place(float.x + moved.x, float.y + moved.y); last = null },
+                            cancel = { last = null; moved = Offset.Zero },
+                            transform = { centre, move, by ->
+                                val z = (zoom * by).coerceIn(1f, 6f)
+                                val w = size.width * z
+                                val p = centre - (centre - pan) * (z / zoom) + move
+                                pan = Offset(p.x.coerceIn(size.width - w, 0f), p.y.coerceIn(minOf(0f, size.height - w * aspect), 0f))
+                                zoom = z
+                            })
+                    }) {
+                        drawIntoCanvas { c -> val n = c.nativeCanvas; val k = size.width * zoom / page.page.width
+                            n.save(); n.translate(pan.x, pan.y); n.scale(k, k)
+                            n.drawRect(0f, 0f, page.page.width, page.page.height, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+                            page.draw(n, skip = key)
+                            float?.let { f ->
+                                val x = f.x + moved.x; val y = f.y + moved.y
+                                f.drawAt(n, x, y)
+                                n.drawRect(x, y, x + f.w, y + f.h, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                    style = android.graphics.Paint.Style.STROKE; strokeWidth = 1.5f / k * 2; color = 0xFF1A73E8.toInt() })
+                            }
+                            n.restore() }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Done") }
+                }
+            }
+        }
+    }
+}

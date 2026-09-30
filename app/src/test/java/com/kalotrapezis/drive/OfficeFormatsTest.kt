@@ -428,6 +428,32 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `Position moves a file's floating picture or shape on its page, through the file`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(10, 5, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }.toByteArray()
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val shape = DocImage("s1", null, 72f, 72f, PictureXml.newShape("ellipse", kind, 0xFFFFC114.toInt(), 0xFF000000.toInt(), 1f, 72f, 72f))
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Text "), DocRun(OBJECT_MARK.toString(), image = DocImage("n1", null, 100f, 50f, null, png, "png")),
+                DocRun(" and "), DocRun(OBJECT_MARK.toString(), image = shape)))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val read = OfficeFormats.read(bytes, kind)
+            fun images(d: OfficeDoc) = d.paras.single().runs.mapNotNull { it.image }
+            // A file's picture made Square, a shape In front; each moved (twice: the second place wins).
+            val (pic, shp) = images(read).let { PictureXml.withWrap(it[0], PictureWrap.Square, kind) to PictureXml.withWrap(it[1], PictureWrap.InFront, kind) }
+            val moved = listOf(PictureXml.placed(PictureXml.placed(pic, 10f, 10f, kind), 150f, 250f, kind), PictureXml.placed(shp, 300f, 400.5f, kind))
+            // The pages see it at once…
+            assertEquals(kind.name, PictureXml.Place("page", 150f, null, "page", 250f, null, PictureWrap.Square), PictureXml.placeOf(moved[0]))
+            assertEquals(kind.name, PictureXml.Place("page", 300f, null, "page", 400.5f, null, PictureWrap.InFront), PictureXml.placeOf(moved[1]))
+            // …and the file keeps it.
+            val changed = read.copy(paras = listOf(read.paras.single().let { p -> var i = 0; p.copy(runs = p.runs.map { r -> if (r.image != null) r.copy(image = moved[i++]) else r }) }))
+            val out = OfficeFormats.write(changed, kind, bytes)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("positioned.${kind.extension}").writeBytes(out)
+            val back = images(OfficeFormats.read(out, kind))
+            assertEquals(kind.name, moved.map { PictureXml.placeOf(it) }, back.map { PictureXml.placeOf(it) })
+            if (kind == OfficeKind.Odt) assertTrue("the shape's style places it from the page", Regex("""Tetra_20_shape_[^"]*_20_page" style:family="graphic"><style:graphic-properties [^>]*vertical-rel="page"""")
+                .containsMatchIn(String(OfficeFormats.unzip(out).getValue("content.xml"), Charsets.UTF_8)))
+        }
+    }
+
     @Test fun `a drawing keeps its strokes inside its picture, through the file`() {
         val plain = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(10, 5, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }.toByteArray()
         val strokes = listOf(InkStroke(listOf(androidx.compose.ui.geometry.Offset(0.1f, 0.2f), androidx.compose.ui.geometry.Offset(0.9f, 0.4f)), 0xFFE53935.toInt(), 0.75f, false),

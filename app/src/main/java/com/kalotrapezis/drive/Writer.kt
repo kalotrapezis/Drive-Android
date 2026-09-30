@@ -738,7 +738,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }
-    var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style changes
+    var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style (or a picture: its wrap, size, place) changes
     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
     var loaded by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf<String?>(null) }
@@ -797,6 +797,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home's ⋯ page: for which paragraphs, as they look
     // The pictures' keys in the order they stand in the text.
     val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
+    /** The editor's text [from]–[to] counted as Word counts: a table's words where it stands, pictures not at all. */
+    fun counted(text: String, from: Int = 0, to: Int = text.length): TextCounts {
+        var n = text.substring(0, from).count { it == EDITOR_PICTURE_CHAR }
+        val out = StringBuilder()
+        for (i in from until to) text[i].let { c -> if (c != EDITOR_PICTURE_CHAR) out.append(c)
+            else pictures[keys.getOrNull(n++)]?.table?.let { t -> out.append('\n').append(DocPara(emptyList(), table = t).countedText()).append('\n') } }
+        return TextCounts.of(out.toString())
+    }
     // The selected picture (a tap on it selects it): its place in the text and its key.
     val selectedPicture by remember { derivedStateOf {
         val text = state.annotatedString.text
@@ -1072,7 +1080,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         pictures[key] = img
         val at = state.selection
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
-        dirty = true
+        dirty = true; styleEdits++ // the text may be the same: the draft is kept all the same
     }
     // Picture › Replace: another photo in its place, as wide as it was, wrapped as it was.
     val replacePicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
@@ -1493,6 +1501,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             drawing = Drawing(usable.map { laid[it] }, usable.map { anchors[it] }, usable.indexOf(index[at.min()]).coerceAtLeast(0))
         }
     }
+    /** Picture › Position: the page a floating picture is on, as laid out, and its key. */
+    var positioning by remember { mutableStateOf<Pair<LaidPage, String>?>(null) }
+    fun position(key: String) = scope.launch {
+        val (laid, _) = laidOut(current()) ?: return@launch
+        positioning = laid.firstOrNull { p -> p.floats.any { it.key == key } }?.let { it to key }
+            ?: run { message = "It is not on a page (in a table's cell?)"; null }
+    }
     /** A drawing made in Writer (its strokes ride in its PNG), drawn on again: on its page if it is placed on one, else in its box. */
     fun editDrawing(key: String) {
         val img = pictures[key] ?: return
@@ -1694,8 +1709,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 if (!phone && loaded) {
                     val text = state.annotatedString.text
                     val sel = state.selection
-                    val all = remember(text) { TextCounts.of(text) }
-                    val part = remember(text, sel) { if (sel.collapsed) null else TextCounts.of(text.substring(sel.min, sel.max)) }
+                    val tables = keys.map { pictures[it]?.table } // a cell edited changes no text
+                    val all = remember(text, tables) { counted(text) }
+                    val part = remember(text, sel, tables) { if (sel.collapsed) null else counted(text, sel.min, sel.max) }
                     Text(if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
                         else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
@@ -2250,6 +2266,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                         }
                         RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
+                        // Floating ones are dragged where they go on their page.
+                        RibbonButton("Position", w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
                     }, {
                         RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
                         RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
@@ -2694,7 +2712,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                         }
                         // ponytail: floating pictures are drawn in line; showing them in place comes with dragging.
-                        Text("Writer shows it in line for now; Word and LibreOffice show it as chosen.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        Text("The typing view shows it in line; the pages show it as chosen. Position places a floating one on its page.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                     }
                 },
                 confirmButton = { TextButton(onClick = { wrapping = false }) { Text("Close") } },
@@ -2722,6 +2740,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
         CommentSidebar(first.entries.sortedBy { it.value }.map { it.key }, hereComment, { commentsOpen = false },
             commentActions { c -> commentsOpen = false; first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
+    }
+    positioning?.let { (page, key) ->
+        PositionDialog(page, key, { positioning = null }) { x, y ->
+            val img = pictures[key] ?: return@PositionDialog
+            changePicture(key, PictureXml.placed(img, x, y, kind))
+            position(key) // the page again, the text around it where it now is
+        }
     }
     drawing?.let { d ->
         DrawDialog(d.boxPt, { drawing = null }, d.pages, d.start, d.boxAspect, d.strokes) { bytes, wPt, hPt, place, k ->
@@ -2784,11 +2809,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
-                val all = remember { TextCounts.of(current().paras.joinToString("\n") { it.text }) }
+                val all = remember { TextCounts.of(current().paras.joinToString("\n") { it.countedText() }) }
                 Text("${plural(all.words, "word")} · ${plural(all.chars, "character")} (${all.withSpaces} with spaces) · ${plural(current().paras.count { it.text.isNotBlank() }, "paragraph")}", style = MaterialTheme.typography.bodyMedium)
                 // The selection's counts too, as Word's Word Count does (asked 2026-09-30: the phone's counter is here).
                 val sel = state.selection
-                if (!sel.collapsed) TextCounts.of(state.annotatedString.text.substring(sel.min, sel.max)).let {
+                if (!sel.collapsed) counted(state.annotatedString.text, sel.min, sel.max).let {
                     Text("Selected: ${plural(it.words, "word")} · ${plural(it.chars, "character")} (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
@@ -2809,9 +2834,12 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
     companion object {
         private val WORD = Regex("""[\p{L}\p{N}]+(['’-][\p{L}\p{N}]+)*""")
         fun of(text: String) = TextCounts(WORD.findAll(text).count(),
-            text.count { !it.isWhitespace() && it != '\uFFFC' }, text.count { it != '\n' && it != LINE_BREAK && it != '\uFFFC' })
+            text.count { !it.isWhitespace() && it !in PICTURES }, text.count { it != '\n' && it != LINE_BREAK && it !in PICTURES })
+        private val PICTURES = charArrayOf(OBJECT_MARK, EDITOR_PICTURE_CHAR, PICTURE_SPOT)
     }
 }
+/** A paragraph's letters as Word counts them: a table's are its cells'. */
+internal fun DocPara.countedText(): String = table?.rows?.joinToString("\n") { r -> r.cells.joinToString("\n") { c -> c.paras.joinToString("\n") { it.countedText() } } } ?: text
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
 @Composable

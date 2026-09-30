@@ -162,7 +162,7 @@ internal object PictureXml {
         val raw = img.raw ?: return PictureWrap.InLine
         if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
-            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_(\w+)"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
+            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
         return when {
             "<wp:inline" in raw -> PictureWrap.InLine
             "<wp:wrapTopAndBottom" in raw -> PictureWrap.TopBottom
@@ -207,16 +207,16 @@ internal object PictureXml {
 
     /** ODF: the frame's anchor, and a graphic style of Writer's own saying how the text goes around it. */
     fun odt(xml: String, wrap: PictureWrap, onPage: Pair<Float, Float>? = null): String {
-        // A shape Writer made keeps its look: its style's name changes only in how the text goes around it.
+        val end = xml.indexOf('>')
+        val at = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { (x, y) -> " svg:x=\"${OdtWriter.fmt(x)}pt\" svg:y=\"${OdtWriter.fmt(y)}pt\"" } ?: ""
+        // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
+        // it is placed on the page).
         if (xml.startsWith("<draw:custom-shape") && "Tetra_20_shape_" in xml) {
-            val end = xml.indexOf('>')
-            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+_)\w+"""), "$1${wrap.name}")
-                .replace(Regex("""\stext:anchor-type="[^"]*""""), "") + " text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\""
+            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+_)[A-Za-z]+(?:$ODT_PAGE_REL)?"""), "$1${wrap.name}" + if (at.isEmpty()) "" else ODT_PAGE_REL)
+                .replace(Regex("""\s(text:anchor-type|svg:x|svg:y)="[^"]*""""), "") + " text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + at
             return head + xml.substring(end)
         }
-        val end = xml.indexOf('>')
         val head = xml.substring(0, end).replace(Regex("""\s(text:anchor-type|draw:style-name|svg:x|svg:y)="[^"]*""""), "")
-        val at = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { (x, y) -> " svg:x=\"${OdtWriter.fmt(x)}pt\" svg:y=\"${OdtWriter.fmt(y)}pt\"" } ?: ""
         return head + " draw:style-name=\"${odtStyleName(wrap, at.isNotEmpty())}\" text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + at + xml.substring(end)
     }
     /** Placed from the page's corner (Draw on page) rather than its paragraph's: a style of its own. */
@@ -228,7 +228,13 @@ internal object PictureXml {
     /** [img] wrapped as [wrap] — its XML too, so the pages show it at once (a new picture's is written on saving). */
     fun withWrap(img: DocImage, wrap: PictureWrap, file: OfficeKind): DocImage {
         val raw = img.raw ?: return img.with(wrap = wrap)
-        return img.with(raw = if (file == OfficeKind.Docx) docx(raw, wrap) else odt(raw, wrap), wrap = wrap)
+        val place = img.onPage?.takeIf { wrap != PictureWrap.InLine } // placed on its page: it stays there
+        return img.with(raw = if (file == OfficeKind.Docx) docx(raw, wrap).let { d -> place?.let { docxOnPage(d, it) } ?: d } else odt(raw, wrap, place), wrap = wrap)
+    }
+    /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
+    fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
+        val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y), wrap, file)
     }
 
     /**
@@ -250,9 +256,9 @@ internal object PictureXml {
     }
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
     fun odtShapeStyle(name: String): String? {
-        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_(\w+)""").matchEntire(name) ?: return null
+        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
         val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[4] } ?: PictureWrap.InLine
-        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap))?.groupValues?.get(1) ?: ""
+        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap, m.groupValues[5].isNotEmpty()))?.groupValues?.get(1) ?: ""
         val fill = m.groupValues[1].takeIf { it != "none" }?.toLong(16)
         val fillXml = if (fill == null) """draw:fill="none"""" else """draw:fill="solid" draw:fill-color="#${"%06X".format(fill and 0xFFFFFF)}"""" +
             Math.round((fill ushr 24) * 100 / 255f).let { if (it < 100) """ draw:opacity="$it%"""" else "" }
@@ -2325,7 +2331,7 @@ private object OdtWriter {
             manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name" manifest:media-type="image/${if (img.extension == "jpg") "jpeg" else img.extension}"/></manifest:manifest>""")
             val n = ++frames
             """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
-        }).let { x -> img.wrap?.let { w -> val page = img.raw == null && img.onPage != null && w != PictureWrap.InLine
+        }).let { x -> img.wrap?.let { w -> val page = img.onPage != null && w != PictureWrap.InLine
             if (wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)); PictureXml.odt(x, w, img.onPage.takeIf { page }) } ?: x }
             .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } }
 

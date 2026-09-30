@@ -1,3 +1,24 @@
+# 30 September, afternoon — Design › APA 7 paper
+
+State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.
+
+- The user chose (of: APA paper, track changes, spelling, footnotes): **APA 7 paper in one tap**. Next time, the list
+  offered then: Review (track changes — a Word file with tracked changes is copy-only today; spelling), footnotes,
+  the icon pass.
+- `ApaPaper.kt`: `file()` — Normal (and an ODT's Standard + Text body), Title, Heading 1–5 by `StyleEdit` (TNR 12,
+  automatic colour, double, 0 before/after, first line 0.5 in; L1 centred bold, L2 left bold, L3 left bold italic, L4
+  indented bold, L5 indented bold italic), the page number top right (`HeaderFooterEdit`, no running head), margins of
+  an inch (`PageSetup`, after the header so an ODT's header band is allowed for). `clean()` — paragraph spacing/indents
+  and justification, letters' fonts and sizes set by hand, taken off (tables and the reference list kept). `titlePage()`
+  — three blank lines, the title (Title style, bold centred), a blank line, name, department & university, course,
+  instructor, date; then the title again over the text on the next page. `ApaPaperDialog`. The reference list's
+  heading now starts a page (APA).
+- Checked: unit test both kinds (margins, page number, the styles' looks, clean); LibreOffice renders both; tablet: a
+  new document with text → APA 7 paper with a title page: page 1 as APA's, page 2 numbered, title, indented double text.
+- Not yet: the abstract page; run-in Level 4–5 headings (as paragraphs of their own now); the professional paper.
+
+---
+
 # 30 September, afternoon — References: citations and the reference list (APA 7); Times New Roman 12
 
 State: `writer-library`, all committed; all unit tests pass; the build is on the **tablet** (971f6b37), not the phone.

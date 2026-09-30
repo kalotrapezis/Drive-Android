@@ -182,6 +182,32 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `an APA 7 student paper is set up in both kinds`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Method")), heading = 1), DocPara(listOf(DocRun("Participants")), heading = 3),
+                DocPara(listOf(DocRun("Some text set by hand.", sizePt = 14f)), align = DocAlign.Justify, keep = OfficeFormats.withSpacing(null, kind, line = 1.15f, after = 10f))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val out = OfficeFormats.zip(ApaPaper.file(OfficeFormats.unzip(bytes), kind, DocStyles.of(kind, bytes)), if (kind == OfficeKind.Odt) "mimetype" else null)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("apa.${kind.extension}").writeBytes(out)
+            val styles = DocStyles.of(kind, out)
+            val page = styles.page
+            assert(kotlin.math.abs(page.left - 72f) < 0.5f && kotlin.math.abs(page.right - 72f) < 0.5f && kotlin.math.abs(page.bottom - 72f) < 1f && kotlin.math.abs(page.top - 72f) < 1f) { "$kind $page" }
+            assert(styles.section.headers["default"].orEmpty().any { PAGE_FIELD in it.text }) { "$kind: no page number" }
+            val back = OfficeFormats.read(OfficeFormats.write(ApaPaper.clean(OfficeFormats.read(out, kind), kind), kind, out), kind)
+            val text = styles.look(back.paras[2])
+            assertEquals(kind.name, listOf(2f, 0f, 0f, 36f, 12f), listOf(text.lineMultiple, text.before, text.after, text.firstLine, text.sizePt ?: back.basePt))
+            assertEquals(kind.name, "Times New Roman", text.font)
+            assertEquals(kind.name, DocAlign.Start, back.paras[2].align) // no longer justified
+            assertEquals(kind.name, null, back.paras[2].runs[0].sizePt) // 14 pt by hand: the style's 12
+            val h1 = styles.look(back.paras[0]); val h3 = styles.look(back.paras[1])
+            assertEquals(kind.name, listOf(DocAlign.Center, true, false, 12f), listOf(h1.align, h1.bold, h1.italic, h1.sizePt ?: back.basePt))
+            assertEquals(kind.name, listOf(true, true), listOf(h3.bold, h3.italic))
+            // The title page: the title in the Title style, bold and centred; the text on the next page.
+            val tp = ApaPaper.titlePage(ApaTitle("Learning With Tablets", "Theologos K.", date = "30 September 2026"), kind, "Title")
+            assertEquals(kind.name, listOf("", "", "", "Learning With Tablets", "", "Theologos K.", "30 September 2026"), tp.map { it.text })
+        }
+    }
+
     @Test fun `citations and a reference list are kept in each kind's own words`() {
         val book = DocSource("Παπ20", DocSource.Type.Book, listOf(DocSource.Person("Παπαδόπουλος", "Γιώργος")), "2020", "Εισαγωγή στην παιδαγωγική", publisher = "Gutenberg")
         val article = DocSource("Smi19", DocSource.Type.Article, listOf(DocSource.Person("Smith", "John R."), DocSource.Person("Jones", "Anna")), "2019",

@@ -1368,6 +1368,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 InkStroke(s.points.map { Offset((place.x!! + it.x * img.widthPt) / w, (place.y!! + it.y * ky * img.widthPt) / w) }, s.color, s.widthMm, s.highlighter) })
         }
     }
+    /** Design › APA 7 paper ([ApaPaper]): styles, page number, margins, and what the page asked for; one step to undo. */
+    var apaPage by remember { mutableStateOf(false) }
+    fun applyApa(clean: Boolean, title: ApaTitle?) = change {
+        val entries = documentStyles.paragraphStyles()
+        val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles) }
+            .onFailure { Log.e("Writer", "apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        var cur = current()
+        if (clean) cur = ApaPaper.clean(cur, kind)
+        if (title != null) {
+            // The title page; the text on the next page, under the title again (APA: bold, centred).
+            val text = cur.paras.takeUnless { it.size == 1 && it[0].text.isEmpty() && it[0].table == null } ?: listOf(DocPara(emptyList()))
+            val again = DocPara(listOf(DocRun(title.title.trim())), align = DocAlign.Center,
+                keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = entries[1].id), kind, firstLine = 0f), kind, true))
+            cur = cur.copy(paras = ApaPaper.titlePage(title, kind, entries[1].id) + again + text)
+        }
+        if (Citations.find(cur, kind) != null) cur = Citations.update(cur, kind) // the references on a page of their own
+        meta = cur
+        dirty = true; styleEdits++; reshow()
+        message = "APA 7 — shown on the pages (the eye at the top)"
+    }
     /** Design › Page colour and Page borders: into the file as it will be written; shown on the pages at once. */
     fun setDesign(color: Int?, border: Border?) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
@@ -2059,6 +2081,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
+                    RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
+                    Divider(w)
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
                         var spacing by remember { mutableStateOf(false) }
@@ -2231,6 +2255,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         },
     )
+    if (apaPage) ApaPaperDialog(remember(meta) { current().paras.any { it.text.isNotBlank() } },
+        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title ->
+        apaPage = false; applyApa(clean, title)
+    }
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
     }

@@ -257,7 +257,7 @@ internal object Citations {
         val used = usedTags(doc)
         // The sources cited, in APA's order; with none cited yet, every source (a list made first, cited after).
         val list = doc.sources.filter { it.tag in used }.ifEmpty { doc.sources }
-        val heading = DocPara(listOf(DocRun(HEADING, bold = true)), align = DocAlign.Center)
+        val heading = DocPara(listOf(DocRun(HEADING, bold = true)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true)) // APA: on a new page
         val entries = Apa.sorted(list).map { DocPara(Apa.entry(it), keep = DocKeep(style = entryStyle(kind))) }
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }

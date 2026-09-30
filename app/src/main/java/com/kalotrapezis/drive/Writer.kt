@@ -1456,6 +1456,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var symbolPage by remember { mutableStateOf(false) }
     var pagePage by remember { mutableStateOf(false) }
     var shapesPage by remember { mutableStateOf(false) }
+    /** Insert › Text box (the key null) or Picture › Edit text (a text box's key): its words being typed. */
+    var boxing by remember { mutableStateOf<Pair<String?, String>?>(null) }
     /**
      * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
      * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
@@ -1934,6 +1936,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
                                                 } }
+                                            } else if (img.box != null) {
+                                                // A text box: its words in it, as the pages draw it.
+                                                val drawn = remember(img, documentStyles) { OfficePages.textBox(OfficeDoc(emptyList(), basePt = meta.basePt), documentStyles, img) { pictureBytes(it) } }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
+                                                    n.save(); n.scale(k, k); drawn?.setBounds(0, 0, img.widthPt.toInt(), img.heightPt.toInt()); drawn?.draw(n); n.restore()
+                                                } }
                                             } else if (ShapePicture.of(img.raw) != null) {
                                                 // A shape: drawn as the pages draw it (its outline's width in points too).
                                                 val shape = remember(img.raw) { ShapePicture.of(img.raw)!! }
@@ -2218,6 +2227,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
+                    RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
                 }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
@@ -2258,6 +2268,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
+                        img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
@@ -2766,6 +2777,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         tab = WriterTab.Picture
     }
+    boxing?.let { (key, words) ->
+        TextBoxDialog(words, { boxing = null }) { text ->
+            boxing = null
+            val lines = text.split('\n')
+            val old = key?.let { pictures[it] }
+            if (old?.raw != null) { changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines), box = PictureXml.boxParas(old, lines))); return@TextBoxDialog }
+            // New: 2½ inches wide, as tall as its lines, the text around it (Square) — Position places it on the page.
+            val (w, h) = 180f to (lines.size * 16f + 12f).coerceAtLeast(36f)
+            val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines), box = lines.map { DocPara(listOf(DocRun(it))) }), PictureWrap.Square, kind)
+            pictures[img.key] = img
+            val at = placePicture(img)
+            state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+            tab = WriterTab.Picture
+        }
+    }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
@@ -2840,6 +2866,18 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
 }
 /** A paragraph's letters as Word counts them: a table's are its cells'. */
 internal fun DocPara.countedText(): String = table?.rows?.joinToString("\n") { r -> r.cells.joinToString("\n") { c -> c.paras.joinToString("\n") { it.countedText() } } } ?: text
+
+/** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text). */
+@Composable
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, done: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(if (initial.isEmpty()) "Text box" else "Edit text") },
+        text = { OutlinedTextField(text, { text = it }, minLines = 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus)) },
+        confirmButton = { TextButton(onClick = { done(text) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
 @Composable

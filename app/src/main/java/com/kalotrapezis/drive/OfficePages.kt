@@ -771,6 +771,12 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             canvas.restore()
         }
         floats(behind = true)
+        drawParts(canvas, pieces, boxes, lines)
+        floats(behind = false)
+    }
+    companion object {
+    /** Text, shading and lines, in points from the canvas's 0,0. */
+    fun drawParts(canvas: Canvas, pieces: List<Piece>, boxes: List<Box>, lines: List<Line>) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         for (b in boxes) { paint.color = 0xFF000000.toInt() or b.color; canvas.drawRect(b.x, b.y, b.x + b.w, b.y + b.h, paint) }
         for (p in pieces) {
@@ -787,8 +793,40 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
         }
         paint.strokeCap = android.graphics.Paint.Cap.SQUARE
         for (l in lines) { paint.color = 0xFF000000.toInt() or l.color; paint.strokeWidth = l.width; canvas.drawLine(l.x1, l.y1, l.x2, l.y2, paint) }
-        floats(behind = false)
     }
+    }
+}
+
+/**
+ * A text box (Word's and LibreOffice's; the plan, 2026-10-01): its frame — a shape's fill and outline, else Word's white
+ * box with a thin black line — and its words laid out inside it, [inset] from its sides.
+ */
+/** A drawing in points drawn in a line, which counts in [scale]ths of a point. */
+private class InLineDrawable(val inner: android.graphics.drawable.Drawable, val scale: Float) : android.graphics.drawable.Drawable() {
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        canvas.save(); canvas.translate(b.left.toFloat(), b.top.toFloat()); canvas.scale(scale, scale)
+        inner.setBounds(0, 0, Math.round(b.width() / scale), Math.round(b.height() / scale)); inner.draw(canvas)
+        canvas.restore()
+    }
+    override fun setAlpha(alpha: Int) = Unit
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
+    @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+}
+
+internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>) : android.graphics.drawable.Drawable() {
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        (frame ?: ShapePicture("rect", 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f)).drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat())
+        canvas.save()
+        canvas.clipRect(b)
+        canvas.translate(b.left + inset.first, b.top + inset.second)
+        LaidPage.drawParts(canvas, text.pieces, text.boxes, text.lines)
+        canvas.restore()
+    }
+    override fun setAlpha(alpha: Int) = Unit
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
+    @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 }
 
 /** Some of a page laid out on its own (a table's row, a cell's contents): what goes where, from its top left. */
@@ -1017,7 +1055,7 @@ internal object OfficePages {
                     floated = true
                     for (d in drops) floats += LaidPage.Floating(DropDrawable(d, page.left, y), page.left, y, 1f, 1f, behind = false)
                     for ((img, place) in floating) {
-                        val f = floatAt(img, place, natural, page, pictureBytes)
+                        val f = floatAt(doc, styles, img, place, natural, page, pictureBytes)
                         floats += f
                         if (place.wrap != PictureWrap.TopBottom && place.wrap != PictureWrap.Square) continue
                         // Top and bottom: no text beside it — lines that would cross it go on below it. Square: the text
@@ -1166,7 +1204,7 @@ internal object OfficePages {
             val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, area, marker, pictureBytes, floating)
             if (i > 0) y += look.before
             pieces += LaidPage.Piece(layout, 0, layout.lineCount - 1, -shift, y)
-            if (floats != null) floating.forEach { (img, place) -> floats += floatAt(img, place, top + y, page, pictureBytes) }
+            if (floats != null) floating.forEach { (img, place) -> floats += floatAt(doc, styles, img, place, top + y, page, pictureBytes) }
             y += layout.height / U
             y += lastExtra
             y += look.after
@@ -1274,7 +1312,7 @@ internal object OfficePages {
     }
 
     /** A floating picture's place on the page: from the page, the margin, or its paragraph (at [paraTop]). */
-    private fun floatAt(img: DocImage, place: PictureXml.Place, paraTop: Float, page: DocPage, pictureBytes: (DocImage) -> ByteArray?): LaidPage.Floating {
+    private fun floatAt(doc: OfficeDoc, styles: DocStyles, img: DocImage, place: PictureXml.Place, paraTop: Float, page: DocPage, pictureBytes: (DocImage) -> ByteArray?): LaidPage.Floating {
         val (w, h) = img.widthPt to img.heightPt
         val x = when (place.alignH) {
             "center" -> (if (place.fromH == "page") page.width else page.textWidth) / 2 - w / 2 + (if (place.fromH == "page") 0f else page.left)
@@ -1288,8 +1326,16 @@ internal object OfficePages {
             "top" -> if (place.fromV == "page") 0f else page.top
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
-        val picture = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
+        val picture = textBox(doc, styles, img, pictureBytes) ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key)
+    }
+
+    /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */
+    fun textBox(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): TextBoxDrawable? {
+        val paras = img.box ?: return null
+        val inset = 7.2f to 3.6f
+        val text = runCatching { stack(doc, paras, styles, DocPage(), (img.widthPt - 2 * inset.first).coerceAtLeast(8f), pictureBytes, null, 0f, 0f) }.getOrNull() ?: return null
+        return TextBoxDrawable(ShapePicture.of(img.raw), text, inset)
     }
 
     /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */
@@ -1340,7 +1386,7 @@ internal object OfficePages {
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
-                val drawable = pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                val drawable = textBox(doc, styles, img, pictureBytes)?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img.raw)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))

@@ -76,6 +76,15 @@ internal class CommentedRuns(private val open: Collection<String>, private val c
 internal const val OBJECT_MARK = '\uFFFC'
 
 /**
+ * A text box's words read for the pages only: what the reading notes (features Writer lacks — a file may become
+ * copy-only) and the comments it is inside stay as they were; null if they cannot be read.
+ */
+private fun <T> aside(notes: MutableSet<String>, comments: MutableSet<String>, read: () -> T): T? {
+    val n = notes.toList(); val c = comments.toList()
+    return runCatching(read).getOrNull().also { notes.clear(); notes.addAll(n); comments.clear(); comments.addAll(c) }
+}
+
+/**
  * A picture (or chart, shape, embedded object) in the text. One from the file goes back exactly as it was ([raw], the
  * file's own XML, which points at its [part] inside the package); a new one has its [bytes]. [part] is null for what
  * is not a picture — it shows as a grey box. Sizes in points.
@@ -83,9 +92,10 @@ internal const val OBJECT_MARK = '\uFFFC'
 internal class DocImage(val key: String, val part: String?, val widthPt: Float, val heightPt: Float, val raw: String? = null,
     val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */,
     val table: DocTable? = null /* the editor's stand-in for a table */,
-    val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */) {
+    val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */,
+    val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -104,7 +114,7 @@ internal object PictureXml {
     fun editable(img: DocImage): Boolean {
         val raw = img.raw ?: return img.bytes != null
         if (raw.startsWith("<draw:custom-shape")) return true
-        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw else ("<pic:pic" in raw || "<wps:wsp" in raw && "<wps:txbx" !in raw) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
+        return if (raw.startsWith("<draw:frame")) "<draw:image" in raw || "<draw:text-box" in raw else ("<pic:pic" in raw || "<wps:wsp" in raw) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
@@ -234,7 +244,7 @@ internal object PictureXml {
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
         val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
-        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y), wrap, file)
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box), wrap, file)
     }
 
     /**
@@ -254,6 +264,44 @@ internal object PictureXml {
         val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
         return """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Shape $id"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="$kind"><a:avLst/></a:prstGeom>$fillXml$lineXml</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>"""
     }
+    /**
+     * Insert › Text box (the plan, 2026-10-01): Word's text box (a rectangle shape holding paragraphs: white, a thin black
+     * line), or in an .odt LibreOffice's rectangle with its words in it (its look in Writer's shape style) — in line with
+     * the text as made; the caller floats it. Its words are written by [boxText].
+     */
+    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>): String {
+        val shape = newShape("rect", file, 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f, widthPt, heightPt)
+        return if (file == OfficeKind.Odt) boxText(shape, file, lines)
+            else boxText(shape.replace("<wps:cNvSpPr/>", """<wps:cNvSpPr txBox="1"/>""")
+                .replace("<wps:bodyPr/>", """<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t"><a:noAutofit/></wps:bodyPr>"""), file, lines)
+    }
+    /** A text box's words made [lines], a paragraph each, in its first paragraph's style and its first words' look. */
+    fun boxText(xml: String, file: OfficeKind, lines: List<String>): String {
+        fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if (file == OfficeKind.Odt) {
+            val style = Regex("""<text:p\b[^>]*?(\stext:style-name="[^"]*")""").find(xml)?.groupValues?.get(1) ?: ""
+            val paras = lines.joinToString("") { "<text:p$style>${esc(it).replace("\t", "<text:tab/>")}</text:p>" }
+            Regex("""(<draw:text-box\b[^>]*>)[\s\S]*?(</draw:text-box>)""").find(xml)?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[2]) }
+            // A shape: its words before its geometry.
+            val start = xml.indexOf('>') + 1
+            val end = xml.indexOf("<draw:enhanced-geometry").takeIf { it >= 0 } ?: return xml
+            val between = xml.substring(start, end).replace(Regex("""<text:(p|list|h)\b[\s\S]*?</text:\1>|<text:p\b[^>]*/>"""), "")
+            return xml.substring(0, start) + between + paras + xml.substring(end)
+        }
+        // Word: every copy of its words (the older-Word fallback has one too).
+        val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(xml)?.groupValues?.get(1) ?: return xml
+        val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(first)?.value ?: ""
+        val rPr = Regex("""<w:r>\s*(<w:rPr>[\s\S]*?</w:rPr>)""").find(first)?.groupValues?.get(1) ?: ""
+        val paras = lines.joinToString("") { "<w:p>$pPr<w:r>$rPr<w:t xml:space=\"preserve\">${esc(it)}</w:t></w:r></w:p>" }
+        return xml.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
+    }
+    /** A text box's words for the pages, until the file is read again: [lines] in its first words' look. */
+    fun boxParas(img: DocImage, lines: List<String>): List<DocPara> {
+        val p0 = img.box?.firstOrNull()
+        val r0 = p0?.runs?.firstOrNull { it.image == null && it.note == null }
+        return lines.map { t -> p0?.copy(runs = listOf((r0 ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null))) ?: DocPara(listOf(DocRun(t))) }
+    }
+
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
     fun odtShapeStyle(name: String): String? {
         val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
@@ -263,7 +311,9 @@ internal object PictureXml {
         val fillXml = if (fill == null) """draw:fill="none"""" else """draw:fill="solid" draw:fill-color="#${"%06X".format(fill and 0xFFFFFF)}"""" +
             Math.round((fill ushr 24) * 100 / 255f).let { if (it < 100) """ draw:opacity="$it%"""" else "" }
         val lineXml = m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="solid" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none""""
-        return """<style:style style:name="$name" style:family="graphic"><style:graphic-properties $fillXml $lineXml $base/></style:style>"""
+        // Words in it (a text box) fill its width from the top, Word's insets round them; it keeps its size.
+        val textArea = """draw:textarea-horizontal-align="justify" draw:textarea-vertical-align="top" draw:auto-grow-height="false" draw:auto-grow-width="false" fo:wrap-option="wrap" fo:padding-left="7.2pt" fo:padding-right="7.2pt" fo:padding-top="3.6pt" fo:padding-bottom="3.6pt""""
+        return """<style:style style:name="$name" style:family="graphic"><style:graphic-properties $fillXml $lineXml $textArea $base/></style:style>"""
     }
     fun odtStyle(wrap: PictureWrap, onPage: Boolean = false): String {
         val props = if (onPage) when (wrap) {
@@ -1390,7 +1440,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         val ink = e.getElementsByTagNameNS("*", "contentPart").length > 0
         val w = (if (ink) vmlLength("width") else null) ?: extent?.getAttribute("cx")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("width")?.takeIf { it > 0 && !rule } ?: if (rule) 450f else 144f
         val h = (if (ink) vmlLength("height") else null) ?: extent?.getAttribute("cy")?.toLongOrNull()?.let { it / 12700f } ?: vmlLength("height")?.takeIf { it > 0 } ?: 96f
-        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e))
+        // A text box: its words (Word's own, not the older-Word copy in the fallback), for the pages to show.
+        val box = (e.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } }
+        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box)
     }
     var imageCount = 0
 
@@ -2120,7 +2172,11 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             val n = m.groupValues[1].toFloat()
             when (m.groupValues[2]) { "cm" -> n * 28.3465f; "mm" -> n * 2.83465f; "in" -> n * 72; "pc" -> n * 12; "px" -> n * 0.75f; else -> n }
         }
-        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e))
+        // A text box: a frame's, or a shape's own words (LibreOffice's shapes hold paragraphs; Writer's text boxes are
+        // rectangles with words) — a shape only when it has some.
+        val box = (e.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "text-box").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }
+            ?: e.takeIf { it.localName == "custom-shape" }?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
+        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box)
     }
     var imageCount = 0
 

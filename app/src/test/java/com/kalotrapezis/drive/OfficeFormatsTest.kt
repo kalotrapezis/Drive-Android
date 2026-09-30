@@ -454,6 +454,29 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a text box keeps its words, and Edit text changes them, through the file`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val lines = listOf("First line & more", "Second <line>")
+            val box = PictureXml.withWrap(DocImage("b1", null, 180f, 44f, PictureXml.newTextBox(kind, 180f, 44f, lines)), PictureWrap.Square, kind)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Before "), DocRun(OBJECT_MARK.toString(), image = box), DocRun(" after")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("textbox.${kind.extension}").writeBytes(bytes)
+            val read = OfficeFormats.read(bytes, kind)
+            val img = read.paras.single().runs.mapNotNull { it.image }.single()
+            assertEquals(kind.name, lines, img.box?.map { it.text })
+            assertEquals(kind.name, PictureWrap.Square, PictureXml.wrapOf(img))
+            assertEquals(kind.name, "Before  after", read.paras.single().text.replace(OBJECT_MARK.toString(), "")) // its words are not the paragraph's
+            assertTrue(kind.name, PictureXml.editable(img))
+            // Edit text: new words, in the file too.
+            val edited = img.with(raw = PictureXml.boxText(img.raw!!, kind, listOf("Changed")))
+            val again = OfficeFormats.read(OfficeFormats.write(read.copy(paras = listOf(read.paras.single().let { p -> p.copy(runs = p.runs.map { r -> if (r.image != null) r.copy(image = edited) else r }) })), kind, bytes), kind)
+            assertEquals(kind.name, listOf("Changed"), again.paras.single().runs.mapNotNull { it.image }.single().box?.map { it.text })
+            // A plain shape is no text box.
+            assertEquals(kind.name, null, OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image =
+                DocImage("s1", null, 72f, 72f, PictureXml.newShape("ellipse", kind, null, 0, 1f, 72f, 72f))))))), kind), kind).paras.single().runs.mapNotNull { it.image }.single().box)
+        }
+    }
+
     @Test fun `a drawing keeps its strokes inside its picture, through the file`() {
         val plain = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(10, 5, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }.toByteArray()
         val strokes = listOf(InkStroke(listOf(androidx.compose.ui.geometry.Offset(0.1f, 0.2f), androidx.compose.ui.geometry.Offset(0.9f, 0.4f)), 0xFFE53935.toInt(), 0.75f, false),

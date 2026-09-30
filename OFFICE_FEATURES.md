@@ -175,7 +175,13 @@ one pass once the tabs' features are done.
 - [ ] Keyboard strip like Word's phone bar: B · I · U · highlighter · ⋯ · hide keyboard
 - [ ] Dictation (Android voice typing into the page)
 
-## Excel (Calc) — after Writer
+## Excel (Calc) — after Writer and PowerPoint; a viewer first (the user, 30 Sep)
+- [ ] **Viewer first**: an .xlsx / .ods read comfortably on the phone (sheets as tabs, cells, widths, number formats)
+- [ ] **Fuzzy search** across the cells (typos and accents forgiven, Greek and English)
+- [ ] **Filter columns** (by value)
+- [ ] **Pin columns side by side**: choose columns (e.g. A, J, ST) — they come to the start one after the other, in the
+  order pinned, the rest scrolling beside them, to compare them
+- Then, later: the editing items below
 
 - [ ] Open .xlsx / .ods: sheets as tabs, cells, column widths, number formats
 - [ ] Edit cells; formula bar; insert/delete rows and columns

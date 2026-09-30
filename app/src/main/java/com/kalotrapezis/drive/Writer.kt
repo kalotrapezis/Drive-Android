@@ -2270,6 +2270,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
+                }, {
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
                     RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { wordArt = true }
                     RibbonButton("Chart", w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
@@ -2322,6 +2323,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (cropping == null) message = "Writer cannot crop this kind of picture."
                             }
                         }
+                    }, {
                         RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
                         // Floating ones are dragged where they go on their page.
                         RibbonButton("Position", w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
@@ -2469,6 +2471,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                }, {
                     // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
                     Box {
                         var open by remember { mutableStateOf(false) }

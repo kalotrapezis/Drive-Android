@@ -368,6 +368,19 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `Hyphenation is set and taken away, in both kinds`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), kind)
+            fun set(from: ByteArray, on: Boolean) = OfficeFormats.zip(PageDesign.hyphenation(OfficeFormats.unzip(from), kind, on), if (kind == OfficeKind.Odt) "mimetype" else null)
+            assertEquals(kind.name, false, DocStyles.of(kind, bytes).hyphenate)
+            val on = set(bytes, true)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("hyphens.${kind.extension}").writeBytes(on)
+            assertEquals(kind.name, true, DocStyles.of(kind, on).hyphenate)
+            assertEquals(kind.name, true, DocStyles.of(kind, set(on, true)).hyphenate)
+            assertEquals(kind.name, false, DocStyles.of(kind, set(on, false)).hyphenate)
+        }
+    }
+
     @Test fun `a table of contents lists the headings with their pages, in the file's contents styles, and updates in place`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Title page"))), DocPara(emptyList()),

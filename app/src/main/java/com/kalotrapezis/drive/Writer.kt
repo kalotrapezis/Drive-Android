@@ -1587,6 +1587,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
     }
+    /** Layout › Hyphenation: automatic or none, into the file as it will be written; the pages break words by it. */
+    fun setHyphenation(on: Boolean) = change {
+        val parts = runCatching { PageDesign.hyphenation(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, on) }
+            .onFailure { Log.e("Writer", "hyphenation", it) }.getOrNull() ?: run { message = "Hyphenation could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        dirty = true; styleEdits++
+        if (on) message = "Automatic hyphenation — the pages show it (the eye at the top)"
+    }
     /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
     fun setLineNumbers(restart: String?) = change {
         val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
@@ -2446,6 +2455,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             (listOf(null to "None", "continuous" to "Continuous", "newPage" to "Restart each page") + if (kind == OfficeKind.Docx) listOf("newSection" to "Restart each section") else emptyList())
                                 .forEach { (mode, label) -> DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (mode == now) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)) },
                                     onClick = { open = false; if (mode != now) setLineNumbers(mode) }) }
+                        }
+                    }
+                    // Word's Hyphenation: none or automatic, for the whole document; the pages break words at lines' ends.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        val now = documentStyles.hyphenate
+                        RibbonButton("Hyphenation", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            listOf(false to "None", true to "Automatic").forEach { (on, label) -> DropdownMenuItem(text = { Text(label) },
+                                trailingIcon = { if (on == now) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = { open = false; if (on != now) setHyphenation(on) }) }
                         }
                     }
                 })

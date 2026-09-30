@@ -142,6 +142,8 @@ internal abstract class DocStyles {
     /** The document's last section (a file without section breaks has only this one). */
     open val section = DocSection(DocPage())
     val page get() = section.page
+    /** Layout › Hyphenation: automatic (Word's autoHyphenation; LibreOffice's fo:hyphenate on the default paragraph style). */
+    open val hyphenate: Boolean get() = false
     abstract fun look(p: DocPara): ParaLook
     /** Each paragraph's section: a paragraph that carries a section break ends one. */
     open fun sections(paras: List<DocPara>): List<DocSection> = List(paras.size) { section }
@@ -224,6 +226,8 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val numLevels = HashMap<String, Array<Pair<String, String>?>>() // numId → each level's (numFmt, lvlText)
     private var minorFont: String? = null; private var majorFont: String? = null // the theme's body and heading fonts
     override var evenAndOdd = false
+    private var hyphens = false
+    override val hyphenate get() = hyphens
     private var bodySect: Element? = null
     private var background: Int? = null
     private val targets: Map<String, String> // relationship id → part (headers, footers)
@@ -275,6 +279,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         bodySect = doc.kid(W, "body")?.kid(W, "sectPr")
         targets = parts[relsPath(documentPath(parts))]?.let { OfficeFormats.parse(it).documentElement.kids().associate { r -> r.getAttribute("Id") to resolve(dir, r.getAttribute("Target")) } }.orEmpty()
         evenAndOdd = parts[dir + "settings.xml"]?.let { "<w:evenAndOddHeaders" in String(it, Charsets.UTF_8) } ?: false
+        hyphens = parts[dir + "settings.xml"]?.let { Regex("""<w:autoHyphenation\b([^>]*)/>""").find(String(it, Charsets.UTF_8)) }?.let { m -> Regex("""w:val="(0|false|off)"""").find(m.groupValues[1]) == null } ?: false
         section = section(bodySect, null)
     }
 
@@ -522,6 +527,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
 
 /** ODF: page from the master page's layout; looks from the default style, the named style chain and the paragraph's own. */
 private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
+    override val hyphenate get() = listOfNotNull(named["Standard"], defaults).firstNotNullOfOrNull { it.kid(STYLE, "text-properties")?.attr(FO, "hyphenate") } == "true"
     private val named = HashMap<String, Element>() // paragraph style name → style
     private val tableStyles = HashMap<String, Element>() // "table-cell/A1" … → style
     private var defaults: Element? = null
@@ -1460,7 +1466,11 @@ internal object OfficePages {
             main?.let { r -> OfficeFonts.typeface(styles.fontName(r.font))?.let { typeface = it }; r.sizePt?.let { textSize = it * U } }
         }
         val gap = if (look.lineExact == null) gapPaint.fontMetrics.leading * multiple else 0f
+        // Layout › Hyphenation: words broken at the end of a line, by the paragraph's language (Greek or English).
+        if (styles.hyphenate) paint.textLocale = if (text.count { it in '\u0370'..'\u03FF' || it in '\u1F00'..'\u1FFF' } * 2 > text.count { it.isLetter() }) java.util.Locale("el", "GR") else java.util.Locale.US
         fun build() = StaticLayout.Builder.obtain(text, 0, text.length, paint, width).setAlignment(align)
+            .setHyphenationFrequency(if (styles.hyphenate) Layout.HYPHENATION_FREQUENCY_FULL else Layout.HYPHENATION_FREQUENCY_NONE)
+            .apply { if (styles.hyphenate) setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY) } // the simple (Word-like) one does not hyphenate
             .setLineSpacing(gap, multiple).setIncludePad(false)
             .setJustificationMode(if (aligned == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
             .apply { indents?.let { (l, r) -> setIndents(l, r) } }

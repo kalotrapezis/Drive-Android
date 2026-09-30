@@ -1458,6 +1458,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var shapesPage by remember { mutableStateOf(false) }
     /** Insert › Text box (the key null) or Picture › Edit text (a text box's key): its words being typed. */
     var boxing by remember { mutableStateOf<Pair<String?, String>?>(null) }
+    var wordArt by remember { mutableStateOf(false) } // Insert › WordArt: its words and colour being chosen
     /**
      * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
      * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
@@ -2228,6 +2229,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
+                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { wordArt = true }
                 }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
@@ -2777,21 +2779,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         tab = WriterTab.Picture
     }
+    /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
+    fun putTextBox(lines: List<String>, art: Int?) {
+        val (w, h) = if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
+            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f } // as big as its words
+        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF))) }
+        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art), box = box), PictureWrap.Square, kind)
+        pictures[img.key] = img
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        tab = WriterTab.Picture
+    }
     boxing?.let { (key, words) ->
-        TextBoxDialog(words, { boxing = null }) { text ->
+        TextBoxDialog(words, { boxing = null }) { text, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
-            if (old?.raw != null) { changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines), box = PictureXml.boxParas(old, lines))); return@TextBoxDialog }
-            // New: 2½ inches wide, as tall as its lines, the text around it (Square) — Position places it on the page.
-            val (w, h) = 180f to (lines.size * 16f + 12f).coerceAtLeast(36f)
-            val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines), box = lines.map { DocPara(listOf(DocRun(it))) }), PictureWrap.Square, kind)
-            pictures[img.key] = img
-            val at = placePicture(img)
-            state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
-            tab = WriterTab.Picture
+            if (old?.raw != null) changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines), box = PictureXml.boxParas(old, lines)))
+            else putTextBox(lines, null)
         }
     }
+    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true) { text, color -> wordArt = false; putTextBox(text.split('\n'), color) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
@@ -2867,15 +2876,24 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
 /** A paragraph's letters as Word counts them: a table's are its cells'. */
 internal fun DocPara.countedText(): String = table?.rows?.joinToString("\n") { r -> r.cells.joinToString("\n") { c -> c.paras.joinToString("\n") { it.countedText() } } } ?: text
 
-/** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text). */
+/** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, done: (String) -> Unit) {
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, done: (String, Int) -> Unit) {
     var text by remember { mutableStateOf(initial) }
+    // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
+    val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF70AD47, 0xFF000000).map { it.toInt() }
+    var color by remember { mutableIntStateOf(colors[0]) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(if (initial.isEmpty()) "Text box" else "Edit text") },
-        text = { OutlinedTextField(text, { text = it }, minLines = 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus)) },
-        confirmButton = { TextButton(onClick = { done(text) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(text, { text = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) else androidx.compose.material3.LocalTextStyle.current)
+            if (art) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                colors.forEach { c -> Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c)).border(3.dp, if (c == color) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape).clickable { color = c }) }
+            }
+        } },
+        confirmButton = { TextButton(onClick = { done(text, color) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 

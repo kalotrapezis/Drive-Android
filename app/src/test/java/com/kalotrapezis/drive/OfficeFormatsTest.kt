@@ -471,6 +471,12 @@ class OfficeFormatsTest {
             val edited = img.with(raw = PictureXml.boxText(img.raw!!, kind, listOf("Changed")))
             val again = OfficeFormats.read(OfficeFormats.write(read.copy(paras = listOf(read.paras.single().let { p -> p.copy(runs = p.runs.map { r -> if (r.image != null) r.copy(image = edited) else r }) })), kind, bytes), kind)
             assertEquals(kind.name, listOf("Changed"), again.paras.single().runs.mapNotNull { it.image }.single().box?.map { it.text })
+            // WordArt: its words big, bold and in its colour, with no box round them.
+            val art = PictureXml.withWrap(DocImage("a1", null, 200f, 55f, PictureXml.newTextBox(kind, 200f, 55f, listOf("Title"), 0xFFED7D31.toInt())), PictureWrap.Square, kind)
+            val artBytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = art), DocRun("Text beside it."))))), kind)
+            java.io.File("build/office-roundtrip").resolve("wordart.${kind.extension}").writeBytes(artBytes)
+            val artRun = OfficeFormats.read(artBytes, kind).paras.single().runs.mapNotNull { it.image }.single().box!!.single().runs.single()
+            assertEquals(kind.name, listOf("Title", true, 36f, 0xED7D31), listOf(artRun.text, artRun.bold, artRun.sizePt, artRun.color))
             // A plain shape is no text box.
             assertEquals(kind.name, null, OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image =
                 DocImage("s1", null, 72f, 72f, PictureXml.newShape("ellipse", kind, null, 0, 1f, 72f, 72f))))))), kind), kind).paras.single().runs.mapNotNull { it.image }.single().box)

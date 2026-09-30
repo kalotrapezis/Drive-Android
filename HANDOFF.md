@@ -19,7 +19,9 @@ files), all removed after; none of the user's files were touched. Test prefs I s
 - **Review › Track changes**: show, accept/reject, record (Word files).
 
 **Asked by the user and not done yet — do this next:**
-1. **Word and character counter** (asked 30 Sep evening): on the **tablet** in the top bar, counting the whole document,
+1. ~~Word and character counter~~ **built (1 Oct session)**: tablet top bar "N words · N characters" (with spaces),
+   "n of N" for a selection, a tap opens About; About adds the selection's counts (`TextCounts`, `TextCountsTest`).
+   Not yet seen on a device (the tablet was locked). Was asked (30 Sep evening): on the **tablet** in the top bar, counting the whole document,
    and the **selection** when text is selected (as Word's status bar). On the **phone** there is no room: in
    **File › About this file** (it already shows the word count) — add characters (with and without spaces) and,
    when text is selected, the selection's counts too. The user asked for exactly this split.

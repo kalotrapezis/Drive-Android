@@ -1689,6 +1689,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
+                // A tablet counts words and characters in the top bar, of the selection when there is one, as Word's status
+                // bar does (asked 2026-09-30); a tap shows all the counts. A phone has them in File › About this file.
+                if (!phone && loaded) {
+                    val text = state.annotatedString.text
+                    val sel = state.selection
+                    val all = remember(text) { TextCounts.of(text) }
+                    val part = remember(text, sel) { if (sel.collapsed) null else TextCounts.of(text.substring(sel.min, sel.max)) }
+                    Text(if (part == null) "%,d words · %,d characters".format(all.words, all.withSpaces)
+                        else "%,d of %,d words · %,d of %,d characters".format(part.words, all.words, part.withSpaces, all.withSpaces),
+                        color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                        modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
+                }
                 if (viewing) {
                     Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
@@ -2772,9 +2784,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
-                val all = remember { current().paras.joinToString("\n") { it.text } }
-                val words = Regex("""[\p{L}\p{N}]+(['’-][\p{L}\p{N}]+)*""").findAll(all).count()
-                Text("$words words · ${all.count { !it.isWhitespace() }} characters (${all.count { it != '\n' && it != LINE_BREAK }} with spaces) · ${current().paras.count { it.text.isNotBlank() }} paragraphs", style = MaterialTheme.typography.bodyMedium)
+                val all = remember { TextCounts.of(current().paras.joinToString("\n") { it.text }) }
+                Text("${all.words} words · ${all.chars} characters (${all.withSpaces} with spaces) · ${current().paras.count { it.text.isNotBlank() }} paragraphs", style = MaterialTheme.typography.bodyMedium)
+                // The selection's counts too, as Word's Word Count does (asked 2026-09-30: the phone's counter is here).
+                val sel = state.selection
+                if (!sel.collapsed) TextCounts.of(state.annotatedString.text.substring(sel.min, sel.max)).let {
+                    Text("Selected: ${it.words} words · ${it.chars} characters (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
+                }
                 if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.unsupported.isEmpty()) Text("Writer keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)
@@ -2783,6 +2799,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
         confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
     )
+}
+
+/** Word's counts: words, characters without spaces, characters with spaces (not paragraph marks or pictures). */
+internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
+    companion object {
+        private val WORD = Regex("""[\p{L}\p{N}]+(['’-][\p{L}\p{N}]+)*""")
+        fun of(text: String) = TextCounts(WORD.findAll(text).count(),
+            text.count { !it.isWhitespace() && it != '\uFFFC' }, text.count { it != '\n' && it != LINE_BREAK && it != '\uFFFC' })
+    }
 }
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */

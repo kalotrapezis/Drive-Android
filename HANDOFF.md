@@ -1,18 +1,17 @@
-# Phone checks waiting (the phone, 208c8192, not connected since 30 Sep night — do these first when it is)
+# Phone checks (phone connected 1 Oct afternoon — done)
 
-Install `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`, then on the phone:
-1. **CV test copy.docx** (Test-Words), Print layout: no gaps between the tables (fixed and checked on the tablet — the
-   cause was not the phone's), rows not cut off, paragraph spacing as the pages. Pinch zoom past the screen (ask the
-   user — adb cannot do two fingers).
-2. **Page ends in Print layout**: the "Page N" marks where the pages break (built 1 Oct, checked on the tablet).
-3. **Forms** (05_Review_and_Forms.docx): the bar above the ribbon fits the phone; drop-down, date picker, Fill in.
-4. **Table of contents** (a copy of a thesis): opens not copy-only; edit + save keeps the TOC.
-5. **Floating pictures** (a copy of the 602 file): logos in place in Print layout, dragged freely; View agrees.
-6. **Letter looks** (01_Text_and_Paragraphs.docx): capitals, small capitals, double lines in both modes; the header
-   shown faded in Print layout.
-7. **Format painter** and **Navigation pane** at phone size (the pane closes after a tap there).
-8. From before: Position, text box / WordArt insert, line numbers, hyphenation, style sets — never walked on the phone.
-9. Spelling marks the wrong language there (the English paragraph all red) — see the 30 Sep entry.
+Checked on the phone (208c8192) with the latest build: **CV** in Print layout matches View, no gaps between tables;
+**forms** bar fits (05); **Navigation** goes to the page and closes itself (04); **letter looks** (01); View mode fine.
+Found and fixed there: a table's line is now exactly the table's height (`lineHeight` for a table block and
+`BlockSpacing(0,0,h)` so spaceParagraphs sets Trim.None) — it was the editor's text height for a short table.
+**Still open on the phone:**
+- **Mobile view** (the phone had it on — the user's setting, left on): tables shrink to the screen width while the text
+  stays readable, so a one-row table is shorter than a line of the editor's text; Android never makes a line shorter
+  than its own font (the paragraph's end-of-line character carries the editor's base size) → a gap under small tables.
+  Print layout has none. Ideas: draw small tables at a line's height, or give the separator a size (library internals).
+- **Spelling** marks almost every word (the keyboard's Greek checker) — Tetra's own Hunspell dictionaries, ask the user.
+- Not walked: Position, text box / WordArt insert, line numbers, hyphenation, style sets, Format painter, TOC copy,
+  floating pictures (602 copy).
 
 ---
 

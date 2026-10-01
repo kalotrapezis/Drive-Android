@@ -247,6 +247,9 @@ internal object WriterBridge {
      * Word gives an empty line. Left to the editor for single spacing, headings, pictures and tables.
      */
     private fun lineHeight(p: DocPara, runs: List<DocRun>, look: ParaLook, basePt: Float, scale: Float): androidx.compose.ui.unit.TextUnit {
+        // A table's line: exactly the table (on a phone a one-row table is shorter than a line of the editor's own text,
+        // which a line never goes below — a gap under each small table, the user's CV).
+        runs.firstOrNull { it.image?.table != null }?.image?.let { return shownSize(it, scale).second.sp }
         if (p.heading > 0 || p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
         look.lineExact?.takeIf { !look.lineAtLeast }?.let { return (it * scale).sp }
         val mark = if (runs.isEmpty()) p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
@@ -361,7 +364,7 @@ internal object WriterBridge {
             p.table?.let { t ->
                 val (width, height) = tableSize(doc, t, styles)
                 val img = DocImage("t$index", null, width, height, table = t)
-                spacing += null
+                spacing += BlockSpacing(0f, 0f, shownSize(img, scale).second) // its line exactly the table's height
                 return@flatMapIndexed listOf(block(p, listOf(DocRun(OBJECT_MARK.toString(), image = img)), false))
             }
             val lines = mutableListOf(mutableListOf<DocRun>())
@@ -414,7 +417,7 @@ internal object WriterBridge {
             val oneLine = end <= at || layout.getLineForOffset(at) == layout.getLineForOffset((end - 1).coerceAtLeast(at))
             val style = getStyle.invoke(para) as ParagraphStyle
             val want = if (sp != null && oneLine) style.copy(lineHeight = (sp.line + sp.before + sp.after).sp,
-                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment(sp.before / (sp.before + sp.after)), LineHeightStyle.Trim.None))
+                lineHeightStyle = LineHeightStyle(if (sp.before + sp.after > 0f) LineHeightStyle.Alignment(sp.before / (sp.before + sp.after)) else LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None))
                 else if (style.lineHeightStyle?.trim == LineHeightStyle.Trim.None) style.copy(lineHeight = sp?.line?.sp ?: style.lineHeight, lineHeightStyle = null) else style
             if (want != style) { setStyle.invoke(para, want); changed = true }
             at += length + 1 // the editor's space between paragraphs

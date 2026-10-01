@@ -182,6 +182,41 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Forms (the test suite's 05): text, drop-down and date content controls read, filled in, written back as Word's. */
+    @Test fun `a form's content controls are kept and filled in`() {
+        val f = File(System.getProperty("user.home"), "Έγγραφα/Claude/Projects/Defaulty/Word App Test Suite/05_Review_and_Forms.docx")
+        if (!f.isFile) return
+        val bytes = f.readBytes()
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assert("content controls" !in doc.unsupported) { doc.unsupported.toString() }
+        val controls = doc.paras.flatMap { it.runs }.mapNotNull { r -> r.control?.let { it to r.text } }
+        assertEquals(listOf(Forms.Kind.Text, Forms.Kind.List, Forms.Kind.Date), controls.map { Forms.kind(it.first) })
+        assertEquals(listOf("Name", "Status", "Date"), controls.map { Forms.name(it.first) })
+        assertEquals(listOf("Ready", "Review", "Done"), Forms.items(controls[1].first))
+        val (name, status, date) = controls.map { it.first }
+        val d = java.time.LocalDate.of(2026, 10, 1)
+        var filled = Forms.fill(doc, name, name, "Θεολόγος")
+        filled = Forms.fill(filled, status, status, "Done")
+        filled = Forms.fill(filled, date, Forms.dateTo(date, d), Forms.dateText(date, d))
+        // The editor gives the letters back without their controls: carried again.
+        val bare = filled.paras.map { p -> p.copy(runs = OfficeFormats.tidy(p.runs.map { it.copy(control = null, comments = emptyList(), change = null) })) }
+        assertEquals(3, OfficeFormats.carryFonts(filled.paras, bare).flatMap { it.runs }.mapNotNull { it.control }.distinct().size)
+        val out = OfficeFormats.write(filled, OfficeKind.Docx, bytes)
+        File("build/office-roundtrip").apply { mkdirs() }.resolve("forms.docx").writeBytes(out)
+        val back = OfficeFormats.read(out, OfficeKind.Docx).paras.flatMap { it.runs }.mapNotNull { r -> r.control?.let { it to r.text } }
+        assertEquals(listOf("Θεολόγος", "Done", "2026-10-01"), back.map { it.second })
+        assertEquals(d, Forms.date(back[2].first))
+        // Typing at a field's end fills it; the words around stay outside.
+        val p = doc.paras.indexOfFirst { p -> p.runs.any { it.control == name } }
+        val typed = doc.paras[p].text.replace("Enter a test name", "Enter a test name!")
+        val carried = OfficeFormats.carryFonts(doc.paras, listOf(doc.paras[p].copy(runs = listOf(DocRun(typed)))).let { doc.paras.subList(0, p) + it + doc.paras.subList(p + 1, doc.paras.size) })
+        assertEquals("Enter a test name!", carried[p].runs.filter { it.control == name }.joinToString("") { it.text })
+        // A check box: ticked, its letter and value both.
+        val box = "<w:sdtPr><w:id w:val=\"7\"/><w14:checkbox><w14:checked w14:val=\"0\"/><w14:checkedState w14:val=\"2612\" w14:font=\"MS Gothic\"/><w14:uncheckedState w14:val=\"2610\" w14:font=\"MS Gothic\"/></w14:checkbox></w:sdtPr>"
+        assertEquals(listOf(Forms.Kind.Check, false), listOf(Forms.kind(box), Forms.checked(box)))
+        assertEquals(listOf(true, "☒"), listOf(Forms.checked(Forms.checkedTo(box, true)), Forms.box(box, true)))
+    }
+
     @Test fun `an APA 7 student paper is set up in both kinds`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Method")), heading = 1), DocPara(listOf(DocRun("Participants")), heading = 3),

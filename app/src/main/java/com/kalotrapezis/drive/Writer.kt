@@ -621,12 +621,12 @@ internal object WriterBridge {
             if (o.heading == p.heading && unbold(o.runs) == unbold(p.runs)) p.copy(runs = o.runs) else p
         }
     }
-    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList(), cite = null, change = null, note = null) })
+    private fun unbold(runs: List<DocRun>) = OfficeFormats.tidy(runs.map { it.copy(bold = false, font = null, comments = emptyList(), cite = null, change = null, note = null, control = null) })
 
     /** Paragraphs as they compare: a list's start number counts only where a list begins; bold in a heading, not at all. */
     fun comparable(paras: List<DocPara>) = paras.mapIndexed { i, p ->
         val firstOfList = p.list != null && (i == 0 || paras[i - 1].list == null)
-        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList(), cite = null, change = null, note = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
+        p.copy(runs = breaksLookAround(if (p.heading > 0) unbold(p.runs) else OfficeFormats.tidy(p.runs.map { it.copy(font = null, comments = emptyList(), cite = null, change = null, note = null, control = null) })).let(OfficeFormats::tidy), keep = null, list = p.list?.let { l -> l.copy(start = if (firstOfList && l.ordered && l.start != 1) l.start else null) })
     }
 }
 
@@ -1361,6 +1361,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** The change at a cursor: the one it is inside, else the one just before it (between two, never both). */
     fun changeAt(at: Int) = (changesShown.firstOrNull { (_, a, z) -> at in a until z } ?: changesShown.lastOrNull { (_, a, z) -> at in a..z })?.first
     val hereChange by remember { derivedStateOf { changeAt(state.selection.min) } }
+    // Forms (asked 2026-10-01): where each content control's letters are, and the one the cursor is in (at its edge too).
+    val controlsShown by remember { derivedStateOf {
+        if (meta.paras.none { p -> p.runs.any { it.control != null } }) emptyList() else {
+            val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
+            current().paras.flatMapIndexed { i, p ->
+                var at = 0
+                p.runs.flatMap { r -> (r.control?.let { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { Triple(c, r.text, it) } } ?: emptyList()).also { at += r.text.length } }
+            }
+        }
+    } }
+    val hereControl by remember { derivedStateOf { state.selection.min.let { at -> controlsShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
+    fun fillControl(old: String, pr: String, text: String) = change {
+        meta = Forms.fill(current(), old, pr, text)
+        dirty = true
+        reshow()
+    }
     // Track changes on (Word files): each edit recorded as the reviewer's, compared with the document as it was.
     val prefs = remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE) }
     var tracking by remember { mutableStateOf(false) }
@@ -1864,6 +1880,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
+                                // A form's fields: a light box behind each (Word shades them), deeper where the cursor is.
+                                if (controlsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                    controlsShown.forEach { (c, _, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
+                                        if (c == hereControl?.first) Color(0x552196F3) else Color(0x222196F3)) }
+                                }
                                 // Commented letters: tinted (the comment itself in the bar above the ribbon).
                                 if (commentsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
                                     // A resolved one only while the cursor is in it (Word hides them).
@@ -2128,6 +2149,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     TextButton(onClick = { ignored = ignored + w }) { Text("Ignore", color = Color.White.copy(alpha = 0.7f)) }
                 }
             }
+            // The form field the cursor is in: its choices, a date, a tick (a text field fills by typing, or Fill in).
+            hereControl?.let { (pr, _, _) -> FormBar(pr, controlsShown.filter { it.first == pr }.joinToString("") { it.second }, w) { newPr, text -> fillControl(pr, newPr, text) } }
             // The tracked change the cursor is in: what, who and when (Review has Accept and Reject).
             hereChange?.let { c ->
                 Row(Modifier.fillMaxWidth().clickable { tab = WriterTab.Review }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

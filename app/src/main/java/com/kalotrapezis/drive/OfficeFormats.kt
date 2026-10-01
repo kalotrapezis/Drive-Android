@@ -41,6 +41,7 @@ internal data class DocRun(
     val cite: String? = null, // a citation's letters: Word's field ("CITATION Smi20 \l 1033"), or an ODT bibliography mark's source tag
     val change: DocChange? = null, // Review › Track changes: letters someone inserted or deleted
     val note: DocNote? = null, // a footnote's or endnote's reference: its number (superscript), the note itself here
+    val control: String? = null, // a form's content control the letters fill (Word's w:sdtPr, raw): text, drop-down, date, check box
 ) {
     fun sameLook(o: DocRun) = image == null && o.image == null && copy(text = "") == o.copy(text = "")
 }
@@ -67,8 +68,8 @@ internal data class DocChange(val deleted: Boolean, val author: String, val date
 internal data class DocNote(val end: Boolean, val paras: List<DocPara>)
 
 /** A list that tags every run added to it with the comments open at that moment (the readers' ranges). */
-internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }, private val change: () -> DocChange? = { null }) : ArrayList<DocRun>() {
-    override fun add(element: DocRun) = super.add((if (open.isEmpty()) element else element.copy(comments = open.toList())).let { r -> cite()?.let { r.copy(cite = it) } ?: r }
+internal class CommentedRuns(private val open: Collection<String>, private val cite: () -> String? = { null }, private val change: () -> DocChange? = { null }, private val control: () -> String? = { null }) : ArrayList<DocRun>() {
+    override fun add(element: DocRun) = super.add((if (open.isEmpty()) element else element.copy(comments = open.toList())).let { r -> cite()?.let { r.copy(cite = it) } ?: r }.let { r -> control()?.let { r.copy(control = it) } ?: r }
         .let { r -> change()?.let { r.copy(change = it) } ?: r })
 }
 
@@ -312,7 +313,7 @@ internal object PictureXml {
     fun boxParas(img: DocImage, lines: List<String>): List<DocPara> {
         val p0 = img.box?.firstOrNull()
         val r0 = p0?.runs?.firstOrNull { it.image == null && it.note == null }
-        return lines.map { t -> p0?.copy(runs = listOf((r0 ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null))) ?: DocPara(listOf(DocRun(t))) }
+        return lines.map { t -> p0?.copy(runs = listOf((r0 ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null))) ?: DocPara(listOf(DocRun(t))) }
     }
 
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
@@ -794,7 +795,7 @@ internal object OfficeFormats {
      * neighbours carry it), one typed at its edge does not; all its letters deleted, the comment is gone.
      */
     fun carryFonts(old: List<DocPara>, new: List<DocPara>): List<DocPara> {
-        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null || it.change != null || it.note != null } }) return new
+        if (old.none { p -> p.runs.any { it.font != null || it.comments.isNotEmpty() || it.cite != null || it.change != null || it.note != null || it.control != null } }) return new
         val from = pairParagraphs(old, new)
         var carried: String? = null // the font the previous paragraph ended with
         return new.mapIndexed { j, p ->
@@ -804,6 +805,7 @@ internal object OfficeFormats {
             val cites = arrayOfNulls<String>(text.length)
             val changes = arrayOfNulls<DocChange>(text.length)
             val noteAt = arrayOfNulls<DocNote>(text.length)
+            val controls = arrayOfNulls<String>(text.length)
             val known = BooleanArray(text.length)
             from[j].takeIf { it >= 0 }?.let { old[it] }?.let { o ->
                 val oldText = o.text
@@ -812,7 +814,8 @@ internal object OfficeFormats {
                 val oldCites = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.cite) } } }
                 val oldChanges = ArrayList<DocChange?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.change) } } }
                 val oldNoteAt = ArrayList<DocNote?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.note) } } }
-                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; changes[y] = oldChanges[x]; noteAt[y] = oldNoteAt[x]; known[y] = true }
+                val oldControls = ArrayList<String?>(oldText.length).apply { o.runs.forEach { r -> repeat(r.text.length) { add(r.control) } } }
+                fun take(y: Int, x: Int) { fonts[y] = oldFonts[x]; notes[y] = oldNotes[x]; cites[y] = oldCites[x]; changes[y] = oldChanges[x]; noteAt[y] = oldNoteAt[x]; controls[y] = oldControls[x]; known[y] = true }
                 // Common start and end first; the changed middle by longest common subsequence (small, where one typed).
                 var a = 0
                 while (a < text.length && a < oldText.length && text[a] == oldText[a]) { take(a, a); a++ }
@@ -876,14 +879,26 @@ internal object OfficeFormats {
                     k = e
                 }
             }
+            // …and a form's field either known neighbour is in (typed at its edge fills it, as Word's cursor is inside it there).
+            run {
+                var k = 0
+                while (k < text.length) {
+                    if (known[k]) { k++; continue }
+                    var e = k
+                    while (e < text.length && !known[e]) e++
+                    val c = (if (k > 0) controls[k - 1] else null) ?: (if (e < text.length) controls[e] else null)
+                    for (q in k until e) controls[q] = c
+                    k = e
+                }
+            }
             // The runs again, cut where the font or the comments change.
             var at = 0
             val runs = ArrayList<DocRun>()
             for (r in p.runs) {
                 var start = 0
-                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start] || changes[at + k] != changes[at + start] || noteAt[at + k] != noteAt[at + start]) {
+                for (k in 1..r.text.length) if (k == r.text.length || fonts[at + k] != fonts[at + start] || notes[at + k].orEmpty() != notes[at + start].orEmpty() || cites[at + k] != cites[at + start] || changes[at + k] != changes[at + start] || noteAt[at + k] != noteAt[at + start] || controls[at + k] != controls[at + start]) {
                     // A note's reference keeps its note (typed letters never join one).
-                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start], change = changes[at + start], note = noteAt[at + start])
+                    if (k > start) runs += r.copy(text = r.text.substring(start, k), font = fonts[at + start], comments = notes[at + start].orEmpty(), cite = cites[at + start], change = changes[at + start], note = noteAt[at + start], control = controls[at + start])
                     start = k
                 }
                 at += r.text.length
@@ -1119,6 +1134,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     private var fieldState = 0 // 0 outside a field, 1 in its instruction, 2 in its shown result
     private var fieldDepth = 0 // fields inside fields
     private var citeNow: String? = null // in a citation's shown text: its field (References › Citations)
+    private var controlNow: String? = null // in a form's content control: its sdtPr
     private var changeNow: DocChange? = null // inside a w:ins / w:del
     private fun <T> changed(e: Element, deleted: Boolean, f: () -> T): T {
         val outer = changeNow
@@ -1286,7 +1302,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A list numbered by its style shows as the list it is (asked 2026-09-28: the test suite's bullets did not show).
         if (!ownNumbering && heading == 0) keepStyle?.let { styleLists[it] }?.let { list = listItem(it) }
         val listSource = lastListSource.takeIf { list != null }
-        val runs = CommentedRuns(openComments, { citeNow }, { changeNow })
+        val runs = CommentedRuns(openComments, { citeNow }, { changeNow }, { controlNow })
         // A page break inside a paragraph: the paragraph is split there and the part after it starts a page — Word's
         // own "page break before", which saves and shows the same (2026-09-28; it made files copy-only before).
         // A break at the paragraph's start: the paragraph starts a page. At its end (or alone in it): the next paragraph
@@ -1322,8 +1338,15 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         val mark = if (fieldMarks) fieldMark(e.attr(W, "instr") ?: "") else null
                         if (mark != null) runs += DocRun(mark.toString()) else content(e, link) }
                     "smartTag", "customXml" -> content(e, link)
-                    // A citation's content control (Word's): only its field is kept.
-                    "sdt" -> { if (e.kid(W, "sdtPr")?.kid(W, "citation") == null) notes += "content controls"; e.kid(W, "sdtContent")?.let { content(it, link) } }
+                    // A citation's content control (Word's): only its field is kept. A form's (text, drop-down, date,
+                    // check box — asked 2026-10-01): kept on its letters, filled in by the editor.
+                    "sdt" -> {
+                        val pr = e.kid(W, "sdtPr")
+                        val form = pr != null && pr.kid(W, "citation") == null && controlNow == null && pr.kids().none { it.localName in OTHER_CONTROLS }
+                        if (form) controlNow = OfficeFormats.xml(pr!!) else if (pr?.kid(W, "citation") == null) notes += "content controls"
+                        e.kid(W, "sdtContent")?.let { content(it, link) }
+                        if (form) controlNow = null
+                    }
                     "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
@@ -1414,6 +1437,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "rStyle" -> when (styleName[e.attr(W, "val")] ?: e.attr(W, "val")?.lowercase()) {
                         "strong" -> look = look.copy(bold = true)
                         "emphasis" -> look = look.copy(italic = true)
+                        "placeholder text" -> look = look.copy(color = 0x808080) // a form's empty field: Word's grey
                         "hyperlink", "internet link", "default paragraph font", "footnote reference", "endnote reference" -> Unit
                         else -> notes += "character styles"
                     }
@@ -1503,6 +1527,8 @@ private fun docxStyleLists(parts: Map<String, ByteArray>, dir: String): Map<Stri
 }
 
 /** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
+/** Content controls Writer does not fill in (a form's own are text, rich text, drop-down, combo box, date, check box). */
+internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "picture", "bibliography", "equation", "group", "citation", "repeatingSection", "repeatingSectionItem")
 internal val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
@@ -1784,10 +1810,20 @@ private object DocxWriter {
                 if (c != null) body.append("""<w:${if (c.deleted) "del" else "ins"} w:id="${changeId++}" w:author="${OfficeFormats.esc(c.author)}"${c.date?.let { " w:date=\"$it\"" } ?: ""}>""")
                 change = c
             }
+            // A form's content control: its letters inside Word's w:sdt (outside a link, the link inside it).
+            var control: String? = null
+            fun controlTo(c: String?) {
+                if (c == control) return
+                changeTo(null); citeTo(null)
+                if (control != null) body.append("</w:sdtContent></w:sdt>")
+                if (c != null) body.append("<w:sdt>$c<w:sdtContent>")
+                control = c
+            }
             while (k < runs.size) {
                 val link = runs[k].link
                 var end = k
-                while (end < runs.size && runs[end].link == link) end++
+                while (end < runs.size && runs[end].link == link && runs[end].control == runs[k].control) end++
+                controlTo(runs[k].control)
                 if (link != null) { changeTo(null); citeTo(null); body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
                 for (r in runs.subList(k, end)) {
                     if (r.comments != openComments.toList() || link == null && r.cite != cite) changeTo(null)
@@ -1803,7 +1839,7 @@ private object DocxWriter {
                 if (link != null) body.append("</w:hyperlink>")
                 k = end
             }
-            citeTo(null)
+            citeTo(null); controlTo(null)
             // A comment ends here unless the next paragraph goes on in it.
             commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
             body.append("</w:p>")

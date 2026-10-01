@@ -1,3 +1,27 @@
+# 1 October, midday — Forms (content controls)
+
+**State.** Branch `writer-library`, committed; all unit tests pass. Latest build on the **tablet** only (the phone was
+not connected). Checked on the tablet with `Test-Words/05_Review_and_Forms.docx` (restored to the suite's original after).
+
+**Done:** item 4 below, **Forms**. A scan of the tablet's .docx files: the user's documents use Word's content controls
+(w:sdt), never legacy FORMTEXT fields. Run-level controls (text, drop-down/combo box, date, check box) are now kept on
+their letters (`DocRun.control` = the raw sdtPr; read in `content()`, written back as w:sdt around the runs, carried
+through typing by `carryFonts`: typed letters at a field's edge join it) and no longer make a file copy-only. In the editor
+each field is shaded light blue; with the cursor in one, a bar above the ribbon (`FormBar`, WriterForms.kt) offers the
+drop-down's choices, **Choose date** (the system date picker; the text in the control's own dateFormat, w:fullDate
+updated), **Tick/Untick** (w14:checked plus the box letter), or **Fill in** for text. Word's "Placeholder Text" style reads
+as grey; filling drops showingPlcHdr and the grey. LibreOffice reads the saved controls back (plain-text, dropdown, date).
+ponytail: block-level controls (TOC/bibliography docPartObj, controls around whole paragraphs or table rows/cells) still
+make a file copy-only (the user's theses have 1–3 of those, probably the TOC); controls inside table cells are kept but
+not filled from the bar; ODT's loext:content-control not read yet; no Insert › control (Developer) yet. The date picker
+is Android's own, so it shows in the device language (Greek), not the app's English.
+Seen once and not reproduced: right after the first fill (Ready → Done) the Status field lost its shading until the
+cursor came back; the model and the saved file were right. Watch for it.
+
+**Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
+
+---
+
 # 30 September, late night (new 5-hour window) — counter, floating objects, text boxes, WordArt, charts, line numbers, hyphenation, style sets (read this first)
 
 **State.** Branch `writer-library`, all committed; all unit tests pass. The latest build is on the **tablet**

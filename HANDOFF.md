@@ -31,6 +31,18 @@ Fixed after: that document showed the unsaved dot as soon as Edit was tapped —
 look the same (runs the file keeps apart for fonts it does not show) once laid out; the change check now compares spans
 joined (`joinedSpans`). Checked on the tablet (no dot; test copy and its draft removed).
 
+**Then: pictures in front of / behind the text in Edit mode** (the user, on the 602 cover: "correct on View mode, but it
+pushes them in the corner and makes them small on edit"). They were a line-tall thumbnail at their anchor. Now, on the
+page (tablet / Print layout), the pages' layout gives each one's place (`OfficePages.layout(..., paraTopOf)` records each
+paragraph's top on its page) and the editor draws it there at its size, measured from its paragraph's top in the editor
+(`floatsShown`, `FloatShown`); its letter takes no room (`shownSize`: 0.5 sp when `pageWidthPt` is set). Behind the text:
+drawn at 45% so the text reads. **Free move** (the user asked for Word's free movement): a selected one is dragged where it
+goes and fixed on the page there (`PictureXml.placed`, as Picture › Position does) — checked on the tablet, View mode
+agrees. The editor also shows **line spacing** now (`lineHeight` per paragraph: exact, or multiple × biggest letters).
+Still off: **empty paragraphs** keep the editor's default height (the library ignores lineHeight on an empty line), so
+text after empty lines sized by a big paragraph mark sits higher than on the pages — on the 602 cover the Neapolis logo
+overlaps "ΣΧΟΛΗ…" in Edit mode. Same root as the table-gaps item; fix together (an empty block's height).
+
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 
 ---

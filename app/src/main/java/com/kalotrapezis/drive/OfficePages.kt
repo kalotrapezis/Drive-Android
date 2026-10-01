@@ -906,15 +906,18 @@ internal object OfficePages {
     /** A floating picture the text goes around on its page (Square wrap), or under (a [band]: no text beside it). */
     private class Wall(val key: String, val x0: Float, val y0: Float, val x1: Float, val y1: Float, val band: Boolean)
 
-    fun layout(given: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pageIndexOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
+    fun layout(given: OfficeDoc, styles: DocStyles, pageOf: IntArray? = null, pageIndexOf: IntArray? = null, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> =
+        layout(given, styles, pageOf, pageIndexOf, null, pictureBytes)
+    /** …and [paraTopOf] each paragraph's top on its page (pt): where a picture placed from its paragraph is measured from. */
+    fun layout(given: OfficeDoc, styles: DocStyles, pageOf: IntArray?, pageIndexOf: IntArray?, paraTopOf: FloatArray?, pictureBytes: (DocImage) -> ByteArray?): List<LaidPage> {
         // Pictures placed on the page itself (not from their paragraph) may stand beside text that comes before them:
         // laid out once to find where they are, then again with the text going around them from the page's top.
         val found = HashMap<Int, MutableList<Wall>>()
-        val once = layoutPass(given, styles, pageOf, pageIndexOf, pictureBytes, emptyMap(), found)
-        return if (found.isEmpty()) once else layoutPass(given, styles, pageOf, pageIndexOf, pictureBytes, found, HashMap())
+        val once = layoutPass(given, styles, pageOf, pageIndexOf, paraTopOf, pictureBytes, emptyMap(), found)
+        return if (found.isEmpty()) once else layoutPass(given, styles, pageOf, pageIndexOf, paraTopOf, pictureBytes, found, HashMap())
     }
 
-    private fun layoutPass(given: OfficeDoc, styles: DocStyles, pageOf: IntArray?, pageIndexOf: IntArray?, pictureBytes: (DocImage) -> ByteArray?,
+    private fun layoutPass(given: OfficeDoc, styles: DocStyles, pageOf: IntArray?, pageIndexOf: IntArray?, paraTopOf: FloatArray?, pictureBytes: (DocImage) -> ByteArray?,
         seed: Map<Int, List<Wall>>, found: MutableMap<Int, MutableList<Wall>>): List<LaidPage> {
         // Notes numbered as they stand now; endnotes laid out after the text, each its number then its words.
         val numbered = OfficeFormats.numberNotes(given)
@@ -1083,6 +1086,7 @@ internal object OfficePages {
                 if (y + (layout.bottomPt(line) - top) > limitWith(line, line) && pieces.isNotEmpty()) { newPage(); if (line == 0) natural = y; continue }
                 if (line == 0 && !floated) {
                     floated = true
+                    paraTopOf?.let { if (i < it.size) it[i] = natural }
                     for (d in drops) floats += LaidPage.Floating(DropDrawable(d, page.left, y), page.left, y, 1f, 1f, behind = false)
                     for ((img, place) in floating) {
                         val f = floatAt(doc, styles, img, place, natural, page, pictureBytes)

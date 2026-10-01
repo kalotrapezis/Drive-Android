@@ -215,6 +215,8 @@ internal object WriterBridge {
         // their longest words and the others broke words in two (the user's CV, 2026-09-30).
         if (img.table != null) return (editorWidthSp / w).coerceAtMost(1f).let { fit -> w * fit to img.heightPt * scale * fit }
         val over = PictureXml.wrapOf(img).let { it == PictureWrap.InFront || it == PictureWrap.Behind }
+        // On the page (a tablet, Print layout) it is drawn in its place over the text: its letter takes no room.
+        if (over && pageWidthPt != null) return 0.5f to 0.5f
         val fit = minOf(MAX_PICTURE_SP / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
     }
@@ -235,6 +237,21 @@ internal object WriterBridge {
 
     /** A picture's own run as the file had it (its letter formatting), by the picture's key. */
     val pictureRuns = HashMap<String, DocRun>()
+
+    /**
+     * A paragraph's lines as tall as the pages make them (asked 2026-10-01: a cover's text rode up under its logos):
+     * its line spacing (1.15, double, exact) over its biggest letters — an empty one's, its paragraph mark's size, as
+     * Word gives an empty line. Left to the editor for single spacing, headings, pictures and tables.
+     */
+    private fun lineHeight(p: DocPara, runs: List<DocRun>, look: ParaLook, basePt: Float, scale: Float): androidx.compose.ui.unit.TextUnit {
+        if (p.heading > 0 || p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
+        look.lineExact?.takeIf { !look.lineAtLeast }?.let { return (it * scale).sp }
+        val mark = if (runs.isEmpty()) p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
+            ?.let { Regex("""<w:sz w:val="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(2) } else null
+        if (look.lineMultiple == 1f && mark == null) return androidx.compose.ui.unit.TextUnit.Unspecified
+        val size = mark ?: (runs.maxOfOrNull { it.sizePt ?: look.sizePt ?: basePt } ?: look.sizePt ?: basePt)
+        return (size * scale * lineRatio * look.lineMultiple).sp
+    }
 
     /** [pictures] learns every picture shown, by the key the editor knows it by. */
     fun toEditor(doc: OfficeDoc, pictures: MutableMap<String, DocImage> = HashMap(), styles: DocStyles = DocStyles.Plain): RichTextDocument {
@@ -299,6 +316,7 @@ internal object WriterBridge {
                     if (rest == 0f && first == 0f) null else androidx.compose.ui.text.style.TextIndent(first.sp, rest.sp)
                 },
                 isLineBreak = afterBreak,
+                lineHeight = lineHeight(p, runs, look, doc.basePt, scale),
             )
         }
         // A line break inside a paragraph (the editor draws U+2028 as a box): the lines after it are the editor's own
@@ -1518,6 +1536,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection = androidx.compose.ui.text.TextRange(cursor.min + shift, cursor.max + shift)
         message = "Drawn in front of the text — the pages show it in its place"
     }
+    // Pictures in front of or behind the text (asked 2026-10-01: a cover's logos showed as tiny marks in the corner):
+    // drawn on the page in their place, as the pages show them — from the pages' layout, measured from their paragraph's
+    // top, so typing above them moves them with it. Worked out again after each Writer change, not each keystroke.
+    var floatsShown by remember { mutableStateOf<Map<String, FloatShown>>(emptyMap()) }
+    LaunchedEffect(meta, styleEdits, documentStyles, onPage, loaded) { // styleEdits: a picture changed (meta stays)
+        if (!loaded) return@LaunchedEffect
+        val doc = current()
+        val over = doc.paras.indices.flatMap { j -> doc.paras[j].runs.mapNotNull { r -> r.image?.takeIf { PictureXml.wrapOf(it).let { w -> w == PictureWrap.InFront || w == PictureWrap.Behind } }?.let { it.key to j } } }.toMap()
+        if (!loaded || !onPage || over.isEmpty()) { floatsShown = emptyMap(); return@LaunchedEffect }
+        delay(300)
+        val parts = packageParts
+        val tops = FloatArray(doc.paras.size)
+        val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, null, IntArray(doc.paras.size), tops) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() } ?: return@LaunchedEffect
+        floatsShown = laid.flatMap { page -> page.floats.mapNotNull { f -> f.key?.let { k -> over[k]?.let { j -> k to FloatShown(f.x - page.page.left, f.y - tops[j], f.w, f.h, f.behind, f.x, f.y) } } } }.toMap()
+    }
     /** The pages of [doc] as the pages view lays them out, and the page each paragraph starts on (-1: none). */
     suspend fun laidOut(doc: OfficeDoc): Pair<List<LaidPage>, IntArray>? {
         val parts = packageParts
@@ -1969,11 +2002,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
+                                val paraStarts = remember(text, floatsShown) { if (floatsShown.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()) }
                                 Box(Modifier.matchParentSize().padding(margins)) {
                                     placed.forEach { (i, img, at) ->
-                                        val (left, bottom) = at
-                                        val (w, h) = WriterBridge.shownSize(img, scale)
-                                        val y = if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
+                                        // In front of or behind the text: in its place on the page, its own size (from its paragraph's top).
+                                        val float = floatsShown[img.key]
+                                        val left = float?.let { with(density) { (it.x * scale).sp.toPx() } } ?: at.first
+                                        val bottom = at.second
+                                        val (w, h) = float?.let { it.w * scale to it.h * scale } ?: WriterBridge.shownSize(img, scale)
+                                        val y = if (float != null) (l.getLineTop(l.getLineForOffset(paraStarts.lastOrNull { it <= i } ?: i)) + with(density) { (float.y * scale).sp.toPx() }).toInt()
+                                            else if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
                                             else with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
                                         val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         val shownWidth = with(density) { w.sp.toPx() }
@@ -2006,7 +2044,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                             }
                                             true
                                         } else Modifier
-                                            .then(if (!selected) Modifier else Modifier.graphicsLayer { translationX = drag.x; translationY = drag.y; alpha = if (drag == Offset.Zero) 1f else 0.7f }
+                                            .then(if (float?.behind == true) Modifier.graphicsLayer { alpha = 0.45f } else Modifier) // behind the text: the text stays readable over it
+                                            // Selected, dragged where it goes on its page — fixed there, free of the text (Word's "Fix position
+                                            // on page", as Picture › Position places it).
+                                            .then(if (!selected || float == null) Modifier else Modifier.graphicsLayer { translationX = drag.x; translationY = drag.y }
+                                                .pointerInput(i, img.key, float) {
+                                                    detectDragGestures(
+                                                        onDrag = { change, delta -> change.consume(); drag += delta },
+                                                        onDragEnd = {
+                                                            val k = with(density) { scale.sp.toPx() }
+                                                            val moved = drag; drag = Offset.Zero
+                                                            changePicture(img.key, PictureXml.placed(img, float.pageX + moved.x / k, float.pageY + moved.y / k, kind))
+                                                        },
+                                                        onDragCancel = { drag = Offset.Zero },
+                                                    )
+                                                })
+                                            .then(if (!selected || float != null) Modifier else Modifier.graphicsLayer { translationX = drag.x; translationY = drag.y; alpha = if (drag == Offset.Zero) 1f else 0.7f }
                                                 .pointerInput(i, img.key) {
                                                     detectDragGestures(
                                                         onDrag = { change, delta -> change.consume(); drag += delta },
@@ -3200,6 +3253,9 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
     icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
     Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
 }
+
+/** A picture in front of or behind the text, in the editor: from the text's left and its paragraph's top (pt), its size. */
+internal class FloatShown(val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val pageX: Float, val pageY: Float)
 
 /** Spans with their same-looking neighbours joined, as the editor joins them once laid out. */
 private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>>) =

@@ -931,8 +931,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
         // The editor lays a list item's indent out again once it is drawn (its bullet measured): only its look, so the
-        // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed).
-        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, a.spanStyles, a.paragraphStyles.map { it.item.copy(textIndent = null) to it.start }) }, meta.paras, styleEdits) }
+        // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed). Likewise it joins
+        // neighbouring letters that look the same (runs the file kept apart — fonts it does not show): compared joined.
+        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, joinedSpans(a.spanStyles), a.paragraphStyles.map { it.item.copy(textIndent = null) to it.start }) }, meta.paras, styleEdits) }
             .drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
             if (remeasured) { remeasured = false; return@collectLatest } // tables shown again at their true height: no change
 
@@ -3199,6 +3200,14 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
     icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
     Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
 }
+
+/** Spans with their same-looking neighbours joined, as the editor joins them once laid out. */
+private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>>) =
+    spans.sortedWith(compareBy({ it.start }, { it.end })).fold(ArrayList<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>>()) { out, r ->
+        val i = out.indexOfLast { it.item == r.item && it.end == r.start }
+        if (i >= 0) out[i] = out[i].copy(end = r.end) else out += r
+        out
+    }.sortedWith(compareBy({ it.start }, { it.end }, { it.item.hashCode() }))
 
 /** A colour tool: tapped, its swatches open beside it on the same line; the crossed-out one removes the colour. */
 @Composable internal fun Swatches(tint: Color, icon: Int, label: String, colors: List<Color>, choose: (Color?) -> Unit) {

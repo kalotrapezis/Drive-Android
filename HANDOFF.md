@@ -27,8 +27,9 @@ dropped, which broke the contents' links and PAGEREFs to the headings' `_Toc` on
 (the computer's copy) round-trips with the same 23 pages and text in LibreOffice (the contents' title ~10 pt lower: a
 "page break before" page keeps space-before in LibreOffice — Writer's page-break model since 28 Sep, not new); on the
 tablet a copy opened not copy-only, an edit saved with TOC, Bibliography and 22 _Toc bookmarks intact (copy deleted).
-Seen: that document showed the unsaved dot as soon as Edit was tapped (05 did not) — the editor's text or spans change
-after loading for some documents (pictures?); probably older, look into it.
+Fixed after: that document showed the unsaved dot as soon as Edit was tapped — the editor joins neighbouring spans that
+look the same (runs the file keeps apart for fonts it does not show) once laid out; the change check now compares spans
+joined (`joinedSpans`). Checked on the tablet (no dot; test copy and its draft removed).
 
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 

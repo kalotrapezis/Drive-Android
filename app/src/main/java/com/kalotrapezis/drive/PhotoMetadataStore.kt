@@ -287,6 +287,17 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
 
     fun removeFromCollection(collectionId: Long, keys: Collection<String>) = setMembership(collectionId, keys, member = false)
 
+    /**
+     * A folder album holds that folder's photos only: one whose file is now in another folder leaves it (2026-10-01 —
+     * a Viber photo moved to Camera came back into the hidden Viber album from an older record, and so vanished
+     * from the gallery). The removal is newer than whatever put it there, so it wins on the computer too.
+     */
+    fun pruneFolderAlbum(name: String, keysElsewhere: Collection<String>) {
+        val id = collectionIdNamed(name) ?: return
+        val members = collectionKeys(id)
+        keysElsewhere.filter { it in members }.takeIf { it.isNotEmpty() }?.let { removeFromCollection(id, it) }
+    }
+
     fun collectionIdNamed(name: String): Long? =
         readableDatabase.rawQuery("SELECT id FROM collections WHERE name = ? COLLATE NOCASE AND deleted = 0", arrayOf(name)).use { if (it.moveToFirst()) it.getLong(0) else null }
 

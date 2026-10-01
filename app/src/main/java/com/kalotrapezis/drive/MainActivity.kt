@@ -398,7 +398,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 val choices = photoMetadata.folderChoices()
                 deviceFolders(all, choices).also { folders ->
                     // Keep each included folder's album full as new photos land in it.
-                    folders.filter { it.included == true }.forEach { photoMetadata.fillFolderAlbum(it.name, it.entries.map(Entry::photoKey)) }
+                    folders.filter { it.included == true }.forEach { folder ->
+                        photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
+                        photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
+                    }
                     (context as MainActivity).runOnUiThread { photoFolders = folders }
                 }
                 showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })

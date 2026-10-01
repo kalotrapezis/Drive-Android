@@ -212,6 +212,7 @@ private fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageD
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WriterLog.init(this) // the log from the start: a crash anywhere is written down
         val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
         setContent { LocalDriveApp(external) }
     }

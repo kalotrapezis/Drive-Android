@@ -86,6 +86,17 @@ top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for ea
   and a hard page break's label says "Page break · Page N". ponytail: a page that begins inside a paragraph is not marked
   (the editor's lines are not the pages'); no space is opened between pages and footers are not shown.
 
+**Then: the Writer log** (the user: "add logs, the word app is huge, we are going to need them"). `WriterLog`
+(WriterLog.kt): logcat tag `Tetra.Writer` and `files/logs/writer.log` on the device (~0.5 MB, the older half in
+writer.log.1). Written: app/device line per start, every crash (default uncaught handler, set in MainActivity),
+open (name, kind, size), read time, what was read (paragraphs/tables/pictures/comments, what was not kept, copy-only),
+draft restored, view/edit mode, tab, every ribbon tap (`RibbonButton`), what Writer said (`message`), undo/redo,
+picture changes, page layout time and count, save/save new (name, size, copy), write time, closing, and every error the
+Writer already caught (all `Log.e/w("Writer")` go through it). Never the documents' words. **File › Send log** shares
+it (FileProvider path `logs/`). Read it over adb: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log`.
+Also: comment and form-field shading now covers the letters only (with paragraph spacing a range's path covered the
+whole spaced line).
+
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 
 ---

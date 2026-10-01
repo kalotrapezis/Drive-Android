@@ -203,7 +203,7 @@ internal object WriterBridge {
     fun documentHeadings() = runCatching {
         val field = HeadingStyle::class.java.getDeclaredField("defaultSpanStyle").apply { isAccessible = true }
         HeadingStyle.entries.filter { it != HeadingStyle.Normal }.forEach { field.set(it, SpanStyle()) }
-    }.onFailure { Log.w("Writer", "heading looks", it) }
+    }.onFailure { WriterLog.w("heading looks", it) }
 
     /**
      * How a picture shows in the editor: its size, scaled with the text, and never wider than the page. One in front of
@@ -400,7 +400,7 @@ internal object WriterBridge {
         // Shown again (the library's own refresh, with its current text and selection: its default argument).
         if (changed) runCatching { state.javaClass.getMethod("updateAnnotatedString\$com_mohamedrejeb_richeditor_richeditor_compose\$default", state.javaClass,
             androidx.compose.ui.text.input.TextFieldValue::class.java, Int::class.javaPrimitiveType, Any::class.java).invoke(null, state, null, 1, null) }
-            .onFailure { Log.w("Writer", "paragraph spacing", it) }
+            .onFailure { WriterLog.w("paragraph spacing", it) }
         return changed
     }
 
@@ -947,11 +947,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         try { return block() } finally { if (--changing == 0) { state.history.clear(); base = snapshot() } }
     }
     fun undo() {
+        WriterLog.i("undo")
         if (state.history.canUndo) { state.history.undo(); return }
         val s = undone.removeLastOrNull() ?: return
         redone.add(snapshot()); show(s)
     }
     fun redo() {
+        WriterLog.i("redo")
         if (state.history.canRedo) { state.history.redo(); return }
         val s = redone.removeLastOrNull() ?: return
         undone.add(snapshot()); show(s)
@@ -961,10 +963,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     LaunchedEffect(reload) {
         loaded = false
+        WriterLog.init(context)
+        WriterLog.i("open ${file?.name ?: "a new document"} (${kind.name}${file?.let { ", ${it.length() / 1024} KB" } ?: ""})")
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = file?.readBytes()
-                val doc = bytes?.let { OfficeFormats.read(it, kind) } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
+                val doc = bytes?.let { WriterLog.timed("read the file") { OfficeFormats.read(it, kind) } } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
                 var draftPackage: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
@@ -995,21 +999,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // what was not touched — so that file too is saved only as a copy.
             val shown = WriterBridge.comparable(WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt, pictures))
             val same = shown == WriterBridge.comparable(doc.paras)
-            if (!same) Log.w("Writer", "shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
+            if (!same) WriterLog.w("shown differs: ${shown.zip(WriterBridge.comparable(doc.paras)).firstOrNull { it.first != it.second }}")
             meta = if (same) doc else doc.copy(unsupported = doc.unsupported + "formatting it cannot show exactly")
+            WriterLog.i("read: ${doc.paras.size} paragraphs, ${doc.paras.count { it.table != null }} tables, ${doc.paras.sumOf { p -> p.runs.count { it.image != null } }} pictures, " +
+                "${doc.comments.size} comments; not kept: ${meta.unsupported.ifEmpty { setOf("—") }.joinToString()}" + if (meta.blocking.isNotEmpty()) " (saves as a copy)" else "")
             dirty = false
             if (draft != null) {
                 state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
                 meta = meta.copy(paras = draft.paras, comments = draft.comments, sources = draft.sources) // the draft's paragraph formatting, comments and sources, not the file's
                 dirty = true; message = "Your unsaved changes are back"
+                WriterLog.i("draft restored")
             }
             state.history.clear(); undone.clear(); redone.clear()
             // The cursor at the start (the editor leaves it at the end): the first tap brought the end into view.
             state.selection = androidx.compose.ui.text.TextRange(0)
             base = snapshot()
             loaded = true
-        }.onFailure { failed = it.message ?: "This file could not be read." }
+        }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: "This file could not be read." }
     }
+    // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
+    LaunchedEffect(viewing) { WriterLog.i(if (viewing) "view mode" else "edit mode") }
+    LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
+    LaunchedEffect(message) { message?.let { WriterLog.i("said: $it") } }
+    DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
@@ -1023,7 +1035,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             dirty = true
             delay(1500)
             val doc = current()
-            withContext(Dispatchers.IO) { runCatching { draftFile(context, draftKey, kind).apply { parentFile?.mkdirs() }.writeBytes(OfficeFormats.write(doc, kind, original)) } }
+            withContext(Dispatchers.IO) { runCatching { draftFile(context, draftKey, kind).apply { parentFile?.mkdirs() }.writeBytes(OfficeFormats.write(doc, kind, original)) }.onFailure { WriterLog.e("draft", it) } }
         }
     }
     // The pages, laid out again whenever they are shown (after editing, they show the edits).
@@ -1032,7 +1044,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         pages = null
         val doc = current()
         val parts = packageParts
-        pages = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles) { img -> img.bytes ?: img.part?.let { parts[it] } } }.onFailure { Log.e("Writer", "pages", it) }.getOrNull() }
+        pages = withContext(Dispatchers.Default) { runCatching { WriterLog.timed("laid out the pages") { OfficePages.layout(doc, documentStyles) { img -> img.bytes ?: img.part?.let { parts[it] } } } }.onFailure { WriterLog.e("pages", it) }.getOrNull() }
+        pages?.let { WriterLog.i("pages: ${it.size}") }
         if (pages == null) viewing = false // could not lay it out: the editor still works
     }
     // Enter after a heading starts a Normal paragraph, as in Word: the editor carries the heading's drawn look (its
@@ -1074,7 +1087,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val copy = asCopy || meta.blocking.isNotEmpty()
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val bytes = OfficeFormats.write(doc, kind, original)
+                    val bytes = WriterLog.timed("wrote the file") { OfficeFormats.write(doc, kind, original) }
                     val target = if (copy) freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension) else f
                     // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
                     val temp = File(target.parentFile, ".${target.name}.tetra-saving")
@@ -1087,10 +1100,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             result.onSuccess { (target, bytes) ->
+                WriterLog.i("saved ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
                 finishSave(target, bytes, doc)
                 message = if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
                 then()
-            }.onFailure { message = it.message ?: "Could not save." }
+            }.onFailure { WriterLog.e("could not save", it); message = it.message ?: "Could not save." }
         }
     }
     fun saveNew(typed: String) {
@@ -1107,8 +1121,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     OfficeFormats.write(doc, kind).also { target.writeBytes(it) }
                 }
             }
-            result.onSuccess { bytes -> naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes, doc); message = "Saved in ${TextEditorStore(context).saveFolder}" }
-                .onFailure { message = it.message }
+            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes, doc); message = "Saved in ${TextEditorStore(context).saveFolder}" }
+                .onFailure { WriterLog.e("could not save new", it); message = it.message }
         }
     }
     /** Export › PDF: beside the document (or in the save folder for a new one), never over another file. */
@@ -1177,6 +1191,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
     fun changePicture(key: String, img: DocImage) = change {
+        WriterLog.i("picture $key: ${PictureXml.wrapOf(img)}, ${img.widthPt.toInt()}×${img.heightPt.toInt()} pt${img.onPage?.let { " at ${it.first.toInt()},${it.second.toInt()}" } ?: ""}")
         pictures[key] = img
         val at = state.selection
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
@@ -1550,7 +1565,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = packageParts
         meta = runCatching { Contents.insert(cur, kind, documentStyles, at) { d, pages ->
             OfficePages.layout(d, documentStyles, pages) { img -> img.bytes ?: img.part?.let { parts[it] } } } }
-            .onFailure { Log.e("Writer", "contents", it) }.getOrNull() ?: run { message = "The contents could not be made."; return@change }
+            .onFailure { WriterLog.e("contents", it) }.getOrNull() ?: run { message = "The contents could not be made."; return@change }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
         message = "Contents from ${cur.paras.count { it.heading in 1..3 }} headings"
@@ -1628,7 +1643,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = packageParts
         val index = IntArray(doc.paras.size) { -1 }
         return withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, pageIndexOf = index) { img -> img.bytes ?: img.part?.let { parts[it] } } }
-            .onFailure { Log.e("Writer", "draw", it) }.getOrNull() }?.let { it to index } ?: run { message = "The page could not be laid out."; null }
+            .onFailure { WriterLog.e("draw", it) }.getOrNull() }?.let { it to index } ?: run { message = "The page could not be laid out."; null }
     }
     /**
      * Draw › Draw on page: the page the cursor is on, as the pages show it, to draw over (‹ › for another); the drawing
@@ -1678,7 +1693,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun applyApa(clean: Boolean, title: ApaTitle?) = change {
         val entries = documentStyles.paragraphStyles()
         val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles) }
-            .onFailure { Log.e("Writer", "apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
+            .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         var cur = current()
@@ -1699,7 +1714,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setDesign(color: Int?, border: Border?) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border) else PageDesign.odt(it, color, border) } }
-            .onFailure { Log.e("Writer", "design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
+            .onFailure { WriterLog.e("design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1709,7 +1724,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setWatermark(text: String?) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet) else Watermark.odt(it, text, sheet) } }
-            .onFailure { Log.e("Writer", "watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
+            .onFailure { WriterLog.e("watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1720,7 +1735,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageSetup.docx(it, page) else PageSetup.odt(it, page, documentStyles.page) } }
-            .onFailure { Log.e("Writer", "page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
+            .onFailure { WriterLog.e("page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1728,7 +1743,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Layout › Hyphenation: automatic or none, into the file as it will be written; the pages break words by it. */
     fun setHyphenation(on: Boolean) = change {
         val parts = runCatching { PageDesign.hyphenation(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, on) }
-            .onFailure { Log.e("Writer", "hyphenation", it) }.getOrNull() ?: run { message = "Hyphenation could not be set."; return@change }
+            .onFailure { WriterLog.e("hyphenation", it) }.getOrNull() ?: run { message = "Hyphenation could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1737,7 +1752,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
     fun setLineNumbers(restart: String?) = change {
         val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
-            .onFailure { Log.e("Writer", "line numbers", it) }.getOrNull() ?: run { message = "The line numbers could not be set."; return@change }
+            .onFailure { WriterLog.e("line numbers", it) }.getOrNull() ?: run { message = "The line numbers could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1750,7 +1765,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setHeaderFooter(hf: HeaderFooter) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(it, hf, documentStyles.page) else HeaderFooterEdit.odt(it, hf, documentStyles.page) } }
-            .onFailure { Log.e("Writer", "header", it) }.getOrNull() ?: run { message = "The header could not be set."; return@change }
+            .onFailure { WriterLog.e("header", it) }.getOrNull() ?: run { message = "The header could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
@@ -1764,7 +1779,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val path = stylesPath(parts, kind)
         val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
         parts[path] = runCatching { if (kind == OfficeKind.Docx) StyleEdit.docx(xml, key, entry.heading, documentStyles.normalId, edit) else StyleEdit.odt(xml, key, entry.heading, edit) }
-            .onFailure { Log.e("Writer", "style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return@change }
+            .onFailure { WriterLog.e("style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         meta = cur
@@ -1777,7 +1792,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
         val path = stylesPath(parts, kind)
         val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
-        parts[path] = runCatching { set.applyTo(xml, kind, documentStyles) }.onFailure { Log.e("Writer", "style set", it) }.getOrNull()?.toByteArray()
+        parts[path] = runCatching { set.applyTo(xml, kind, documentStyles) }.onFailure { WriterLog.e("style set", it) }.getOrNull()?.toByteArray()
             ?: run { message = "The style set could not be applied."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
@@ -1991,14 +2006,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
                                 // A form's fields: a light box behind each (Word shades them), deeper where the cursor is.
                                 if (controlsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
-                                    controlsShown.forEach { (c, _, r) -> if (r.last < text.length) drawPath(l.getPathForRange(r.first, r.last + 1),
-                                        if (c == hereControl?.first) Color(0x552196F3) else Color(0x222196F3)) }
+                                    controlsShown.forEach { (c, _, r) -> if (r.last < text.length) shadeLetters(l, r.first, r.last + 1,
+                                        if (c == hereControl?.first) Color(0x552196F3) else Color(0x222196F3), (BASE_SP * shownZoom / 100).sp.toPx()) }
                                 }
                                 // Commented letters: tinted (the comment itself in the bar above the ribbon).
                                 if (commentsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
                                     // A resolved one only while the cursor is in it (Word hides them).
-                                    commentsShown.forEach { (c, r) -> if (r.last < text.length && (!c.done || c == hereComment)) drawPath(l.getPathForRange(r.first, r.last + 1),
-                                        if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300)) }
+                                    commentsShown.forEach { (c, r) -> if (r.last < text.length && (!c.done || c == hereComment)) shadeLetters(l, r.first, r.last + 1,
+                                        if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300), (BASE_SP * shownZoom / 100).sp.toPx()) }
                                 }
                                 // Spelling: a red wavy line under each word that looks misspelled.
                                 if (spellingShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -2120,7 +2135,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                             value = table?.let { t -> withContext(Dispatchers.Default) { runCatching {
                                                 val areas = ArrayList<TableCellArea>()
                                                 OfficePages.tableLaid(meta, t, documentStyles, img.widthPt, areas) { n -> n.bytes ?: n.part?.let { packageParts[it] } } to areas
-                                            }.onFailure { Log.e("Writer", "table", it) }.getOrNull() } }
+                                            }.onFailure { WriterLog.e("table", it) }.getOrNull() } }
                                         }
                                         val cells = laidTable?.second.orEmpty()
                                         val objectInput = if (table != null) Modifier.pointerInteropFilter { event ->
@@ -2348,6 +2363,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (dirty) message = "Shared as last saved — your newest changes are not in it yet"
                     }
                     RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
+                    // The log (asked 2026-10-01), to send when something goes wrong: what was done, not the words.
+                    RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
                 })
                 // Typing in a table cell: Home formats the cell's text.
                 WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
@@ -3343,7 +3360,7 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
         .focusProperties { canFocus = false }
-        .clickable(enabled = enabled, onClick = click).padding(horizontal = 12.dp),
+        .clickable(enabled = enabled, onClick = { WriterLog.i("tap $label"); click() }).padding(horizontal = 12.dp),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
 ) {
     val c = if (enabled) tint else tint.copy(alpha = 0.35f)
@@ -3356,6 +3373,22 @@ internal class BlockSpacing(val before: Float, val after: Float, val line: Float
 
 /** A picture in front of or behind the text, in the editor: from the text's left and its paragraph's top (pt), its size. */
 internal class FloatShown(val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val pageX: Float, val pageY: Float)
+
+/**
+ * Letters [a]..[z] shaded on each of their lines, as tall as the letters (a spaced line is taller than its letters: a
+ * range's path covered the space too). [em]: the editor's own size, for letters without one of their own.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.shadeLetters(l: TextLayoutResult, a: Int, z: Int, color: Color, em: Float) {
+    val spans = l.layoutInput.text.spanStyles
+    for (line in l.getLineForOffset(a)..l.getLineForOffset((z - 1).coerceAtLeast(a))) {
+        val s = maxOf(a, l.getLineStart(line)); val e = minOf(z, l.getLineEnd(line, true))
+        if (e <= s) continue
+        val size = spans.lastOrNull { it.start <= s && it.end > s && it.item.fontSize.isSp }?.item?.fontSize?.toPx() ?: em
+        val x1 = l.getHorizontalPosition(s, true); val x2 = l.getHorizontalPosition(e, true)
+        val base = l.getLineBaseline(line)
+        drawRect(color, Offset(minOf(x1, x2), base - size * 0.95f), androidx.compose.ui.geometry.Size(kotlin.math.abs(x2 - x1), size * 1.22f))
+    }
+}
 
 /** Spans with their same-looking neighbours joined, as the editor joins them once laid out. */
 private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Range<androidx.compose.ui.text.SpanStyle>>) =

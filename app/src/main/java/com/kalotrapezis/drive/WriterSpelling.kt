@@ -35,7 +35,7 @@ internal class WriterSpelling(context: Context) {
                 .setSupportedAttributes(SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO or SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY or SuggestionsInfo.RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS).build(),
                 ContextCompatMain, this)
             else @Suppress("DEPRECATION") tsm?.newSpellCheckerSession(null, locale, this, false)
-        }.onFailure { Log.w("Writer", "spelling session", it) }.getOrNull()
+        }.onFailure { WriterLog.w("spelling session", it) }.getOrNull()
         override fun onGetSuggestions(results: Array<out SuggestionsInfo>?) = Unit
         override fun onGetSentenceSuggestions(results: Array<out SentenceSuggestionsInfo>?) {
             @Suppress("UNCHECKED_CAST") waiting?.invoke(results as Array<SentenceSuggestionsInfo>?)
@@ -57,7 +57,7 @@ internal class WriterSpelling(context: Context) {
                     suspendCancellableCoroutine<Array<SentenceSuggestionsInfo>?> { k ->
                         s.waiting = { r -> s.waiting = null; if (k.isActive) k.resume(r) }
                         runCatching { s.session!!.getSentenceSuggestions(batch.map { TextInfo(it) }.toTypedArray(), 5) }
-                            .onFailure { Log.w("Writer", "spelling", it); s.waiting = null; k.resume(null) }
+                            .onFailure { WriterLog.w("spelling", it); s.waiting = null; k.resume(null) }
                     }
                 } ?: run { silent = true; continue } // no answer (yet): asked again next time
                 batch.forEachIndexed { i, w ->

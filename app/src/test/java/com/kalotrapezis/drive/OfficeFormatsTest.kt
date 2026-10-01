@@ -217,6 +217,35 @@ class OfficeFormatsTest {
         assertEquals(listOf(true, "☒"), listOf(Forms.checked(Forms.checkedTo(box, true)), Forms.box(box, true)))
     }
 
+    /** Word's table of contents (a docPartObj content control around a TOC field): shown, kept whole, not copy-only. */
+    @Test fun `a Word table of contents is kept as the file has it`() {
+        val base = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Body"))), DocPara(listOf(DocRun("Method")), heading = 1),
+            DocPara(listOf(DocRun("Text."))), DocPara(listOf(DocRun("Results")), heading = 1))), OfficeKind.Docx)
+        val parts = OfficeFormats.unzip(base).toMutableMap()
+        fun entry(text: String, n: Int, first: Boolean, last: Boolean) = "<w:p><w:pPr><w:pStyle w:val=\"TOC1\"/><w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"9350\"/></w:tabs></w:pPr>" +
+            (if (first) "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> TOC \\o \"1-3\" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>" else "") +
+            "<w:hyperlink w:anchor=\"_Toc$n\" w:history=\"1\"><w:r><w:t>$text</w:t></w:r><w:r><w:tab/></w:r><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> PAGEREF _Toc$n \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:hyperlink>" +
+            (if (last) "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>" else "") + "</w:p>"
+        val toc = "<w:sdt><w:sdtPr><w:id w:val=\"5\"/><w:docPartObj><w:docPartGallery w:val=\"Table of Contents\"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent>" +
+            "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr><w:r><w:t>Contents</w:t></w:r></w:p>" + entry("Method", 1, true, false) + entry("Results", 2, false, true) + "</w:sdtContent></w:sdt>"
+        var xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        for ((n, h) in listOf(1 to "Method", 2 to "Results")) xml = xml.replace(Regex("(<w:p>(?:(?!</w:p>).)*?</w:pPr>)((?:(?!</w:p>).)*?>$h</w:t></w:r>)")) { m -> m.groupValues[1] + "<w:bookmarkStart w:id=\"$n\" w:name=\"_Toc$n\"/>" + m.groupValues[2] + "<w:bookmarkEnd w:id=\"$n\"/>" }
+        xml = xml.replaceFirst("<w:body>", "<w:body>$toc")
+        parts["word/document.xml"] = xml.toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.unsupported)
+        assertEquals(listOf("Contents", "Method\t1", "Results\t1", "Body"), doc.paras.take(4).map { it.text })
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        val kept = out.substringAfter("<w:body>").substringBefore("</w:sdt>")
+        assert(listOf("docPartObj", "TOC \\o", "PAGEREF _Toc1", "PAGEREF _Toc2", "w:anchor=\"_Toc2\"").all { it in kept }) { kept }
+        assertEquals(listOf("_Toc1", "_Toc2"), Regex("w:name=\"(_Toc\\d)\"").findAll(out).map { it.groupValues[1] }.toList())
+        // Its words changed: written as they are now, plain (and no longer the file's block).
+        val edited = doc.copy(paras = doc.paras.mapIndexed { i, p -> if (i == 1) p.copy(runs = listOf(DocRun("Methods\t1"))) else p })
+        val out2 = String(OfficeFormats.unzip(OfficeFormats.write(edited, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assert("docPartObj" !in out2 && "Methods" in out2) { out2 }
+    }
+
     @Test fun `an APA 7 student paper is set up in both kinds`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Method")), heading = 1), DocPara(listOf(DocRun("Participants")), heading = 3),

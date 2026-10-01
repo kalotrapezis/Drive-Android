@@ -18,6 +18,18 @@ is Android's own, so it shows in the device language (Greek), not the app's Engl
 Seen once and not reproduced: right after the first fill (Ready → Done) the Status field lost its shading until the
 cursor came back; the model and the saved file were right. Watch for it.
 
+**Then: Word's table of contents and bibliography blocks** (the user's theses and coursework — every one with a TOC — were
+copy-only for them). A block-level docPartObj sdt is read for show (`sdtBlock`, through `aside`) and kept whole on its
+first paragraph (`SDT_BLOCK` part: a hash of its words | its XML; the rest marked `SDT_PART`); written back exactly while
+its words are unchanged, plain when edited or made again by References › Contents. A page break just before it is
+written into the kept block's first paragraph. **Bookmarks** are now kept per paragraph (`BOOKMARKS` part; they were
+dropped, which broke the contents' links and PAGEREFs to the headings' `_Toc` ones). Checked: 1ΚΑΛΟΤΡΑΠΕΖΗΣ_602_15.docx
+(the computer's copy) round-trips with the same 23 pages and text in LibreOffice (the contents' title ~10 pt lower: a
+"page break before" page keeps space-before in LibreOffice — Writer's page-break model since 28 Sep, not new); on the
+tablet a copy opened not copy-only, an edit saved with TOC, Bibliography and 22 _Toc bookmarks intact (copy deleted).
+Seen: that document showed the unsaved dot as soon as Edit was tapped (05 did not) — the editor's text or spans change
+after loading for some documents (pictures?); probably older, look into it.
+
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 
 ---

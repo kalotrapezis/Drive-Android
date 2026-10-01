@@ -527,6 +527,8 @@ internal object OfficeFormats {
     }
 
     /** Adjacent runs that look the same become one, and empty runs go: what the editor gives back is compared cleanly. */
+    /** Paragraphs' words, to tell whether a block kept from the file was changed. */
+    fun blockText(ps: List<DocPara>) = ps.joinToString("\n") { it.text }.hashCode().toString()
     fun tidy(runs: List<DocRun>): List<DocRun> {
         val out = ArrayList<DocRun>()
         for (r in runs) {
@@ -1248,7 +1250,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             when (e.localName) {
                 "p" -> paragraph(e, out)
                 "tbl" -> out += tablePara(table(e))
-                "sdt" -> { notes += "content controls"; e.kid(W, "sdtContent")?.let { block(it, out) } }
+                "sdt" -> if (e.kid(W, "sdtPr")?.kid(W, "docPartObj") != null) sdtBlock(e, out)
+                    else { notes += "content controls"; e.kid(W, "sdtContent")?.let { block(it, out) } }
                 "customXml" -> { notes += "content controls"; block(e, out) }
                 "ins", "moveTo" -> { notes += "tracked changes"; block(e, out) }
                 "del", "moveFrom" -> notes += "tracked changes"
@@ -1259,6 +1262,27 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
             }
         }
+    }
+
+    /**
+     * Word's table of contents, bibliography (or another building block — docPartObj): shown as its paragraphs, kept
+     * whole as the file has it (its fields, links and page references) and written back so while its words are unchanged
+     * (asked 2026-10-01: the user's theses were copy-only for their contents). Changed — edited, or made again by
+     * References › Contents — its paragraphs are written as they are now, plain.
+     */
+    fun sdtBlock(e: Element, out: MutableList<DocPara>) {
+        val start = out.size
+        val pageBefore = pageBreakPending // a page break ended the paragraph before: the block's first paragraph starts a page
+        aside(notes, openComments) { e.kid(W, "sdtContent")?.let { block(it, out) } }
+        fieldDepth = 0; fieldState = 0; citeNow = null; pageBreakPending = false
+        if (out.size == start) { notes += "content controls"; return }
+        val mine = out.subList(start, out.size)
+        var xml = OfficeFormats.xml(e)
+        if (pageBefore && "<w:pageBreakBefore" !in xml.substringBefore("</w:p>")) Regex("""<w:p\b[^>]*>(<w:pPr>(<w:pStyle\b[^>]*/>)?)?""").find(xml)?.let { m ->
+            xml = xml.replaceRange(m.range, if (m.groupValues[1].isEmpty()) m.value + "<w:pPr><w:pageBreakBefore/></w:pPr>" else m.value + "<w:pageBreakBefore/>")
+        }
+        val raw = "${OfficeFormats.blockText(mine)}|$xml"
+        mine.forEachIndexed { i, p -> val k = p.keep ?: DocKeep(); mine[i] = p.copy(keep = k.copy(parts = k.parts + (if (i == 0) SDT_BLOCK to raw else SDT_PART to ""))) }
     }
 
     /** A table: rows of cells of paragraphs; its, its rows' and its cells' properties kept raw. */
@@ -1311,7 +1335,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         var afterPageBreak = pageBreakPending.also { pageBreakPending = false }
         val done = ArrayList<DocPara>()
         fun keep(): DocKeep? {
-            var parts: List<Pair<String, String>> = keepParts
+            var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS } // a bookmark once
             if (afterPageBreak && parts.none { it.first == "pageBreakBefore" }) parts = parts + ("pageBreakBefore" to "<w:pageBreakBefore/>")
             if (afterPageBreak && done.isNotEmpty()) parts = parts.filter { it.first != "spacing" } +
                 ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.replace(Regex("""\sw:before(Autospacing)?="[^"]*""""), "")?.replace("<w:spacing", "<w:spacing w:before=\"0\"") ?: "<w:spacing w:before=\"0\"/>"))
@@ -1349,7 +1373,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     }
                     "commentRangeStart" -> e.attr(W, "id")?.takeIf { it in comments }?.let { openComments += it } ?: run { notes += "comments" }
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
-                    "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
+                    // A bookmark (the contents' links and page numbers go to the headings' _Toc ones): kept on its paragraph.
+                    "bookmarkStart" -> e.attr(W, "name")?.takeIf { it != "_GoBack" }?.let { n ->
+                        keepParts.indexOfFirst { it.first == BOOKMARKS }.let { i -> if (i < 0) keepParts += BOOKMARKS to n else keepParts[i] = BOOKMARKS to keepParts[i].second + " " + n } }
+                    "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
                     // A move's two ends are named: its deletion and insertion are kept, the pairing is not.
                     "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd" -> Unit
                     else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
@@ -1529,6 +1556,11 @@ private fun docxStyleLists(parts: Map<String, ByteArray>, dir: String): Map<Stri
 /** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
 /** Content controls Writer does not fill in (a form's own are text, rich text, drop-down, combo box, date, check box). */
 internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "picture", "bibliography", "equation", "group", "citation", "repeatingSection", "repeatingSectionItem")
+/** A paragraph's kept parts that are not its properties: the building block it begins or goes on, its bookmarks. */
+internal const val SDT_BLOCK = "sdtBlock"
+internal const val SDT_PART = "sdtPart"
+internal const val BOOKMARKS = "bookmarks"
+internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS)
 internal val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
@@ -1685,6 +1717,7 @@ private object DocxWriter {
         // Pictures added in Writer: each a new part in word/media, a relationship, and an inline drawing.
         var docPrId = 9000
         var changeId = 90000 // a tracked change's id (Word's own are renumbered on its next save)
+        var bookmarkId = 80000
         picture = { img -> (img.raw ?: img.chart?.let { ch ->
                 // A new chart (Insert › Chart, or one whose data Writer changed): its own part, as Word keeps one.
                 val name = generateSequence(1) { it + 1 }.map { "${dir}charts/chart$it.xml" }.first { it !in parts }
@@ -1775,7 +1808,7 @@ private object DocxWriter {
             }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
-            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first != "runFonts" })
+            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR })
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
             // A list item in a table's cell keeps the file's own list (Writer's own lists are numbered for the body's).
             p.list?.let { l -> (index?.let { numIds[it] } ?: p.keep?.list?.substringBefore('|'))?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${l.level}"/><w:numId w:val="$it"/></w:numPr>""" } }
@@ -1792,6 +1825,8 @@ private object DocxWriter {
                 props.sortedBy { (name, _) -> PPR_ORDER.indexOf(name).let { if (it < 0) PPR_ORDER.indexOf("rPr") else it } }.forEach { body.append(it.second) }
                 body.append("</w:pPr>")
             }
+            val marks = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
+            marks.forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
             // A citation: its letters inside its field, as Word writes one (begin, instruction, separate, text, end).
@@ -1842,9 +1877,20 @@ private object DocxWriter {
             citeTo(null); controlTo(null)
             // A comment ends here unless the next paragraph goes on in it.
             commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
+            marks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }
             body.append("</w:p>")
         }
-        doc.paras.forEachIndexed { index, p -> paragraph(index, p) }
+        var index = 0
+        while (index < doc.paras.size) {
+            // A table of contents (or another building block) kept from the file: as it was, while its words are.
+            val raw = doc.paras[index].keep?.parts?.firstOrNull { it.first == SDT_BLOCK }?.second
+            if (raw != null) {
+                var end = index + 1
+                while (end < doc.paras.size && doc.paras[end].keep?.parts?.any { it.first == SDT_PART } == true) end++
+                if (raw.substringBefore('|') == OfficeFormats.blockText(doc.paras.subList(index, end))) { body.append(raw.substringAfter('|')); index = end; continue }
+            }
+            paragraph(index, doc.paras[index]); index++
+        }
         if (openComments.isNotEmpty()) { body.append("<w:p>"); commentMarks(emptyList()); body.append("</w:p>") }
         writeComments(parts, dir, rels, live.values.toList(), ::ensurePart)
         // Footnotes and endnotes: their paragraphs written as the body's, each note's number (Word's) first.

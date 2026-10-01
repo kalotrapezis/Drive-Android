@@ -390,6 +390,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
     fun loadPhotos() {
         if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
+        val shown = (photosState as? ListState.Items)?.entries?.mapTo(HashSet(), Entry::photoKey)
         photosState = ListState.Loading
         Thread {
             val result = runCatching {
@@ -409,6 +410,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 // Whatever is new here has never been read: do it now, not the next time People is opened.
                 if (result.isSuccess) PhotoAnalysisService.start(context)
+                // A photo or video that was not here a moment ago goes to the computer now (asked 2026-10-01), not
+                // only from SyncJob's trigger, which MIUI cancels once the app is in the background.
+                if (shown != null && result.getOrNull().orEmpty().any { it.photoKey !in shown }) Thread { SyncService.syncInBackground(context, gap = 0) }.start()
             }
         }.start()
     }
@@ -2637,7 +2641,12 @@ private fun PhotoTab(
     val folderAlbum = activeCollection?.name?.takeIf { name -> folders.any { it.included == true && it.name.equals(name, ignoreCase = true) } }
     val moveDestinations = remember(allEntries, folders) {
         (allEntries + folders.flatMap { it.entries }).mapNotNull { it.relativePath?.trim('/')?.takeIf(String::isNotEmpty) }
-            .plus("DCIM/Camera").groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
+            .plus("DCIM/Camera").groupingBy { it }.eachCount().entries
+            // One row per album: DCIM/Camera/Camera (an old SyncThing copy) is not a second "Camera", and Movies/Viber
+            // not a second "Viber" (a photo cannot go under Movies). The shallowest folder wins, Pictures over Movies.
+            .groupBy { FolderRules.albumName(it.key)?.lowercase() ?: it.key }.values
+            .map { same -> same.minWith(compareBy({ it.key.count { c -> c == '/' } }, { it.key.startsWith("Movies/", ignoreCase = true) })).key to same.sumOf { it.value } }
+            .sortedByDescending { it.second }
     }
     @Composable fun MoveSheet() {
         val (targets, leaving) = moveSheetFor ?: return

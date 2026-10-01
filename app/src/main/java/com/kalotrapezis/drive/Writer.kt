@@ -1606,16 +1606,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // top, so typing above them moves them with it. Worked out again after each Writer change, not each keystroke.
     var floatsShown by remember { mutableStateOf<Map<String, FloatShown>>(emptyMap()) }
     var headPage by remember { mutableStateOf<LaidPage?>(null) } // the first page as laid out: its header, shown faded above the text
+    var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
     LaunchedEffect(meta, styleEdits, documentStyles, onPage, loaded) { // styleEdits: a picture changed (meta stays)
         if (!loaded) return@LaunchedEffect
         val doc = current()
         val over = doc.paras.indices.flatMap { j -> doc.paras[j].runs.mapNotNull { r -> r.image?.takeIf { PictureXml.wrapOf(it).let { w -> w == PictureWrap.InFront || w == PictureWrap.Behind } }?.let { it.key to j } } }.toMap()
-        if (!loaded || !onPage) { floatsShown = emptyMap(); headPage = null; return@LaunchedEffect }
+        if (!loaded || !onPage) { floatsShown = emptyMap(); headPage = null; pageStarts = emptyList(); return@LaunchedEffect }
         delay(300)
         val parts = packageParts
         val tops = FloatArray(doc.paras.size)
-        val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, null, IntArray(doc.paras.size), tops) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() } ?: return@LaunchedEffect
+        val pageOfPara = IntArray(doc.paras.size) { -1 }
+        val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, null, pageOfPara, tops) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() } ?: return@LaunchedEffect
         headPage = laid.firstOrNull()
+        // Page ends (asked 2026-09-30: "why is there no page view on edit"): where each page's first paragraph starts.
+        // ponytail: a page that begins inside a paragraph is marked at no place (the editor's lines are not the pages').
+        pageStarts = (1 until laid.size).mapNotNull { k -> pageOfPara.indices.firstOrNull { pageOfPara[it] == k }?.takeIf { j -> j > 0 && pageOfPara[j - 1] == k - 1 }?.let { it to laid[k].number } }
         floatsShown = laid.flatMap { page -> page.floats.mapNotNull { f -> f.key?.let { k -> over[k]?.let { j -> k to FloatShown(f.x - page.page.left, f.y - tops[j], f.w, f.h, f.behind, f.x, f.y) } } } }.toMap()
     }
     /** The pages of [doc] as the pages view lays them out, and the page each paragraph starts on (-1: none). */
@@ -2069,7 +2074,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
                                         val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
-                                        Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                        Text("Page break" + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
                                 // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
@@ -2080,6 +2085,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     n.saveLayerAlpha(0f, 0f, hp.page.width, hp.page.top, 110)
                                     hp.draw(n); n.restore(); n.restore()
                                 } } }
+                                // Where the pages break: a dashed line and the page's number, as at a page break.
+                                val pageMarks = remember(text, pageStarts) { if (pageStarts.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()).let { st ->
+                                    pageStarts.filter { (j, _) -> looks.getOrNull(j)?.pageBreakBefore != true }.mapNotNull { (j, n) -> st.getOrNull(j)?.takeIf { it <= text.length }?.let { l.getLineTop(l.getLineForOffset(it)) to n } } } }
+                                if (pageMarks.isNotEmpty()) {
+                                    androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
+                                        val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 3.dp.toPx()))
+                                        pageMarks.forEach { (y, _) -> drawLine(Color(0xFF1A73E8).copy(alpha = 0.5f), Offset(-margins.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr).toPx(), y), Offset(size.width + margins.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr).toPx(), y), 1.dp.toPx(), pathEffect = dash) }
+                                    }
+                                    Box(Modifier.matchParentSize().padding(margins)) {
+                                        pageMarks.forEach { (y, n) ->
+                                            Text("Page $n", color = Color(0xFF1A73E8), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = with(density) { y.toDp() } - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                        }
+                                    }
+                                }
                                 val paraStarts = remember(text, floatsShown) { if (floatsShown.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()) }
                                 Box(Modifier.matchParentSize().padding(margins)) {
                                     placed.forEach { (i, img, at) ->

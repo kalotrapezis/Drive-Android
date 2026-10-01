@@ -4,7 +4,7 @@ Install `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`, then on the phone
 1. **CV test copy.docx** (Test-Words), Print layout: no gaps between the tables (fixed and checked on the tablet — the
    cause was not the phone's), rows not cut off, paragraph spacing as the pages. Pinch zoom past the screen (ask the
    user — adb cannot do two fingers).
-2. **Page ends in Print layout** (once built): "Page N" breaks where the pages break.
+2. **Page ends in Print layout**: the "Page N" marks where the pages break (built 1 Oct, checked on the tablet).
 3. **Forms** (05_Review_and_Forms.docx): the bar above the ribbon fits the phone; drop-down, date picker, Fill in.
 4. **Table of contents** (a copy of a thesis): opens not copy-only; edit + save keeps the TOC.
 5. **Floating pictures** (a copy of the 602 file): logos in place in Print layout, dragged freely; View agrees.
@@ -81,7 +81,10 @@ top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for ea
 - **Gaps between tables** (the long-open item): the paragraph's closing space after a table's character (exactly the
   line's width) sometimes wrapped to a line of its own — a blank text line under the table. The table's character is now
   1.5 sp narrower than the line. The CV in Edit now matches View.
-Still to do: footers in Edit (no page ends yet).
+- **Page ends in Edit** (the user, 30 Sep: "why is there no page view on edit"): the pages' layout (already run for
+  floating pictures) gives each page's first paragraph (`pageStarts`); Edit draws a dotted blue line with "Page N" there,
+  and a hard page break's label says "Page break · Page N". ponytail: a page that begins inside a paragraph is not marked
+  (the editor's lines are not the pages'); no space is opened between pages and footers are not shown.
 
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 

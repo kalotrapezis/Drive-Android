@@ -10,8 +10,9 @@ Install `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`, then on the phone
 5. **Floating pictures** (a copy of the 602 file): logos in place in Print layout, dragged freely; View agrees.
 6. **Letter looks** (01_Text_and_Paragraphs.docx): capitals, small capitals, double lines in both modes; the header
    shown faded in Print layout.
-7. From before: Position, text box / WordArt insert, line numbers, hyphenation, style sets — never walked on the phone.
-8. Spelling marks the wrong language there (the English paragraph all red) — see the 30 Sep entry.
+7. **Format painter** and **Navigation pane** at phone size (the pane closes after a tap there).
+8. From before: Position, text box / WordArt insert, line numbers, hyphenation, style sets — never walked on the phone.
+9. Spelling marks the wrong language there (the English paragraph all red) — see the 30 Sep entry.
 
 ---
 
@@ -102,6 +103,13 @@ whole spaced line).
 selection holds still 700 ms, once (`WriterBridge.painted`); tapped again, off. Checked on the tablet (01: "Italic"
 painted bold, then discarded). ponytail: letters only — Word's paragraph painting (a paragraph mark chosen) not done;
 no double-tap to keep it on.
+
+**Then: Navigation pane** (View › Navigation in Edit; the list icon in View mode's top bar): the headings (H1–H6,
+`navHeadings`) indented by level in a pane on the left (`NavigationPane`, WriterNavigation.kt); a tap goes there — View
+scrolls the pages to the heading's page (`pagesIndex` from the layout's pageIndexOf, `PagesView(goTo)`), Edit puts the
+cursor there and brings it to the top (`goText` → downScroll). A phone's pane closes after a tap; a tablet's stays.
+Checked on the tablet with 04. ponytail: the pane lies over the page's left edge on the tablet (Word moves the page
+aside); headings only (no outline levels of other styles, no search box).
 
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 

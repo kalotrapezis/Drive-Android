@@ -904,6 +904,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
     var viewing by remember { mutableStateOf(open != null) }
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
+    var pagesIndex by remember { mutableStateOf<IntArray?>(null) } // the page each paragraph starts on, in [pages]
+    var navOpen by remember { mutableStateOf(false) }
+    var goPage by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a page to scroll to (and when it was asked)
+    var goText by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a place in the editor's text to bring to the top
     var sizing by remember { mutableStateOf(false) }
     var wrapping by remember { mutableStateOf(false) }
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -1066,7 +1070,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         pages = null
         val doc = current()
         val parts = packageParts
-        pages = withContext(Dispatchers.Default) { runCatching { WriterLog.timed("laid out the pages") { OfficePages.layout(doc, documentStyles) { img -> img.bytes ?: img.part?.let { parts[it] } } } }.onFailure { WriterLog.e("pages", it) }.getOrNull() }
+        val index = IntArray(doc.paras.size) { -1 }
+        pages = withContext(Dispatchers.Default) { runCatching { WriterLog.timed("laid out the pages") { OfficePages.layout(doc, documentStyles, pageIndexOf = index) { img -> img.bytes ?: img.part?.let { parts[it] } } } }.onFailure { WriterLog.e("pages", it) }.getOrNull() }
+        pagesIndex = index
         pages?.let { WriterLog.i("pages: ${it.size}") }
         if (pages == null) viewing = false // could not lay it out: the editor still works
     }
@@ -1961,6 +1967,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
                 if (viewing) {
+                    Tool(R.drawable.ic_view_list, "Navigation", w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
                     Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
                     RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
@@ -1983,7 +1990,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             } }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
-                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize()) }
+                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
@@ -1997,6 +2004,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
             val downScroll = rememberScrollState(); val sideScroll = rememberScrollState()
+            // Navigation: the heading brought near the top (the cursor alone only scrolled it just into view, under the ribbon).
+            val densityNow = LocalDensity.current
+            LaunchedEffect(goText) {
+                val (at, _) = goText ?: return@LaunchedEffect
+                val l = editorLayout ?: return@LaunchedEffect
+                val top = l.getLineTop(l.getLineForOffset(at.coerceIn(0, l.layoutInput.text.length))) + with(densityNow) { (margins.calculateTopPadding() + 8.dp - 24.dp).toPx() }
+                downScroll.animateScrollTo((top * (if (printPhone) pageScale else 1f)).toInt().coerceAtLeast(0))
+            }
             Box(Modifier.weight(1f).fillMaxWidth()
                 .then(if (printPhone) Modifier.pinchZoom({ pageZoom }, 1f, 5f, sideScroll, downScroll) { pageZoom = it } else Modifier)
                 .verticalScroll(downScroll)
@@ -2335,6 +2350,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             }
+        }
+        // View › Navigation: the headings on the left, over the desk; a tap goes there (a phone's closes after).
+        if (navOpen && loaded) {
+            val headings = remember(meta, viewing) { navHeadings(if (viewing) meta else current()) }
+            NavigationPane(headings, w, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 120.dp, bottom = if (viewing) 16.dp else 150.dp).width(if (tablet) 280.dp else 260.dp),
+                go = { h ->
+                    WriterLog.i("navigate to heading ${h.level} (paragraph ${h.para})")
+                    if (viewing) pagesIndex?.getOrNull(h.para)?.takeIf { it >= 0 }?.let { goPage = it to System.nanoTime() }
+                    else WriterBridge.paragraphStarts(state.annotatedString.text, state.toRichTextDocument()).getOrNull(h.para)?.let {
+                        state.selection = androidx.compose.ui.text.TextRange(it); goText = it to System.nanoTime() }
+                    if (!tablet) navOpen = false
+                }, close = { navOpen = false })
         }
         // The ribbon, like Word's, at the bottom: a line of tabs and a line of that tab's tools, scrolling sideways
         // when they do not fit. A floating island; typing on the screen's keyboard, a flat strip on it. With a physical
@@ -2827,6 +2854,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 })
                 WriterTab.View -> listOf({
+                    RibbonButton("Navigation", w, R.drawable.ic_view_list, enabled = loaded, on = navOpen) { navOpen = !navOpen }
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.
                     RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
                         if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
@@ -3475,9 +3503,10 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
  * page in view, down each page's side. A phone fits the page to its width, no rulers.
  */
 @Composable
-private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier) {
+private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null) {
     var zoom by remember { mutableFloatStateOf(1f) }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(goTo) { goTo?.let { (page, _) -> list.animateScrollToItem(page.coerceIn(0, pages.lastIndex)) } } // Navigation: a heading's page
     BoxWithConstraints(modifier) {
         val rulers = maxWidth >= 700.dp
         val ruler = if (rulers) 18.dp else 0.dp

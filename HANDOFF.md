@@ -1,3 +1,56 @@
+# THE PLAN (the user, 1 Oct 2026 evening) — read this first
+
+**State.** Branch `writer-library`, all committed, all unit tests pass. Latest build on the **phone** (208c8192) and an
+older one on the tablet (971f6b37, install the latest there first). Test files: `Test-Words/` on both devices (the
+suite 01–06, `CV test copy.docx`, `Tetra test.docx`); the user's originals are never edited — copies only, deleted
+after. Writer has a log now: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log` (memory `writer-log`).
+Phone helper used this session: open a document by touching it to the top of Office's Recent, then uiautomator taps by
+text (see the 1 Oct entries below). The phone's Mobile view setting is the user's — leave it on after any test.
+
+**The order, in phases (the user's words: "first we fix the compatibility problems, then we finish Word, then we make
+viewers for Excel and PowerPoint so we can ship, and after that we slowly fix the rest"):**
+
+## Phase 1 — compatibility (Word files open, show and save as Word/LibreOffice do)
+Everything that makes a file **copy-only** or **show differently** from Word/LibreOffice. Check each against LibreOffice
+(convert original and Tetra's saved copy to PDF, compare page by page) and on both devices.
+1. **The letterhead medical report** (the user's screenshot, 30 Sep): huge empty bands top and bottom, the letterhead
+   box too low, blue shapes off the right edge — floating shapes in the header/footer probably counted as in-line and
+   placed from the wrong origin. Ask the user before pulling any such file; work on a copy.
+2. **Copy-only causes** seen in the user's files and the suite: hidden text (01), columns (03), fields — page numbers,
+   dates, REF/PAGEREF/SEQ (04), equations (04), content controls around whole paragraphs / table rows / cells, legacy
+   form fields. Survey the user's Documents (as done for forms: `unzip -p … word/document.xml | grep`) to rank them by
+   how often they occur, then fix the most common first.
+3. **Edit vs View differences** (both should match the file): paragraph spacing for multi-line paragraphs in Edit (the
+   real fix: draw Edit with the pages' own layout), **tab stops in Edit** (contents lines show "Περίληψη4" — no leaders,
+   no right-aligned numbers), footers and page gaps in Edit, a page beginning inside a paragraph not marked.
+4. **Mobile view** gap under small tables (phone) — see below for why; Print layout is right.
+5. .odt parity for what was added on 1 Oct (forms/content controls read as loext:content-control, TOC blocks).
+6. Opening **.doc and .rtf** (old Word files) — at least to view, saving as .docx.
+
+## Phase 2 — finish Word
+Captions and cross-references; multilevel lists; reading mode; AutoSave; format painter for paragraphs; tapping a
+citation to edit it; more source kinds (report, thesis, video); APA abstract page and run-in level 4–5 headings; picture
+watermark; page border styles; Arrange for floating objects (forward/backward, align, group, rotate), text on both
+sides of a picture, WordArt effects, chart axis titles / data labels / scatter; Insert › content controls (Developer).
+
+## Phase 3 — viewers, then SHIP
+- **Excel viewer** (the user's wishes, 30 Sep — memory `office-roadmap`): read a sheet comfortably on the phone; fuzzy
+  search across cells (typos and accents forgiven, Greek and English); filter rows by a tap on a column's header;
+  pin columns side by side (pick e.g. A, J, ST — they move to the start in that order, the rest scroll beside them).
+- **PowerPoint viewer**: slides drawn with Word's floating objects, text boxes and charts (already built); thumbnails,
+  swipe between slides, presenting full screen.
+- Then the **release**: hardening walk on both devices, real documents round-tripped, merge `writer-library` to main,
+  release build signed with `~/.android/tetra-release.jks` (memory `release-signing-key`).
+
+## Phase 4 — slowly, the rest
+Editing for Excel and PowerPoint, the smaller Word items left over, en_GB dictionary if wanted (the user: the
+keyboard's own suggestions as one types are fine), anything found in use.
+
+**Not walked on the phone yet** (do during Phase 1): Position, text box / WordArt insert, line numbers, hyphenation,
+style sets, Format painter.
+
+---
+
 # Phone checks (phone connected 1 Oct afternoon — done)
 
 Checked on the phone (208c8192) with the latest build: **CV** in Print layout matches View, no gaps between tables;

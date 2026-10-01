@@ -256,6 +256,27 @@ internal object WriterBridge {
         return (size * scale * lineRatio * look.lineMultiple).sp
     }
 
+    /** The letters [spans] (paragraph, from, to) given [look]'s letter formatting, their words and marks kept (Format painter). */
+    fun painted(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, look: DocRun): OfficeDoc {
+        val byPara = spans.groupBy { it.first }
+        return doc.copy(paras = doc.paras.mapIndexed { i, p ->
+            val mine = byPara[i] ?: return@mapIndexed p
+            var at = 0
+            val runs = ArrayList<DocRun>()
+            for (r in p.runs) {
+                val cuts = sortedSetOf(0, r.text.length)
+                mine.forEach { (_, a, b) -> cuts += (a - at).coerceIn(0, r.text.length); cuts += (b - at).coerceIn(0, r.text.length) }
+                cuts.toList().zipWithNext().filter { (x, y) -> y > x }.forEach { (x, y) ->
+                    val inside = r.image == null && r.note == null && mine.any { (_, a, b) -> at + x >= a && at + y <= b }
+                    runs += if (!inside) r.copy(text = r.text.substring(x, y)) else r.copy(text = r.text.substring(x, y), bold = look.bold, italic = look.italic,
+                        underline = look.underline, strike = look.strike, sizePt = look.sizePt, color = look.color, highlight = look.highlight, font = look.font, script = look.script)
+                }
+                at += r.text.length
+            }
+            p.copy(runs = OfficeFormats.tidy(runs))
+        })
+    }
+
     /** [pictures] learns every picture shown, by the key the editor knows it by. */
     fun toEditor(doc: OfficeDoc, pictures: MutableMap<String, DocImage> = HashMap(), styles: DocStyles = DocStyles.Plain): RichTextDocument {
         val scale = BASE_SP / doc.basePt
@@ -1461,6 +1482,36 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** The change at a cursor: the one it is inside, else the one just before it (between two, never both). */
     fun changeAt(at: Int) = (changesShown.firstOrNull { (_, a, z) -> at in a until z } ?: changesShown.lastOrNull { (_, a, z) -> at in a..z })?.first
     val hereChange by remember { derivedStateOf { changeAt(state.selection.min) } }
+    // Format painter (the roadmap's "rest of Word", 2026-10-01): the run at the cursor's look, taken; the next words
+    // chosen take it once the selection holds still (as Word paints on letting go), once.
+    var painter by remember { mutableStateOf<DocRun?>(null) }
+    fun runAt(at: Int): DocRun? {
+        val (para, from, _) = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), at, at + 1).firstOrNull()
+            ?: WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), (at - 1).coerceAtLeast(0), at).firstOrNull() ?: return null
+        var pos = 0
+        return current().paras.getOrNull(para)?.runs?.firstOrNull { r -> (from < pos + r.text.length).also { pos += r.text.length } && r.image == null }
+    }
+    fun pickPainter() {
+        if (painter != null) { painter = null; WriterLog.i("format painter off"); return }
+        painter = runAt(state.selection.min) ?: run { message = "Put the cursor in the words whose look to copy"; null }
+        painter?.let { WriterLog.i("format painter: bold ${it.bold}, italic ${it.italic}, size ${it.sizePt}, colour ${it.color?.let { c -> "%06X".format(c) }}") }
+        if (painter != null) message = "Now choose the words to paint"
+    }
+    LaunchedEffect(painter) {
+        val look = painter ?: return@LaunchedEffect
+        snapshotFlow { state.selection }.collectLatest { sel ->
+            if (sel.collapsed) return@collectLatest
+            delay(700) // still chosen: painted
+            change {
+                val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
+                meta = WriterBridge.painted(current(), spans, look)
+                dirty = true
+                state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+            }
+            WriterLog.i("format painted on ${sel.max - sel.min} letters")
+            painter = null
+        }
+    }
     // Forms (asked 2026-10-01): where each content control's letters are, and the one the cursor is in (at its edge too).
     val controlsShown by remember { derivedStateOf {
         if (meta.paras.none { p -> p.runs.any { it.control != null } }) emptyList() else {
@@ -2435,6 +2486,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             } }) }
                         }
                     }
+                    // Format painter: the look of the letters at the cursor, painted on the next words chosen.
+                    Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) { pickPainter() }
                     // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
                     Tool(R.drawable.ic_format_clear, "Clear formatting", w) { change {
                         val text = state.annotatedString.text

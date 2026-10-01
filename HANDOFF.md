@@ -97,6 +97,12 @@ it (FileProvider path `logs/`). Read it over adb: `adb shell run-as com.kalotrap
 Also: comment and form-field shading now covers the letters only (with paragraph spacing a range's path covered the
 whole spaced line).
 
+**Then: Format painter** (Home, the brush — ic_format_paint, Material Symbols): the run at the cursor's letter look
+(bold, italic, underline, strike, size, colour, highlight, raw font, script) taken; the next words chosen take it once the
+selection holds still 700 ms, once (`WriterBridge.painted`); tapped again, off. Checked on the tablet (01: "Italic"
+painted bold, then discarded). ponytail: letters only — Word's paragraph painting (a paragraph mark chosen) not done;
+no double-tap to keep it on.
+
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 
 ---

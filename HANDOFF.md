@@ -11,12 +11,23 @@ Found and fixed there: a table's line is now exactly the table's height (`lineHe
   top). View now puts the cover's "ΣΧΟΛΗ" at 239.8 pt, LibreOffice 240; Edit within 3 pt.
 - **Mobile view**: floating pictures go in the text at their size (fitted to the screen), no longer line-tall marks.
 - A crash while trying a size mark past a block's end (the library refuses it) was caught by the new log — reverted.
+**Then: Spelling with Tetra's own dictionaries** (the user: "use the Libre one"). LibreOffice's el_GR and en_US
+Hunspell files in `assets/dictionaries` (with their READMEs: el_GR MPL/GPL/LGPL, en_US BSD-like/SCOWL). The system spell
+checker is gone. Lucene's Hunspell was tried and dropped: from 9.3 it calls Runtime.version(), 9.2 calls
+Class.getModule() — Android has neither. Instead `Speller` (WriterSpelling.kt): the Greek file is a plain list of
+828 806 forms (no affixes, ISO-8859-7) — **sorted by bytes when added** (keep it sorted if it is ever replaced) and
+searched by halves; English has PFX/SFX rules (conditions, cross products), REP and TRY. Capitals: at a sentence's
+start, all caps, and Greek all caps without accents (ΣΧΟΛΗ). Suggestions: the accent put on each vowel (Greek), REP,
+swaps, changes, missing and extra letters. On the phone the dictionaries load in 0.3 s (Greek) and 0.7 s (English);
+01 checked: English and Greek right, the French/German words and test strings marked, "labelled" → "labeled".
+ponytail: English is US only (British spellings marked — en_GB could be added beside it); no compounding;
+other languages are checked as English. `SpellingTest` uses the real files.
+
 **Still open on the phone:**
 - **Mobile view** (the phone had it on — the user's setting, left on): tables shrink to the screen width while the text
   stays readable, so a one-row table is shorter than a line of the editor's text; Android never makes a line shorter
   than its own font (the paragraph's end-of-line character carries the editor's base size) → a gap under small tables.
   Print layout has none. Ideas: draw small tables at a line's height, or give the separator a size (library internals).
-- **Spelling** marks almost every word (the keyboard's Greek checker) — Tetra's own Hunspell dictionaries, ask the user.
 - Contents lines in Edit show no dot leaders or right-aligned page numbers (tab stops are View-only).
 - Not walked: Position, text box / WordArt insert, line numbers, hyphenation, style sets, Format painter.
 

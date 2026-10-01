@@ -1561,9 +1561,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (r.reshow) state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(r.cursor))
         }
     }
-    // Review › Spelling (asked 2026-09-30): the phone's spell checker, Greek and English, as one types.
+    // Review › Spelling (asked 2026-09-30): Tetra's own Greek and English dictionaries (WriterSpelling), as one types.
     val speller = remember { WriterSpelling(context) }
-    DisposableEffect(Unit) { onDispose { speller.close() } }
     var spelling by remember { mutableStateOf(prefs.getBoolean("spelling", true)) }
     var ignored by remember { mutableStateOf(emptySet<String>()) }
     /** The words that look misspelled: where, the word, its suggestions (as the text was when checked). */
@@ -1579,9 +1578,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             delay(500)
             val ranges = WriterSpelling.words(text)
             val bad = speller.check(ranges.map { text.substring(it) }.toSet())
-            if (speller.silent || !speller.available) { speller.silent = false
-                message = "The phone's spell checker is not answering — turn on Spell checker (Gboard) in Settings › Languages & input, and Spell check in Gboard's Text correction"
-                delay(60_000) } // not said again at every letter
             misspelled = ranges.mapNotNull { r -> text.substring(r).let { w -> if (w in ignored) null else bad[w]?.let { Triple(r, w, it) } } }
         }
     }

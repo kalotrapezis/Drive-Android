@@ -124,6 +124,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.times
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.isSpecified
 import com.mohamedrejeb.richeditor.document.RichTextBlock
 import com.mohamedrejeb.richeditor.document.RichTextBlockType
@@ -3470,11 +3471,13 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier) {
     }
 }
 
-/** [LetterLooks] in the editor: capitals through the font's small-capitals feature (ALL CAPS as small capitals: the
- * editor keeps the letters as typed), double lines drawn under or through the letters. */
+/** [LetterLooks] in the editor: capitals through the font's small-capitals feature (the editor keeps the letters as
+ * typed; ALL CAPS as small capitals made capital-sized), double lines drawn under or through the letters. */
 internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
     override fun getSpanStyle(richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig) =
-        SpanStyle(fontFeatureSettings = when { looks.caps -> "c2sc, smcp"; looks.smallCaps -> "smcp"; else -> null })
+        // ALL CAPS: every letter a small capital, drawn about as tall as a capital (the font's small capitals are ~0.77 of it).
+        if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
+        else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null)
     override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCustomStyle(layoutResult: TextLayoutResult, textRange: androidx.compose.ui.text.TextRange,
         richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig, topPadding: Float, startPadding: Float) {
         if (!looks.doubleStrike && !looks.doubleUnder) return

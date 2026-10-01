@@ -72,7 +72,7 @@ top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for ea
 - **Capitals, small capitals, double strikethrough, double underline** (kept raw in DocRun.font) were plain in both:
   `LetterLooks` (OfficePages.kt) — View shows capitals as capitals (small ones 0.8), draws the second lines
   (`SecondLine` spans, `drawSecondLines`); Edit uses a RichSpanStyle (`EditorLetters`): small capitals by the font's smcp
-  (ALL CAPS shows as small capitals — the editor keeps the letters as typed), the lines drawn.
+  (ALL CAPS as small capitals made capital-sized, 1.3 em — the editor keeps the letters as typed), the lines drawn.
 - **Paragraph spacing before/after** in Edit, for one-line paragraphs (headings, short lines, empty ones): their line
   as tall as line + before + after, the extra split before : after (`LineHeightStyle.Alignment(topRatio)`), set on the
   library's internal paragraphs by reflection after each layout (`WriterBridge.spaceParagraphs`, `blockSpacing` from

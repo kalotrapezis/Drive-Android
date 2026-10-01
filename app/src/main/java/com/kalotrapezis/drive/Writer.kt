@@ -131,6 +131,7 @@ import com.mohamedrejeb.richeditor.document.RichTextDocument
 import com.mohamedrejeb.richeditor.document.RichTextSpanMark
 import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
+import androidx.compose.ui.text.style.LineHeightStyle
 import com.mohamedrejeb.richeditor.ui.BasicRichTextEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -299,7 +300,10 @@ internal object WriterBridge {
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
                     // half the spacing before a letter and half after, and none before the first of a line: there, twice.
-                    marks += RichTextSpanMark.LetterSpacing(range, ((w - pictureGlyph * size) * (if (at == 0) 2 else 1)).sp)
+                    // A table's a hair narrower than the line: exactly as wide, the paragraph's closing space sometimes went on to
+                    // a line of its own — a text line's gap under the table (the user's CV: "gaps between tables").
+                    val room = if (img.table != null) w - 1.5f else w
+                    marks += RichTextSpanMark.LetterSpacing(range, ((room - pictureGlyph * size) * (if (at == 0) 2 else 1)).sp)
                 }
                 at += r.text.length
             }
@@ -324,6 +328,10 @@ internal object WriterBridge {
         }
         // A line break inside a paragraph (the editor draws U+2028 as a box): the lines after it are the editor's own
         // "from a line break" lines, joined back into the paragraph by fromEditor.
+        val spacing = ArrayList<BlockSpacing?>()
+        val looks = doc.paras.map { if (it.table != null) null else styles.look(it) }
+        fun styleOf(i: Int) = doc.paras.getOrNull(i)?.let { it.keep?.style + "/" + it.heading }
+        fun same(i: Int, j: Int) = looks.getOrNull(i)?.contextual == true && looks.getOrNull(j)?.contextual == true && styleOf(i) == styleOf(j)
         return RichTextDocument(doc.paras.flatMapIndexed { index, p ->
             // A table: one character in the editor, standing for it (as a picture's does); it comes back as it went.
             // Known by its place, not its contents: a cell's edit changed its key under the Table tab (the next change
@@ -331,6 +339,7 @@ internal object WriterBridge {
             p.table?.let { t ->
                 val (width, height) = tableSize(doc, t, styles)
                 val img = DocImage("t$index", null, width, height, table = t)
+                spacing += null
                 return@flatMapIndexed listOf(block(p, listOf(DocRun(OBJECT_MARK.toString(), image = img)), false))
             }
             val lines = mutableListOf(mutableListOf<DocRun>())
@@ -338,8 +347,61 @@ internal object WriterBridge {
                 if (i > 0) lines += mutableListOf<DocRun>()
                 if (piece.isNotEmpty()) lines.last() += r.copy(text = piece)
             }
-            lines.mapIndexed { i, runs -> block(p, runs, i > 0) }
-        })
+            val look = looks[index]!!
+            lines.mapIndexed { i, runs ->
+                block(p, runs, i > 0).also { b ->
+                    // Space before the paragraph's first line and after its last (the pages' rule: none between two of one
+                    // style that say so); none round a picture's line.
+                    val before = if (i == 0 && index > 0 && !same(index - 1, index)) look.before else 0f
+                    val after = if (i == lines.size - 1 && !same(index, index + 1)) look.after else 0f
+                    spacing += if (runs.any { it.image != null } || before + after <= 0f) null else {
+                        val size = runs.maxOfOrNull { it.sizePt ?: look.sizePt ?: doc.basePt } ?: (lineMarkSize(p) ?: look.sizePt ?: doc.basePt)
+                        val line = b.lineHeight.takeIf { it.isSp }?.value ?: (size * scale * lineRatio)
+                        BlockSpacing(before * scale, after * scale, line)
+                    }
+                }
+            }
+        }).also { blockSpacing = spacing }
+    }
+    /** Each block's space before and after and its line (sp), as the last [toEditor] made them: [spaceParagraphs]. */
+    var blockSpacing: List<BlockSpacing?> = emptyList()
+    private fun lineMarkSize(p: DocPara) = p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
+        ?.let { Regex("""<w:sz w:val="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(2) }
+
+    /**
+     * Paragraph spacing in the editor (asked 2026-10-01: Edit's text packed tighter than the pages'). Compose has none: a
+     * one-line paragraph gets it as its line's height, the extra split above and below as before : after (Word's exact
+     * spacing); a longer one would have it on every line, so it goes without. Laid out again when a line count changes.
+     * Returns whether anything changed.
+     */
+    fun spaceParagraphs(state: RichTextState, layout: TextLayoutResult): Boolean {
+        val list = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }.getOrNull() ?: return false
+        val spacing = blockSpacing
+        if (list.size != spacing.size) return false
+        val text = layout.layoutInput.text.text
+        val blocks = state.toRichTextDocument().blocks
+        if (blocks.size != list.size) return false
+        val cls = list.firstOrNull()?.javaClass ?: return false
+        val getStyle = cls.getMethod("getParagraphStyle"); val setStyle = cls.getMethod("setParagraphStyle", ParagraphStyle::class.java)
+        var at = 0
+        var changed = false
+        for ((k, para) in list.withIndex()) {
+            val length = blocks[k].text.length
+            val sp = spacing[k]
+            val end = (at + length).coerceAtMost(text.length)
+            val oneLine = end <= at || layout.getLineForOffset(at) == layout.getLineForOffset((end - 1).coerceAtLeast(at))
+            val style = getStyle.invoke(para) as ParagraphStyle
+            val want = if (sp != null && oneLine) style.copy(lineHeight = (sp.line + sp.before + sp.after).sp,
+                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment(sp.before / (sp.before + sp.after)), LineHeightStyle.Trim.None))
+                else if (style.lineHeightStyle?.trim == LineHeightStyle.Trim.None) style.copy(lineHeight = sp?.line?.sp ?: style.lineHeight, lineHeightStyle = null) else style
+            if (want != style) { setStyle.invoke(para, want); changed = true }
+            at += length + 1 // the editor's space between paragraphs
+        }
+        // Shown again (the library's own refresh, with its current text and selection: its default argument).
+        if (changed) runCatching { state.javaClass.getMethod("updateAnnotatedString\$com_mohamedrejeb_richeditor_richeditor_compose\$default", state.javaClass,
+            androidx.compose.ui.text.input.TextFieldValue::class.java, Int::class.javaPrimitiveType, Any::class.java).invoke(null, state, null, 1, null) }
+            .onFailure { Log.w("Writer", "paragraph spacing", it) }
+        return changed
     }
 
     fun fromEditor(rich: RichTextDocument, basePt: Float, pictures: Map<String, DocImage> = emptyMap()): List<DocPara> {
@@ -954,7 +1016,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         // The editor lays a list item's indent out again once it is drawn (its bullet measured): only its look, so the
         // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed). Likewise it joins
         // neighbouring letters that look the same (runs the file kept apart — fonts it does not show): compared joined.
-        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, joinedSpans(a.spanStyles), a.paragraphStyles.map { it.item.copy(textIndent = null) to it.start }) }, meta.paras, styleEdits) }
+        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, joinedSpans(a.spanStyles), a.paragraphStyles.map { it.item.copy(textIndent = null, lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified, lineHeightStyle = null) to it.start }) }, meta.paras, styleEdits) }
             .drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
             if (remeasured) { remeasured = false; return@collectLatest } // tables shown again at their true height: no change
 
@@ -1893,7 +1955,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
-                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it },
+                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it; WriterBridge.spaceParagraphs(state, it) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
@@ -3269,6 +3331,9 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
     icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
     Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
 }
+
+/** A paragraph's spacing in the editor (sp): before its first line, after its last, and its line's own height. */
+internal class BlockSpacing(val before: Float, val after: Float, val line: Float)
 
 /** A picture in front of or behind the text, in the editor: from the text's left and its paragraph's top (pt), its size. */
 internal class FloatShown(val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val pageX: Float, val pageY: Float)

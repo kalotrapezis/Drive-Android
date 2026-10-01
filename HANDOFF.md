@@ -1,3 +1,20 @@
+# Phone checks waiting (the phone, 208c8192, not connected since 30 Sep night — do these first when it is)
+
+Install `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`, then on the phone:
+1. **CV test copy.docx** (Test-Words), Print layout: no gaps between the tables (fixed and checked on the tablet — the
+   cause was not the phone's), rows not cut off, paragraph spacing as the pages. Pinch zoom past the screen (ask the
+   user — adb cannot do two fingers).
+2. **Page ends in Print layout** (once built): "Page N" breaks where the pages break.
+3. **Forms** (05_Review_and_Forms.docx): the bar above the ribbon fits the phone; drop-down, date picker, Fill in.
+4. **Table of contents** (a copy of a thesis): opens not copy-only; edit + save keeps the TOC.
+5. **Floating pictures** (a copy of the 602 file): logos in place in Print layout, dragged freely; View agrees.
+6. **Letter looks** (01_Text_and_Paragraphs.docx): capitals, small capitals, double lines in both modes; the header
+   shown faded in Print layout.
+7. From before: Position, text box / WordArt insert, line numbers, hyphenation, style sets — never walked on the phone.
+8. Spelling marks the wrong language there (the English paragraph all red) — see the 30 Sep entry.
+
+---
+
 # 1 October, midday — Forms (content controls)
 
 **State.** Branch `writer-library`, committed; all unit tests pass. Latest build on the **tablet** only (the phone was
@@ -56,9 +73,15 @@ top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for ea
   `LetterLooks` (OfficePages.kt) — View shows capitals as capitals (small ones 0.8), draws the second lines
   (`SecondLine` spans, `drawSecondLines`); Edit uses a RichSpanStyle (`EditorLetters`): small capitals by the font's smcp
   (ALL CAPS shows as small capitals — the editor keeps the letters as typed), the lines drawn.
-Still different: **paragraph spacing before/after** in Edit (Compose has no paragraph spacing; lineHeight goes on every
-line). Ideas: a per-paragraph LineHeightStyle through RichParagraph.paragraphStyle (it has a setter) for one-line
-paragraphs only, or the editor drawn by the pages' own layout. Footers are not shown in Edit (no page ends yet).
+- **Paragraph spacing before/after** in Edit, for one-line paragraphs (headings, short lines, empty ones): their line
+  as tall as line + before + after, the extra split before : after (`LineHeightStyle.Alignment(topRatio)`), set on the
+  library's internal paragraphs by reflection after each layout (`WriterBridge.spaceParagraphs`, `blockSpacing` from
+  toEditor); one that grows to two lines while typing gets its plain style back. ponytail: a longer paragraph shows no
+  spacing in Edit (it would go on every line) — the way out is the editor drawn by the pages' own layout.
+- **Gaps between tables** (the long-open item): the paragraph's closing space after a table's character (exactly the
+  line's width) sometimes wrapped to a line of its own — a blank text line under the table. The table's character is now
+  1.5 sp narrower than the line. The CV in Edit now matches View.
+Still to do: footers in Edit (no page ends yet).
 
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 

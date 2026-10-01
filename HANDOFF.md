@@ -43,6 +43,23 @@ Still off: **empty paragraphs** keep the editor's default height (the library ig
 text after empty lines sized by a big paragraph mark sits higher than on the pages — on the 602 cover the Neapolis logo
 overlaps "ΣΧΟΛΗ…" in Edit mode. Same root as the table-gaps item; fix together (an empty block's height).
 
+**Then: View and Edit compared** (the user: "open the files, compare viewer and edit modes and fix what is missing";
+the suite 01–06, the CV copy and a 602 copy on the tablet, captured side by side — `both.sh`-style: touch the file to the
+top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for each screen). Fixed:
+- **Empty lines and one-line paragraphs** had no line height in Edit: Compose trims the first and last line's extra
+  height by default (Trim.Both), so a one-line paragraph never got it. The editor's TextStyle now has
+  LineHeightStyle(Proportional, Trim.None); an empty paragraph's height is its paragraph mark's size × spacing. The 602
+  cover now lines up with View; the CV's gaps between tables should too (check on the phone).
+- **Inline pictures** in Edit were capped at 300 sp (a phone's width): on the page, the text width.
+- **Headers** in Edit: the first page's header (from the pages' layout, `headPage`) drawn faded in the top margin.
+- **Capitals, small capitals, double strikethrough, double underline** (kept raw in DocRun.font) were plain in both:
+  `LetterLooks` (OfficePages.kt) — View shows capitals as capitals (small ones 0.8), draws the second lines
+  (`SecondLine` spans, `drawSecondLines`); Edit uses a RichSpanStyle (`EditorLetters`): small capitals by the font's smcp
+  (ALL CAPS shows as small capitals — the editor keeps the letters as typed), the lines drawn.
+Still different: **paragraph spacing before/after** in Edit (Compose has no paragraph spacing; lineHeight goes on every
+line). Ideas: a per-paragraph LineHeightStyle through RichParagraph.paragraphStyle (it has a setter) for one-line
+paragraphs only, or the editor drawn by the pages' own layout. Footers are not shown in Edit (no page ends yet).
+
 **Next:** the phone items below (Print layout table gaps, page ends), the letterhead report, then the rest of Word.
 
 ---

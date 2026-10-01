@@ -810,6 +810,7 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             canvas.translate(0f, -top)
             canvas.clipRect(-p.x * U, top, p.layout.width + (p.x + 1000f) * U, bottom)
             p.layout.draw(canvas)
+            LetterLooks.drawSecondLines(canvas, p.layout, p.firstLine, p.lastLine)
             canvas.restore()
         }
         paint.strokeCap = android.graphics.Paint.Cap.SQUARE
@@ -1436,8 +1437,16 @@ internal object OfficePages {
                 r.bold -> span(StyleSpan(Typeface.BOLD))
                 r.italic -> span(StyleSpan(Typeface.ITALIC))
             }
-            if (r.underline || r.link != null) span(UnderlineSpan())
-            if (r.strike) span(StrikethroughSpan())
+            val letters = LetterLooks.of(r.font)
+            if (letters.doubleUnder) span(LetterLooks.SecondLine(false)) else if (r.underline || r.link != null) span(UnderlineSpan())
+            if (letters.doubleStrike) span(LetterLooks.SecondLine(true)) else if (r.strike) span(StrikethroughSpan())
+            // Capitals: the letters shown as capitals (the file keeps them as typed); small ones a size smaller.
+            if (letters.caps || letters.smallCaps) {
+                for (k in start until end) {
+                    val c = text[k]
+                    if (c.isLowerCase()) { text.replace(k, k + 1, c.uppercaseChar().toString()); if (letters.smallCaps && !letters.caps) text.setSpan(android.text.style.RelativeSizeSpan(0.8f), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+                }
+            }
             r.sizePt?.let { span(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
             (r.color ?: if (r.link != null) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
@@ -1647,6 +1656,44 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val fill = color(sp.substringBefore("<a:ln").substringAfter("</a:prstGeom>", ""))
             val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
             return ShapePicture(geometry, fill, color(ln?.groupValues?.get(2)), width)
+        }
+    }
+}
+
+/**
+ * Letter looks Writer keeps raw in [DocRun.font] and shows (the user's test suite, 2026-10-01: all four looked plain):
+ * capitals, small capitals, double strikethrough, double underline — Word's rPr elements, LibreOffice's attributes.
+ */
+internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean) {
+    val any get() = caps || smallCaps || doubleStrike || doubleUnder
+    /** Two lines (struck through, or under) over its letters, drawn after the line: [drawSecondLines]. */
+    class SecondLine(val strike: Boolean)
+    companion object {
+        private val NONE = LetterLooks(false, false, false, false)
+        private fun on(font: String, tag: String) = Regex("""<w:$tag(\s*/>|\s+w:val="(1|true|on)")""").containsMatchIn(font)
+        fun of(font: String?): LetterLooks = if (font.isNullOrEmpty()) NONE else LetterLooks(
+            on(font, "caps") || "fo:text-transform=\"uppercase\"" in font,
+            on(font, "smallCaps") || "fo:font-variant=\"small-caps\"" in font,
+            on(font, "dstrike") || "style:text-line-through-type=\"double\"" in font,
+            "<w:u w:val=\"double\"" in font || "style:text-underline-type=\"double\"" in font)
+
+        /** The [SecondLine] spans of [layout]'s lines [first]..[last]: two thin lines each, in the text's colour. */
+        fun drawSecondLines(canvas: android.graphics.Canvas, layout: android.text.Layout, first: Int, last: Int) {
+            val text = layout.text as? android.text.Spanned ?: return
+            val spans = text.getSpans(0, text.length, SecondLine::class.java).takeIf { it.isNotEmpty() } ?: return
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = layout.paint.color }
+            for (sp in spans) {
+                val a = text.getSpanStart(sp); val z = text.getSpanEnd(sp)
+                for (line in maxOf(first, layout.getLineForOffset(a))..minOf(last, layout.getLineForOffset(z))) {
+                    val s0 = maxOf(a, layout.getLineStart(line)); val s1 = minOf(z, layout.getLineEnd(line))
+                    if (s1 <= s0) continue
+                    val x1 = layout.getPrimaryHorizontal(s0); val x2 = if (s1 >= layout.getLineEnd(line)) layout.getLineRight(line) else layout.getPrimaryHorizontal(s1)
+                    val base = layout.getLineBaseline(line).toFloat(); val h = (layout.getLineDescent(line) - layout.getLineAscent(line)).toFloat()
+                    paint.strokeWidth = h * 0.045f
+                    val ys = if (sp.strike) listOf(base - h * 0.33f, base - h * 0.21f) else listOf(base + h * 0.07f, base + h * 0.17f)
+                    ys.forEach { y -> canvas.drawLine(x1, y, x2, y, paint) }
+                }
+            }
         }
     }
 }

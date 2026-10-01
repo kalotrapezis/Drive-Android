@@ -217,7 +217,8 @@ internal object WriterBridge {
         val over = PictureXml.wrapOf(img).let { it == PictureWrap.InFront || it == PictureWrap.Behind }
         // On the page (a tablet, Print layout) it is drawn in its place over the text: its letter takes no room.
         if (over && pageWidthPt != null) return 0.5f to 0.5f
-        val fit = minOf(MAX_PICTURE_SP / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
+        // On the page as wide as the page lets it (the pages' rule); in the reflowing editor a screen's worth.
+        val fit = minOf((pageWidthPt?.let { it * scale } ?: MAX_PICTURE_SP) / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
         return w * fit to img.heightPt * scale * fit
     }
 
@@ -270,6 +271,8 @@ internal object WriterBridge {
                     if (!r.italic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
                     if (r.color == null) look.color?.takeIf { it != 0 }?.let { marks += RichTextSpanMark.TextColor(range, (STYLE_ALPHA shl 24) or it.toLong()) }
                 }
+                // Capitals, small capitals, double lines: drawn by the editor too (the letters stay as typed).
+                LetterLooks.of(r.font).takeIf { it.any && r.image == null }?.let { marks += RichTextSpanMark.Custom(range, EditorLetters(it)) }
                 if (r.bold) marks += RichTextSpanMark.Bold(range)
                 if (r.italic) marks += RichTextSpanMark.Italic(range)
                 if (r.underline) marks += RichTextSpanMark.Underline(range)
@@ -1540,15 +1543,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // drawn on the page in their place, as the pages show them — from the pages' layout, measured from their paragraph's
     // top, so typing above them moves them with it. Worked out again after each Writer change, not each keystroke.
     var floatsShown by remember { mutableStateOf<Map<String, FloatShown>>(emptyMap()) }
+    var headPage by remember { mutableStateOf<LaidPage?>(null) } // the first page as laid out: its header, shown faded above the text
     LaunchedEffect(meta, styleEdits, documentStyles, onPage, loaded) { // styleEdits: a picture changed (meta stays)
         if (!loaded) return@LaunchedEffect
         val doc = current()
         val over = doc.paras.indices.flatMap { j -> doc.paras[j].runs.mapNotNull { r -> r.image?.takeIf { PictureXml.wrapOf(it).let { w -> w == PictureWrap.InFront || w == PictureWrap.Behind } }?.let { it.key to j } } }.toMap()
-        if (!loaded || !onPage || over.isEmpty()) { floatsShown = emptyMap(); return@LaunchedEffect }
+        if (!loaded || !onPage) { floatsShown = emptyMap(); headPage = null; return@LaunchedEffect }
         delay(300)
         val parts = packageParts
         val tops = FloatArray(doc.paras.size)
         val laid = withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, null, IntArray(doc.paras.size), tops) { img -> img.bytes ?: img.part?.let { parts[it] } } }.getOrNull() } ?: return@LaunchedEffect
+        headPage = laid.firstOrNull()
         floatsShown = laid.flatMap { page -> page.floats.mapNotNull { f -> f.key?.let { k -> over[k]?.let { j -> k to FloatShown(f.x - page.page.left, f.y - tops[j], f.w, f.h, f.behind, f.x, f.y) } } } }.toMap()
     }
     /** The pages of [doc] as the pages view lays them out, and the page each paragraph starts on (-1: none). */
@@ -1884,7 +1889,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
                             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
                                 if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
-                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp),
+                            // Line heights untrimmed: Compose's default trims the first and last line's, so a one-line paragraph (an empty
+                            // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
+                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
+                                lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
                             }
@@ -2002,6 +2010,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         Text("Page break", color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
+                                // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
+                                headPage?.let { hp -> androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) { drawIntoCanvas { c ->
+                                    val n = c.nativeCanvas; val k = scale.sp.toPx()
+                                    n.save(); n.scale(k, k); n.translate(-hp.page.left, -hp.page.top)
+                                    n.clipRect(0f, 0f, hp.page.width, hp.page.top)
+                                    n.saveLayerAlpha(0f, 0f, hp.page.width, hp.page.top, 110)
+                                    hp.draw(n); n.restore(); n.restore()
+                                } } }
                                 val paraStarts = remember(text, floatsShown) { if (floatsShown.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()) }
                                 Box(Modifier.matchParentSize().padding(margins)) {
                                     placed.forEach { (i, img, at) ->
@@ -3333,6 +3349,27 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier) {
         Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
             Text("Page ${(at + 1).coerceAtMost(pages.size)} of ${pages.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+        }
+    }
+}
+
+/** [LetterLooks] in the editor: capitals through the font's small-capitals feature (ALL CAPS as small capitals: the
+ * editor keeps the letters as typed), double lines drawn under or through the letters. */
+internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
+    override fun getSpanStyle(richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig) =
+        SpanStyle(fontFeatureSettings = when { looks.caps -> "c2sc, smcp"; looks.smallCaps -> "smcp"; else -> null })
+    override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCustomStyle(layoutResult: TextLayoutResult, textRange: androidx.compose.ui.text.TextRange,
+        richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig, topPadding: Float, startPadding: Float) {
+        if (!looks.doubleStrike && !looks.doubleUnder) return
+        val l = layoutResult
+        if (textRange.min >= l.layoutInput.text.length) return
+        for (line in l.getLineForOffset(textRange.min)..l.getLineForOffset((textRange.max - 1).coerceAtLeast(textRange.min))) {
+            val a = maxOf(textRange.min, l.getLineStart(line)); val z = minOf(textRange.max, l.getLineEnd(line, true))
+            if (z <= a) continue
+            val x1 = l.getHorizontalPosition(a, true) + startPadding; val x2 = l.getHorizontalPosition(z, true) + startPadding
+            val base = l.getLineBaseline(line) + topPadding; val h = l.getLineBottom(line) - l.getLineTop(line)
+            val ys = if (looks.doubleStrike) listOf(base - h * 0.30f, base - h * 0.19f) else listOf(base + h * 0.15f) // the editor's own underline is the first
+            ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
         }
     }
 }

@@ -220,7 +220,9 @@ internal object WriterBridge {
         // On the page (a tablet, Print layout) it is drawn in its place over the text: its letter takes no room.
         if (over && pageWidthPt != null) return 0.5f to 0.5f
         // On the page as wide as the page lets it (the pages' rule); in the reflowing editor a screen's worth.
-        val fit = minOf((pageWidthPt?.let { it * scale } ?: MAX_PICTURE_SP) / w, if (over) minOf(BASE_SP * 1.2f / (img.heightPt * scale), BASE_SP * 2.4f / w) else 1f).coerceAtMost(1f)
+        // Without a page (Mobile view) it goes in the text at its size, fitted to the screen, as Word's mobile view does
+        // (asked 2026-10-01: a cover's logos were line-tall marks in the corner).
+        val fit = minOf((pageWidthPt?.let { it * scale } ?: minOf(MAX_PICTURE_SP, editorWidthSp)) / w, 1f)
         return w * fit to img.heightPt * scale * fit
     }
 
@@ -246,14 +248,16 @@ internal object WriterBridge {
      * its line spacing (1.15, double, exact) over its biggest letters — an empty one's, its paragraph mark's size, as
      * Word gives an empty line. Left to the editor for single spacing, headings, pictures and tables.
      */
-    private fun lineHeight(p: DocPara, runs: List<DocRun>, look: ParaLook, basePt: Float, scale: Float): androidx.compose.ui.unit.TextUnit {
+    /** A picture in front of or behind the text, drawn on the page in its place: it takes no room in its line. */
+    fun overOnPage(r: DocRun) = pageWidthPt != null && r.image?.let { PictureXml.wrapOf(it) }.let { it == PictureWrap.InFront || it == PictureWrap.Behind }
+    private fun lineHeight(p: DocPara, all: List<DocRun>, look: ParaLook, basePt: Float, scale: Float): androidx.compose.ui.unit.TextUnit {
+        val runs = all.filterNot { overOnPage(it) }
         // A table's line: exactly the table (on a phone a one-row table is shorter than a line of the editor's own text,
         // which a line never goes below — a gap under each small table, the user's CV).
         runs.firstOrNull { it.image?.table != null }?.image?.let { return shownSize(it, scale).second.sp }
-        if (p.heading > 0 || p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
+        if ((p.heading > 0 && runs.isNotEmpty()) || p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
         look.lineExact?.takeIf { !look.lineAtLeast }?.let { return (it * scale).sp }
-        val mark = if (runs.isEmpty()) p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
-            ?.let { Regex("""<w:sz w:val="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(2) } else null
+        val mark = if (runs.isEmpty()) OfficeFormats.markSize(p) else null
         if (look.lineMultiple == 1f && mark == null) return androidx.compose.ui.unit.TextUnit.Unspecified
         val size = mark ?: (runs.maxOfOrNull { it.sizePt ?: look.sizePt ?: basePt } ?: look.sizePt ?: basePt)
         return (size * scale * lineRatio * look.lineMultiple).sp
@@ -321,6 +325,9 @@ internal object WriterBridge {
                     // A table is a line of its own: its letter's whole line (rise and fall) is the table's height, and it is
                     // drawn from the line's top — standing on the baseline, the fall left a gap a quarter of its height.
                     val size = (if (img.table != null) h / lineRatio else h * 1.12f).coerceAtLeast(4f) // a letter's rise is ~0.9 of its size
+                    // ponytail: the space the editor puts after each paragraph keeps the editor's own text size, so in Mobile
+                    // view (tables shrunk to the screen) a short table's line stays a text line tall; a mark cannot reach it
+                    // (the library refuses a range past the block). Print layout has no gap.
                     marks += RichTextSpanMark.FontSize(range, size.sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
@@ -377,10 +384,11 @@ internal object WriterBridge {
                 block(p, runs, i > 0).also { b ->
                     // Space before the paragraph's first line and after its last (the pages' rule: none between two of one
                     // style that say so); none round a picture's line.
-                    val before = if (i == 0 && index > 0 && !same(index - 1, index)) look.before else 0f
+                    val before = if (i == 0 && (index == 0 || !same(index - 1, index))) look.before else 0f
                     val after = if (i == lines.size - 1 && !same(index, index + 1)) look.after else 0f
-                    spacing += if (runs.any { it.image != null } || before + after <= 0f) null else {
-                        val size = runs.maxOfOrNull { it.sizePt ?: look.sizePt ?: doc.basePt } ?: (lineMarkSize(p) ?: look.sizePt ?: doc.basePt)
+                    val shown = runs.filterNot { overOnPage(it) }
+                    spacing += if (shown.any { it.image != null } || before + after <= 0f) null else {
+                        val size = shown.maxOfOrNull { it.sizePt ?: look.sizePt ?: doc.basePt } ?: (lineMarkSize(p) ?: look.sizePt ?: doc.basePt)
                         val line = b.lineHeight.takeIf { it.isSp }?.value ?: (size * scale * lineRatio)
                         BlockSpacing(before * scale, after * scale, line)
                     }
@@ -390,8 +398,7 @@ internal object WriterBridge {
     }
     /** Each block's space before and after and its line (sp), as the last [toEditor] made them: [spaceParagraphs]. */
     var blockSpacing: List<BlockSpacing?> = emptyList()
-    private fun lineMarkSize(p: DocPara) = p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
-        ?.let { Regex("""<w:sz w:val="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(2) }
+    private fun lineMarkSize(p: DocPara) = OfficeFormats.markSize(p)
 
     /**
      * Paragraph spacing in the editor (asked 2026-10-01: Edit's text packed tighter than the pages'). Compose has none: a

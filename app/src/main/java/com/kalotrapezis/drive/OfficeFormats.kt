@@ -527,6 +527,9 @@ internal object OfficeFormats {
     }
 
     /** Adjacent runs that look the same become one, and empty runs go: what the editor gives back is compared cleanly. */
+    /** An empty paragraph's mark size (pt): Word's w:sz in its paragraph mark's rPr; null when it has none. */
+    fun markSize(p: DocPara): Float? = p.keep?.parts?.firstOrNull { it.first == "rPr" }?.second
+        ?.let { Regex("""<w:sz w:val="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(2) }
     /** Paragraphs' words, to tell whether a block kept from the file was changed. */
     fun blockText(ps: List<DocPara>) = ps.joinToString("\n") { it.text }.hashCode().toString()
     fun tidy(runs: List<DocRun>): List<DocRun> {

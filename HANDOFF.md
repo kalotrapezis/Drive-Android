@@ -4,14 +4,21 @@ Checked on the phone (208c8192) with the latest build: **CV** in Print layout ma
 **forms** bar fits (05); **Navigation** goes to the page and closes itself (04); **letter looks** (01); View mode fine.
 Found and fixed there: a table's line is now exactly the table's height (`lineHeight` for a table block and
 `BlockSpacing(0,0,h)` so spaceParagraphs sets Trim.None) — it was the editor's text height for a short table.
+**Then (same afternoon), the 602 cover checked against LibreOffice:**
+- **Empty paragraphs are as tall as their paragraph mark** (OfficeFormats.markSize: the mark's w:sz) in View too, as
+  Word and LibreOffice make them; a paragraph holding only floating pictures counts as empty (Edit: `overOnPage`).
+- **The document's first paragraph keeps its space before** (Word and LibreOffice do; Writer dropped it at every page
+  top). View now puts the cover's "ΣΧΟΛΗ" at 239.8 pt, LibreOffice 240; Edit within 3 pt.
+- **Mobile view**: floating pictures go in the text at their size (fitted to the screen), no longer line-tall marks.
+- A crash while trying a size mark past a block's end (the library refuses it) was caught by the new log — reverted.
 **Still open on the phone:**
 - **Mobile view** (the phone had it on — the user's setting, left on): tables shrink to the screen width while the text
   stays readable, so a one-row table is shorter than a line of the editor's text; Android never makes a line shorter
   than its own font (the paragraph's end-of-line character carries the editor's base size) → a gap under small tables.
   Print layout has none. Ideas: draw small tables at a line's height, or give the separator a size (library internals).
 - **Spelling** marks almost every word (the keyboard's Greek checker) — Tetra's own Hunspell dictionaries, ask the user.
-- Not walked: Position, text box / WordArt insert, line numbers, hyphenation, style sets, Format painter, TOC copy,
-  floating pictures (602 copy).
+- Contents lines in Edit show no dot leaders or right-aligned page numbers (tab stops are View-only).
+- Not walked: Position, text box / WordArt insert, line numbers, hyphenation, style sets, Format painter.
 
 ---
 

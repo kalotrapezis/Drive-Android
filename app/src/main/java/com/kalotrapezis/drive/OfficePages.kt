@@ -1066,7 +1066,8 @@ internal object OfficePages {
             // style that say so (contextual spacing).
             val same = look.contextual && prevLook?.contextual == true && style == prevStyle
             if (look.pageBreakBefore && pieces.isNotEmpty()) breakPage()
-            if (pieces.isNotEmpty() && !same) y += look.before
+            // Space before: not at a page's top — except the document's first paragraph, as Word and LibreOffice keep it.
+            if ((pieces.isNotEmpty() || i == 0) && !same) y += look.before
             fun limitNow() = page.height - page.bottom - (if (feet.isEmpty()) 0f else feetHeight)
             /** How far the text may go with lines [from]..[to] on this page: their footnotes too below it. */
             fun limitWith(from: Int, to: Int): Float {
@@ -1455,7 +1456,10 @@ internal object OfficePages {
             r.change?.let { c -> span(ForegroundColorSpan(0xFF000000.toInt() or TrackChanges.color(c.author))); span(if (c.deleted) StrikethroughSpan() else UnderlineSpan()) }
             OfficeFonts.typeface(styles.fontName(r.font))?.let { span(TypefaceSpan(OfficeFonts.styled(it, r.bold || look.bold == true, r.italic || look.italic == true))) }
         }
-        if (text.isEmpty()) text.append(" ") // an empty paragraph is still a line
+        // An empty paragraph is still a line — as tall as its paragraph mark's size, as Word and LibreOffice make it (the
+        // 602 cover's 17 pt empty lines came out 12 pt high; the text below rode up). Floating pictures take no room.
+        val markPt = if (text.isEmpty()) OfficeFormats.markSize(p) else null
+        if (text.isEmpty()) text.append(" ")
         fun whole(s: Any) = text.setSpan(s, 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         // A paragraph may start left of the margin (a negative indent): it is laid out that much wider and drawn that much
         // further left (the layout has nothing left of 0).
@@ -1465,7 +1469,7 @@ internal object OfficePages {
         // Laid out in points and drawn scaled: linear, sub-pixel text, or letters snap to whole points and space unevenly.
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG or TextPaint.LINEAR_TEXT_FLAG or TextPaint.SUBPIXEL_TEXT_FLAG).apply {
             color = look.color?.let { 0xFF000000.toInt() or it } ?: Color.BLACK
-            textSize = size * U
+            textSize = (markPt ?: size) * U
             typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), look.bold == true, look.italic == true)
         }
         val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)

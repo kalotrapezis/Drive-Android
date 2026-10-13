@@ -101,6 +101,22 @@ internal object TextFileRules {
         return if (bom) byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + body else body
     }
 
+    /**
+     * The file's path inside Tetra, which is how another device names the same file — or null for a file outside
+     * it (Downloads, another app's), which Files sync does not carry. Tetra hands a file over as its own FileProvider
+     * URI (`content://<app>.files/tetra/…`); Save as writes a `file://` one.
+     */
+    fun tetraPath(uri: String, authority: String, root: String): String? = runCatching {
+        val u = java.net.URI(uri)
+        val path = u.path ?: return null
+        val rel = when {
+            u.scheme == "file" && path.startsWith("$root/") -> path.removePrefix("$root/")
+            u.scheme == "content" && u.authority == authority -> path.removePrefix("/").split('/', limit = 2).takeIf { it[0] == "tetra" || it[0] == "drive" }?.getOrNull(1)
+            else -> null
+        }
+        rel?.takeIf { it.isNotEmpty() && it.split('/').none { p -> p.isEmpty() || p == "." || p == ".." } }
+    }.getOrNull()
+
     /** A name for a new file: what was typed, with .txt when it has no extension of its own. */
     fun fileName(typed: String): String? {
         val name = typed.trim()
@@ -157,6 +173,11 @@ internal class TextEditorStore(context: Context) {
         get() = prefs.getBoolean("word_wrap", true)
         set(on) { prefs.edit().putBoolean("word_wrap", on).apply() }
 
+    /** Files opens a .txt here rather than in the app last chosen for it (asked 2026-09-28). */
+    var opensTxt: Boolean
+        get() = prefs.getBoolean("opens_txt", true)
+        set(on) { prefs.edit().putBoolean("opens_txt", on).apply() }
+
     /** Where Save puts a new file, under the phone's storage (default Tetra/Documents). */
     var saveFolder: String
         get() = prefs.getString("save_folder", "Tetra/Documents") ?: "Tetra/Documents"
@@ -177,6 +198,53 @@ internal class TextEditorStore(context: Context) {
     }
 
     fun current(): String? = prefs.getString("current", null)
+
+    private val root get() = TetraFolder.root(Environment.getExternalStorageDirectory())
+    private val authority = "${context.packageName}.files"
+    private fun pathOf(uri: String?) = uri?.let { TextFileRules.tetraPath(it, authority, root.path) }
+
+    /**
+     * Open tabs cross to the other devices by their path in Tetra (SYNC_PLAN.md 6al): each open or close is kept
+     * with its time, and the newer one of each path wins everywhere. A file outside Tetra stays on this device.
+     */
+    // shortcut: closed paths are kept forever (a few bytes each); prune ones older than a year if it ever matters.
+    private fun records(): JSONObject = runCatching { JSONObject(prefs.getString("synced_tabs", "{}")!!) }.getOrDefault(JSONObject())
+
+    fun mark(uri: String?, open: Boolean) {
+        val path = pathOf(uri) ?: return
+        prefs.edit().putString("synced_tabs", records().put(path, JSONObject().put("open", open).put("at", System.currentTimeMillis())).toString()).apply()
+    }
+
+    /** What a sync sends. A tab open since before this existed counts as opened at the dawn of time: anything newer wins. */
+    fun syncPayload(): JSONObject {
+        val r = records()
+        tabs().forEach { t -> pathOf(t.uri)?.let { if (!r.has(it)) r.put(it, JSONObject().put("open", true).put("at", 1)) } }
+        return JSONObject().put("tabs", JSONArray(r.keys().asSequence().map { r.getJSONObject(it).put("path", it) }.toList()))
+    }
+
+    /**
+     * The computer's answer: the newest open or close of every path, from any device. Opens a file that arrived and
+     * is open elsewhere; closes one closed elsewhere — unless it has unsaved text here, which nothing remote may lose.
+     */
+    fun applySynced(answer: JSONArray) {
+        val r = records()
+        for (i in 0 until answer.length()) {
+            val t = answer.optJSONObject(i) ?: continue
+            val path = t.optString("path").ifEmpty { null } ?: continue
+            if (t.optLong("at") > (r.optJSONObject(path)?.optLong("at") ?: -1)) r.put(path, JSONObject().put("open", t.optBoolean("open")).put("at", t.optLong("at")))
+        }
+        prefs.edit().putString("synced_tabs", r.toString()).apply()
+        val tabs = tabs().toMutableList()
+        val before = tabs.toList()
+        tabs.removeAll { t -> pathOf(t.uri)?.let { r.optJSONObject(it)?.optBoolean("open", true) == false } == true && draft(t.id) == null }
+        for (path in r.keys()) {
+            if (!r.getJSONObject(path).getBoolean("open") || tabs.any { pathOf(it.uri) == path }) continue
+            val file = runCatching { DriveRules.file(root, path) }.getOrNull() ?: continue // not here (yet)
+            val loaded = runCatching { TextFileRules.read(file.readBytes()) }.getOrNull() ?: continue
+            tabs += Tab(UUID.randomUUID().toString(), Uri.fromFile(file).toString(), file.name, loaded.crlf, loaded.bom)
+        }
+        if (tabs != before) setTabs(tabs, current())
+    }
 
     fun draft(id: String): String? = File(drafts, id).takeIf { it.isFile }?.readText()
     fun setDraft(id: String, text: String?) {
@@ -234,7 +302,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         val name = withContext(Dispatchers.IO) { displayName(context, uri) }
         val file = load(TextEditorStore.Tab("", uri.toString(), name)) ?: run { message = "Could not open $name as text."; return }
         val t = TextEditorStore.Tab(UUID.randomUUID().toString(), uri.toString(), name, file.crlf, file.bom)
-        tabs.add(t); text[t.id] = TextFieldValue(file.text); saved[t.id] = file.text; current = t.id; persist()
+        tabs.add(t); text[t.id] = TextFieldValue(file.text); saved[t.id] = file.text; current = t.id; persist(); store.mark(t.uri, true)
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) scope.launch { openUri(uri) } }
@@ -308,13 +376,14 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             val renamed = t.copy(uri = Uri.fromFile(file).toString(), name = name)
             tabs[tabs.indexOfFirst { it.id == id }] = renamed
             saved[id] = text[id]?.text ?: ""; withContext(Dispatchers.IO) { store.setDraft(id, null) }
-            naming = null; persist(); message = "Saved in ${store.saveFolder}"
+            naming = null; persist(); store.mark(renamed.uri, true); message = "Saved in ${store.saveFolder}"
         }
     }
     fun close(id: String, force: Boolean = false) {
         if (!force && dirty(id)) { closing = id; return }
         val i = tabs.indexOfFirst { it.id == id }
         if (i < 0) return
+        store.mark(tabs[i].uri, false)
         tabs.removeAt(i); text.remove(id); saved.remove(id); undo.remove(id)
         if (tabs.isEmpty()) newTab() else if (current == id) current = tabs[(i - 1).coerceAtLeast(0)].id
         persist()
@@ -420,7 +489,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") })
-                    Text("In ${store.saveFolder} (Settings › Office). No extension adds .txt.", style = MaterialTheme.typography.bodySmall)
+                    Text("In ${store.saveFolder} (Settings › Text editor). No extension adds .txt.", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { saveAs(id, typed) }) { Text("Save") } },

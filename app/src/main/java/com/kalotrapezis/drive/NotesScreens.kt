@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -161,15 +162,22 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
 
     val all = notes.orEmpty()
     val q = fold(query.trim())
-    val shown = all.filter { n -> inView(n, view) && (label == null || label in n.labels) &&
+    // A search or a label looks through every note but the Trash, whichever page it starts from (asked 2026-09-28).
+    val everywhere = q.isNotEmpty() || label != null
+    val trash = view == NotesView.Trash && !everywhere
+    val shown = all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
         (q.isEmpty() || fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")).contains(q)) }
-        .sortedWith(if (view == NotesView.Trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt })
+        .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt })
     // Pinned on top of Home, the rest below them (asked 2026-09-26).
-    val pinned = if (view == NotesView.Home) shown.filter { it.pinned } else emptyList()
+    val pinned = if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList()
     val others = shown - pinned.toSet()
     val labels = all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap()
+    // A label no note carries any more is gone, so it cannot stay chosen either.
+    LaunchedEffect(labels.keys, notes) { if (notes != null && label != null && label !in labels) label = null }
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val picked = all.filter { it.id in selected }
+    // A page of its own: the search and the label, which look everywhere, give way to it.
+    fun go(v: NotesView) { view = v; label = null; query = ""; searching = false; drawer = false }
     fun act(said: String, change: (org.json.JSONObject) -> Unit) = scope.launch(Dispatchers.IO) {
         picked.forEach { store.update(it.id, change) }
         withContext(Dispatchers.Main) { selected = emptySet(); version++; message = said }
@@ -193,8 +201,8 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                        Text(label ?: if (view == NotesView.Home) "Notes" else view.label, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (view == NotesView.Trash && shown.isNotEmpty()) TextButton(onClick = {
+                        Text(label ?: if (everywhere) "All notes" else if (view == NotesView.Home) "Notes" else view.label, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (trash && shown.isNotEmpty()) TextButton(onClick = {
                             scope.launch(Dispatchers.IO) { shown.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { version++; message = "Notes Trash emptied" } }
                         }) { Text("Empty") }
                     }
@@ -206,7 +214,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
             else if (shown.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                 Text(when {
                     q.isNotEmpty() -> "No note matches."
-                    view == NotesView.Trash -> "The Trash is empty. Notes stay here 30 days."
+                    trash -> "The Trash is empty. Notes stay here 30 days."
                     view == NotesView.Archived -> "Nothing archived."
                     else -> "No notes yet. Start one below."
                 }, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -228,26 +236,26 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = "Clear selection") }
                     Text("${selected.size}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
-                    if (view == NotesView.Trash) {
+                    if (trash) {
                         IconButton(onClick = { act("Restored") { it.remove("trashedAt") } }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore") }
                         IconButton(onClick = { scope.launch(Dispatchers.IO) { picked.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { selected = emptySet(); version++; message = "Deleted" } } }) {
                             Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete for good", tint = Color(0xFFE35A4F)) }
                     } else {
                         val allPinned = picked.all { it.pinned }
                         IconButton(onClick = { act(if (allPinned) "Unpinned" else "Pinned") { it.put("isPinned", !allPinned) } }) { Icon(painterResource(R.drawable.ic_push_pin), contentDescription = if (allPinned) "Unpin" else "Pin") }
-                        if (view == NotesView.Archived) IconButton(onClick = { act("Unarchived") { it.remove("archivedAt") } }) { Icon(painterResource(R.drawable.ic_unarchive), contentDescription = "Unarchive") }
+                        if (picked.all { it.archivedAt != null }) IconButton(onClick = { act("Unarchived") { it.remove("archivedAt") } }) { Icon(painterResource(R.drawable.ic_unarchive), contentDescription = "Unarchive") }
                         else IconButton(onClick = { act("Archived") { it.put("archivedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_archive), contentDescription = "Archive") }
                         IconButton(onClick = { act("Moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move to Trash") }
                     }
                 }
             } else IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                 // Home, then the two ways to start; a tablet has room for Archive and Trash too, a phone keeps them in the drawer.
-                IslandNavigationItem("Home", view == NotesView.Home, R.drawable.ic_home) { view = NotesView.Home }
+                IslandNavigationItem("Home", view == NotesView.Home, R.drawable.ic_home) { go(NotesView.Home) }
                 IslandNavigationItem("New note", false, R.drawable.ic_note_add) { create(false) }
                 IslandNavigationItem("Checklist", false, R.drawable.ic_checklist) { create(true) }
                 if (wide) {
-                    IslandNavigationItem("Archived", view == NotesView.Archived, R.drawable.ic_archive) { view = NotesView.Archived }
-                    IslandNavigationItem("Trash", view == NotesView.Trash, R.drawable.ic_delete) { view = NotesView.Trash }
+                    IslandNavigationItem("Archived", view == NotesView.Archived, R.drawable.ic_archive) { go(NotesView.Archived) }
+                    IslandNavigationItem("Trash", view == NotesView.Trash, R.drawable.ic_delete) { go(NotesView.Trash) }
                 }
             }
             // Search where it is everywhere else in the app: bottom right.
@@ -260,8 +268,8 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DrawerButton(R.drawable.ic_archive, "Archived", view == NotesView.Archived, Modifier.weight(1f)) { view = NotesView.Archived; drawer = false }
-                DrawerButton(R.drawable.ic_delete, "Trash", view == NotesView.Trash, Modifier.weight(1f)) { view = NotesView.Trash; drawer = false }
+                DrawerButton(R.drawable.ic_archive, "Archived", view == NotesView.Archived, Modifier.weight(1f)) { go(NotesView.Archived) }
+                DrawerButton(R.drawable.ic_delete, "Trash", view == NotesView.Trash, Modifier.weight(1f)) { go(NotesView.Trash) }
             }
             // The labels, one under another in their own panel (the user's sketch, 2026-09-26).
             Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
@@ -381,10 +389,10 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         if (!trashed) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
             // Solid, so text scrolled under them never shows through (asked 2026-09-27).
             labels.forEach { Text(it, color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color.Black).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp)) }
-            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = "Tags") { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = "Labels") { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("Tag ", color = Color.White, style = MaterialTheme.typography.labelMedium)
-                Icon(painterResource(R.drawable.ic_add), contentDescription = "Tags", tint = Color.White, modifier = Modifier.size(16.dp))
+                Text("Label ", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Labels", tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -477,7 +485,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             } else if (!trashed) {
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-                if (wide) Tool(R.drawable.ic_label, "Tags", w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
+                if (wide) Tool(R.drawable.ic_label, "Labels", w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
                 Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
                 if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
                 Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
@@ -569,6 +577,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 // A plain 40 dp round button: an IconButton is always at least 48 dp, and eight of them did not fit a phone's island.
 @Composable internal fun Tool(icon: Int, description: String, tint: Color, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Box(
     Modifier.size(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.15f)) else Modifier)
+        .focusProperties { canFocus = false } // tapped, it leaves the focus (and the keyboard) where the typing is
         .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = description, onClick = click),
     contentAlignment = Alignment.Center,
 ) { Icon(painterResource(icon), contentDescription = description, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(21.dp)) }
@@ -613,20 +622,21 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
 
 /**
  * Tags for a note (asked 2026-09-26): only the tags, to browse and tap — a tap puts one on or takes it off, saved at
- * once. "Add tag" leads the list and opens its own small window, so the keyboard comes up only to type a new one.
+ * once. "Add label" leads the list and opens its own small window, so the keyboard comes up only to type a new one.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable private fun NoteTagsSheet(store: NotesStore, initial: List<String>, dismiss: () -> Unit, change: (List<String>) -> Unit) {
     var selected by remember { mutableStateOf(initial) }
     var adding by remember { mutableStateOf(false) }
-    val known = remember { store.list().flatMap { it.labels } }
+    // Tags are the labels (asked 2026-09-28): one that no note outside the Trash carries is gone the next time this opens.
+    val known = remember { store.list().filter { it.trashedAt == null }.flatMap { it.labels } }
     val all = (known + selected).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
     fun set(next: List<String>) { selected = next; change(next) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Tags", style = MaterialTheme.typography.titleLarge)
+            Text("Labels", style = MaterialTheme.typography.titleLarge)
             FlowRow(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("+  Add tag", on = false) { adding = true }
+                Chip("+  Add label", on = false) { adding = true }
                 all.forEach { tag -> Chip(tag, on = tag in selected) { set(if (tag in selected) selected - tag else selected + tag) } }
             }
         }
@@ -644,7 +654,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         }
         AlertDialog(
             onDismissRequest = { adding = false },
-            title = { Text("Add tag") },
+            title = { Text("Add label") },
             text = {
                 androidx.compose.material3.OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().focusRequester(focus), placeholder = { Text("Name") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }))

@@ -688,6 +688,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
+        // The text editor's open tabs (6al), after Files so a file opened elsewhere is already here to open.
+        runCatching { postJson(host, p, "/editor-tabs", TextEditorStore(context).syncPayload()).optJSONArray("tabs")?.let(TextEditorStore(context)::applySynced) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else if (it.message != "Unknown request.") failed += "Editor tabs: ${it.message}" } // a computer too old for them
         // Trash items about to be deleted by Android (or past their days in Files' Trash) go to the purgatory on the
         // computer's drive instead (SYNC_PLAN.md D6).
         runCatching { handOverTrash(host, p, failed) }
@@ -973,11 +976,18 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }
     }
 
-    /** The same rules as a file arriving on the computer: verified into a .part, and nothing is ever replaced. */
+    /**
+     * The same rules as a file arriving on the computer: verified into a .part, and nothing is ever replaced — except
+     * an edit ("replaces": the computer's newer version of what is here, 29 September), and only when what is here is
+     * still exactly that older version; it is then kept in the app's "Files history", outside Drive.
+     */
     private suspend fun receiveFile(host: String, p: Pairing, root: File, file: JSONObject) {
         val sha = file.getString("sha256")
         val rel = file.getString("path")
-        val target = DriveRules.newFile(root, rel)
+        val replaces = file.optString("replaces").takeIf { it.length == 64 }
+        val here = runCatching { DriveRules.file(root, rel) }.getOrNull()?.takeIf { it.isFile }
+        val update = replaces != null && here != null && SyncRules.hex(MessageDigest.getInstance("SHA-256").also { d -> here.inputStream().use { pump(it, java.io.OutputStream.nullOutputStream(), d) } }.digest()) == replaces
+        val target = if (update) here!! else DriveRules.newFile(root, rel)
         target.parentFile?.mkdirs()
         val part = File(target.parentFile, ".${target.name}.${java.util.UUID.randomUUID()}.part")
         try {
@@ -986,6 +996,10 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             connection.inputStream.use { input -> part.outputStream().use { output -> pump(input, output, digest) } }
             connection.disconnect()
             if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
+            if (update) File(context.filesDir, "Files history/${System.currentTimeMillis()}/$rel").let { old ->
+                old.parentFile?.mkdirs()
+                target.copyTo(old, overwrite = true)
+            }
             if (!part.renameTo(target)) throw SyncException("Could not put it in place.")
             file.optLong("modified").takeIf { it > 0 }?.let { target.setLastModified(it) }
         } finally {

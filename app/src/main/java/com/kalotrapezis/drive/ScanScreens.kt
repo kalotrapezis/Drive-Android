@@ -1067,10 +1067,26 @@ private fun ScanCornerEditor(page: CapturedPage, done: (DocumentQuad) -> Unit, c
     CornerEditor(source, page.quad ?: DocumentQuad.fullFrame(), page.autoQuad ?: DocumentQuad.fullFrame(), "Auto detect", done, cancel)
 }
 
-/** Shared by the scanner and the photo editor. [reset] is what the left button restores, labelled [resetLabel]. */
+/**
+ * Shared by the scanner, the photo editor and Writer. [reset] is what the left button restores, labelled [resetLabel].
+ * [straightOption]: a "Straight cuts" switch (on at first) keeping the crop a rectangle — a corner's neighbours follow it
+ * (asked 2026-09-28 for a document's pictures).
+ */
 @Composable
-internal fun CornerEditor(source: Bitmap?, initial: DocumentQuad, reset: DocumentQuad, resetLabel: String, done: (DocumentQuad) -> Unit, cancel: () -> Unit) {
+internal fun CornerEditor(source: Bitmap?, initial: DocumentQuad, reset: DocumentQuad, resetLabel: String, done: (DocumentQuad) -> Unit, cancel: () -> Unit, straightOption: Boolean = false) {
     var crop by remember(source, initial) { mutableStateOf(initial) }
+    var straight by remember { mutableStateOf(straightOption) }
+    /** The rectangle with corner [i] at [p] and the opposite corner where it was. */
+    fun rectangle(q: DocumentQuad, i: Int, p: ScanPoint): DocumentQuad {
+        val o = q.points[(i + 2) % 4]
+        val pts = q.points.toMutableList()
+        pts[i] = p
+        pts[(i + 1) % 4] = if (i % 2 == 0) ScanPoint(o.x, p.y) else ScanPoint(p.x, o.y)
+        pts[(i + 3) % 4] = if (i % 2 == 0) ScanPoint(p.x, o.y) else ScanPoint(o.x, p.y)
+        return DocumentQuad(pts[0], pts[1], pts[2], pts[3])
+    }
+    fun boxAround(q: DocumentQuad) = DocumentQuad(ScanPoint(q.points.minOf { it.x }, q.points.minOf { it.y }), ScanPoint(q.points.maxOf { it.x }, q.points.minOf { it.y }),
+        ScanPoint(q.points.maxOf { it.x }, q.points.maxOf { it.y }), ScanPoint(q.points.minOf { it.x }, q.points.maxOf { it.y }))
     var draggedHandle by remember { mutableStateOf(-1) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -1099,7 +1115,7 @@ internal fun CornerEditor(source: Bitmap?, initial: DocumentQuad, reset: Documen
                                         (handle.x - point.x) * (handle.x - point.x) + (handle.y - point.y) * (handle.y - point.y) < 0.02f
                                     } ?: -1
                                 },
-                                onDrag = { change, _ -> if (draggedHandle >= 0) imagePoint(change.position)?.let { crop = crop.withPoint(draggedHandle, it) } },
+                                onDrag = { change, _ -> if (draggedHandle >= 0) imagePoint(change.position)?.let { crop = if (straight) rectangle(crop, draggedHandle, it) else crop.withPoint(draggedHandle, it) } },
                                 onDragEnd = { draggedHandle = -1 },
                                 onDragCancel = { draggedHandle = -1 },
                             )
@@ -1149,13 +1165,17 @@ internal fun CornerEditor(source: Bitmap?, initial: DocumentQuad, reset: Documen
                     }
                 }
             }
-            Text("Drag each blue corner onto a corner of the page.", style = MaterialTheme.typography.bodySmall)
+            if (straightOption) Row(Modifier.fillMaxWidth().clickable { straight = !straight; if (straight) crop = boxAround(crop) }, verticalAlignment = Alignment.CenterVertically) {
+                Text("Straight cuts (90°)", Modifier.weight(1f))
+                Switch(straight, { straight = it; if (it) crop = boxAround(crop) })
+            }
+            else Text("Drag each blue corner onto a corner of the page.", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { crop = reset }, modifier = Modifier.weight(1f)) { Text(resetLabel) }
                 Button(onClick = { done(crop) }, enabled = crop.isValidCrop(), modifier = Modifier.weight(1f)) { Text("Done") }
             }
         }
-        ModuleHeader("Crop & straighten", cancel, Modifier.align(Alignment.TopCenter))
+        ModuleHeader(if (straightOption) "Crop" else "Crop & straighten", cancel, Modifier.align(Alignment.TopCenter))
     }
 }
 

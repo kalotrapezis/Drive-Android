@@ -5,6 +5,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.Intent
@@ -211,6 +212,7 @@ private fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageD
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WriterLog.init(this) // the log from the start: a crash anywhere is written down
         val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
         setContent { LocalDriveApp(external) }
     }
@@ -293,6 +295,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
+    var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
     var pairedDevice by remember { mutableStateOf(syncStore.pairing()) }
@@ -387,6 +391,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
     fun loadPhotos() {
         if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
+        val shown = (photosState as? ListState.Items)?.entries?.mapTo(HashSet(), Entry::photoKey)
         photosState = ListState.Loading
         Thread {
             val result = runCatching {
@@ -394,7 +399,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 val choices = photoMetadata.folderChoices()
                 deviceFolders(all, choices).also { folders ->
                     // Keep each included folder's album full as new photos land in it.
-                    folders.filter { it.included == true }.forEach { photoMetadata.fillFolderAlbum(it.name, it.entries.map(Entry::photoKey)) }
+                    folders.filter { it.included == true }.forEach { folder ->
+                        photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
+                        photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
+                    }
                     (context as MainActivity).runOnUiThread { photoFolders = folders }
                 }
                 showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })
@@ -406,6 +414,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 )
                 // Whatever is new here has never been read: do it now, not the next time People is opened.
                 if (result.isSuccess) PhotoAnalysisService.start(context)
+                // A photo or video that was not here a moment ago goes to the computer now (asked 2026-10-01), not
+                // only from SyncJob's trigger, which MIUI cancels once the app is in the background.
+                if (shown != null && result.getOrNull().orEmpty().any { it.photoKey !in shown }) Thread { SyncService.syncInBackground(context, gap = 0) }.start()
             }
         }.start()
     }
@@ -478,7 +489,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             )
             context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
         }
-        val opener = driveOpeners.component(relative)
+        val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
+            else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
             context.startActivity(Intent(viewIntent).setComponent(opener))
         }.getOrElse {
@@ -563,6 +575,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Codes -> Unit
                 Screen.Notes -> Unit
                 Screen.TextEditor -> Unit
+                Screen.Office -> Unit
+                Screen.Writer -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -596,6 +610,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     openNotes = { notesStart = null; screen = Screen.Notes },
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
+                    openOffice = { screen = Screen.Office },
+                    newDocument = { writerOpen = null; screen = Screen.Writer },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -637,6 +653,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
                 Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home }, start = editorStart)
+                Screen.Office -> androidx.compose.runtime.key(officeVersion) {
+                    OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                    }, open = { writerOpen = it; screen = Screen.Writer })
+                }
+                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = Screen.Office }, open = writerOpen)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -706,7 +728,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -741,6 +763,8 @@ private fun Home(
     openCodes: () -> Unit,
     openNotes: () -> Unit,
     openTextEditor: (String?) -> Unit,
+    openOffice: () -> Unit,
+    newDocument: () -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -780,9 +804,21 @@ private fun Home(
             }
         },
         { HomePdfToolsCard(openScanner, openCodes) },
-        // Office (asked 2026-09-27): the text editor first; Writer, Presentation and Calc to come.
+        // Office (asked 2026-09-27): orange, Writer first; Excel and PowerPoint to come.
         {
             HomeGroup(Category.Office.color) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeCompactCard("New document", R.drawable.ic_note_add, newDocument)
+                        HomeCompactCard("Documents", R.drawable.ic_file_text, openOffice)
+                    }
+                }
+            }
+        },
+        // The text editor: a group of its own, purple (asked 2026-09-27).
+        {
+            HomeGroup(Category.Text.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1433,6 +1469,11 @@ private fun SettingsTab(
                     Text(pairedDevice.hosts.firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
                 }
                 Text("A trusted device is identified by a public-key fingerprint, not IP or MAC address, so it's found again after a network change.", style = MaterialTheme.typography.bodySmall)
+                val syncContext = LocalContext.current
+                var every by remember { mutableStateOf(SyncJob.minutes(syncContext)) }
+                Text("Sync automatically", style = MaterialTheme.typography.titleMedium)
+                Text("Tetra wakes up and syncs this often, with the app closed too — on any local network, a phone's hotspot included. Android may run it a little later to save battery.", style = MaterialTheme.typography.bodySmall)
+                Choices(SyncJob.choices, every) { every = it; SyncJob.setMinutes(syncContext, it) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = openSync) { Text("Open Sync") }
                     if (pairedDevice != null) TextButton(onClick = forgetPairedDevice) { Text("Forget ${pairedDevice.name}") }
@@ -1446,22 +1487,7 @@ private fun SettingsTab(
             SettingsCard("PDF scanner", Category.Scanner) {
                 Text("Resolution", style = MaterialTheme.typography.titleMedium)
                 Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf(300 to "300 dpi", 200 to "200 dpi").forEach { (value, label) ->
-                        val chosen = dpi == value
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = if (chosen) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (chosen) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f).clickable { dpi = value; scannerPreferences.edit().putInt(SCANNER_DPI, value).apply() },
-                        ) {
-                            Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                if (chosen) { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
-                                Text(label, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                }
+                Choices(listOf(300 to "300 dpi", 200 to "200 dpi"), dpi) { dpi = it; scannerPreferences.edit().putInt(SCANNER_DPI, it).apply() }
             }
         }
         item {
@@ -1469,7 +1495,15 @@ private fun SettingsTab(
             val editor = remember { TextEditorStore(editorContext) }
             var wrap by remember { mutableStateOf(editor.wordWrap) }
             var folder by remember { mutableStateOf(editor.saveFolder) }
-            SettingsCard("Office", Category.Office) {
+            var txt by remember { mutableStateOf(editor.opensTxt) }
+            SettingsCard("Text editor", Category.Text) {
+                Row(Modifier.fillMaxWidth().clickable { txt = !txt; editor.opensTxt = txt }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open .txt files here", style = MaterialTheme.typography.titleSmall)
+                        Text(if (txt) "Files opens a .txt in the Text editor. Open with… still offers other apps." else "Files opens a .txt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = txt, onCheckedChange = { txt = it; editor.opensTxt = it })
+                }
                 Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; editor.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Word wrap", style = MaterialTheme.typography.titleSmall)
@@ -1509,17 +1543,38 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 }
 
 @Composable
-internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null) {
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
             }
             Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(islandContentColor().copy(alpha = 0.35f)))
         }
     }
 }
+
+/** One of a few values, each a button the width of its share of the row; the chosen one is ticked. */
+@Composable
+private fun <T> Choices(options: List<Pair<T, String>>, chosen: T, pick: (T) -> Unit) =
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        options.forEach { (value, label) ->
+            val on = chosen == value
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = if (on) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (on) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).clickable { pick(value) },
+            ) {
+                Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    if (on) { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
+                    Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                }
+            }
+        }
+    }
 
 @Composable
 private fun SettingsCard(title: String, category: Category? = null, content: @Composable ColumnScope.() -> Unit) = Surface(
@@ -1539,14 +1594,15 @@ private fun SettingsCard(title: String, category: Category? = null, content: @Co
 /**
  * The parts of Tetra, each with its colour and symbol (asked 2026-09-27). The app stays black and white; a category's
  * colour is a label — its icon beside a title, its group on Home — the same in light and dark. The desktop has the same
- * five (styles.css --cat-*).
+ * six (styles.css --cat-*).
  */
 internal enum class Category(val color: Color, val icon: Int) {
     Gallery(Color(0xFF3DA35D), R.drawable.ic_gallery),
     Files(Color(0xFF4F86E8), R.drawable.ic_folder),
     Notes(Color(0xFFF2B705), R.drawable.ic_edit_note),
     Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
-    Office(Color(0xFF8E5BD8), R.drawable.ic_file_text),
+    Office(Color(0xFFF76002), R.drawable.ic_office),
+    Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
 }
 
 @Composable
@@ -2599,7 +2655,12 @@ private fun PhotoTab(
     val folderAlbum = activeCollection?.name?.takeIf { name -> folders.any { it.included == true && it.name.equals(name, ignoreCase = true) } }
     val moveDestinations = remember(allEntries, folders) {
         (allEntries + folders.flatMap { it.entries }).mapNotNull { it.relativePath?.trim('/')?.takeIf(String::isNotEmpty) }
-            .plus("DCIM/Camera").groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key to it.value }
+            .plus("DCIM/Camera").groupingBy { it }.eachCount().entries
+            // One row per album: DCIM/Camera/Camera (an old SyncThing copy) is not a second "Camera", and Movies/Viber
+            // not a second "Viber" (a photo cannot go under Movies). The shallowest folder wins, Pictures over Movies.
+            .groupBy { FolderRules.albumName(it.key)?.lowercase() ?: it.key }.values
+            .map { same -> same.minWith(compareBy({ it.key.count { c -> c == '/' } }, { it.key.startsWith("Movies/", ignoreCase = true) })).key to same.sumOf { it.value } }
+            .sortedByDescending { it.second }
     }
     @Composable fun MoveSheet() {
         val (targets, leaving) = moveSheetFor ?: return
@@ -4992,7 +5053,7 @@ private fun shareDriveFiles(context: Context, files: List<File>) {
     }, "Share ${real.size} files"))
 }
 
-private fun shareDriveFile(context: Context, file: File) {
+internal fun shareDriveFile(context: Context, file: File) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
     val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase(Locale.ROOT)) ?: "application/octet-stream"
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {

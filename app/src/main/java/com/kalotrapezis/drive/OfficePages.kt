@@ -72,6 +72,13 @@ private fun StaticLayout.bottomPt(line: Int) = getLineBottom(line) / U
 /** A tab stop: where (pt from the text's left edge), how the text after it lines up ('l', 'r', 'c'), what fills the gap. */
 internal data class TabStop(val pos: Float, val type: Char, val leader: Char? = null)
 
+/** The same left/right/centre tab geometry for the pages and the editable text (points). */
+internal fun tabGap(x: Float, followingWidth: Float, stops: List<TabStop>): Pair<TabStop, Float> {
+    val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / 36f) + 1) * 36f, 'l')
+    val gap = stop.pos - x - when (stop.type) { 'r' -> followingWidth; 'c' -> followingWidth / 2; else -> 0f }
+    return stop to gap.coerceAtLeast(0f)
+}
+
 /** A tab laid out: a gap of its own width, filled with its leader (the dots of a table of contents). */
 private class TabSpan(val width: Float, val leader: Char?) : android.text.style.ReplacementSpan() {
     override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = Math.round(width)
@@ -1499,10 +1506,9 @@ internal object OfficePages {
         for (k in text.indices.filter { text[it] == '\t' }) {
             val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
             // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
-            val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / TAB) + 1) * TAB, 'l')
             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length
             val after = Layout.getDesiredWidth(text, k + 1, end, paint) / U
-            val gap = when (stop.type) { 'r' -> stop.pos - x - after; 'c' -> stop.pos - x - after / 2; else -> stop.pos - x }
+            val (stop, gap) = tabGap(x, after, stops)
             text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         var laid = build()

@@ -1480,7 +1480,7 @@ internal object OfficePages {
             typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), look.bold == true, look.italic == true)
         }
         val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)
-        val aligned = p.align.takeIf { it != DocAlign.Start } ?: look.align ?: DocAlign.Start // its own, else its style's
+        val aligned = p.align.takeIf { it != DocAlign.Start || p.keep?.parts?.any { k -> k.first == "jc" } == true } ?: look.align ?: DocAlign.Start // its own (left said in the file too), else its style's
         val align = when (aligned) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
         // Word's single line is the font's height and its line gap; Android's leaves the gap out (rows came out 4% short).
         val multiple = if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f

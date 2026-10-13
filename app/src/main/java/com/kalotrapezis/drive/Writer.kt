@@ -193,6 +193,8 @@ private const val CHANGE_ALPHA = 0xFDL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
 /** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
+/** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
+private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
@@ -431,8 +433,8 @@ internal object WriterBridge {
                 spans = marks,
                 headingLevel = p.heading,
                 // Its own alignment, else its style's — marked (a text direction no paragraph of its own has) as the style's.
-                textAlign = when (p.align.takeIf { it != DocAlign.Start } ?: look.align ?: DocAlign.Start) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
-                textDirection = if (p.align == DocAlign.Start && look.align != null && look.align != DocAlign.Start) STYLE_ALIGNED else androidx.compose.ui.text.style.TextDirection.Unspecified,
+                textAlign = when (p.align.takeIf { it != DocAlign.Start || ownLeft(p) } ?: look.align ?: DocAlign.Start) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                textDirection = if (p.align == DocAlign.Start && !ownLeft(p) && look.align != null && look.align != DocAlign.Start) STYLE_ALIGNED else androidx.compose.ui.text.style.TextDirection.Unspecified,
                 // The paragraph's left and first-line indents shown (a list item's indent is the editor's own).
                 textIndent = if (p.list != null || p.table != null) null else look.let { l ->
                     val rest = l.left.coerceAtLeast(0f) * scale

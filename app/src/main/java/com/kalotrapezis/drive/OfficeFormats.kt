@@ -1179,6 +1179,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         }
         readStyles(); readNumbering()
         val body = root.kid(W, "body") ?: error("Not a Word document.")
+        columnsArePages = root.getElementsByTagNameNS(W, "cols").let { l -> (0 until l.length).none { ((l.item(it) as Element).attr(W, "num")?.toIntOrNull() ?: 1) > 1 } }
         readComments(body)
         readNotes()
         val paras = ArrayList<DocPara>()
@@ -1281,6 +1282,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         if (out.size == start) { notes += "content controls"; return }
         val mine = out.subList(start, out.size)
         var xml = OfficeFormats.xml(e)
+        if (pageBefore) xml.substringBefore("</w:p>").let { first -> xml = first.replaceFirst(PAGE_BREAK_OFF, "") + xml.substring(first.length) } // Google Docs says "no break" on every paragraph
         if (pageBefore && "<w:pageBreakBefore" !in xml.substringBefore("</w:p>")) Regex("""<w:p\b[^>]*>(<w:pPr>(<w:pStyle\b[^>]*/>)?)?""").find(xml)?.let { m ->
             xml = xml.replaceRange(m.range, if (m.groupValues[1].isEmpty()) m.value + "<w:pPr><w:pageBreakBefore/></w:pPr>" else m.value + "<w:pageBreakBefore/>")
         }
@@ -1315,7 +1317,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             for (e in pPr.kids()) when (e.localName) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
                 "numPr" -> { list = listItem(e); ownNumbering = true }
-                "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
+                "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify
+                    // Left said on purpose overrides a centred style (a heading): kept, or the heading centres on saving.
+                    else -> { keepParts += e.localName to OfficeFormats.xml(e); DocAlign.Start } }
                 // A section break (page size, margins, headers of the part before it): kept as the file has it (2026-09-28).
                 "sectPr" -> keepParts += e.localName to OfficeFormats.xml(e)
                 // A drop cap's letter (a framed paragraph of its own): joined to the paragraph after it, below.
@@ -1336,10 +1340,13 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // does, nothing else is kept (LibreOffice shows nothing there either). In the middle: the part after it starts a
         // page, with no space before it (it is the same paragraph going on, in the file).
         var afterPageBreak = pageBreakPending.also { pageBreakPending = false }
+        columnBreak = false
         val done = ArrayList<DocPara>()
         fun keep(): DocKeep? {
             var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS } // a bookmark once
-            if (afterPageBreak && parts.none { it.first == "pageBreakBefore" }) parts = parts + ("pageBreakBefore" to "<w:pageBreakBefore/>")
+            // Not "parts has one": Google Docs writes <w:pageBreakBefore w:val="0"/> on every paragraph, and a break before
+            // such a paragraph was lost (a paper's contents moved up onto its cover page — 2026-10-13).
+            if (afterPageBreak && parts.none { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }) parts = parts.filter { it.first != "pageBreakBefore" } + ("pageBreakBefore" to "<w:pageBreakBefore/>")
             if (afterPageBreak && done.isNotEmpty()) parts = parts.filter { it.first != "spacing" } +
                 ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.replace(Regex("""\sw:before(Autospacing)?="[^"]*""""), "")?.replace("<w:spacing", "<w:spacing w:before=\"0\"") ?: "<w:spacing w:before=\"0\"/>"))
             return DocKeep(keepStyle, parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } }, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
@@ -1387,12 +1394,21 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
         }
         content(p, null)
-        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0)) pageBreakPending = true
+        // A column break leaves an empty line at the top of the next page, a page break does not (LibreOffice, measured
+        // 2026-10-13): that line is kept as an empty paragraph starting the page, so a paper keeps its page ends.
+        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0) && !columnBreak) pageBreakPending = true
         else done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
         out += done
     }
     /** A page break ended the paragraph before: this one starts a page. */
     var pageBreakPending = false
+    /**
+     * No section has more than one column: a column break goes on at the next page, in Word and LibreOffice alike, so
+     * it is read as the page break it looks like and saves as one (2026-10-13: it made 10 of the user's papers copy-only).
+     */
+    var columnsArePages = false
+    /** The paragraph being read broke with a column break: its empty rest is a line of its own on the next page. */
+    var columnBreak = false
 
     /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
     fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: (page: Boolean) -> Unit) {
@@ -1411,7 +1427,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "softHyphen", "lastRenderedPageBreak" -> Unit
                 "br", "cr" -> when (e.attr(W, "type")) {
                     "page" -> breakLine(true)
-                    "column" -> { notes += "columns"; breakLine(false) }
+                    "column" -> if (columnsArePages) { columnBreak = true; breakLine(true) } else { notes += "columns"; breakLine(false) }
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
@@ -1564,6 +1580,9 @@ internal const val SDT_BLOCK = "sdtBlock"
 internal const val SDT_PART = "sdtPart"
 internal const val BOOKMARKS = "bookmarks"
 internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS)
+/** Word's "no page break before", as Google Docs writes it on every paragraph. */
+private val PAGE_BREAK_OFF = Regex("""<w:pageBreakBefore\s+w:val="(0|false|off)"\s*/>""")
+
 internal val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
@@ -1811,7 +1830,7 @@ private object DocxWriter {
             }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
-            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR })
+            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR && !(it.first == "jc" && p.align != DocAlign.Start) }) // the file's own left, unless realigned here
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
             // A list item in a table's cell keeps the file's own list (Writer's own lists are numbered for the body's).
             p.list?.let { l -> (index?.let { numIds[it] } ?: p.keep?.list?.substringBefore('|'))?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${l.level}"/><w:numId w:val="$it"/></w:numPr>""" } }

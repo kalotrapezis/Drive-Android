@@ -729,4 +729,42 @@ class OfficeFormatsTest {
             }
         }
     }
+
+    @Test fun `a column break in a one-column document is the page break it looks like`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        val broken = "<w:p><w:r><w:t>Before</w:t></w:r><w:r><w:br w:type=\"column\"/></w:r><w:r><w:t>After</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals(listOf("Before", "After"), doc.paras.take(2).map { it.text })
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, Regex("<w:pageBreakBefore/>(?:(?!</w:p>).)*>After<").containsMatchIn(out))
+        // At a paragraph's end it leaves an empty line at the top of the next page (LibreOffice): an empty paragraph there.
+        val atEnd = "<w:p><w:r><w:t>First</w:t></w:r><w:r><w:br w:type=\"column\"/></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$atEnd").toByteArray()
+        val ended = OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx)
+        assertEquals(listOf("First", "", "Second"), ended.paras.take(3).map { it.text })
+        assertTrue(ended.paras[1].keep!!.parts.any { it.first == "pageBreakBefore" })
+        // A heading whose style is centred, set left in the file: still left after saving, centred once realigned here.
+        val left = "<w:p><w:pPr><w:pStyle w:val=\"Title\"/><w:jc w:val=\"left\"/></w:pPr><w:r><w:t>Left</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$left").toByteArray()
+        val leftBytes = OfficeFormats.zip(parts, null)
+        val leftDoc = OfficeFormats.read(leftBytes, OfficeKind.Docx)
+        fun firstP(d: OfficeDoc) = String(OfficeFormats.unzip(OfficeFormats.write(d, OfficeKind.Docx, leftBytes)).getValue("word/document.xml"), Charsets.UTF_8).substringAfter("<w:body>").substringBefore("</w:p>")
+        assertTrue(firstP(leftDoc), "<w:jc w:val=\"left\"/>" in firstP(leftDoc))
+        val centred = firstP(leftDoc.copy(paras = leftDoc.paras.mapIndexed { i, p -> if (i == 0) p.copy(align = DocAlign.Center) else p }))
+        assertEquals(centred, 1, Regex("<w:jc ").findAll(centred).count())
+        assertTrue(centred, "<w:jc w:val=\"center\"/>" in centred)
+        // Google Docs writes "no page break" on every paragraph: a break before one still starts its page.
+        val docs = "<w:p><w:r><w:t>Cover</w:t></w:r></w:p><w:p><w:r><w:br w:type=\"page\"/></w:r></w:p><w:p><w:pPr><w:pageBreakBefore w:val=\"0\"/></w:pPr><w:r><w:t>Contents</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$docs").toByteArray()
+        val gdocs = OfficeFormats.zip(parts, null)
+        val saved = String(OfficeFormats.unzip(OfficeFormats.write(OfficeFormats.read(gdocs, OfficeKind.Docx), OfficeKind.Docx, gdocs)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(saved, Regex("<w:pageBreakBefore/>(?:(?!</w:p>).)*>Contents<").containsMatchIn(saved))
+        // Two columns somewhere: a column break means the next column, which Writer does not lay out yet — a copy.
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").replace("<w:sectPr>", "<w:sectPr><w:cols w:num=\"2\"/>").toByteArray()
+        assertTrue("columns" in OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx).blocking)
+    }
 }

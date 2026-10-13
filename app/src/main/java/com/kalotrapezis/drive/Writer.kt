@@ -1623,7 +1623,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; reshow()
         message = "References — in APA's order, from the sources cited"
     }
-    fun updateCitations() = change { meta = Citations.update(current(), kind); dirty = true; reshow(); message = "Citations and references updated" }
+    // References › Caption (Phase 2, asked 2026-10-13): "Figure 1: …" under the picture or table at the cursor, its number
+    // Word's SEQ field (renumbered by Update fields), in the document's Caption style (Word's own when it has none).
+    var captionOpen by remember { mutableStateOf(false) }
+    fun insertCaption(label: String, text: String) = change {
+        val cur = current()
+        val at = ((chosen()?.first?.maxOrNull() ?: (cur.paras.size - 1)) + 1).coerceIn(0, cur.paras.size)
+        val style = documentStyles.paragraphStyles().firstOrNull { it.name.equals("caption", ignoreCase = true) }?.id ?: "Caption".takeIf { kind == OfficeKind.Docx }
+        val earlier = cur.paras.take(at).count { p -> p.runs.any { Fields.instr(it)?.split(' ')?.getOrNull(1) == label } || (kind == OfficeKind.Odt && p.text.startsWith("$label ")) }
+        val number = if (kind == OfficeKind.Docx) DocRun("${earlier + 1}", cite = FIELD_CITE + "SEQ $label \\* ARABIC") else DocRun("${earlier + 1}") // an .odt: the number as letters
+        val caption = DocPara(listOf(DocRun("$label "), number) + if (text.isBlank()) emptyList() else listOf(DocRun(": ${text.trim()}")), keep = style?.let { DocKeep(it) })
+        meta = Fields.update(cur.copy(paras = cur.paras.take(at) + caption + cur.paras.drop(at)))
+        WriterLog.i("caption: $label at paragraph $at")
+        dirty = true; reshow(); message = "Caption inserted"
+    }
+    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind)); dirty = true; reshow(); message = "Citations, references and numbers updated" }
     // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
     /** Each note's reference, where it is in the editor: the note and its number. */
     val notesShown by remember { derivedStateOf {
@@ -3014,8 +3028,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
-                    RibbonButton("Update citations", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                     Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                }, {
+                    // Captions and their numbers (Word's Insert Caption and F9).
+                    RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
+                    RibbonButton("Update fields", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                 })
                 WriterTab.Review -> listOf({
                     // Word's Proofing group: spelling marked as one types (on or off), and the next word marked.
@@ -3160,6 +3177,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
     }
+    if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
     if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }) { deleteSource(it) }
     if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
     dropCapPage?.let { (at, now) ->
@@ -3770,4 +3788,22 @@ internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.ric
             if (looks.doubleStrike || looks.doubleUnder) ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
         }
     }
+}
+
+/** References › Caption: which label ("Figure", "Table" — Word's, and the Greek ones) and the words after its number. */
+@Composable
+private fun CaptionDialog(dismiss: () -> Unit, insert: (String, String) -> Unit) {
+    val labels = listOf("Figure", "Table", "Equation", "Εικόνα", "Πίνακας")
+    var label by remember { mutableStateOf(labels[0]) }
+    var text by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Caption") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                labels.forEach { l -> androidx.compose.material3.FilterChip(selected = l == label, onClick = { label = l }, label = { Text(l) }) }
+            }
+            OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("$label 1: …") }, modifier = Modifier.fillMaxWidth())
+            Text("Goes under the paragraph at the cursor; its number counts itself (Update fields after moving things).", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton(onClick = { insert(label, text) }) { Text("Insert") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

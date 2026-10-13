@@ -40,4 +40,23 @@ class ChartsTest {
             assertEquals("$kind $chartKind", if (stacked) PictureWrap.Square else PictureWrap.InLine, PictureXml.wrapOf(back))
         }
     }
+    @Test fun `saving a new chart twice keeps its editable data and floating placement`() {
+        for (kind in OfficeKind.entries) {
+            val chart = DocChart(ChartKind.Column, "Still editable", listOf("A", "B"), listOf(ChartSeries("Values", listOf(2.0, 5.0))))
+            val image = DocImage("inserted", null, 200f, 120f, wrap = PictureWrap.InFront, onPage = 30f to 50f, chart = chart)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = image)))))
+            val first = OfficeFormats.write(doc, kind)
+            val reread = OfficeFormats.read(first, kind).paras.single().runs.single().image!!
+            val bound = reread.with(key = image.key)
+            assertEquals(image.key, bound.key)
+            assertEquals(reread.chart, bound.chart)
+            assertEquals(PictureXml.wrapOf(reread), PictureXml.wrapOf(bound))
+            assertEquals(PictureXml.placeOf(reread), PictureXml.placeOf(bound))
+            val second = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = bound))))), kind, first)
+            val again = OfficeFormats.read(second, kind).paras.single().runs.single().image!!
+            assertEquals(reread.chart, again.chart)
+            assertEquals(PictureXml.placeOf(reread), PictureXml.placeOf(again))
+        }
+    }
+
 }

@@ -203,4 +203,80 @@ class WriterBridgeTest {
         assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.FontSize && 0 in it.range })
         assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.Italic && 0 in it.range })
     }
+    @Test fun `editor fonts follow run overrides and paragraph styles without changing editable text`() {
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = ParaLook(font = "Times New Roman")
+        }
+        val doc = OfficeDoc(listOf(
+            DocPara(listOf(DocRun("style "), DocRun("linked", font = "<w:rFonts w:ascii=\"Arial\"/>", link = "https://example.com"), DocRun("${LINE_BREAK}second")), list = DocList(false, 0)),
+            DocPara(listOf(DocRun("plain")))))
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
+        val before = state.toRichTextDocument()
+        val seen = mutableListOf<String?>()
+        val shown = WriterBridge.displayText(state.annotatedString, before, doc, styles) { name ->
+            seen += name
+            if (name == "Arial") androidx.compose.ui.text.font.FontFamily.SansSerif else androidx.compose.ui.text.font.FontFamily.Serif
+        }
+        assertEquals(listOf("Times New Roman", "Arial", "Times New Roman", "Times New Roman"), seen)
+        assertEquals(state.annotatedString.text, shown.text)
+        val at = shown.text.indexOf("linked")
+        assertEquals(true, shown.spanStyles.any { it.start == at && it.end == at + 6 && it.item.fontFamily == androidx.compose.ui.text.font.FontFamily.SansSerif })
+        assertEquals(before, state.toRichTextDocument())
+        assertEquals(doc.paras.map { it.copy(keep = null, runs = it.runs.map { r -> r.copy(font = null) }) }, WriterBridge.fromEditor(before, doc.basePt))
+    }
+
+    @Test fun `heading and at least line spacing follow the same paragraph rules as body text`() {
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = if (p.heading > 0) ParaLook(sizePt = 24f, lineExact = 36f)
+                else ParaLook(lineExact = 24f, lineAtLeast = true)
+        }
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Heading")), heading = 1),
+            DocPara(listOf(DocRun("small", sizePt = 10f))), DocPara(listOf(DocRun("large", sizePt = 40f)))), basePt = 16f)
+        val blocks = WriterBridge.toEditor(doc, styles = styles).blocks
+        assertEquals(36f, blocks[0].lineHeight.value, 0.001f)
+        assertEquals(24f, blocks[1].lineHeight.value, 0.001f)
+        assertEquals(40f * WriterBridge.lineRatio, blocks[2].lineHeight.value, 0.001f)
+    }
+
+    @Test fun `layout reflow preserves typing undo and redo`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Original")))))
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc))
+        state.history.clear()
+        state.selection = androidx.compose.ui.text.TextRange(0)
+        state.replaceTextRange(androidx.compose.ui.text.TextRange(0, 0), "Typed ")
+        assertEquals(true, state.history.canUndo)
+        val typed = doc.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
+        WriterBridge.reflow(state, typed, HashMap(), DocStyles.Plain)
+        assertEquals("Typed Original", state.annotatedString.text)
+        assertEquals(true, state.history.undo())
+        assertEquals("Original", state.annotatedString.text)
+        WriterBridge.reflow(state, doc, HashMap(), DocStyles.Plain)
+        assertEquals(true, state.history.redo())
+        assertEquals("Typed Original", state.annotatedString.text)
+    }
+
+    @Test fun `contextual spacing and hard line breaks do not add extra paragraph gaps`() {
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = ParaLook(before = 6f, after = 12f, contextual = p.keep?.style == "Same")
+        }
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("one${LINE_BREAK}two")), keep = DocKeep(style = "Same")),
+            DocPara(emptyList(), keep = DocKeep(style = "Same")), DocPara(listOf(DocRun("new style")), keep = DocKeep(style = "Other"))))
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
+        val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
+        assertEquals(listOf(places[2].to to 18f), WriterBridge.paragraphGaps(doc, styles, places))
+    }
+
+    @Test fun `a hard page break suppresses the ordinary boundary spacing`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("page one"))), DocPara(listOf(DocRun("page two")), heading = 1)))
+        val styles = object : DocStyles() {
+            override fun look(p: DocPara) = ParaLook(before = 18f, after = 12f, pageBreakBefore = p.heading == 1)
+        }
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
+        assertEquals(emptyList<Pair<Int, Float>>(), WriterBridge.paragraphGaps(doc, styles, WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())))
+    }
+
 }

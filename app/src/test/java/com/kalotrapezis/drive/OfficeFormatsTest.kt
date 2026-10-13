@@ -799,4 +799,19 @@ class OfficeFormatsTest {
         assertEquals(emptySet<String>(), with("given-name"))
         assertEquals(setOf("character styles"), with("Loud"))
     }
+
+    @Test fun `a heading said to have no number keeps having none`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        val heading = Regex("""<w:pStyle w:val="([^"]+)"/>""").findAll(xml).map { it.groupValues[1] }.first { it.contains("1") }
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:pPr><w:pStyle w:val=\"$heading\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"0\"/></w:numPr></w:pPr><w:r><w:t>Abstract</w:t></w:r></w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(1, doc.paras[0].heading)
+        fun first(d: OfficeDoc) = String(OfficeFormats.unzip(OfficeFormats.write(d, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8).substringAfter("<w:body>").substringBefore("</w:p>")
+        assertTrue(first(doc), "<w:numId w:val=\"0\"/>" in first(doc))
+        // Made a numbered item here: its own number, and no "none" beside it.
+        val listed = first(doc.copy(paras = doc.paras.mapIndexed { i, p -> if (i == 0) p.copy(list = DocList(true, 0)) else p }))
+        assertEquals(listed, 1, Regex("<w:numPr>").findAll(listed).count())
+    }
 }

@@ -1,3 +1,18 @@
+> **Latest — 13 October 2026 (Phase 1, item 2 done).** The 2 October viewer/editor fixes
+> ([OPUS_VIEWER_EDITOR_HANDOFF.md](OPUS_VIEWER_EDITOR_HANDOFF.md)) are **integrated and committed** on `writer-library`
+> and merged to main (Beta 4). Then, surveyed with Writer's own reader on all 273 of the user's .docx/.odt outside
+> `Κλειδιά` and `Ιατρικά` (never opened) and `Test-Words`: **13 were copy-only, now none** — column breaks in one-column
+> documents (10 papers) are page breaks (with the empty line LibreOffice leaves after one), letter/roman lists are
+> numbered as the file says in the editor too (`FileNumbering`, one format per level per document — a shortcut),
+> formatting-free character styles pasted from the web no longer count. **Regression harness:** each document read
+> and written unchanged, both converted by LibreOffice, compared page by page — **266 of 267 identical** (was 260);
+> fixed on the way: Google Docs' `pageBreakBefore w:val="0"` swallowing breaks, a paragraph set left over a centred
+> style, a page break alone in its paragraph keeping its line, a heading's `numId 0` (a thesis's chapters renumbered).
+> Left: `Παραμύθι.docx` — joined right-to-left runs lay out a hair differently (no text lost). Not checked on a device:
+> the editor's lettered lists and left-aligned headings (unit-tested only); the 5 `WriterLayoutDeviceTest`s were not
+> rerun (the phone refuses the test APK: MIUI *Install via USB* is off). Next: Phase 1 items 1 (the letterhead report —
+> ask first), 3 and 4.
+
 # THE PLAN (the user, 1 Oct 2026 evening) — read this first
 
 **State.** Branch `writer-library`, all committed, all unit tests pass. Latest build on the **phone** (208c8192) and an

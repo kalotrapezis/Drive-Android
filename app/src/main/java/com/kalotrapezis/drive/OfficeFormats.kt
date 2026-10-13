@@ -1321,7 +1321,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         p.kid(W, "pPr")?.let { pPr ->
             for (e in pPr.kids()) when (e.localName) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
-                "numPr" -> { list = listItem(e); ownNumbering = true }
+                "numPr" -> { list = listItem(e); ownNumbering = true
+                    // A heading whose style numbers it, said here to have no number: kept, or saving numbers it (a thesis's
+                    // "Περίληψη" became "2 Περίληψη" and every chapter after it moved on by one — 2026-10-13).
+                    if (list == null && heading > 0 && e.kid(W, "numId")?.attr(W, "val") == "0") keepParts += e.localName to OfficeFormats.xml(e) }
                 "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify
                     // Left said on purpose overrides a centred style (a heading): kept, or the heading centres on saving.
                     else -> { keepParts += e.localName to OfficeFormats.xml(e); DocAlign.Start } }
@@ -1841,7 +1844,7 @@ private object DocxWriter {
             }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
-            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR && !(it.first == "jc" && p.align != DocAlign.Start) }) // the file's own left, unless realigned here
+            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR && !(it.first == "jc" && p.align != DocAlign.Start) && !(it.first == "numPr" && p.list != null) }) // the file's own left and "no number", unless changed here
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
             // A list item in a table's cell keeps the file's own list (Writer's own lists are numbered for the body's).
             p.list?.let { l -> (index?.let { numIds[it] } ?: p.keep?.list?.substringBefore('|'))?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${l.level}"/><w:numId w:val="$it"/></w:numPr>""" } }

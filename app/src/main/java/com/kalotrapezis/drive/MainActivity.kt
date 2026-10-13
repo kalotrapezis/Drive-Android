@@ -296,6 +296,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
+    var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -489,6 +490,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             )
             context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
         }
+        // A Word or LibreOffice document opens in Writer (Settings › Office); Open with… still offers other apps.
+        if (!forceChooser && file.extension.lowercase(Locale.ROOT) in setOf("docx", "odt") && TextEditorStore(context).opensOffice) {
+            WriterLog.i("open from Files: ${file.name}")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            writerOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Writer
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -656,9 +664,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Office -> androidx.compose.runtime.key(officeVersion) {
                     OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    }, open = { writerOpen = it; screen = Screen.Writer })
+                    }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer })
                 }
-                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = Screen.Office }, open = writerOpen)
+                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -1488,6 +1496,20 @@ private fun SettingsTab(
                 Text("Resolution", style = MaterialTheme.typography.titleMedium)
                 Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf(300 to "300 dpi", 200 to "200 dpi"), dpi) { dpi = it; scannerPreferences.edit().putInt(SCANNER_DPI, it).apply() }
+            }
+        }
+        item {
+            val officeContext = LocalContext.current
+            val office = remember { TextEditorStore(officeContext) }
+            var opens by remember { mutableStateOf(office.opensOffice) }
+            SettingsCard("Office", Category.Office) {
+                Row(Modifier.fillMaxWidth().clickable { opens = !opens; office.opensOffice = opens }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open Word documents here", style = MaterialTheme.typography.titleSmall)
+                        Text(if (opens) "Files opens a .docx or .odt in Writer. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
+                }
             }
         }
         item {

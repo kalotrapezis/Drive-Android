@@ -178,6 +178,11 @@ internal class TextEditorStore(context: Context) {
         get() = prefs.getBoolean("opens_txt", true)
         set(on) { prefs.edit().putBoolean("opens_txt", on).apply() }
 
+    /** Files opens a Word or LibreOffice document (.docx, .odt) in Writer (asked 2026-10-13) rather than another app. */
+    var opensOffice: Boolean
+        get() = prefs.getBoolean("opens_office", true)
+        set(on) { prefs.edit().putBoolean("opens_office", on).apply() }
+
     /** Where Save puts a new file, under the phone's storage (default Tetra/Documents). */
     var saveFolder: String
         get() = prefs.getString("save_folder", "Tetra/Documents") ?: "Tetra/Documents"

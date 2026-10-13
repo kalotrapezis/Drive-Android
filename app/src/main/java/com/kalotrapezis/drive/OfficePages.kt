@@ -1430,6 +1430,7 @@ internal object OfficePages {
             }
         }
         for (r in OfficeFormats.tidy(p.runs)) {
+            if (r.image == null && LetterLooks.of(r.font).hidden) continue // hidden text: not on the page, as in Word
             // A floating picture takes no room in the line: it is placed with the paragraph.
             r.image?.let { img -> PictureXml.placeOf(img)?.let { floating += img to it } }?.let { continue }
             val start = text.length
@@ -1682,8 +1683,8 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
  * Letter looks Writer keeps raw in [DocRun.font] and shows (the user's test suite, 2026-10-01: all four looked plain):
  * capitals, small capitals, double strikethrough, double underline — Word's rPr elements, LibreOffice's attributes.
  */
-internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean) {
-    val any get() = caps || smallCaps || doubleStrike || doubleUnder
+internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean, val hidden: Boolean = false) {
+    val any get() = caps || smallCaps || doubleStrike || doubleUnder || hidden
     /** Two lines (struck through, or under) over its letters, drawn after the line: [drawSecondLines]. */
     class SecondLine(val strike: Boolean)
     companion object {
@@ -1693,7 +1694,8 @@ internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val d
             on(font, "caps") || "fo:text-transform=\"uppercase\"" in font,
             on(font, "smallCaps") || "fo:font-variant=\"small-caps\"" in font,
             on(font, "dstrike") || "style:text-line-through-type=\"double\"" in font,
-            "<w:u w:val=\"double\"" in font || "style:text-underline-type=\"double\"" in font)
+            "<w:u w:val=\"double\"" in font || "style:text-underline-type=\"double\"" in font,
+            on(font, "vanish") || "text:display=\"none\"" in font)
 
         /** The [SecondLine] spans of [layout]'s lines [first]..[last]: two thin lines each, in the text's colour. */
         fun drawSecondLines(canvas: android.graphics.Canvas, layout: android.text.Layout, first: Int, last: Int) {

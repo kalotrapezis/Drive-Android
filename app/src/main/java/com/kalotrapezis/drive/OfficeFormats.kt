@@ -1511,7 +1511,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
                     in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
                     "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
-                    "vanish" -> if (on) notes += "hidden text"
+                    // Hidden text: kept with its letters (the pages leave it out, the editor greys it), no reason for a copy.
+                    "vanish" -> kept.append(OfficeFormats.xml(e))
                     "rPrChange" -> kept.append(OfficeFormats.xml(e)) // formatting changed (tracked): carried, for Accept or Reject
                     else -> if (e.namespaceURI != W) kept.append(OfficeFormats.xml(e)) // Word 2010's own (w14:ligatures…), last in the list
                         else if (on) notes += "other text effects"
@@ -2169,7 +2170,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "font-name", "font-family" -> carry()
                 // "super 58%", "sub", "33% 58%", "-33% 58%", "0% 100%"
                 "text-position" -> v.substringBefore(' ').let { p -> l = l.copy(script = when { p == "super" -> 1; p == "sub" -> -1; else -> p.removeSuffix("%").toFloatOrNull()?.let { Math.signum(it).toInt() } ?: 0 }) }
-                "display" -> if (v == "none") notes += "hidden text"
+                "display" -> carry() // hidden text (none): kept with its letters, as in Word files
                 else -> carry()
             }
         }

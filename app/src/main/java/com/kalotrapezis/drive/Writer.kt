@@ -3751,11 +3751,13 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
 internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
     override fun getSpanStyle(richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig) =
         // ALL CAPS: every letter a small capital, drawn about as tall as a capital (the font's small capitals are ~0.77 of it).
-        if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
-        else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null)
+        (if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
+        else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null))
+            // Hidden text is still edited here: grey, with Word's dotted line under it (the pages leave it out).
+            .let { if (looks.hidden) it.copy(color = Color(0xFF8A8A8A)) else it }
     override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCustomStyle(layoutResult: TextLayoutResult, textRange: androidx.compose.ui.text.TextRange,
         richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig, topPadding: Float, startPadding: Float) {
-        if (!looks.doubleStrike && !looks.doubleUnder) return
+        if (!looks.doubleStrike && !looks.doubleUnder && !looks.hidden) return
         val l = layoutResult
         if (textRange.min >= l.layoutInput.text.length) return
         for (line in l.getLineForOffset(textRange.min)..l.getLineForOffset((textRange.max - 1).coerceAtLeast(textRange.min))) {
@@ -3764,7 +3766,8 @@ internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.ric
             val x1 = l.getHorizontalPosition(a, true) + startPadding; val x2 = l.getHorizontalPosition(z, true) + startPadding
             val base = l.getLineBaseline(line) + topPadding; val h = l.getLineBottom(line) - l.getLineTop(line)
             val ys = if (looks.doubleStrike) listOf(base - h * 0.30f, base - h * 0.19f) else listOf(base + h * 0.15f) // the editor's own underline is the first
-            ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
+            if (looks.hidden) { var x = x1; val y = base + h * 0.12f; while (x < x2) { drawCircle(Color(0xFF8A8A8A), h * 0.025f, Offset(x, y)); x += h * 0.12f } }
+            if (looks.doubleStrike || looks.doubleUnder) ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
         }
     }
 }

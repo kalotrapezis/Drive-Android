@@ -814,4 +814,19 @@ class OfficeFormatsTest {
         val listed = first(doc.copy(paras = doc.paras.mapIndexed { i, p -> if (i == 0) p.copy(list = DocList(true, 0)) else p }))
         assertEquals(listed, 1, Regex("<w:numPr>").findAll(listed).count())
     }
+
+    @Test fun `hidden text is kept hidden and is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:t xml:space=\"preserve\">Seen </w:t></w:r><w:r><w:rPr><w:vanish/></w:rPr><w:t>SECRET</w:t></w:r></w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals("Seen SECRET", doc.paras[0].text)
+        assertEquals(listOf(false, true), doc.paras[0].runs.map { LetterLooks.of(it.font).hidden })
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, Regex("<w:vanish/>(?:(?!</w:r>).)*>SECRET<").containsMatchIn(out))
+        assertTrue(LetterLooks.of(" text:display=\"none\"").hidden)
+        assertTrue(!LetterLooks.of("<w:vanish w:val=\"0\"/>").hidden)
+    }
 }

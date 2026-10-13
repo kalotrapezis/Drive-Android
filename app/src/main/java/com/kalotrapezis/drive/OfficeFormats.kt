@@ -95,9 +95,10 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val table: DocTable? = null /* the editor's stand-in for a table */,
     val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */,
     val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
-    val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */) {
+    val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */,
+    val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -148,8 +149,14 @@ internal object PictureXml {
         if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
             val head = raw.substring(0, raw.indexOf('>'))
             fun attr(n: String) = Regex("""\s$n="([^"]*)"""").find(head)?.groupValues?.get(1)
-            val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head) "page" else "paragraph"
-            return Place(if (from == "page") "page" else "margin", odfLength(attr("svg:x")) ?: 0f, null, from, odfLength(attr("svg:y")) ?: 0f, null, wrap)
+            // Its style may place it on the page (a letterhead "from the top of the page, centred" — asked 2026-10-13: the
+            // box came down to its paragraph): style:vertical-rel / horizontal-rel / horizontal-pos.
+            fun styled(n: String) = img.look?.let { Regex("""\s$n="([^"]*)"""").findAll(it).lastOrNull()?.groupValues?.get(1) } // the frame's own, after its parents' 
+            val pageV = styled("style:vertical-rel")?.startsWith("page") == true
+            val pageH = styled("style:horizontal-rel")?.startsWith("page") == true
+            val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head || pageV) "page" else "paragraph"
+            val alignH = styled("style:horizontal-pos")?.takeIf { it in setOf("center", "left", "right") }
+            return Place(if (from == "page" || pageH) "page" else "margin", odfLength(attr("svg:x")) ?: 0f, alignH, from, odfLength(attr("svg:y")) ?: 0f, null, wrap)
         }
         if ("<wp:anchor" !in raw) return null
         fun axis(tag: String): Triple<String, Float?, String?> {
@@ -176,6 +183,9 @@ internal object PictureXml {
         if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
+            // Another's frame: its style's wrap (a letterhead the text runs through no longer pushed the text down).
+            ?: img.look?.let { l -> fun v(n: String) = Regex("""\s$n="([^"]*)"""").findAll(l).lastOrNull()?.groupValues?.get(1)
+                when (v("style:wrap")) { "run-through" -> if (v("style:run-through") == "background") PictureWrap.Behind else PictureWrap.InFront; "none" -> PictureWrap.TopBottom; null -> null; else -> PictureWrap.Square } }
         return when {
             "<wp:inline" in raw -> PictureWrap.InLine
             "<wp:wrapTopAndBottom" in raw -> PictureWrap.TopBottom
@@ -2085,11 +2095,13 @@ internal const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible
 private const val XLINK = "http://www.w3.org/1999/xlink"
 internal const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
 internal const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+internal const val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
 
 /** LibreOffice's name for a style ("Heading_20_1") as people see it ("Heading 1"). */
 internal fun odfDisplayName(name: String) = Regex("""_([0-9a-fA-F]{2})_""").replace(name) { it.groupValues[1].toInt(16).toChar().toString() }
 
-private class OdtStyle(val name: String, val family: String, val parent: String?, val listStyle: String?, val masterPage: String?, val text: Element?, val paragraph: Element?, val automatic: Boolean)
+private class OdtStyle(val name: String, val family: String, val parent: String?, val listStyle: String?, val masterPage: String?, val text: Element?, val paragraph: Element?, val automatic: Boolean,
+    val graphic: Element? = null)
 
 private class OdtReader(val parts: Map<String, ByteArray>) {
     val notes = linkedSetOf<String>()
@@ -2138,7 +2150,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 val family = e.attr(STYLE, "family") ?: continue
                 val name = e.attr(STYLE, "name") ?: continue
                 styles["$family/$name"] = OdtStyle(name, family, e.attr(STYLE, "parent-style-name"), e.attr(STYLE, "list-style-name"),
-                    e.attr(STYLE, "master-page-name"), e.kid(STYLE, "text-properties"), e.kid(STYLE, "paragraph-properties"), automatic)
+                    e.attr(STYLE, "master-page-name"), e.kid(STYLE, "text-properties"), e.kid(STYLE, "paragraph-properties"), automatic, e.kid(STYLE, "graphic-properties"))
             }
             "list-style" -> e.attr(STYLE, "name")?.let { listStyles[it] = e }
         }
@@ -2346,7 +2358,11 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         val box = (e.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "text-box").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }
             ?: e.takeIf { it.localName == "custom-shape" }?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
         val chart = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }?.let { OfficeCharts.readOdf(it) }
-        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart)
+        // Its graphic style, parents first so the frame's own settings win: as attributes, for where it goes and how it looks.
+        val look = generateSequence(e.getAttributeNS(DRAW, "style-name").takeIf { it.isNotEmpty() }?.let { styles["graphic/$it"] }) { s -> s.parent?.let { styles["graphic/$it"] } }
+            .take(10).toList().asReversed().mapNotNull { it.graphic }.joinToString("") { g -> (0 until g.attributes.length).joinToString("") { i -> g.attributes.item(i).let { a -> " ${a.nodeName}=\"${a.nodeValue}\"" } } }
+            .takeIf { it.isNotEmpty() }
+        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart, look = look)
     }
     var imageCount = 0
 

@@ -590,7 +590,10 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         fun band(paras: List<DocPara>?, style: String, gap: String): Float {
             if (paras == null) return 0f
             val hf = layout?.kid(STYLE, style)?.kid(STYLE, "header-footer-properties")
-            return maxOf(odfLength(hf?.attr(FO, "min-height")) ?: 0f, paras.size.coerceAtLeast(1) * 14f) + (odfLength(hf?.attr(FO, gap)) ?: 0f)
+            // LibreOffice's height of a header includes its spacing (its dialog's Height takes in Spacing): a letterhead's
+            // text came 2.5 cm lower when the two were added (2026-10-13).
+            val spacing = odfLength(hf?.attr(FO, gap)) ?: 0f
+            return maxOf(odfLength(hf?.attr(FO, "min-height")) ?: 0f, paras.size.coerceAtLeast(1) * 14f + spacing)
         }
         val top = len("margin-top") ?: d.top; val bottom = len("margin-bottom") ?: d.bottom
         // A page's border stands at the margins; the text starts its padding inside it.
@@ -1382,7 +1385,7 @@ internal object OfficePages {
             "top" -> if (place.fromV == "page") 0f else page.top
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
-        val picture = textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img.raw) ?: ColorDrawable(0xFFE3E3E3.toInt())
+        val picture = textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
         return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key)
     }
 
@@ -1391,7 +1394,7 @@ internal object OfficePages {
         val paras = img.box ?: return null
         val inset = 7.2f to 3.6f
         val text = runCatching { stack(doc, paras, styles, DocPage(), (img.widthPt - 2 * inset.first).coerceAtLeast(8f), pictureBytes, null, 0f, 0f) }.getOrNull() ?: return null
-        return TextBoxDrawable(ShapePicture.of(img.raw), text, inset)
+        return TextBoxDrawable(ShapePicture.of(img), text, inset)
     }
 
     /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */
@@ -1444,7 +1447,7 @@ internal object OfficePages {
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
                 val drawable = (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
-                    ?: ShapePicture.of(img.raw)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+                    ?: ShapePicture.of(img)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
                 continue
@@ -1651,8 +1654,19 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             }
         }
 
+        /** A LibreOffice shape in its style's colours (draw:fill / draw:stroke, none for none), else LibreOffice's default blue. */
+        private fun styledShape(kind: String, look: String?): ShapePicture {
+            fun v(n: String) = look?.let { Regex("""\s$n="([^"]*)"""").findAll(it).lastOrNull()?.groupValues?.get(1) }
+            fun color(c: String?) = c?.removePrefix("#")?.toLongOrNull(16)?.let { (0xFF000000 or it).toInt() }
+            val fill = when (v("draw:fill")) { "none" -> null; null -> 0xFF729FCF.toInt(); else -> color(v("draw:fill-color")) ?: 0xFF729FCF.toInt() }
+            val line = when (v("draw:stroke")) { "none" -> null; null -> 0xFF3465A4.toInt(); else -> color(v("svg:stroke-color")) ?: 0xFF3465A4.toInt() }
+            val width = v("svg:stroke-width")?.let { odfLength(it) }?.takeIf { it > 0f } ?: 1f
+            return ShapePicture(kind, fill, line, width)
+        }
+
         /** From a drawing's XML, when it is a shape of those kinds (Word's, or a custom shape Writer made); null otherwise. */
-        fun of(raw: String?): ShapePicture? {
+        fun of(img: DocImage): ShapePicture? = of(img.raw, img.look)
+        fun of(raw: String?, look: String? = null): ShapePicture? {
             if (raw == null) return null
             if (raw.startsWith("<draw:custom-shape")) {
                 val kind = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)?.let { ODF[it] } ?: return null
@@ -1660,7 +1674,7 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                 val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_""").find(raw)
                 fun hex(v: String?) = v?.takeIf { it != "none" }?.let { t -> t.toLongOrNull(16)?.let { if (t.length == 8) it.toInt() else (0xFF000000 or it).toInt() } }
                 return if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
-                    else ShapePicture(kind, 0xFF729FCF.toInt(), 0xFF3465A4.toInt(), 1f) // LibreOffice's own default look
+                    else styledShape(kind, look) // its style's fill and line, else LibreOffice's own default look
             }
             val sp = Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(raw)?.groupValues?.get(1) ?: return null
             val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in KINDS || it in LINES } ?: return null

@@ -1282,7 +1282,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     fun sdtBlock(e: Element, out: MutableList<DocPara>) {
         val start = out.size
         val pageBefore = pageBreakPending // a page break ended the paragraph before: the block's first paragraph starts a page
+        sdtDepth++
         aside(notes, openComments) { e.kid(W, "sdtContent")?.let { block(it, out) } }
+        sdtDepth--
         fieldDepth = 0; fieldState = 0; citeNow = null; pageBreakPending = false
         if (out.size == start) { notes += "content controls"; return }
         val mine = out.subList(start, out.size)
@@ -1356,8 +1358,11 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             // Not "parts has one": Google Docs writes <w:pageBreakBefore w:val="0"/> on every paragraph, and a break before
             // such a paragraph was lost (a paper's contents moved up onto its cover page — 2026-10-13).
             if (afterPageBreak && parts.none { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }) parts = parts.filter { it.first != "pageBreakBefore" } + ("pageBreakBefore" to "<w:pageBreakBefore/>")
-            if (afterPageBreak && done.isNotEmpty()) parts = parts.filter { it.first != "spacing" } +
-                ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.replace(Regex("""\sw:before(Autospacing)?="[^"]*""""), "")?.replace("<w:spacing", "<w:spacing w:before=\"0\"") ?: "<w:spacing w:before=\"0\"/>"))
+            // No space before at the new page's top either when the break was the paragraph before's: LibreOffice gives a
+            // paragraph its space only when it breaks the page itself (a heading came two lines lower — 02_Tables).
+            val breaksItself = keepParts.any { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }
+            if (afterPageBreak && (done.isNotEmpty() || (brokenBefore && !breaksItself && sdtDepth == 0))) parts = parts.filter { it.first != "spacing" } +
+                ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.let(::noSpaceBefore) ?: "<w:spacing w:before=\"0\"/>"))
             return DocKeep(keepStyle, parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } }, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
         }
         fun breakLine(page: Boolean = false) {
@@ -1421,6 +1426,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
      * it is read as the page break it looks like and saves as one (2026-10-13: it made 10 of the user's papers copy-only).
      */
     var columnsArePages = false
+    /** Inside a content control kept whole (its XML written back as it was): its paragraphs' spacing is the XML's. */
+    var sdtDepth = 0
     /** The paragraph being read broke with a column break: its empty rest is a line of its own on the next page. */
     var columnBreak = false
 
@@ -1594,6 +1601,12 @@ internal const val SDT_BLOCK = "sdtBlock"
 internal const val SDT_PART = "sdtPart"
 internal const val BOOKMARKS = "bookmarks"
 internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS)
+/** A spacing element with no space before, its attributes in the order the parser gives them back (so it reads back the same). */
+private fun noSpaceBefore(spacing: String): String {
+    val attrs = Regex("""\s([\w:]+)="[^"]*"""").findAll(spacing).filter { it.groupValues[1] !in setOf("w:before", "w:beforeAutospacing") }.map { it.value.trim() }.toList()
+    return "<w:spacing " + (attrs + "w:before=\"0\"").sortedBy { it.substringBefore('=') }.joinToString(" ") + "/>"
+}
+
 /** Word's "no page break before", as Google Docs writes it on every paragraph. */
 private val PAGE_BREAK_OFF = Regex("""<w:pageBreakBefore\s+w:val="(0|false|off)"\s*/>""")
 

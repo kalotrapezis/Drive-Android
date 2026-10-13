@@ -9,7 +9,8 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.document.RichTextDocument
 
 internal const val EDITOR_TAB_SPACE = '\u200A'
-internal data class EditorTab(val at: Int, val leader: Char?)
+/** A tab in the editor: where it is, its leader and its width in pixels (the layout reports a widened tab at half its width). */
+internal data class EditorTab(val at: Int, val leader: Char?, val widthPx: Float = 0f)
 
 /** A tab is a sized space only in the visual text. The editable text and the saved file keep the tab. */
 internal fun editorTabs(shown: AnnotatedString, rich: RichTextDocument, doc: OfficeDoc, styles: DocStyles,
@@ -44,7 +45,7 @@ internal fun editorTabs(shown: AnnotatedString, rich: RichTextDocument, doc: Off
             val glyph = measurer.measure(AnnotatedString(EDITOR_TAB_SPACE.toString()), textStyle.copy(fontSize = 0.5.sp), softWrap = false)
                 .multiParagraph.maxIntrinsicWidth / pxPerSp
             builder.addStyle(SpanStyle(fontSize = 0.5.sp, letterSpacing = (gap * spPerPt - glyph).sp), at, at + 1)
-            tabs += EditorTab(at, stop.leader)
+            tabs += EditorTab(at, stop.leader, gap * pxPerPt)
         }
     }
     return builder.toAnnotatedString() to tabs

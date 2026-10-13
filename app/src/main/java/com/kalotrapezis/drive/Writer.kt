@@ -1083,6 +1083,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (displayed, tabs) = editorTabs(shown, rich, doc, documentStyles, editorMeasurer,
             TextStyle(fontSize = (BASE_SP * shownZoom / 100).sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.None)),
             editorTextWidth.takeIf { it > 0 } ?: with(editorDensity) { WriterBridge.editorWidthSp.sp.roundToPx() }, with(editorDensity) { 1.sp.toPx() }, BASE_SP * shownZoom / 100f / meta.basePt)
+        if (tabs != shownTabs && tabs.isNotEmpty()) WriterLog.i("editor tabs: ${tabs.size}, leaders ${tabs.count { it.leader != null }}, widths px ${tabs.take(6).joinToString { "%.0f".format(it.widthPx) }}")
         shownTabs = tabs
         WriterBridge.displayText(state, displayed)
     }
@@ -2252,8 +2253,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val line = l.getLineForOffset(tab.at)
                                         if (l.getLineForOffset(tab.at + 1) != line) return@forEach
                                         val a = l.getHorizontalPosition(tab.at, true)
-                                        val z = l.getHorizontalPosition(tab.at + 1, true)
+                                        // The gap's own width: the layout puts the letter after a widened tab (letter spacing) at half
+                                        // of it, and the dots stopped half way (asked 2026-10-13).
+                                        val z = a + tab.widthPx
                                         val dot = paint.measureText(leader.toString()).coerceAtLeast(1f)
+
                                         var x = a + dot
                                         while (x + dot < z) { canvas.drawText(leader.toString(), x, l.getLineBaseline(line), paint); x += dot }
                                     }

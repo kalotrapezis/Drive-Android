@@ -46,4 +46,15 @@ class CodeKeysTest {
         assertEquals(5 to 7, r.start to r.end)
         assertEquals("a    b", CodeKeys.press("Tab", NoteFormat.Edit("ab", 1, 1)).text)
     }
+
+    @Test fun aTabIsSharedByItsPathInTetraAndOnlyThen() {
+        val root = "/storage/emulated/0/Tetra"
+        val app = "com.kalotrapezis.drive.files"
+        assertEquals("Documents/Σχολεία.txt", TextFileRules.tetraPath("file:///storage/emulated/0/Tetra/Documents/%CE%A3%CF%87%CE%BF%CE%BB%CE%B5%CE%AF%CE%B1.txt", app, root))
+        assertEquals("Documents/a b.txt", TextFileRules.tetraPath("content://com.kalotrapezis.drive.files/tetra/Documents/a%20b.txt", app, root))
+        assertNull(TextFileRules.tetraPath("content://com.android.providers.downloads.ui.fileprovider/root_files_storage/emulated/0/Download/x.txt", app, root))
+        assertNull(TextFileRules.tetraPath("file:///storage/emulated/0/Download/x.txt", app, root))
+        assertNull(TextFileRules.tetraPath("content://com.kalotrapezis.drive.files/hidden_media/x.txt", app, root))
+        assertNull(TextFileRules.tetraPath("file:///storage/emulated/0/Tetra/../x.txt", app, root))
+    }
 }

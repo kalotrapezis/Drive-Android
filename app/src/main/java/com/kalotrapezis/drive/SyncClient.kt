@@ -688,6 +688,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
+        // The text editor's open tabs (6al), after Files so a file opened elsewhere is already here to open.
+        runCatching { postJson(host, p, "/editor-tabs", TextEditorStore(context).syncPayload()).optJSONArray("tabs")?.let(TextEditorStore(context)::applySynced) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else if (it.message != "Unknown request.") failed += "Editor tabs: ${it.message}" } // a computer too old for them
         // Trash items about to be deleted by Android (or past their days in Files' Trash) go to the purgatory on the
         // computer's drive instead (SYNC_PLAN.md D6).
         runCatching { handOverTrash(host, p, failed) }

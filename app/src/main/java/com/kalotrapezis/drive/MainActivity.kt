@@ -1469,6 +1469,11 @@ private fun SettingsTab(
                     Text(pairedDevice.hosts.firstOrNull().orEmpty(), style = MaterialTheme.typography.bodySmall)
                 }
                 Text("A trusted device is identified by a public-key fingerprint, not IP or MAC address, so it's found again after a network change.", style = MaterialTheme.typography.bodySmall)
+                val syncContext = LocalContext.current
+                var every by remember { mutableStateOf(SyncJob.minutes(syncContext)) }
+                Text("Sync automatically", style = MaterialTheme.typography.titleMedium)
+                Text("Tetra wakes up and syncs this often, with the app closed too — on any local network, a phone's hotspot included. Android may run it a little later to save battery.", style = MaterialTheme.typography.bodySmall)
+                Choices(SyncJob.choices, every) { every = it; SyncJob.setMinutes(syncContext, it) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = openSync) { Text("Open Sync") }
                     if (pairedDevice != null) TextButton(onClick = forgetPairedDevice) { Text("Forget ${pairedDevice.name}") }
@@ -1482,22 +1487,7 @@ private fun SettingsTab(
             SettingsCard("PDF scanner", Category.Scanner) {
                 Text("Resolution", style = MaterialTheme.typography.titleMedium)
                 Text("How much detail a saved page keeps. 300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, which is plenty for a page you only need to read.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf(300 to "300 dpi", 200 to "200 dpi").forEach { (value, label) ->
-                        val chosen = dpi == value
-                        Surface(
-                            shape = MaterialTheme.shapes.large,
-                            color = if (chosen) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (chosen) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f).clickable { dpi = value; scannerPreferences.edit().putInt(SCANNER_DPI, value).apply() },
-                        ) {
-                            Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                if (chosen) { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
-                                Text(label, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                }
+                Choices(listOf(300 to "300 dpi", 200 to "200 dpi"), dpi) { dpi = it; scannerPreferences.edit().putInt(SCANNER_DPI, it).apply() }
             }
         }
         item {
@@ -1565,6 +1555,26 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
         }
     }
 }
+
+/** One of a few values, each a button the width of its share of the row; the chosen one is ticked. */
+@Composable
+private fun <T> Choices(options: List<Pair<T, String>>, chosen: T, pick: (T) -> Unit) =
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        options.forEach { (value, label) ->
+            val on = chosen == value
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = if (on) driveNavigationSelectedColor() else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (on) driveNavigationSelectedContentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).clickable { pick(value) },
+            ) {
+                Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    if (on) { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
+                    Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                }
+            }
+        }
+    }
 
 @Composable
 private fun SettingsCard(title: String, category: Category? = null, content: @Composable ColumnScope.() -> Unit) = Surface(

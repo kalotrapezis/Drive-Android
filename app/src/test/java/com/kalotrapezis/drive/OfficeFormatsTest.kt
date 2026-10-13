@@ -829,4 +829,23 @@ class OfficeFormatsTest {
         assertTrue(LetterLooks.of(" text:display=\"none\"").hidden)
         assertTrue(!LetterLooks.of("<w:vanish w:val=\"0\"/>").hidden)
     }
+
+    @Test fun `a date or a reference field is kept with its letters and is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        fun field(instr: String, shown: String) = "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> $instr </w:instrText></w:r>" +
+            "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:t>$shown</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:t xml:space=\"preserve\">Today </w:t></w:r>${field("DATE \\@ &quot;d/M/yyyy&quot;", "13/10/2026")}" +
+            "<w:r><w:t xml:space=\"preserve\">, see page </w:t></w:r>${field("PAGEREF _Toc1 \\h", "4")}</w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals("Today 13/10/2026, see page 4", doc.paras[0].text)
+        assertEquals("Update leaves a field alone", doc.paras[0], Citations.update(doc, OfficeKind.Docx).paras[0])
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, "DATE \\@ &quot;d/M/yyyy&quot;" in out || "DATE \\@ \"d/M/yyyy\"" in out)
+        assertTrue(out, Regex("PAGEREF _Toc1 .*?separate.*?>4<").containsMatchIn(out))
+        assertTrue(out, FIELD_CITE !in out)
+        assertEquals(doc.paras[0].text, OfficeFormats.read(OfficeFormats.write(doc, OfficeKind.Docx, bytes), OfficeKind.Docx).paras[0].text)
+    }
 }

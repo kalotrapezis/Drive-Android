@@ -262,7 +262,7 @@ internal object Citations {
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }
 
-    fun usedTags(doc: OfficeDoc): Set<String> = doc.paras.flatMap { p -> p.runs.mapNotNull { it.cite } }.flatMap { parse(it).first }.toSet()
+    fun usedTags(doc: OfficeDoc): Set<String> = doc.paras.flatMap { p -> p.runs.mapNotNull { it.cite?.takeIf { c -> !isField(c) } } }.flatMap { parse(it).first }.toSet()
 
     /**
      * A new source's tag: Word's (Smi20); in an OpenDocument the citation itself ("Smith & Jones, 2019"; 2019a, 2019b
@@ -290,7 +290,7 @@ internal object Citations {
                 val runs = p.runs
                 while (k < runs.size) {
                     val c = runs[k].cite
-                    if (c == null) { out += runs[k]; k++; continue }
+                    if (c == null || isField(c)) { out += runs[k]; k++; continue }
                     var e = k
                     while (e < runs.size && runs[e].cite == c) e++
                     out += runs[k].copy(text = text(c, doc.sources))

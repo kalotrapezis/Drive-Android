@@ -354,6 +354,14 @@ internal const val PAGES_FIELD = '\uE002'
 
 /** A line break inside a paragraph (Shift+Enter in Word): Unicode's line separator, in a run's text. */
 internal const val LINE_BREAK = '\u2028'
+/**
+ * A field kept with its shown letters (a date, a reference, a sequence number — asked 2026-10-13): stored in [DocRun.cite]
+ * after this mark, so the citations' own code passes it by and Word gets the field back as it was.
+ */
+internal const val FIELD_CITE = '\u0002'
+internal fun isField(cite: String?) = cite?.firstOrNull() == FIELD_CITE
+/** Fields whose letters are whole paragraphs: kept only inside a content control (sdtBlock), else a copy. */
+private val MULTI_PARAGRAPH_FIELDS = setOf("TOC", "INDEX", "BIBLIOGRAPHY", "TOA")
 
 /** A list item: bulleted or numbered, how deep (0 = top), and the number it starts at when that is not 1. */
 internal data class DocList(val ordered: Boolean, val level: Int, val start: Int? = null)
@@ -1408,6 +1416,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
         }
         content(p, null)
+        if (fieldDepth > 0 && isField(citeNow)) notes += "fields (page numbers, dates, contents)" // it goes on past this paragraph
         // A column break leaves an empty line at the top of the next page, a page break does not (LibreOffice, measured
         // 2026-10-13): that line is kept as an empty paragraph starting the page, so a paper keeps its page ends.
         if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0) && !columnBreak) {
@@ -1463,6 +1472,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         fieldState = 2
                         val instr = fieldInstr.toString().trim()
                         if (!fieldMarks && instr.startsWith("CITATION ")) citeNow = instr
+                        // Any other field of one paragraph: its letters kept, the field written back round them. One that
+                        // runs over paragraphs (contents, index, list of references) cannot be: a copy, as before.
+                        else if (!fieldMarks && instr.isNotEmpty() && instr.substringBefore(' ').uppercase() !in MULTI_PARAGRAPH_FIELDS) citeNow = FIELD_CITE + instr
                         else { notes += "fields (page numbers, dates, contents)"; if (fieldMarks) fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
                     }
                     e.attr(W, "fldCharType") == "end" -> {
@@ -1884,7 +1896,7 @@ private object DocxWriter {
             fun citeTo(c: String?) {
                 if (c == cite) return
                 if (cite != null) body.append("""<w:r><w:fldChar w:fldCharType="end"/></w:r>""")
-                if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c)} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
+                if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c.removePrefix(FIELD_CITE.toString()))} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
                 cite = c
             }
             // Tracked changes: the letters inside Word's w:ins / w:del.
@@ -2456,7 +2468,7 @@ private object OdtWriter {
             if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
             // Citations: LibreOffice shows a mark as its identifier between the document's brackets — round ones, so
             // "Smith & Jones, 2019" reads as APA's (Smith & Jones, 2019).
-            if (doc.paras.any { p -> p.runs.any { it.cite != null } }) {
+            if (doc.paras.any { p -> p.runs.any { it.cite != null && !isField(it.cite) } }) {
                 val xml = stylesXml!!
                 val conf = Regex("""<text:bibliography-configuration\b[^>]*>""").find(xml)
                 stylesXml = if (conf != null) xml.replaceRange(conf.range, conf.value.replace(Regex("""\stext:(prefix|suffix)="[^"]*""""), "").replaceFirst("<text:bibliography-configuration", """<text:bibliography-configuration text:prefix="(" text:suffix=")""""))
@@ -2607,7 +2619,7 @@ private object OdtWriter {
                         prev = "x"; continue
                     }
                     // A citation: a bibliography mark holding its source, its letters inside as plain text.
-                    r.cite?.let { tag ->
+                    r.cite?.takeIf { !isField(it) }?.let { tag -> // a Word field: its letters only (LibreOffice has its own fields)
                         val text = StringBuilder(r.text)
                         while (q < end && runs[q].cite == tag && runs[q].image == null) text.append(runs[q++].text)
                         val src = doc.sources.firstOrNull { it.tag == tag }

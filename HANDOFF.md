@@ -20,7 +20,7 @@ older one on the tablet (971f6b37, install the latest there first). Test files: 
 suite 01–06, `CV test copy.docx`, `Tetra test.docx`); the user's originals are never edited — copies only, deleted
 after. Writer has a log now: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log` (memory `writer-log`).
 Phone helper used this session: open a document by touching it to the top of Office's Recent, then uiautomator taps by
-text (see the 1 Oct entries below). The phone's Mobile view setting is the user's — leave it on after any test.
+text (see the 1 Oct entries below). The phone's Mobile view is now **off** (13 Oct): the user edits on the paper (Print layout) — "a proper view where I know no matter where I open it, it will look like this". Leave it off after any test.
 
 **The order, in phases (the user's words: "first we fix the compatibility problems, then we finish Word, then we make
 viewers for Excel and PowerPoint so we can ship, and after that we slowly fix the rest"):**

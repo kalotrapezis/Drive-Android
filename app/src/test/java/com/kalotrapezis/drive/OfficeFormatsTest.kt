@@ -767,4 +767,36 @@ class OfficeFormatsTest {
         parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").replace("<w:sectPr>", "<w:sectPr><w:cols w:num=\"2\"/>").toByteArray()
         assertTrue("columns" in OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx).blocking)
     }
+
+    @Test fun `a lettered list level is read, labelled and saved as the file has it`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("One")), list = DocList(true, 0)), DocPara(listOf(DocRun("Sub")), list = DocList(true, 1))))
+        val parts = OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx))
+        val numbering = String(parts.getValue("word/numbering.xml"), Charsets.UTF_8)
+        val lettered = Regex("""(<w:abstractNum w:abstractNumId="2">.*?<w:lvl w:ilvl="1">.*?)<w:numFmt w:val="decimal"/><w:lvlText w:val="%2."/>""")
+            .replace(numbering) { it.groupValues[1] + "<w:numFmt w:val=\"lowerLetter\"/><w:lvlText w:val=\"%2)\"/>" }
+        assertTrue(lettered != numbering)
+        parts["word/numbering.xml"] = lettered.toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val back = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), back.blocking)
+        val styles = DocStyles.of(OfficeKind.Docx, bytes)
+        assertEquals("lowerLetter" to "%2)", styles.orderedLevels(back.paras)[1])
+        assertEquals("a)", styles.listLabel(back.paras[1], intArrayOf(1, 1)))
+        val saved = OfficeFormats.unzip(OfficeFormats.write(back, OfficeKind.Docx, bytes))
+        assertEquals("a)", DocStyles.of(OfficeKind.Docx, OfficeFormats.zip(saved, null)).listLabel(OfficeFormats.read(OfficeFormats.zip(saved, null), OfficeKind.Docx).paras[1], intArrayOf(1, 1)))
+    }
+
+    @Test fun `a character style with no formatting of its own is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val styles = String(parts.getValue("word/styles.xml"), Charsets.UTF_8)
+        parts["word/styles.xml"] = styles.replace("</w:styles>", "<w:style w:type=\"character\" w:customStyle=\"1\" w:styleId=\"given-name\"><w:name w:val=\"given-name\"/></w:style>" +
+            "<w:style w:type=\"character\" w:customStyle=\"1\" w:styleId=\"Loud\"><w:name w:val=\"Loud\"/><w:rPr><w:b/></w:rPr></w:style></w:styles>").toByteArray()
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        fun with(style: String): Set<String> {
+            parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:rPr><w:rStyle w:val=\"$style\"/></w:rPr><w:t>Name</w:t></w:r></w:p>").toByteArray()
+            return OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx).blocking
+        }
+        assertEquals(emptySet<String>(), with("given-name"))
+        assertEquals(setOf("character styles"), with("Loud"))
+    }
 }

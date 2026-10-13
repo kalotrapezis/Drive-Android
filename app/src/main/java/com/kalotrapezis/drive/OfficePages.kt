@@ -168,6 +168,8 @@ internal abstract class DocStyles {
         ?.trim('\'', ' ')?.replace(Regex("""\d+$"""), "")
     /** A list item's number or bullet as its list writes it ("2.1.", "a)", "iv."), from the counts at each level. */
     open fun listLabel(p: DocPara, counts: IntArray): String? = null
+    /** Each level's number format and text ("lowerLetter", "%2.") of the file's numbered lists, for the editor; null: Writer's 1. 2. 3. */
+    open fun orderedLevels(paras: List<DocPara>): List<Pair<String, String>?> = emptyList()
 
     /**
      * The paragraph styles to offer: Normal, Title, Subtitle, the six headings, Quote, then the document's own
@@ -515,6 +517,12 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         if (p.list != null) p.keep?.list?.substringBefore('|')?.let { numInd[it to p.list.level] }?.let { look = pPrOne(look, it); listIndented = true }
         p.keep?.parts?.forEach { (_, xml) -> runCatching { OfficeFormats.parse(("<x xmlns:w=\"$W\">$xml</x>").toByteArray()).documentElement.kids().forEach { look = pPrOne(look, it) } } }
         return look.copy(listIndented = listIndented)
+    }
+
+    // shortcut: the first numbered list at each level speaks for the whole document; per-list formats if a file mixes them.
+    override fun orderedLevels(paras: List<DocPara>): List<Pair<String, String>?> = (0..8).map { l ->
+        paras.firstNotNullOfOrNull { p -> p.list?.takeIf { it.ordered && it.level == l }?.let { p.keep?.list?.substringBefore('|')?.let { numLevels[it] }?.getOrNull(l) } }
+            ?.takeIf { it.first != "bullet" }
     }
 
     override fun listLabel(p: DocPara, counts: IntArray): String? {

@@ -193,6 +193,15 @@ private const val CHANGE_ALPHA = 0xFDL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
 /** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
+
+/**
+ * The editor numbers a list as the file does — "a.", "iii)", "B." — rather than always 1. 2. 3. (the pages already do).
+ * shortcut: only a level's own number and what follows it ("%1.%2." shows "2."); the pages draw the whole label.
+ */
+private class FileNumbering(val styles: DocStyles, val levels: List<Pair<String, String>?>) : com.mohamedrejeb.richeditor.paragraph.type.OrderedListStyleType {
+    override fun format(number: Int, listLevel: Int): String = levels.getOrNull(listLevel - 1)?.let { styles.number(number, it.first) } ?: number.toString()
+    override fun getSuffix(listLevel: Int): String = levels.getOrNull(listLevel - 1)?.second?.let { Regex("%[1-9]([^%]*)$").find(it)?.groupValues?.get(1) } ?: "."
+}
 /** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
 private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
@@ -1141,6 +1150,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         result.onSuccess { (bytes, doc, draft) ->
             original = bytes
             documentStyles = DocStyles.of(kind, bytes)
+            state.config.orderedListStyleType = FileNumbering(documentStyles, documentStyles.orderedLevels(doc.paras))
             pictures.clear()
             state.setRichTextDocument(WriterBridge.toEditor(doc, pictures, documentStyles))
             // What the editor shows, read back, must be what the file holds; if not, saving over it could change

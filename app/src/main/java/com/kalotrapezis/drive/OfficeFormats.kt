@@ -1077,6 +1077,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val images = HashMap<String, String>() // relationship id → the picture's part in the package
     val charts = HashMap<String, String>() // relationship id → a chart's part
     val styleName = HashMap<String, String>() // styleId → name, lowercased
+    /** Character styles that change nothing (no formatting of their own, on the plain font): web pages' names pasted along. */
+    val emptyCharStyles = HashSet<String>()
     var defaultParaStyle: String? = null
     var basePt = 10f
     val numAbstract = HashMap<String, String>() // numId → abstractNumId
@@ -1213,15 +1215,18 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
 
     fun readStyles() {
         val root = parts[dir + "styles.xml"]?.let { OfficeFormats.parse(it).documentElement } ?: return
+        val plainBased = HashMap<String, String>() // a character style with no formatting → the style it is based on
         root.kid(W, "docDefaults")?.kid(W, "rPrDefault")?.kid(W, "rPr")?.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.let { basePt = it / 2 }
         for (s in root.kids().filter { it.localName == "style" }) {
             val id = s.attr(W, "styleId") ?: continue
             styleName[id] = (s.kid(W, "name")?.attr(W, "val") ?: id).lowercase()
+            if (s.attr(W, "type") == "character" && s.kid(W, "rPr")?.kids().isNullOrEmpty() && s.kid(W, "pPr") == null) plainBased[id] = s.kid(W, "basedOn")?.attr(W, "val") ?: ""
             if (s.attr(W, "type") == "paragraph" && s.attr(W, "default").let { it == "1" || it == "true" }) {
                 defaultParaStyle = id
                 s.kid(W, "rPr")?.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.let { basePt = it / 2 }
             }
         }
+        emptyCharStyles += plainBased.filter { (_, base) -> base.isEmpty() || styleName[base] == "default paragraph font" || plainBased[base]?.isEmpty() == true }.keys
     }
 
     fun readNumbering() {
@@ -1340,6 +1345,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // does, nothing else is kept (LibreOffice shows nothing there either). In the middle: the part after it starts a
         // page, with no space before it (it is the same paragraph going on, in the file).
         var afterPageBreak = pageBreakPending.also { pageBreakPending = false }
+        val brokenBefore = afterPageBreak
         columnBreak = false
         val done = ArrayList<DocPara>()
         fun keep(): DocKeep? {
@@ -1396,7 +1402,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         content(p, null)
         // A column break leaves an empty line at the top of the next page, a page break does not (LibreOffice, measured
         // 2026-10-13): that line is kept as an empty paragraph starting the page, so a paper keeps its page ends.
-        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0) && !columnBreak) pageBreakPending = true
+        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0) && !columnBreak) {
+            // A page break alone in its paragraph still has that paragraph's line on the page before (Word and LibreOffice):
+            // kept as an empty paragraph, or a full page's last table no longer spills onto a page of its own (2026-10-13).
+            if (done.isEmpty() && p.getElementsByTagNameNS(W, "br").length > 0) { afterPageBreak = brokenBefore; done += DocPara(emptyList(), heading, list, align, keep()) }
+            pageBreakPending = true
+        }
         else done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
         out += done
     }
@@ -1485,7 +1496,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         "emphasis" -> look = look.copy(italic = true)
                         "placeholder text" -> look = look.copy(color = 0x808080) // a form's empty field: Word's grey
                         "hyperlink", "internet link", "default paragraph font", "footnote reference", "endnote reference" -> Unit
-                        else -> notes += "character styles"
+                        else -> if (e.attr(W, "val") !in emptyCharStyles) notes += "character styles"
                     }
                     // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
                     in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
@@ -1550,7 +1561,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             "bullet" -> false
             "decimal" -> true
             "none" -> { notes += "other list formats"; false }
-            else -> { notes += "letter or roman numbering"; true }
+            else -> true // a), iii., B.: drawn as the file says on the pages and in the editor, and the file's list is kept on saving
         }
         // Word counts on through the whole document for one list; a number is kept by saying where each part starts.
         val c = counters.getOrPut(numId) { IntArray(9) { Int.MIN_VALUE } }

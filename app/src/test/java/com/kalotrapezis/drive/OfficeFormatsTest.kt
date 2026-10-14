@@ -813,9 +813,11 @@ class OfficeFormatsTest {
         val gdocs = OfficeFormats.zip(parts, null)
         val saved = String(OfficeFormats.unzip(OfficeFormats.write(OfficeFormats.read(gdocs, OfficeKind.Docx), OfficeKind.Docx, gdocs)).getValue("word/document.xml"), Charsets.UTF_8)
         assertTrue(saved, Regex("<w:pageBreakBefore/>(?:(?!</w:p>).)*>Contents<").containsMatchIn(saved))
-        // Two columns somewhere: a column break means the next column, which Writer does not lay out yet — a copy.
+        // Two columns somewhere: a column break means the next column — kept as one (15 Oct; a copy before), not a page break.
         parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").replace("<w:sectPr>", "<w:sectPr><w:cols w:num=\"2\"/>").toByteArray()
-        assertTrue("columns" in OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx).blocking)
+        val inColumns = OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx)
+        assertTrue(inColumns.blocking.toString(), inColumns.blocking.isEmpty())
+        assertTrue(inColumns.paras.any { p -> p.keep?.parts?.any { it.first == COLUMN_BREAK } == true })
     }
 
     @Test fun `a lettered list level is read, labelled and saved as the file has it`() {

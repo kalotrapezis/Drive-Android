@@ -83,6 +83,11 @@
 >   its `bookmarkEnd` after the field, read back as that when a file's bookmark ends there, shown by Update fields
 >   (`Fields.labelAndNumber`). LibreOffice reads the same file's bookmark round "Figure 1" exactly. Test in FieldsTest.
 >   General bookmarks round part of a paragraph are still kept on the whole paragraph.
+> - **Home › Font** (14 Oct; the gap list's first item): the button shows the font at the cursor; the menu lists the
+>   document's fonts and Word's everyday five, each in its face. Applied to the chosen letters or the word at the cursor
+>   (`chosenOrWord`, now shared with Aa and Comment) as Word's `rFonts` / ODF's `fo:font-family` (`OfficeFormats.withFont`,
+>   shared with Drop cap; `WriterBridge.restyled`, which Format painter uses now). Typed letters after take it on.
+>   Checked on the tablet (Courier New on a word, autosaved, the XML right); test `a font chosen for some letters…`.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

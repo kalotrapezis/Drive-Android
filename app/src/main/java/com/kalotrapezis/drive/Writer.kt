@@ -212,6 +212,8 @@ internal class FileNumbering(val styles: DocStyles, val levels: () -> List<Pair<
     }
     override fun getSuffix(listLevel: Int): String = levels().getOrNull(listLevel - 1)?.second?.let { Regex("%[1-9]([^%]*)$").find(it)?.groupValues?.get(1) } ?: "."
 }
+/** Home › Font: Word's everyday fonts, each drawn by a font of the same widths (Carlito, Caladea, Liberation). */
+private val WRITER_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
 /** Home › Multilevel list: Word's everyday schemes, each level's (numFmt, lvlText). */
 private val LIST_SCHEMES = listOf(
     "1.  2.  3." to (0..8).map { "decimal" to "%${it + 1}." },
@@ -393,7 +395,11 @@ internal object WriterBridge {
     }
 
     /** The letters [spans] (paragraph, from, to) given [look]'s letter formatting, their words and marks kept (Format painter). */
-    fun painted(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, look: DocRun): OfficeDoc {
+    fun painted(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, look: DocRun): OfficeDoc = restyled(doc, spans) { r -> r.copy(bold = look.bold, italic = look.italic,
+        underline = look.underline, strike = look.strike, sizePt = look.sizePt, color = look.color, highlight = look.highlight, font = look.font, script = look.script) }
+
+    /** The letters [spans] (paragraph, from, to) changed by [restyle], cut out of their runs where a span begins or ends. */
+    fun restyled(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, restyle: (DocRun) -> DocRun): OfficeDoc {
         val byPara = spans.groupBy { it.first }
         return doc.copy(paras = doc.paras.mapIndexed { i, p ->
             val mine = byPara[i] ?: return@mapIndexed p
@@ -404,8 +410,7 @@ internal object WriterBridge {
                 mine.forEach { (_, a, b) -> cuts += (a - at).coerceIn(0, r.text.length); cuts += (b - at).coerceIn(0, r.text.length) }
                 cuts.toList().zipWithNext().filter { (x, y) -> y > x }.forEach { (x, y) ->
                     val inside = r.image == null && r.note == null && mine.any { (_, a, b) -> at + x >= a && at + y <= b }
-                    runs += if (!inside) r.copy(text = r.text.substring(x, y)) else r.copy(text = r.text.substring(x, y), bold = look.bold, italic = look.italic,
-                        underline = look.underline, strike = look.strike, sizePt = look.sizePt, color = look.color, highlight = look.highlight, font = look.font, script = look.script)
+                    runs += r.copy(text = r.text.substring(x, y)).let { if (inside) restyle(it) else it }
                 }
                 at += r.text.length
             }
@@ -1696,16 +1701,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var commentsOpen by remember { mutableStateOf(false) } // the phone's sidebar
     var editorLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var commenting by remember { mutableStateOf(false) }
+    /** The chosen letters (from, to), or with none chosen the word at the cursor (Word's way for a letter command). */
+    fun chosenOrWord(): Pair<Int, Int> {
+        val t = state.annotatedString.text
+        val sel = state.selection
+        if (!sel.collapsed) return sel.min to sel.max
+        var a = sel.min; var z = sel.min
+        while (a > 0 && t[a - 1].isLetterOrDigit()) a--
+        while (z < t.length && t[z].isLetterOrDigit()) z++
+        return a to z
+    }
     /** Insert › Comment: on the chosen letters, or the word at the cursor. */
     fun addComment(author: String, text: String) = change {
         val t = state.annotatedString.text
-        val sel = state.selection
-        val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
-            var a = sel.min; var z = sel.min
-            while (a > 0 && t[a - 1].isLetterOrDigit()) a--
-            while (z < t.length && t[z].isLetterOrDigit()) z++
-            a to z
-        }
+        val (from, to) = chosenOrWord()
         val cur = current()
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), from, to)
         if (spans.isEmpty() || state.toRichTextDocument().blocks.count { !it.isLineBreak } != cur.paras.size) { message = "Choose some words first"; return@change }
@@ -1894,6 +1903,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         var pos = 0
         return current().paras.getOrNull(para)?.runs?.firstOrNull { r -> (from < pos + r.text.length).also { pos += r.text.length } && r.image == null }
     }
+    /** Home › Font: the chosen letters (or the word at the cursor) in [name]; letters typed after them take it on. */
+    fun setFont(name: String) = change {
+        val (from, to) = chosenOrWord()
+        val sel = state.selection
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), from, to)
+        if (spans.isEmpty()) { message = "Choose some words first"; return@change }
+        meta = WriterBridge.restyled(current(), spans) { OfficeFormats.withFont(it, kind, name) }
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        WriterLog.i("font $name on ${to - from} letters")
+    }
     fun pickPainter() {
         if (painter != null) { painter = null; WriterLog.i("format painter off"); return }
         painter = runAt(state.selection.min) ?: run { message = "Put the cursor in the words whose look to copy"; null }
@@ -2041,10 +2061,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
+    var hereFont by remember { mutableStateOf<String?>(null) }
     // …and the ribbon which style it has.
     LaunchedEffect(loaded, viewing) {
         if (!loaded || viewing) return@LaunchedEffect
-        snapshotFlow { state.selection to meta.paras }.collectLatest { delay(200); rulerAt = chosen() }
+        snapshotFlow { state.selection to meta.paras }.collectLatest { sel ->
+            delay(200); rulerAt = chosen()
+            // The font at the cursor: its letters' own, else its paragraph style's.
+            hereFont = runAt(sel.first.min)?.font?.let { documentStyles.fontName(it) } ?: rulerAt?.second?.font
+        }
     }
     val hereStyle = rulerAt?.first?.min()?.let { i -> meta.paras.getOrNull(i) }?.let { documentStyles.styleOf(it) }
     var stylesPage by remember { mutableStateOf(false) }
@@ -2936,6 +2961,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         t.getOrNull(i) == EDITOR_PICTURE_CHAR && (!state.selection.collapsed || i == 0 || t.getOrNull(i - 1) == '\n') || t.getOrNull(i - 1) == EDITOR_PICTURE_CHAR }
                     val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
+                    // Home › Font: the document's own fonts first, then those Writer draws as Word does (metric-compatible).
+                    Box {
+                        var fonts by remember { mutableStateOf(false) }
+                        RibbonButton(hereFont?.take(18) ?: "Font", w, enabled = !onObject) { fonts = true }
+                        DropdownMenu(fonts, { fonts = false }) {
+                            val own = remember(meta.paras, hereFont) { (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted() }
+                            (own + WRITER_FONTS.filter { it !in own }).forEach { name ->
+                                val face = remember(name) { OfficeFonts.typeface(name)?.let { androidx.compose.ui.text.font.FontFamily(it) } }
+                                DropdownMenuItem(text = { Text(name, fontFamily = face) }, trailingIcon = { if (name == hereFont) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
+                                    onClick = { fonts = false; setFont(name) })
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
                         Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
@@ -2956,12 +2994,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             WriterBridge.Case.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { casing = false; change {
                                 val text = state.annotatedString.text
                                 val sel = state.selection
-                                val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
-                                    var a = sel.min; var z = sel.min
-                                    while (a > 0 && text[a - 1].isLetterOrDigit()) a--
-                                    while (z < text.length && text[z].isLetterOrDigit()) z++
-                                    a to z
-                                }
+                                val (from, to) = chosenOrWord()
                                 state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
                             } }) }
                         }

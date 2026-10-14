@@ -769,16 +769,19 @@ internal object OfficeFormats {
         return k.copy(parts = parts).takeIf { !it.isEmpty }
     }
 
+    /** [r] in the font [font] (Home › Font), in the file's own words: Word's rFonts for every script, ODF's fo:font-family. */
+    fun withFont(r: DocRun, kind: OfficeKind, font: String): DocRun = r.copy(font = if (kind == OfficeKind.Docx)
+        (r.font.orEmpty().replace(Regex("""<w:rFonts\b[^>]*/>"""), "") + """<w:rFonts w:ascii="${esc(font)}" w:hAnsi="${esc(font)}" w:eastAsia="${esc(font)}" w:cs="${esc(font)}"/>""")
+        else Regex(""" (\S+)="([^"]*)"""").findAll(r.font.orEmpty()).map { it.groupValues[1] to it.groupValues[2] }.filter { (n, _) -> n != "style:font-name" && n != "fo:font-family" }
+            .joinToString("") { (n, v) -> " $n=\"$v\"" } + " fo:font-family=\"'${esc(font)}'\"")
+
     /**
      * The first [length] letters of [p] in [font] (null: as they are) and [color] (null: as they are; -1 automatic) —
      * a drop cap's own look: in both kinds it is its letters' (Word's letter paragraph; LibreOffice draws the letters).
      */
     fun withLettersLook(p: DocPara, length: Int, kind: OfficeKind, font: String?, color: Int?): DocPara {
         if (font == null && color == null) return p
-        fun restyle(r: DocRun) = r.copy(color = when (color) { null -> r.color; -1 -> null; else -> color }, font = if (font == null) r.font else if (kind == OfficeKind.Docx)
-            (r.font.orEmpty().replace(Regex("""<w:rFonts\b[^>]*/>"""), "") + """<w:rFonts w:ascii="${esc(font)}" w:hAnsi="${esc(font)}" w:eastAsia="${esc(font)}" w:cs="${esc(font)}"/>""")
-            else Regex(""" (\S+)="([^"]*)"""").findAll(r.font.orEmpty()).map { it.groupValues[1] to it.groupValues[2] }.filter { (n, _) -> n != "style:font-name" && n != "fo:font-family" }
-                .joinToString("") { (n, v) -> " $n=\"$v\"" } + " fo:font-family=\"'${esc(font)}'\"")
+        fun restyle(r: DocRun) = (if (font == null) r else withFont(r, kind, font)).let { it.copy(color = when (color) { null -> it.color; -1 -> null; else -> color }) }
         val out = ArrayList<DocRun>()
         var left = length
         for (r in p.runs) when {

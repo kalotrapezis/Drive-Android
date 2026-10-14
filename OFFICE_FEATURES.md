@@ -62,7 +62,7 @@ one pass once the tabs' features are done.
 - [x] Styles: Normal, Heading 1–3 (**the library fixes heading sizes (H1 = 2× text); show the document's own — workaround needed**)
 - [x] Bullets, numbering, indent −/+
 - [x] Alignment: left, centre, right, justify
-- [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
+- [x] Fonts kept letter by letter on save (the editor shows its own font) ; Home › Font: the chosen letters or the word at the cursor in a font — the document's own, or Calibri, Cambria, Times New Roman, Arial, Courier New (drawn as Word draws them), each shown in its face (14 Oct)
 - [x] Superscript, subscript
 - [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
 - [x] Borders (Home, after line spacing): bottom, top, left, right, none, all, outside, inside horizontal; horizontal

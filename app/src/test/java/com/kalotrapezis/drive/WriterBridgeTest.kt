@@ -89,6 +89,21 @@ class WriterBridgeTest {
         assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
     }
 
+    @Test fun `a font chosen for some letters is saved on those letters alone and read back`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("plain "), DocRun("bold here", bold = true)))))
+            // "ain bo": the end of the first run and the start of the second, each keeping its own look.
+            val set = WriterBridge.restyled(doc, listOf(Triple(0, 2, 8))) { OfficeFormats.withFont(it, kind, "Cambria") }
+            val again = WriterBridge.restyled(set, listOf(Triple(0, 2, 8))) { OfficeFormats.withFont(it, kind, "Arial") } // replaced, not added
+            val bytes = OfficeFormats.write(again, kind)
+            val back = OfficeFormats.read(bytes, kind).paras.single()
+            val styles = DocStyles.of(kind, bytes)
+            val shown = back.runs.map { it.text to (it.font?.let { f -> styles.fontName(f) }) }
+            assertEquals("$kind", listOf("pl" to null, "ain " to "Arial", "bo" to "Arial", "ld here" to null), shown)
+            assertEquals("$kind", listOf(false, false, true, true), back.runs.map { it.bold })
+        }
+    }
+
     @Test fun `an empty list item is found after its number, not on it`() {
         val state = com.mohamedrejeb.richeditor.model.RichTextState()
         state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), list = DocList(true, 0)),

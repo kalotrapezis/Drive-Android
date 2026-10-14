@@ -54,3 +54,10 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Date picker → Choose date → the date in the chosen format
   - [ ] Typing just after a control does not go into it
   - [ ] Save → Word on the PC: real controls (click the check box, the drop-down arrow)
+
+- **8. Column and section breaks** (Layout › Breaks)
+  - [ ] A Word copy: a title line, then text. Cursor at the text's start → Breaks › Section break · continuous → a dashed "Section break (continuous)" line
+  - [ ] Cursor in the text → Layout › Columns › Two → on the pages: the title across, the text in two columns (only after the break — check)
+  - [ ] Cursor mid-text → Breaks › Column break → the rest starts the second column; "Column break" line in Edit
+  - [ ] At the end → Breaks › Section break · next page → what follows is on a new page
+  - [ ] Save → Word on the PC shows the same sections and columns; Backspace at a break's line takes it away

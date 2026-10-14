@@ -820,6 +820,13 @@ internal object OfficeFormats {
     }
 
     /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
+    /** Layout › Breaks › Column: the paragraph starts the next column (Word's column break at its start; ODT's fo:break-before). */
+    fun withColumnBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
+        val k = keep ?: DocKeep()
+        val rest = k.parts.filter { (name, xml) -> name != COLUMN_BREAK && !(name == "@" && xml.startsWith(" fo:break-before=\"column")) }
+        val set = when { !on -> emptyList(); kind == OfficeKind.Docx -> listOf(COLUMN_BREAK to "<w:columnBreak/>"); else -> listOf("@" to " fo:break-before=\"column\"") }
+        return k.copy(parts = rest + set).takeIf { !it.isEmpty }
+    }
     fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
         val k = keep ?: DocKeep()
         val rest = k.parts.filter { (name, xml) -> name != "pageBreakBefore" && !(name == "@" && xml.startsWith(" fo:break-before=")) }
@@ -1436,6 +1443,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             if (page && runs.isEmpty() && done.isEmpty()) { afterPageBreak = true; return }
             done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null }; afterPageBreak = page
         }
+        fun breakColumn() {
+            if (runs.isNotEmpty() || done.isNotEmpty()) { done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null } }
+            if (keepParts.none { it.first == COLUMN_BREAK }) keepParts += COLUMN_BREAK to "<w:columnBreak/>"
+        }
         fun content(parent: Element, link: String?) {
             for (e in parent.kids()) {
                 if (e.namespaceURI != W) {
@@ -1493,7 +1504,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 }
             }
         }
+        val outerBreak = columnBreakHere // a text box's paragraph read inside this one gives it back
+        columnBreakHere = ::breakColumn
         content(p, null)
+        columnBreakHere = outerBreak
         if (fieldDepth > 0 && isField(citeNow)) notes += "fields (page numbers, dates, contents)" // it goes on past this paragraph
         // A column break leaves an empty line at the top of the next page, a page break does not (LibreOffice, measured
         // 2026-10-13): that line is kept as an empty paragraph starting the page, so a paper keeps its page ends.
@@ -1508,6 +1522,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     }
     /** A page break ended the paragraph before: this one starts a page. */
     var pageBreakPending = false
+    /** In a paragraph of the body: a column break there splits it, the part after it marked to start the next column. */
+    var columnBreakHere: (() -> Unit)? = null
     /**
      * No section has more than one column: a column break goes on at the next page, in Word and LibreOffice alike, so
      * it is read as the page break it looks like and saves as one (2026-10-13: it made 10 of the user's papers copy-only).
@@ -1535,7 +1551,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "softHyphen", "lastRenderedPageBreak" -> Unit
                 "br", "cr" -> when (e.attr(W, "type")) {
                     "page" -> breakLine(true)
-                    "column" -> if (columnsArePages) { columnBreak = true; breakLine(true) } else { notes += "columns"; breakLine(false) }
+                    // In columns (Phase 2): the part after it starts the next column — a paragraph of its own marked so,
+                    // written back with the break at its start (no longer copy-only).
+                    "column" -> if (columnsArePages) { columnBreak = true; breakLine(true) } else columnBreakHere?.invoke() ?: run { notes += "columns"; breakLine(false) }
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
@@ -1713,7 +1731,9 @@ internal const val SDT_PART = "sdtPart"
 internal const val BOOKMARKS = "bookmarks"
 /** Bookmarks round a caption's label and number only ("Figure 1"): from the paragraph's start to its first SEQ field's end. */
 internal const val LABEL_BOOKMARKS = "labelBookmarks"
-internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS, LABEL_BOOKMARKS)
+/** A column break before the paragraph (Word: a w:br type="column" run at its start), as its pages lay it out. */
+internal const val COLUMN_BREAK = "columnBreak"
+internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS, LABEL_BOOKMARKS, COLUMN_BREAK)
 /** A spacing element with no space before, its attributes in the order the parser gives them back (so it reads back the same). */
 private fun noSpaceBefore(spacing: String): String {
     val attrs = Regex("""\s([\w:]+)="[^"]*"""").findAll(spacing).filter { it.groupValues[1] !in setOf("w:before", "w:beforeAutospacing") }.map { it.value.trim() }.toList()
@@ -1993,6 +2013,7 @@ private object DocxWriter {
             var labelMarks = p.keep?.parts?.firstOrNull { it.first == LABEL_BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
             (marks + labelMarks).forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
             fun endLabels() { labelMarks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }; labelMarks = emptyList() }
+            if (p.keep?.parts?.any { it.first == COLUMN_BREAK } == true) body.append("""<w:r><w:br w:type="column"/></w:r>""")
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
             // A citation: its letters inside its field, as Word writes one (begin, instruction, separate, text, end).

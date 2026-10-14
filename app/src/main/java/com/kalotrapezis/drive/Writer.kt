@@ -1758,7 +1758,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
      * and before the text after it). Saved as "page break before" (both formats); Backspace at the paragraph's start
      * joins it to the one before, which takes the break away, as in Word.
      */
-    fun insertPageBreak(blank: Boolean) = change {
+    fun insertPageBreak(blank: Boolean, column: Boolean = false, section: String? = null) = change {
         val text = state.annotatedString.text
         val rich = state.toRichTextDocument()
         val at = state.selection.min
@@ -1777,10 +1777,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             ?.takeIf { now.blocks.count { !it.isLineBreak } == cur.paras.size } ?: run { message = "Put the cursor in a paragraph of text"; return@change }
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> when {
             p.table != null -> p
-            i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep) else p).let { it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) }
+            i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep?.let { k -> k.copy(parts = k.parts.filter { it.first != "sectPr" }) }?.takeIf { !it.isEmpty }) else p).let {
+                when { section != null -> it; column -> it.copy(keep = OfficeFormats.withColumnBreak(it.keep, kind, true)); else -> it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) } }
+            section != null && !atStart && i == here - 1 && split != null -> p.copy(keep = split.keep?.let { k -> k.copy(parts = k.parts.filter { it.first != "sectPr" }) }?.takeIf { !it.isEmpty }) // a section's end stays with the part after the cursor
             blank && i == here - 1 -> p.copy(heading = 0, list = null, keep = OfficeFormats.withPageBreak(null, kind, true)) // the empty page: a plain paragraph
             else -> p
         } })
+        // Layout › Breaks › Section (Word files): a section ends with the paragraph before the cursor's.
+        if (section != null) {
+            val base = original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)
+            val body = SectionBreaks.bodySect(String(OfficeFormats.unzip(base).let { it.getValue(documentPath(it)) }, Charsets.UTF_8)) ?: "<w:sectPr/>"
+            val (withBreak, newBody) = SectionBreaks.insert(meta, here - 1, body, section)
+            meta = withBreak
+            if (newBody != null) original = OfficeFormats.zip(SectionBreaks.withBodySect(OfficeFormats.unzip(base), newBody), null)
+            documentStyles = DocStyles.of(kind, original ?: base)
+            styleEdits++
+            WriterLog.i("section break ($section) after paragraph ${here - 1}")
+        }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
     }
@@ -3014,7 +3027,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 // …and a paragraph's borders, as a light outline (the pages draw them as they print).
                                 val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
-                                val breaks = remember(looks) { looks.indices.filter { it > 0 && looks[it]?.pageBreakBefore == true } }
+                                // Page breaks, column breaks and section ends: a dashed line at the paragraph that starts after them, named.
+                                val breakNames = remember(looks, meta.paras) { looks.indices.mapNotNull { i -> when {
+                                    i == 0 -> null
+                                    looks[i]?.pageBreakBefore == true -> i to "Page break"
+                                    meta.paras[i - 1].keep?.parts?.firstOrNull { it.first == "sectPr" }?.second?.let { SectionBreaks.typeOf(it) } == "continuous" -> i to "Section break (continuous)"
+                                    meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true -> i to "Section break (next page)"
+                                    looks[i]?.columnBreakBefore == true -> i to "Column break"
+                                    else -> null
+                                } }.toMap() }
+                                val breaks = breakNames.keys.toList()
                                 val boxed = remember(looks) { looks.indices.filter { looks[it]?.box != null } }
                                 val starts = remember(text, breaks, boxed) { if (breaks.isEmpty() && boxed.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
                                     WriterBridge.paragraphStarts(text, rich).takeIf { it.size == meta.paras.size } } ?: emptyList() }
@@ -3041,7 +3063,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
                                         val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
-                                        Text("Page break" + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                        Text(breakNames[i].orEmpty() + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
                                 // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
@@ -3744,6 +3766,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    // Layout › Breaks (Phase 2): a column break; section breaks (Word files) — a new page, or on down the same one.
+                    Box {
+                        var breaking by remember { mutableStateOf(false) }
+                        RibbonButton("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded) { breaking = true }
+                        DropdownMenu(breaking, { breaking = false }) {
+                            DropdownMenuItem(text = { Text("Column break") }, onClick = { breaking = false; insertPageBreak(false, column = true); WriterLog.i("column break") })
+                            DropdownMenuItem(text = { Text("Section break · next page") }, enabled = kind == OfficeKind.Docx, onClick = { breaking = false; insertPageBreak(false, section = "nextPage") })
+                            DropdownMenuItem(text = { Text("Section break · continuous") }, enabled = kind == OfficeKind.Docx, onClick = { breaking = false; insertPageBreak(false, section = "continuous") })
+                        }
+                    }
                 }, {
                     // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
                     Box {

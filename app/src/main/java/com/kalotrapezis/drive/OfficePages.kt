@@ -55,7 +55,7 @@ internal data class ParaLook(
     val before: Float = 0f, val after: Float = 0f,
     val lineMultiple: Float = 1f, val lineExact: Float? = null, val lineAtLeast: Boolean = false,
     val left: Float = 0f, val right: Float = 0f, val firstLine: Float = 0f, // firstLine < 0: hanging
-    val pageBreakBefore: Boolean = false, val contextual: Boolean = false, val box: ParaBox? = null,
+    val pageBreakBefore: Boolean = false, val contextual: Boolean = false, val box: ParaBox? = null, val columnBreakBefore: Boolean = false,
     val sizePt: Float? = null, val bold: Boolean? = null, val italic: Boolean? = null, val color: Int? = null, val font: String? = null,
     val tabs: List<TabStop> = emptyList(),
     val listIndented: Boolean = false, // a list item's indent is already in left/firstLine
@@ -490,6 +490,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 l.copy(tabs = t.sortedBy { it.pos })
             }
             "pageBreakBefore" -> l.copy(pageBreakBefore = e.attr(W, "val").let { it == null || it == "1" || it == "true" })
+            "columnBreak" -> l.copy(columnBreakBefore = true) // Writer's own mark: a column break at the paragraph's start
             "pBdr" -> {
                 var b = ParaBox()
                 for (k in e.kids()) {
@@ -703,7 +704,7 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         "fo:line-height" -> if (v.endsWith("%")) v.removeSuffix("%").toFloatOrNull()?.let { l.copy(lineMultiple = it / 100f, lineExact = null) } ?: l
             else odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = false) } ?: l
         "style:line-height-at-least" -> odfLength(v)?.let { l.copy(lineExact = it, lineAtLeast = true) } ?: l
-        "fo:break-before" -> l.copy(pageBreakBefore = v == "page")
+        "fo:break-before" -> l.copy(pageBreakBefore = v == "page", columnBreakBefore = v == "column")
         "fo:border" -> odfBorder(v).let { b -> l.copy(box = (l.box ?: ParaBox()).copy(top = b, left = b, bottom = b, right = b).takeIf { !it.isEmpty }) }
         "fo:border-top" -> l.copy(box = (l.box ?: ParaBox()).copy(top = odfBorder(v)).takeIf { !it.isEmpty })
         "fo:border-bottom" -> l.copy(box = (l.box ?: ParaBox()).copy(bottom = odfBorder(v)).takeIf { !it.isEmpty })
@@ -1040,6 +1041,7 @@ internal object OfficePages {
         var floats = ArrayList<LaidPage.Floating>()
         var boxes = ArrayList<LaidPage.Box>(); var lines = ArrayList<LaidPage.Line>()
         var y = page.top
+        var colTop = page.top // where columns start on this page (lower, after a continuous section break)
         // Layout › Line numbers: the lines numbered so far, and this page's numbers.
         var lineNo = 0
         var lineNums = ArrayList<LaidPage.LineNumber>()
@@ -1081,10 +1083,10 @@ internal object OfficePages {
         fun newPage() {
             placeFeet()
             // In columns: the next column first (the page's pictures still stand where they are).
-            if (col + 1 < frame.columns) { col++; page = frame.column(col); y = page.top; return }
+            if (col + 1 < frame.columns) { col++; page = frame.column(col); y = colTop; return }
             bands.clear(); squares.clear(); walled.clear()
             pages += LaidPage(frame, pieces, floats, section, number, firstOfSection, boxes, lines, lineNums)
-            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); lineNums = ArrayList(); col = 0; page = frame.column(0); y = page.top; number++; firstOfSection = false
+            pieces = ArrayList(); floats = ArrayList(); boxes = ArrayList(); lines = ArrayList(); lineNums = ArrayList(); col = 0; page = frame.column(0); y = page.top; colTop = page.top; number++; firstOfSection = false
             if (section.lineNumbers?.restart == "newPage") lineNo = 0
             seedPage()
         }
@@ -1107,10 +1109,14 @@ internal object OfficePages {
             sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
                 if (!next.continuous) {
                     if (pieces.isNotEmpty() || floats.isNotEmpty()) breakPage()
-                    section = next; frame = next.page; col = 0; page = frame.column(0); y = page.top; firstOfSection = true
+                    section = next; frame = next.page; col = 0; page = frame.column(0); y = page.top; colTop = y; firstOfSection = true
                     if (next.lineNumbers?.restart != "continuous") lineNo = 0
                     next.pageStart?.let { number = it }
-                } else section = next
+                } else {
+                    // Continuous: on down the same page — in the new section's columns from here (not balanced).
+                    if (next.page.columns != frame.columns) { frame = frame.copy(columns = next.page.columns, columnGap = next.page.columnGap); col = 0; page = frame.column(0); colTop = y }
+                    section = next
+                }
             }
             // A table: its rows, each kept whole on a page; its heading rows again at the top of each page it goes on to.
             p.table?.let { t ->
@@ -1168,6 +1174,7 @@ internal object OfficePages {
             // style that say so (contextual spacing).
             val same = look.contextual && prevLook?.contextual == true && style == prevStyle
             if (look.pageBreakBefore && pieces.isNotEmpty()) breakPage()
+            else if (look.columnBreakBefore && y > colTop + 0.5f) newPage() // the next column (or page, from the last one)
             // Space before: not at a page's top — except the document's first paragraph, as Word and LibreOffice keep it.
             if ((pieces.isNotEmpty() || i == 0) && !same) y += look.before
             fun limitNow() = page.height - page.bottom - (if (feet.isEmpty()) 0f else feetHeight)

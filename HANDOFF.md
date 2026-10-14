@@ -52,6 +52,18 @@
 >   it outside the control; then filled from the form bar as a file's own forms are. LibreOffice reads all six as its own
 >   content controls. `ContentControlTest`. Not done: .odt (LibreOffice's `loext:content-control` is not read yet),
 >   picture controls, controls round whole paragraphs.
+> - **Column and section breaks** (item 8): Layout › Breaks › *Column break* (both kinds: Word's `w:br type="column"` run
+>   at the start of the paragraph after it — Writer's `COLUMN_BREAK` keep part, never written as pPr; LibreOffice's
+>   `fo:break-before="column"`), *Section break · next page* / *· continuous* (Word files: the paragraph before the
+>   cursor ends a section like the one it was in, the section after it gets `w:type`; the body's own sectPr changed in
+>   the package when it is the one after — `SectionBreaks`). A file's column break inside a multi-column section is
+>   **no longer copy-only**: the paragraph is split there, the part after it marked (a mid-paragraph break becomes two
+>   paragraphs on saving; Word shows them the same). In a one-column Word document a column break stays read as the page
+>   break it looks like (as before). The pages: a column break goes on in the next column (or page); a continuous
+>   section with other columns starts them where it begins on the page (not balanced). Edit names each break on its
+>   dashed line. `BreaksTest`; LibreOffice renders a title + continuous break + two columns + column break + next-page
+>   section as meant. All 318 of the user's documents read and write without error; only `04_Academic_References` is
+>   copy-only (its fields).
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

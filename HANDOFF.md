@@ -1,6 +1,7 @@
-> **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. Phase 2's Word gaps, one commit each; **none
-> checked on the phone yet** — the user tests tomorrow: walk `TEST_TREE.md` on the phone (208c8192),
-> Print layout, Mobile view off. `WriterScreen` is at the JVM's 64 KB method limit ("Method too large"): put new UI in
+> **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
+> one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
+> yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user
+> (208c8192, Print layout, Mobile view off). `WriterScreen` is at the JVM's 64 KB method limit ("Method too large"): put new UI in
 > its own composable (as `CitationBar`), not inline.
 >
 > **Done 15 Oct:**

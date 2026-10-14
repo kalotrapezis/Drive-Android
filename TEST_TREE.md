@@ -3,6 +3,14 @@
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.
 Tick each leaf; a failing one: note what you saw beside it.
 
+**First install the build** (the phone was unplugged when it was made; it is not on the phone yet):
+
+```bash
+~/Android/Sdk/platform-tools/adb -s 208c8192 install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+```
+
+Writer's log while testing: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log`.
+
 - **1. Citation tapped** (References)
   - [ ] Insert a citation; tap inside "(Smith, 2020)" → a "Citation" bar over the ribbon
   - [ ] *Edit Smith, 2020* → the source form, filled; change the year → the citation and the reference list follow

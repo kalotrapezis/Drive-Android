@@ -82,6 +82,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.magnifier
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.unit.LayoutDirection
@@ -367,14 +372,44 @@ internal object WriterBridge {
             (a.to to gap).takeIf { gap > 0f }
         }
 
+    /** Writer's look of the editor's text (fonts, the space between paragraphs, tabs); [shown] is what it was made from. */
+    class Display(val shown: AnnotatedString) : VisualTransformation {
+        // An IME update can precede the display effect. Always keep the input's length/offsets valid.
+        override fun filter(text: AnnotatedString) =
+            TransformedText(if (text.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else text, OffsetMapping.Identity)
+    }
+
     fun displayText(state: RichTextState, shown: AnnotatedString) {
         runCatching {
             state.javaClass.getMethod("setVisualTransformation\$com_mohamedrejeb_richeditor_richeditor_compose", VisualTransformation::class.java)
-                .invoke(state, VisualTransformation { typed ->
-                    // An IME update can precede the display effect. Always keep the input's length/offsets valid.
-                    TransformedText(if (typed.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else typed, OffsetMapping.Identity)
-                })
+                .invoke(state, Display(shown))
         }.onFailure { WriterLog.w("editor display", it) }
+    }
+
+    /** Whether the editor shows Writer's look now (the library puts back its own, without fonts, at every keystroke). */
+    fun showsWriters(state: RichTextState): Boolean = runCatching {
+        state.javaClass.getMethod("getVisualTransformation\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) is Display
+    }.getOrDefault(true)
+
+    /**
+     * Writer's last look [old] carried over to [now] (the editor's text a keystroke later): the letters typed take the look
+     * of those before them, removed ones take theirs away. Null when the text changed elsewhere than in one place.
+     */
+    fun carried(old: AnnotatedString, now: String): AnnotatedString? {
+        val o = old.text
+        if (o == now) return old
+        var pre = 0
+        while (pre < o.length && pre < now.length && o[pre] == now[pre]) pre++
+        var suf = 0
+        while (suf < o.length - pre && suf < now.length - pre && o[o.length - 1 - suf] == now[now.length - 1 - suf]) suf++
+        val oldEnd = o.length - suf; val delta = now.length - o.length
+        fun start(x: Int) = if (x <= pre) x else if (x >= oldEnd) x + delta else pre
+        fun end(x: Int) = if (x < pre) x else if (x >= oldEnd && (x > pre || delta > 0)) x + delta else pre
+        fun <T> moved(list: List<AnnotatedString.Range<T>>) = list.mapNotNull { r ->
+            val a = start(r.start); val z = end(r.end)
+            if (z < a || (z == a && r.end > r.start)) null else AnnotatedString.Range(r.item, a, z)
+        }
+        return runCatching { AnnotatedString(now, moved(old.spanStyles), moved(old.paragraphStyles)) }.getOrNull()
     }
 
     /** Whether a numbered item's label is not what document order gives it ("1.1." under an item that became 2.). */
@@ -1011,7 +1046,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table"), Selection("Selection") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -1035,6 +1070,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var failed by remember { mutableStateOf<String?>(null) }
     var dirty by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(WriterTab.Home) }
+    val textToolbar = remember { WriterTextToolbar() }
+    var beforeSelection by remember { mutableStateOf<WriterTab?>(null) } // the tab to go back to when the words are let go
     var message by remember { mutableStateOf<String?>(null) }
     var naming by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) } // File › Rename
@@ -1156,6 +1193,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val editorDensity = LocalDensity.current
     var editorTextWidth by remember { mutableIntStateOf(0) }
     var shownTabs by remember { mutableStateOf<List<EditorTab>>(emptyList()) }
+    // Writer's last look of the text and how many paragraphs the editor had then (not state: read while composing).
+    val lastLook = remember { arrayOfNulls<Pair<AnnotatedString, Int>>(1) }
     LaunchedEffect(loaded, state.annotatedString, documentStyles, styleEdits, onPage, WriterBridge.editorWidthSp, editorTextWidth, shownZoom) {
         if (!loaded) return@LaunchedEffect
         val doc = current()
@@ -1167,6 +1206,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (tabs != shownTabs && tabs.isNotEmpty()) WriterLog.i("editor tabs: ${tabs.size}, leaders ${tabs.count { it.leader != null }}, widths px ${tabs.take(6).joinToString { "%.0f".format(it.widthPx) }}")
         shownTabs = tabs
         WriterBridge.displayText(state, displayed)
+        lastLook[0] = displayed to state.annotatedString.paragraphStyles.size
     }
 
     // Undo for what Writer changes itself (a style, spacing, a picture, a table, the header…): the editor's own undo
@@ -1984,6 +2024,42 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
         WriterLog.i("font $name on ${to - from} letters")
     }
+    fun paint(look: DocRun, sel: androidx.compose.ui.text.TextRange) {
+        change {
+            val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
+            meta = WriterBridge.painted(current(), spans, look)
+            dirty = true
+            state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        }
+        WriterLog.i("format painted on ${sel.max - sel.min} letters")
+    }
+    /** Selection › Copy formatting: kept here, for Paste formatting (also on other words, later). */
+    var copiedLook by remember { mutableStateOf<DocRun?>(null) }
+    // Words chosen: the Selection tab comes up (Android's floating menu is Writer's own); let go, the tab before it is back.
+    LaunchedEffect(Unit) {
+        snapshotFlow { (!state.selection.collapsed || textToolbar.shown) && selectedPicture == null && cellEdit == null }.collect { chosen ->
+            if (chosen && tab != WriterTab.Selection) { beforeSelection = tab; tab = WriterTab.Selection; WriterLog.i("selection tab: ${state.selection}") }
+            else if (!chosen && tab == WriterTab.Selection) { tab = beforeSelection ?: WriterTab.Home; beforeSelection = null }
+        }
+    }
+    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager }
+    fun chosenText() = state.selection.let { sel -> state.annotatedString.text.substring(sel.min.coerceAtMost(state.annotatedString.length), sel.max.coerceAtMost(state.annotatedString.length)) }
+    fun copyChosen(cutToo: Boolean) {
+        val viaEditor = if (cutToo) textToolbar.cut else textToolbar.copy
+        val letters = state.selection.length
+        if (viaEditor != null) viaEditor() else {
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Writer", chosenText()))
+            if (cutToo) state.replaceSelectedText("")
+        }
+        WriterLog.i("${if (cutToo) "cut" else "copied"} $letters letters (${if (viaEditor != null) "with their look" else "text"})")
+    }
+    fun pastePlain() {
+        val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+        if (text.isNullOrEmpty()) { message = "Nothing copied yet"; return }
+        if (state.selection.collapsed) state.addTextAfterSelection(text) else state.replaceSelectedText(text)
+        dirty = true
+        WriterLog.i("pasted text only: ${text.length} letters")
+    }
     fun pickPainter() {
         if (painter != null) { painter = null; WriterLog.i("format painter off"); return }
         painter = runAt(state.selection.min) ?: run { message = "Put the cursor in the words whose look to copy"; null }
@@ -1995,13 +2071,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         snapshotFlow { state.selection }.collectLatest { sel ->
             if (sel.collapsed) return@collectLatest
             delay(700) // still chosen: painted
-            change {
-                val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
-                meta = WriterBridge.painted(current(), spans, look)
-                dirty = true
-                state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
-            }
-            WriterLog.i("format painted on ${sel.max - sel.min} letters")
+            paint(look, sel)
             painter = null
         }
     }
@@ -2551,12 +2621,31 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
             val downScroll = rememberScrollState(); val sideScroll = rememberScrollState()
+            var handleAt by remember { mutableStateOf<Offset?>(null) } // a handle being dragged: where, on the (unscaled) page
             val densityHere = LocalDensity.current
             /** The cursor on the page (unscaled), from the last styled layout, with room around it. */
             fun cursorOnPage(): androidx.compose.ui.geometry.Rect? = editorLayout?.let { l ->
                 val at = state.selection.max.coerceIn(0, l.layoutInput.text.length)
                 with(densityHere) { l.getCursorRect(at).translate(margins.calculateLeftPadding(LayoutDirection.Ltr).toPx(), margins.calculateTopPadding().toPx())
                     .let { c -> androidx.compose.ui.geometry.Rect(c.left - 32.dp.toPx(), c.top - 16.dp.toPx(), c.right + 32.dp.toPx(), c.bottom + 16.dp.toPx()) } }
+            }
+            // The zoomed page keeps the cursor in sight at every styled layout, at once (the editor's own request came once a
+            // keystroke, from the unstyled layout, so the page fell behind the typing).
+            // Keyed on the layout alone: a handle being dragged moves the selection, and the page then jumped to its other end.
+            LaunchedEffect(editorLayout, pageScale) {
+                if (!printPhone) return@LaunchedEffect
+                val c = cursorOnPage() ?: return@LaunchedEffect
+                val padX = with(densityHere) { 10.dp.toPx() }; val padY = with(densityHere) { 8.dp.toPx() }
+                fun follow(sc: androidx.compose.foundation.ScrollState, from: Float, to: Float): Float {
+                    val view = sc.viewportSize.toFloat().takeIf { it > 0f } ?: return 0f
+                    return when { from < sc.value -> from - sc.value; to > sc.value + view -> minOf(to - sc.value - view, from - sc.value); else -> 0f }
+                }
+                val dx = follow(sideScroll, padX + c.left * pageScale, padX + c.right * pageScale)
+                val dy = follow(downScroll, padY + c.top * pageScale, padY + c.bottom * pageScale)
+                if (dx != 0f) sideScroll.scrollBy(dx)
+                if (dy != 0f) downScroll.scrollBy(dy)
+                if (dx != 0f || dy != 0f) WriterLog.i("followed the cursor: at ${state.selection.max}, on the page (${c.left.roundToInt()}, ${c.top.roundToInt()}), zoom ${"%.2f".format(pageScale)}, " +
+                    "scrolled by (${dx.roundToInt()}, ${dy.roundToInt()}) to (${sideScroll.value}, ${downScroll.value}) of (${sideScroll.maxValue}, ${downScroll.maxValue}), view ${sideScroll.viewportSize}×${downScroll.viewportSize}")
             }
             // Navigation: the heading brought near the top (the cursor alone only scrolled it just into view, under the ribbon).
             val densityNow = LocalDensity.current
@@ -2568,6 +2657,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             Box(Modifier.weight(1f).fillMaxWidth()
                 .then(if (printPhone) Modifier.pinchZoom({ pageZoom }, 1f, 5f, sideScroll, downScroll) { pageZoom = it } else Modifier)
+                // A loupe over a handle being dragged, a little above the finger (asked 14 Oct): the page's letters at a size to aim by.
+                .then(if (printPhone) Modifier.magnifier(
+                    sourceCenter = { handleAt?.let { p -> Offset(10.dp.toPx() + p.x * pageScale - sideScroll.value, 8.dp.toPx() + p.y * pageScale - downScroll.value) } ?: Offset.Unspecified },
+                    magnifierCenter = { handleAt?.let { p -> Offset(10.dp.toPx() + p.x * pageScale - sideScroll.value, 8.dp.toPx() + p.y * pageScale - downScroll.value - 44.dp.toPx()) } ?: Offset.Unspecified },
+                    zoom = (1.3f / pageScale).coerceIn(1.25f, 4f), size = androidx.compose.ui.unit.DpSize(150.dp, 48.dp), cornerRadius = 24.dp) else Modifier)
                 .verticalScroll(downScroll)
                 .then(if (printPhone) Modifier.horizontalScroll(sideScroll) else Modifier)
                 .padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -2613,28 +2707,58 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
                             var unstyled by remember { mutableStateOf(false) }
-                            val lastStyled = androidx.compose.ui.graphics.rememberGraphicsLayer()
+                            var hadFonts by remember { mutableStateOf(false) }
                             // A selected picture or table has its blue frame: the selection's shading over its (invisible,
                             // picture-tall) letter only showed as a grey block behind it.
                             val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
-                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
+                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalTextToolbar provides textToolbar,
+                                androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
                                 // Dark blue handles and shading, as Word's (asked 14 Oct: the theme's pale one hardly showed on the white page).
                                 if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(SELECTION_BLUE, Color.Transparent)
-                                else androidx.compose.foundation.text.selection.TextSelectionColors(SELECTION_BLUE, SELECTION_BLUE.copy(alpha = 0.35f))) {
+                                // The phone's page is drawn scaled and Compose puts its handles where the unscaled page would be
+                                // (far off the words): Writer draws its own there (PageHandles).
+                                else androidx.compose.foundation.text.selection.TextSelectionColors(if (printPhone) Color.Transparent else SELECTION_BLUE, SELECTION_BLUE.copy(alpha = 0.35f))) {
                             // Line heights untrimmed: Compose's default trims the first and last line's, so a one-line paragraph (an empty
                             // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
+                            // A keystroke: the library has put back its own look (no fonts, no space between paragraphs) and Writer's
+                            // comes only after the next frame — so its last look, carried over the typed letters, goes in now,
+                            // before this frame is drawn (the text jumped half a page up and back at each letter, 14 Oct).
+                            val heldText = state.annotatedString
+                            if (!WriterBridge.showsWriters(state)) lastLook[0]?.let { (look, paras) ->
+                                if (heldText.paragraphStyles.size == paras) WriterBridge.carried(look, heldText.text)?.let { WriterBridge.displayText(state, it) }
+                                    ?: WriterLog.i("look not carried: the text changed in more than one place")
+                                else WriterLog.i("look not carried: paragraphs ${paras} → ${heldText.paragraphStyles.size}")
+                            }
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = {
                                     // A keystroke can lay the text out once without its styles (the library, between the typed letter and its
-                                    // spans; every paragraph of the editor's carries a style): that layout is not the page — kept, its cursor
+                                    // spans): that layout is not the page — kept, its cursor
                                     // shook the zoomed page up, down and sideways (14 Oct).
-                                    unstyled = it.layoutInput.text.paragraphStyles.isEmpty()
-                                    if (!unstyled) { layout = it; editorLayout = it }
+                                    // Its fonts all gone (only a heading's bold is left) where the last layout had them: a new document
+                                    // with no fonts at all is never taken for it.
+                                    val fonts = it.layoutInput.text.spanStyles.any { s -> s.item.fontFamily != null }
+                                    val plain = !fonts && hadFonts && it.layoutInput.text.isNotEmpty()
+                                    if (!plain) hadFonts = fonts
+                                    if (plain && !unstyled) {
+                                        val held = state.annotatedString
+                                        WriterLog.i("unstyled layout skipped: laid out ${it.layoutInput.text.length} letters, ${it.layoutInput.text.spanStyles.size} spans (" +
+                                            it.layoutInput.text.spanStyles.take(3).joinToString { s -> "${s.start}-${s.end} w=${s.item.fontWeight?.weight} size=${s.item.fontSize}" } +
+                                            "); the editor holds ${held.length} letters, ${held.spanStyles.size} spans, ${held.spanStyles.count { s -> s.item.fontFamily != null }} with a font; same text: ${held.text == it.layoutInput.text.text}; " +
+                                            "selection ${state.selection}")
+                                    }
+                                    unstyled = plain
+                                    if (!unstyled) {
+                                        // The page's height changing under the typing is what moves the text below it.
+                                        editorLayout?.let { was -> if (was.size.height != it.size.height) WriterLog.i("edit layout: ${was.size.height} → ${it.size.height} px tall, ${was.lineCount} → ${it.lineCount} lines, cursor at ${state.selection.max}") }
+                                        layout = it; editorLayout = it
+                                    }
                                     editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
-                                // …and is not drawn either: the last styled frame stays on the screen for it (it flashed the page).
-                                modifier = Modifier.drawWithContent { if (!unstyled) lastStyled.record { this@drawWithContent.drawContent() }; drawLayer(lastStyled) }
-                                    .fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                            }
+                            if (printPhone && selectedPicture == null) layout?.let { l ->
+                                val d = LocalDensity.current
+                                PageHandles(state, l, Offset(with(d) { margins.calculateLeftPadding(LayoutDirection.Ltr).toPx() }, with(d) { margins.calculateTopPadding().toPx() }), pageScale) { handleAt = it }
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
                             layout?.let { l ->
@@ -3013,6 +3137,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
                 WriterTab.entries.filter { t -> when (t) {
+                    WriterTab.Selection -> tab == WriterTab.Selection
                     WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                     WriterTab.Table -> selectedObject?.table != null
                     else -> true
@@ -3229,6 +3354,25 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     } }
                 }, {
                     RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
+                })
+                WriterTab.Selection -> listOf({
+                    RibbonButton("Cut", w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
+                    RibbonButton("Copy", w, R.drawable.ic_copy, enabled = !state.selection.collapsed) { copyChosen(false) }
+                    RibbonButton("Paste", w, R.drawable.ic_content_paste) { textToolbar.paste?.invoke()?.also { dirty = true; WriterLog.i("pasted with its look") } ?: pastePlain() }
+                }, {
+                    RibbonButton("Paste text only", w, R.drawable.ic_content_paste) { pastePlain() }
+                    RibbonButton("Select all", w, R.drawable.ic_select_all) { textToolbar.selectAll?.invoke() ?: run { state.selection = androidx.compose.ui.text.TextRange(0, state.annotatedString.length) } }
+                }, {
+                    RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) {
+                        copiedLook = runAt(state.selection.min)
+                        message = if (copiedLook != null) "Formatting copied — choose other words, then Paste formatting" else "No formatting here to copy"
+                    }
+                    RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
+                }, {
+                    Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
+                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                    Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
+                    RibbonButton("Comment", w, R.drawable.ic_comment) { tab = WriterTab.Insert; message = "Insert › Comment puts it on these words" }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -4115,9 +4259,78 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun Modifier.followCursor(cursor: () -> androidx.compose.ui.geometry.Rect?) = this.bringIntoViewResponder(object : androidx.compose.foundation.relocation.BringIntoViewResponder {
-    override fun calculateRectForParent(localRect: androidx.compose.ui.geometry.Rect) = cursor() ?: localRect
+    override fun calculateRectForParent(localRect: androidx.compose.ui.geometry.Rect) = (cursor() ?: localRect).also { r ->
+        if (kotlin.math.abs(r.top - localRect.top) > 200f) WriterLog.i("editor asked to show (${localRect.left.roundToInt()}, ${localRect.top.roundToInt()}), the cursor is at (${r.left.roundToInt()}, ${r.top.roundToInt()}): the cursor's kept")
+    }
     override suspend fun bringChildIntoView(localRect: () -> androidx.compose.ui.geometry.Rect?) {}
 })
+
+/**
+ * Selection handles drawn on the page itself (so they scale and scroll with it): a drop with a sharp nose at each end of the
+ * chosen letters, one under the cursor; dragged, they move that end (asked 14 Oct: Compose's sat far off on the phone's
+ * scaled page, and the user wanted a pointier nose). [at]: where the text starts in this box; [scale]: the page's.
+ */
+@Composable
+private fun PageHandles(state: RichTextState, layout: TextLayoutResult, at: Offset, scale: Float, dragging: (Offset?) -> Unit) {
+    val sel = state.selection
+    val len = layout.layoutInput.text.length
+    if (len == 0 || sel.max > len) return
+    val size = with(LocalDensity.current) { 22.dp.toPx() } / scale.coerceAtLeast(0.05f)
+    val ends = if (sel.collapsed) listOf(0 to sel.min) else listOf(-1 to sel.min, 1 to sel.max)
+    ends.forEach { (side, index) ->
+        val c = layout.getCursorRect(index)
+        val nose = Offset(at.x + c.left, at.y + c.bottom)
+        // The drop hangs from its nose: to the left of the start, to the right of the end, centred under a cursor.
+        val left = when (side) { -1 -> nose.x - size; 1 -> nose.x; else -> nose.x - size / 2 }
+        val sideNow by rememberUpdatedState(side); val selNow by rememberUpdatedState(sel)
+        val layoutNow by rememberUpdatedState(layout); val startNow by rememberUpdatedState(nose - at - Offset(0f, c.height / 2))
+        var drag by remember { mutableStateOf(Offset.Zero) }
+        Box(Modifier.offset { IntOffset(left.roundToInt(), nose.y.roundToInt()) }.size(with(LocalDensity.current) { size.toDp() })
+            // Keyed on the side alone: keyed on the place too, the drag ended at the first letter it moved.
+            .pointerInput(side) {
+                detectDragGestures(onDragStart = { drag = startNow; dragging(at + drag) }, onDragEnd = { dragging(null) }, onDragCancel = { dragging(null) }) { change, by ->
+                    change.consume(); drag += by; dragging(at + drag)
+                    val to = layoutNow.getOffsetForPosition(drag)
+                    val s = selNow
+                    state.selection = when (sideNow) {
+                        -1 -> TextRange(minOf(to, s.max - 1).coerceAtLeast(0), s.max)
+                        1 -> TextRange(s.min, maxOf(to, s.min + 1))
+                        else -> TextRange(to)
+                    }
+                }
+            }
+            .drawBehind {
+                val r = size * 0.42f
+                val centre = when (side) { -1 -> Offset(size - r * 1.25f, r * 1.25f + r * 0.2f); 1 -> Offset(r * 1.25f, r * 1.25f + r * 0.2f); else -> Offset(size / 2, size - r) }
+                val tip = when (side) { -1 -> Offset(size, 0f); 1 -> Offset(0f, 0f); else -> Offset(size / 2, 0f) }
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    // The nose: from the tip to the two points where its lines touch the round part.
+                    val v = centre - tip; val dist = v.getDistance(); val a = kotlin.math.atan2(v.y, v.x); val spread = kotlin.math.asin((r / dist).coerceAtMost(1f))
+                    val t1 = tip + Offset(kotlin.math.cos(a - spread), kotlin.math.sin(a - spread)) * (dist * kotlin.math.cos(spread))
+                    val t2 = tip + Offset(kotlin.math.cos(a + spread), kotlin.math.sin(a + spread)) * (dist * kotlin.math.cos(spread))
+                    moveTo(tip.x, tip.y); lineTo(t1.x, t1.y); lineTo(centre.x, centre.y); lineTo(t2.x, t2.y); close()
+                }
+                drawPath(path, SELECTION_BLUE); drawCircle(SELECTION_BLUE, r, centre)
+            })
+    }
+}
+
+/**
+ * Android's floating menu over chosen words, taken over (asked 14 Oct): Writer's Selection tab shows instead, with
+ * the editor's own Cut/Copy/Paste kept here for its buttons.
+ */
+private class WriterTextToolbar : androidx.compose.ui.platform.TextToolbar {
+    var copy: (() -> Unit)? = null; var cut: (() -> Unit)? = null; var paste: (() -> Unit)? = null; var selectAll: (() -> Unit)? = null
+    var shown by mutableStateOf(false); private set
+    override val status get() = if (shown) androidx.compose.ui.platform.TextToolbarStatus.Shown else androidx.compose.ui.platform.TextToolbarStatus.Hidden
+    override fun showMenu(rect: androidx.compose.ui.geometry.Rect, onCopyRequested: (() -> Unit)?, onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?, onSelectAllRequested: (() -> Unit)?) {
+        onCopyRequested?.let { copy = it }; onCutRequested?.let { cut = it }; onPasteRequested?.let { paste = it }; onSelectAllRequested?.let { selectAll = it }
+        if (!shown) WriterLog.i("text menu asked: " + listOfNotNull("copy".takeIf { onCopyRequested != null }, "cut".takeIf { onCutRequested != null }, "paste".takeIf { onPasteRequested != null }, "select all".takeIf { onSelectAllRequested != null }).joinToString())
+        shown = true
+    }
+    override fun hide() { shown = false }
+}
 
 private val SELECTION_BLUE = Color(0xFF0B3D91)
 

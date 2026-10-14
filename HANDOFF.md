@@ -32,6 +32,14 @@
 >   drawn piece by piece (`DocImage.group`, `GroupPart`, `GroupDrawable`; only the first piece showed before). Checked in
 >   LibreOffice (PDF of both kinds). Not done: groups in .odt (LibreOffice's draw:g), the wrap around a turned one
 >   (its unturned box), turning by dragging a handle. `ArrangeTest`.
+> - **APA abstract page and run-in headings** (item 5): Design › APA 7 paper › *Add an abstract page* (text with a
+>   word count, keywords): "Abstract" bold and centred on a new page after the title page, the abstract unindented,
+>   *Keywords:* indented (`ApaPaper.abstractPage`). APA's levels 4–5 now **run in**: applying APA turns each Heading 4/5
+>   paragraph followed by text into one indented paragraph starting with the heading bold (5: bold italic) and a period
+>   (`ApaPaper.runIn/runInAll`); Design › *APA level 4* / *APA level 5* does it for the paragraph at the cursor (the chosen
+>   words from its start, else its first sentence, or a heading line joined to the next). Direct bold/italic as APA's
+>   sample papers do, so Word and LibreOffice show it the same (not in a contents list). `ApaPaperTest`. Not done: the
+>   professional paper's running head.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

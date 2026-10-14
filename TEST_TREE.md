@@ -33,3 +33,10 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Ungroup → two again, where they were, the turned one still turned
   - [ ] Save → open on the PC in Word/LibreOffice: turned and grouped as on the phone
   - [ ] An .odt: Rotate works; Group is greyed (Word files only)
+
+- **5. APA abstract and run-in headings** (Design)
+  - [ ] A copy with headings: Design › APA 7 paper › title page + *Add an abstract page* (type a few sentences, keywords) → Apply
+  - [ ] Pages: title page, then "Abstract" page (bold centred label, unindented text, *Keywords:* line), then the text under the title again
+  - [ ] A Heading 4 line followed by text → after Apply it is one paragraph: **Heading.** text…; Heading 5 the same in bold italic
+  - [ ] Cursor in a paragraph "Short Title. Text…" → Design › APA level 4 → "Short Title." bold
+  - [ ] Choose two words at a paragraph's start → APA level 5 → they become bold italic with a period

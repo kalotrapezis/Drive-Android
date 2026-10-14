@@ -2477,7 +2477,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** Design › APA 7 paper ([ApaPaper]): styles, page number, margins, and what the page asked for; one step to undo. */
     var apaPage by remember { mutableStateOf(false) }
-    fun applyApa(clean: Boolean, title: ApaTitle?) = change {
+    fun applyApa(clean: Boolean, title: ApaTitle?, abstract: ApaAbstract? = null) = change {
         val entries = documentStyles.paragraphStyles()
         val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles) }
             .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
@@ -2485,17 +2485,36 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         documentStyles = DocStyles.of(kind, original)
         var cur = current()
         if (clean) cur = ApaPaper.clean(cur, kind)
-        if (title != null) {
-            // The title page; the text on the next page, under the title again (APA: bold, centred).
+        cur = ApaPaper.runInAll(cur) // levels 4 and 5 run into their paragraphs
+        if (title != null || abstract != null) {
+            // The title page; the abstract on a page of its own; the text on the next page, under the title again (APA: bold, centred).
             val text = cur.paras.takeUnless { it.size == 1 && it[0].text.isEmpty() && it[0].table == null } ?: listOf(DocPara(emptyList()))
-            val again = DocPara(listOf(DocRun(title.title.trim())), align = DocAlign.Center,
-                keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = entries[1].id), kind, firstLine = 0f), kind, true))
-            cur = cur.copy(paras = ApaPaper.titlePage(title, kind, entries[1].id) + again + text)
+            val again = title?.let { DocPara(listOf(DocRun(it.title.trim())), align = DocAlign.Center,
+                keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = entries[1].id), kind, firstLine = 0f), kind, true)) }
+            val body = if (again != null) listOf(again) + text
+                else if (abstract != null) listOf(text[0].copy(keep = OfficeFormats.withPageBreak(text[0].keep, kind, true))) + text.drop(1) else text
+            val abstractPage = abstract?.let { ApaPaper.abstractPage(it, kind, entries[1].id).let { pg -> if (title == null) listOf(pg[0].copy(keep = OfficeFormats.withPageBreak(pg[0].keep, kind, false))) + pg.drop(1) else pg } }.orEmpty()
+            cur = cur.copy(paras = (title?.let { ApaPaper.titlePage(it, kind, entries[1].id) }.orEmpty()) + abstractPage + body)
+            WriterLog.i("apa: title page ${title != null}, abstract ${abstract != null}")
         }
         if (Citations.find(cur, kind) != null) cur = Citations.update(cur, kind) // the references on a page of their own
         meta = cur
         dirty = true; styleEdits++; reshow()
         message = "APA 7 — shown on the pages (the eye at the top)"
+    }
+    /** Design › APA level 4 / 5: the paragraph at the cursor's heading run into it (the chosen words, from its start, if any). */
+    fun apaRunIn(level: Int) = change {
+        val t = state.annotatedString.text
+        val sel = state.selection
+        val span = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), sel.min, maxOf(sel.max, sel.min + 1)).firstOrNull()
+            ?: WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), (sel.min - 1).coerceAtLeast(0), sel.min).firstOrNull()
+            ?: run { message = "Put the cursor in the heading's paragraph"; return@change }
+        val (para, from, to) = span
+        val length = if (!sel.collapsed && from == 0 && to > 0) to else null
+        val done = ApaPaper.runIn(current(), para, level, length) ?: run { message = "Nothing here to make a heading of"; return@change }
+        meta = done; dirty = true; reshow()
+        message = "APA level $level: bold${if (level == 5) " italic" else ""}, ending in a period, the text after it on the same line"
+        WriterLog.i("apa run-in level $level at paragraph $para (${length ?: "auto"})")
     }
     /** Design › Page colour and Page borders: into the file as it will be written; shown on the pages at once. */
     fun setDesign(color: Int?, border: Border?) = change {
@@ -3631,6 +3650,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
                     RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
+                    // APA's run-in headings (levels 4 and 5): the chosen words, or the paragraph's first sentence, bold at its start.
+                    RibbonButton("APA level 4", w, enabled = loaded) { apaRunIn(4) }
+                    RibbonButton("APA level 5", w, enabled = loaded) { apaRunIn(5) }
                     // Word's Document Formatting gallery: a set of looks for Normal, Title and the headings at once.
                     Box {
                         var open by remember { mutableStateOf(false) }
@@ -3921,8 +3943,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
     )
     if (apaPage) ApaPaperDialog(remember(meta) { current().paras.any { it.text.isNotBlank() } },
-        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title ->
-        apaPage = false; applyApa(clean, title)
+        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title, abstract ->
+        apaPage = false; applyApa(clean, title, abstract)
     }
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)

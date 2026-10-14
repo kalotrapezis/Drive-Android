@@ -46,6 +46,12 @@
 >   for double); read back with their style and sides (`Border.style`, `PageBorder.sides`, also from files' own), drawn
 >   on the pages side by side in their style (`drawBorderLine`). `PageBorderTest`; checked in LibreOffice. Paragraph and
 >   table borders still draw solid (their style is now read, not drawn). Not done: art borders.
+> - **Insert › Content control** (item 7, Word files): Plain text, Rich text, Check box, Drop-down list (choices one per
+>   line), Combo box, Date picker (five formats), an optional title — Word's sdtPr with a random `w:id`, Word's own grey
+>   placeholder (`showingPlcHdr`) or ☐ (`Forms.newControl`, `ContentControlDialog`), put at the cursor with a space after
+>   it outside the control; then filled from the form bar as a file's own forms are. LibreOffice reads all six as its own
+>   content controls. `ContentControlTest`. Not done: .odt (LibreOffice's `loext:content-control` is not read yet),
+>   picture controls, controls round whole paragraphs.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

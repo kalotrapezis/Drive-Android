@@ -2171,6 +2171,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     } }
     val hereControl by remember { derivedStateOf { state.selection.min.let { at -> controlsShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
+    // Insert › Content control (Phase 2, Word's Developer tab): a new one at the cursor, its placeholder grey until filled.
+    var controlNew by remember { mutableStateOf(false) }
+    fun insertControl(newKind: Forms.New, title: String, items: List<String>, format: String) = change {
+        if (kind != OfficeKind.Docx) { message = "Content controls go in Word documents (.docx)"; return@change }
+        val (pr, shown) = Forms.newControl(newKind, title, items, format)
+        if (!state.selection.collapsed) state.removeSelectedText()
+        val start = state.selection.min
+        state.addTextAfterSelection("$shown ") // a space after it, outside: what is typed next is not in it
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + shown.length)
+        meta = WriterBridge.restyled(current(), spans) { it.copy(control = pr, color = if (newKind == Forms.New.CheckBox) it.color else 0x808080) }
+        dirty = true; reshow()
+        state.selection = androidx.compose.ui.text.TextRange(start + 1)
+        WriterLog.i("content control: ${newKind.label} \"$title\" (${items.size} items)")
+    }
     fun fillControl(old: String, pr: String, text: String) = change {
         meta = Forms.fill(current(), old, pr, text)
         dirty = true
@@ -3523,6 +3537,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
                     RibbonButton("Equation", w, R.drawable.ic_functions, enabled = loaded) { equationOpen = "" to null }
+                    RibbonButton("Content control", w, R.drawable.ic_check_box, enabled = loaded) { controlNew = true }
                 })
                 WriterTab.Selection -> listOf({
                     RibbonButton("Cut", w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
@@ -3890,6 +3905,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
     @Composable fun Dialogs() {
+    if (controlNew) ContentControlDialog({ controlNew = false }) { k, title, items, format -> controlNew = false; insertControl(k, title, items, format) }
     if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }

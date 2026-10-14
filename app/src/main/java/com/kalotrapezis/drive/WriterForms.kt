@@ -76,6 +76,28 @@ internal object Forms {
             }
         })
     }
+    /** Insert › Content control's kinds, as Word's Developer tab names them. */
+    enum class New(val label: String) { PlainText("Plain text"), RichText("Rich text"), CheckBox("Check box"), DropDown("Drop-down list"), ComboBox("Combo box"), Date("Date picker") }
+
+    /**
+     * A new content control as Word writes one: its sdtPr ([title] as its title and tag; a list's [items]; a date's
+     * [dateFormat]) and the placeholder its letters show until filled (Word's own words, grey), or the empty box.
+     */
+    fun newControl(kind: New, title: String, items: List<String> = emptyList(), dateFormat: String = "d/M/yyyy", id: Int = (Math.random() * 2_000_000_000).toInt()): Pair<String, String> {
+        fun esc(v: String) = OfficeFormats.esc(v).replace("\"", "&quot;")
+        val named = title.trim().takeIf { it.isNotEmpty() }?.let { """<w:alias w:val="${esc(it)}"/><w:tag w:val="${esc(it)}"/>""" }.orEmpty()
+        val head = "<w:sdtPr>$named<w:id w:val=\"$id\"/>"
+        fun list(tag: String) = "<w:$tag>" + items.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("") { """<w:listItem w:displayText="${esc(it)}" w:value="${esc(it)}"/>""" } + "</w:$tag>"
+        return when (kind) {
+            New.PlainText -> "$head<w:showingPlcHdr/><w:text/></w:sdtPr>" to "Click or tap here to enter text."
+            New.RichText -> "$head<w:showingPlcHdr/></w:sdtPr>" to "Click or tap here to enter text."
+            New.DropDown -> "$head<w:showingPlcHdr/>${list("dropDownList")}</w:sdtPr>" to "Choose an item."
+            New.ComboBox -> "$head<w:showingPlcHdr/>${list("comboBox")}</w:sdtPr>" to "Choose an item."
+            New.Date -> "$head<w:showingPlcHdr/><w:date><w:dateFormat w:val=\"${esc(dateFormat)}\"/><w:lid w:val=\"en-GB\"/><w:storeMappedDataAs w:val=\"dateTime\"/><w:calendar w:val=\"gregorian\"/></w:date></w:sdtPr>" to "Click or tap to enter a date."
+            New.CheckBox -> """$head<w14:checkbox xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr>""" to "☐"
+        }
+    }
+
     fun checkedTo(pr: String, on: Boolean) = pr.replace(Regex("""(<w14:checked\b[^>]*\bw14:val=")[^"]*"""), "$1${if (on) 1 else 0}")
     /** The check box's letter: its own (checkedState / uncheckedState), else Word's ☒ / ☐. */
     fun box(pr: String, on: Boolean) = tag(pr, if (on) "w14:checkedState" else "w14:uncheckedState")?.let { attr(it, "w14:val") }
@@ -121,3 +143,31 @@ internal fun FormBar(pr: String, text: String, w: Color, fill: (pr: String, text
 
 /** A plain-text control says whether it may hold more than one line (w:multiLine). */
 private fun tagOf(pr: String) = !Regex("""<w:text\b[^>]*w:multiLine="(1|true)"""").containsMatchIn(pr)
+
+/** Insert › Content control (Word's Developer tab): the kind, its title, a list's choices, a date's format. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun ContentControlDialog(dismiss: () -> Unit, insert: (Forms.New, String, List<String>, String) -> Unit) {
+    var kind by remember { mutableStateOf(Forms.New.PlainText) }
+    var title by remember { mutableStateOf("") }
+    var items by remember { mutableStateOf("") }
+    var format by remember { mutableStateOf("d/M/yyyy") }
+    val list = kind == Forms.New.DropDown || kind == Forms.New.ComboBox
+    AlertDialog(onDismissRequest = dismiss,
+        title = { Text("Content control") },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                    Forms.New.entries.forEach { k -> Choice(k.label, kind == k) { kind = k } }
+                }
+                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title (optional)") }, modifier = Modifier.fillMaxWidth())
+                if (list) OutlinedTextField(items, { items = it }, label = { Text("Choices, one per line") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                if (kind == Forms.New.Date) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                    listOf("d/M/yyyy", "dd/MM/yyyy", "d MMMM yyyy", "MMMM d, yyyy", "yyyy-MM-dd").forEach { f -> Choice(f, format == f) { format = f } }
+                }
+                Text("Filled in from the bar over the ribbon when the cursor is in it, as other forms are.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(enabled = !list || items.isNotBlank(), onClick = { insert(kind, title, items.lines(), format) }) { Text("Insert") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}

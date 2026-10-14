@@ -46,3 +46,11 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Again → Dashed, blue, Box → four dashed blue sides; Dotted shows dots
   - [ ] No border → gone
   - [ ] Save → Word/LibreOffice on the PC show the same border
+
+- **7. Content controls** (Insert, Word files)
+  - [ ] Insert › Content control → Plain text, title "Name" → grey "Click or tap here to enter text." with a blue shade; cursor in it → bar "Name" → Fill in → your name, black
+  - [ ] Check box → ☐; Tick → ☒
+  - [ ] Drop-down with three choices → Choose an item. → pick one from the bar
+  - [ ] Date picker → Choose date → the date in the chosen format
+  - [ ] Typing just after a control does not go into it
+  - [ ] Save → Word on the PC: real controls (click the check box, the drop-down arrow)

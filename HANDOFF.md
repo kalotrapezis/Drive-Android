@@ -40,6 +40,12 @@
 >   words from its start, else its first sentence, or a heading line joined to the next). Direct bold/italic as APA's
 >   sample papers do, so Word and LibreOffice show it the same (not in a contents list). `ApaPaperTest`. Not done: the
 >   professional paper's running head.
+> - **Page borders** (item 6): Design › Page borders is a dialog — line Solid / Double / Dotted / Dashed, ½–4½ pt,
+>   Word's colours, Box or any of Top / Bottom / Left / Right (`PageBorderDialog`). Written as Word's `w:pgBorders`
+>   (only the sides chosen; a double's `sz` is each line) and LibreOffice's `fo:border-<side>` (+ `style:border-line-width`
+>   for double); read back with their style and sides (`Border.style`, `PageBorder.sides`, also from files' own), drawn
+>   on the pages side by side in their style (`drawBorderLine`). `PageBorderTest`; checked in LibreOffice. Paragraph and
+>   table borders still draw solid (their style is now read, not drawn). Not done: art borders.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

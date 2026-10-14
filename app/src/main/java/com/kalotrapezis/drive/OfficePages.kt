@@ -47,7 +47,8 @@ internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9
 }
 
 /** A box round the page: its line, and how far in from each edge of the page it runs (pt). */
-internal data class PageBorder(val line: Border, val left: Float, val top: Float, val right: Float, val bottom: Float)
+internal data class PageBorder(val line: Border, val left: Float, val top: Float, val right: Float, val bottom: Float,
+    val sides: String = "tlbr" /* which sides have it: t, l, b, r (Word's and LibreOffice's borders on some sides only) */)
 
 /** How a paragraph is laid out: spacing (pt), line spacing (a multiple, or exact pt), indents (pt), its text's look. */
 internal data class ParaLook(
@@ -117,14 +118,16 @@ internal class RowSpec(val height: Float?, val exact: Boolean, val header: Boole
 internal class CellSpec(val span: Int, val merge: Char, val fill: Int?, val vAlign: Char, val margin: FloatArray, val borders: Array<Border?>,
     val turn: Int = 0 /* its text read upwards (-90, Word's btLr) or downwards (90, tbRl) */,
     val text: ParaLook? = null /* the table style's look for its text here (header bold…), under the paragraphs' own */)
-internal data class Border(val width: Float, val color: Int)
+/** [style]: Word's word for the line — single, double, dotted or dashed (LibreOffice's solid is single). */
+internal data class Border(val width: Float, val color: Int, val style: String = "single")
 
 /** A Word border (w:top, w:bottom… in eighths of a point); none when it says so. */
 internal fun wordBorder(e: Element): Border? {
     val v = e.attr(W, "val")
     if (v == null || v == "nil" || v == "none") return null
     val sz = (e.attr(W, "sz")?.toFloatOrNull() ?: 4f) / 8f
-    return Border(if (v == "double") sz * 3 else sz.coerceAtLeast(0.25f), e.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: 0)
+    val style = when { v == "double" -> "double"; v == "dotted" -> "dotted"; v.startsWith("dash") || v.startsWith("dot") -> "dashed"; else -> "single" }
+    return Border(if (v == "double") sz * 3 else sz.coerceAtLeast(0.25f), e.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) } ?: 0, style)
 }
 
 /** An OpenDocument border ("0.5pt solid #000000"); none when it says so. */
@@ -132,7 +135,8 @@ internal fun odfBorder(v: String?): Border? {
     if (v == null || v.startsWith("none") || v.startsWith("hidden")) return null
     val parts = v.trim().split(Regex("\\s+"))
     val w = parts.firstNotNullOfOrNull { odfLength(it) } ?: 0.5f
-    return Border(if ("double" in parts) w else w.coerceAtLeast(0.25f), parts.firstOrNull { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) } ?: 0)
+    val style = when { "double" in parts -> "double"; "dotted" in parts -> "dotted"; parts.any { it.startsWith("dash") || it == "dot-dash" } -> "dashed"; else -> "single" }
+    return Border(if ("double" in parts) w else w.coerceAtLeast(0.25f), parts.firstOrNull { it.startsWith("#") }?.let { OfficeFormats.parseHex(it) } ?: 0, style)
 }
 
 /**
@@ -311,8 +315,9 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             val borders = sect?.kid(W, "pgBorders")
             val line = borders?.kids()?.firstNotNullOfOrNull { wordBorder(it) }
             fun space(side: String) = borders?.kid(W, side)?.attr(W, "space")?.toFloatOrNull() ?: 0f
-            val box = line?.let { l -> if (borders.attr(W, "offsetFrom") == "page") PageBorder(l, space("left"), space("top"), space("right"), space("bottom"))
-                else PageBorder(l, pg.left - space("left"), pg.top - space("top"), pg.right - space("right"), pg.bottom - space("bottom")) }
+            val sides = listOf("top" to 't', "left" to 'l', "bottom" to 'b', "right" to 'r').filter { (n, _) -> borders?.kid(W, n)?.let { wordBorder(it) } != null }.map { it.second }.joinToString("")
+            val box = line?.let { l -> if (borders.attr(W, "offsetFrom") == "page") PageBorder(l, space("left"), space("top"), space("right"), space("bottom"), sides)
+                else PageBorder(l, pg.left - space("left"), pg.top - space("top"), pg.right - space("right"), pg.bottom - space("bottom"), sides) }
             pg.copy(color = background, border = box)
         }
         val headers = HashMap(before?.headers.orEmpty()); val footers = HashMap(before?.footers.orEmpty())
@@ -604,7 +609,9 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         }
         val top = len("margin-top") ?: d.top; val bottom = len("margin-bottom") ?: d.bottom
         // A page's border stands at the margins; the text starts its padding inside it.
-        val edge = odfBorder(props?.attr(FO, "border") ?: props?.attr(FO, "border-top"))
+        val sideBorders = listOf("top" to 't', "left" to 'l', "bottom" to 'b', "right" to 'r').mapNotNull { (n, c) -> odfBorder(props?.attr(FO, "border-$n"))?.let { c to it } }
+        val edge = odfBorder(props?.attr(FO, "border")) ?: sideBorders.firstOrNull()?.second
+        val edgeSides = if (props?.attr(FO, "border") != null && edge != null) "tlbr" else sideBorders.joinToString("") { it.first.toString() }
         fun pad(side: String) = if (edge == null) 0f else len("padding-$side") ?: len("padding") ?: 0f
         section = DocSection(DocPage(len("page-width") ?: d.width, len("page-height") ?: d.height,
             top + pad("top") + band(headers["default"], "header-style", "margin-bottom"), bottom + pad("bottom") + band(footers["default"], "footer-style", "margin-top"),
@@ -613,7 +620,7 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             columnGap = odfLength(props?.kid(STYLE, "columns")?.attr(FO, "column-gap")) ?: 36f,
             color = props?.attr(FO, "background-color")?.takeIf { it.startsWith("#") }?.let { OfficeFormats.parseHex(it.removePrefix("#")) },
             // LibreOffice draws a page's border round its margins.
-            border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom) }),
+            border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom, edgeSides) }),
             headers, footers, titlePage = "first" in headers || "first" in footers,
             // LibreOffice numbers lines for the whole document (styles.xml), from page to page or on each page anew.
             lineNumbers = parts["styles.xml"]?.let { String(it, Charsets.UTF_8) }?.let { Regex("""<text:linenumbering-configuration\b[^>]*""").find(it)?.value }
@@ -816,8 +823,13 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
     fun draw(canvas: Canvas, skip: String? = null /* a float's key: left out (it is being moved) */) {
         page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
-        page.border?.let { b -> canvas.drawRect(b.left, b.top, page.width - b.right, page.height - b.bottom, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            style = android.graphics.Paint.Style.STROKE; strokeWidth = b.line.width; color = 0xFF000000.toInt() or b.line.color }) }
+        page.border?.let { b ->
+            val (l, t, r, bt) = listOf(b.left, b.top, page.width - b.right, page.height - b.bottom)
+            if ('t' in b.sides) drawBorderLine(canvas, l, t, r, t, b.line)
+            if ('b' in b.sides) drawBorderLine(canvas, l, bt, r, bt, b.line)
+            if ('l' in b.sides) drawBorderLine(canvas, l, t, l, bt, b.line)
+            if ('r' in b.sides) drawBorderLine(canvas, r, t, r, bt, b.line)
+        }
         fun floats(behind: Boolean) = floats.filter { it.behind == behind && (skip == null || it.key != skip) }.sortedBy { it.z }.forEach { it.drawAt(canvas) }
         section.watermark?.let { text ->
             // Across the text's width, turned 45° up, light grey and half see-through, behind the text (Word's look).
@@ -877,6 +889,23 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
  * box with a thin black line — and its words laid out inside it, [inset] from its sides.
  */
 /** A drawing in points drawn in a line, which counts in [scale]ths of a point. */
+/** A border's line from ([x1], [y1]) to ([x2], [y2]) — straight across or down — in its style: double as two thin lines a line apart. */
+internal fun drawBorderLine(canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, b: Border) {
+    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { style = android.graphics.Paint.Style.STROKE; color = 0xFF000000.toInt() or b.color }
+    when (b.style) {
+        "double" -> {
+            val each = b.width / 3; p.strokeWidth = each
+            val (dx, dy) = if (y1 == y2) 0f to each else each to 0f
+            canvas.drawLine(x1 - dx, y1 - dy, x2 - dx, y2 - dy, p); canvas.drawLine(x1 + dx, y1 + dy, x2 + dx, y2 + dy, p)
+            return
+        }
+        "dotted" -> { p.strokeCap = android.graphics.Paint.Cap.ROUND; p.pathEffect = android.graphics.DashPathEffect(floatArrayOf(0.01f, b.width * 2), 0f) }
+        "dashed" -> p.pathEffect = android.graphics.DashPathEffect(floatArrayOf(b.width * 4, b.width * 2.5f), 0f)
+    }
+    p.strokeWidth = b.width
+    canvas.drawLine(x1, y1, x2, y2, p)
+}
+
 /** [picture] in [x], [y], [w] × [h] (points), turned [turn] degrees clockwise about its middle. */
 internal fun drawTurned(canvas: Canvas, picture: android.graphics.drawable.Drawable, x: Float, y: Float, w: Float, h: Float, turn: Float) {
     if (turn != 0f) { canvas.save(); canvas.rotate(turn, x + w / 2, y + h / 2) }

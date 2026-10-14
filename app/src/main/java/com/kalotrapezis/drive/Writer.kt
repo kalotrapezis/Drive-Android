@@ -2516,10 +2516,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = "APA level $level: bold${if (level == 5) " italic" else ""}, ending in a period, the text after it on the same line"
         WriterLog.i("apa run-in level $level at paragraph $para (${length ?: "auto"})")
     }
+    var pageBordering by remember { mutableStateOf(false) }
     /** Design › Page colour and Page borders: into the file as it will be written; shown on the pages at once. */
-    fun setDesign(color: Int?, border: Border?) = change {
+    fun setDesign(color: Int?, border: Border?, sides: String = sheet.border?.sides ?: "tlbr") = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
-            if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border) else PageDesign.odt(it, color, border) } }
+            if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border, sides) else PageDesign.odt(it, color, border, sides) } }
             .onFailure { WriterLog.e("design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
@@ -3697,16 +3698,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
                         setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
                     }
-                    Box {
-                        var bordering by remember { mutableStateOf(false) }
-                        RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { bordering = true }
-                        DropdownMenu(bordering, { bordering = false }) {
-                            listOf("No border" to null, "Box, thin (½ pt)" to 0.5f, "Box, medium (1½ pt)" to 1.5f, "Box, thick (3 pt)" to 3f).forEach { (label, width) ->
-                                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(if (width == null) R.drawable.ic_border_clear else R.drawable.ic_border_outer), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                                    onClick = { bordering = false; setDesign(sheet.color, width?.let { Border(it, sheet.border?.line?.color ?: 0) }) })
-                            }
-                        }
-                    }
+                    RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { pageBordering = true }
                 })
                 WriterTab.Draw -> listOf({
                     // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
@@ -3898,6 +3890,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
     @Composable fun Dialogs() {
+    if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
+        pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
+    }
     rotating?.let { key -> RotateDialog(pictures[key]?.let { Arrange.rotationOf(it) } ?: 0f, { rotating = null }) { deg -> rotating = null; rotate(key, deg) } }
     equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }
     if (naming) {

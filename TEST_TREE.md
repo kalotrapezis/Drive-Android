@@ -40,3 +40,9 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] A Heading 4 line followed by text → after Apply it is one paragraph: **Heading.** text…; Heading 5 the same in bold italic
   - [ ] Cursor in a paragraph "Short Title. Text…" → Design › APA level 4 → "Short Title." bold
   - [ ] Choose two words at a paragraph's start → APA level 5 → they become bold italic with a period
+
+- **6. Page borders** (Design)
+  - [ ] Design › Page borders → Double, 3 pt, dark red, Top + Bottom → Apply → only top and bottom, double, red on every page (View)
+  - [ ] Again → Dashed, blue, Box → four dashed blue sides; Dotted shows dots
+  - [ ] No border → gone
+  - [ ] Save → Word/LibreOffice on the PC show the same border

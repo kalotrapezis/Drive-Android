@@ -93,6 +93,9 @@
 >   pages to Android (`PdfPrintAdapter`). Checked on the tablet: Save as and Rename (then AutoSave to the renamed file);
 >   Print opens the dialog with 27 KB of pages, but the tablet's Konica Minolta print plugin crashes and cancels it — not
 >   Writer; try it on the phone.
+> - **Comments › Edit** (14 Oct): a card's Edit opens its words; `OfficeFormats.withCommentText` keeps Word's comment tag
+>   and its last paragraph's `w14:paraId` (replies and resolved hang on it), LibreOffice's author and date. Test in
+>   CommentThreadsTest; checked on the tablet.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

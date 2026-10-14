@@ -23,6 +23,13 @@ class CommentThreadsTest {
         assertEquals(back.comments.map { Triple(it.text, it.parent != null, it.done) }, again.comments.map { Triple(it.text, it.parent != null, it.done) })
         assertFalse(OfficeFormats.read(OfficeFormats.write(OfficeFormats.withDone(again, p.single().id, false), kind, bytes), kind).comments.any { it.done })
         assertEquals(emptyList<DocComment>(), OfficeFormats.withoutComment(again, p.single().id).liveComments)
+        // Its words edited (read from the file, so its own XML is what changes): still resolved, its reply still its.
+        val edited = again.copy(comments = again.comments.map { if (it.parent == null) OfficeFormats.withCommentText(it, "Which student, & why?\nSecond line") else it })
+        val e = OfficeFormats.read(OfficeFormats.write(edited, kind, bytes), kind).comments.partition { it.parent == null }
+        assertEquals(kind.name, "Which student, & why?\nSecond line", e.first.single().text)
+        assertTrue(kind.name, e.first.single().done)
+        assertEquals(kind.name, e.first.single().id to "The one from class A.", e.second.single().parent to e.second.single().text)
+        assertEquals(kind.name, "Prof K", e.first.single().author)
     }
     @Test fun `a reply and a resolved comment in a Word file`() = thread(OfficeKind.Docx)
     @Test fun `a reply and a resolved comment in an OpenDocument file`() = thread(OfficeKind.Odt)

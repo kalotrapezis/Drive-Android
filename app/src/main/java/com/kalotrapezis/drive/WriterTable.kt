@@ -582,15 +582,15 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(start) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
         } },
-        confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text("Add") } },
+        confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
@@ -651,6 +651,7 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { act.edit(c) }) { Text("Edit", color = Color(0xFF1A73E8)) }
             TextButton(onClick = { act.reply(c) }) { Text("Reply", color = Color(0xFF1A73E8)) }
             TextButton(onClick = { act.resolve(c) }) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8)) }
             TextButton(onClick = { act.delete(c) }) { Text("Delete", color = Color(0xFF1A73E8)) }
@@ -660,7 +661,7 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
 
 /** What a comment card can do: its replies, go to its words, delete it (and its replies), reply, resolve or reopen. */
 internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, val open: (DocComment) -> Unit, val delete: (DocComment) -> Unit,
-    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit)
+    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit, val edit: (DocComment) -> Unit = {})
 
 /**
  * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only

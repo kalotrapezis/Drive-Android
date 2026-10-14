@@ -1725,6 +1725,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     } }
     val hereComment by remember { derivedStateOf { state.selection.min.let { at -> commentsShown.firstOrNull { (_, r) -> at in r.first..r.last + 1 }?.first } } }
     var replyTo by remember { mutableStateOf<DocComment?>(null) }
+    var editingComment by remember { mutableStateOf<DocComment?>(null) }
     fun replyComment(parent: DocComment, author: String, text: String) = change {
         val cur = current()
         meta = OfficeFormats.withReply(cur, parent.id, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text,
@@ -1913,7 +1914,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         noteEditing = null
     }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
-    fun commentActions(open: (DocComment) -> Unit) = CommentActions({ c -> meta.comments.filter { it.parent == c.id } }, open, { deleteComment(it.id) }, { replyTo = it }, { resolveComment(it) })
+    fun commentActions(open: (DocComment) -> Unit) = CommentActions({ c -> meta.comments.filter { it.parent == c.id } }, open, { deleteComment(it.id) }, { replyTo = it }, { resolveComment(it) }, { editingComment = it })
+    /** Review: a comment's words changed (its author, date, replies and place kept). */
+    fun editComment(c: DocComment, text: String) = change {
+        val cur = current()
+        meta = cur.copy(comments = cur.comments.map { if (it.id == c.id) OfficeFormats.withCommentText(it, text) else it })
+        dirty = true; WriterLog.i("comment ${c.id} edited")
+    }
     // Review › Track changes (asked 2026-09-30): where each change is in the editor's text, and the one at the cursor.
     val changesShown by remember { derivedStateOf {
         if (!TrackChanges.any(meta)) emptyList() else {
@@ -3716,6 +3723,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         commenting = false
         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
         addComment(author, text)
+    }
+    editingComment?.let { c ->
+        NewCommentDialog(c.author, { editingComment = null }, title = "Edit comment", start = c.text, confirm = "Done") { _, text -> editingComment = null; editComment(c, text) }
     }
     replyTo?.let { parent ->
         NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { replyTo = null }, title = "Reply to " + parent.author.ifBlank { "comment" }) { author, text ->

@@ -742,6 +742,22 @@ internal object OfficeFormats {
     fun withDone(doc: OfficeDoc, id: String, done: Boolean): OfficeDoc =
         doc.copy(comments = doc.comments.map { if (it.id == id || it.parent == id) it.copy(done = done) else it })
 
+    /**
+     * A comment with its words changed (Review: Edit) and the rest kept: Word's comment keeps its own tag and its last
+     * paragraph's id (replies and "resolved" are said by it); LibreOffice's keeps its author and date.
+     */
+    fun withCommentText(c: DocComment, text: String): DocComment {
+        val raw = c.raw ?: return c.copy(text = text)
+        val lines = text.split('\n')
+        val out = if (raw.startsWith("<w:comment")) {
+            val para = Regex("""w14:paraId="([0-9A-Fa-f]+)"""").findAll(raw).lastOrNull()?.groupValues?.get(1)
+            raw.substring(0, raw.indexOf('>') + 1) + lines.mapIndexed { i, l ->
+                "<w:p${if (i == lines.lastIndex && para != null) " w14:paraId=\"$para\"" else ""}>${if (i == 0) "<w:r><w:annotationRef/></w:r>" else ""}<w:r><w:t xml:space=\"preserve\">${esc(l)}</w:t></w:r></w:p>"
+            }.joinToString("") + "</w:comment>"
+        } else raw.replace(Regex("""<text:(p|list)\b[^>]*/>|<text:(p|list)\b[\s\S]*?</text:\2>"""), "") + lines.joinToString("") { "<text:p>${esc(it)}</text:p>" }
+        return c.copy(text = text, raw = out)
+    }
+
     /** A comment taken off (its letters stay). */
     fun withoutComment(doc: OfficeDoc, id: String): OfficeDoc {
         val ids = setOf(id) + doc.comments.filter { it.parent == id }.map { it.id } // its replies go with it (Word's)

@@ -57,11 +57,18 @@
 >   (`TextEditorStore.autoSave`). `save()` reads the file from `uri` now (`currentFile()`): the long-lived draft effect
 >   must not save to the old file after Save a copy. Checked on the tablet: opening saves nothing; typing → "autosaved"
 >   in the log twice, one Version (the original bytes); Tetra test.docx restored after.
+> - **Picture watermark** (14 Oct): Design › Watermark › Picture watermark… — a phone picture (through `preparePicture`,
+>   so ≤ 2400 px) behind every page, as wide as the text, washed out. Written as each program writes its own: Word's
+>   `WordPictureWatermark` VML shape with `imagedata gain/blacklevel` (Washout) in each header, the picture in
+>   `word/media/tetra-watermark.*` with a relationship per header; LibreOffice's `draw:frame` in each page style's header,
+>   `draw:color-mode="watermark"`. Words and picture replace each other. Read back into `DocSection.watermarkPicture`;
+>   the pages draw it (`washedOut`, a colour matrix ≈ Word's). Neither kind makes a file copy-only (`Watermark.isOne`).
+>   Test: `a picture watermark is set in both kinds…`; LibreOffice renders both; on the tablet set, autosaved, View right.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
 > viewers"):**
-> 1. Phase 2 continues — picture watermark, Arrange for floating objects, chart options,
+> 1. Phase 2 continues — Arrange for floating objects, chart options,
 >    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
 > 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
 > 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width

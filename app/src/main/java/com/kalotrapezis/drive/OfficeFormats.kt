@@ -1474,7 +1474,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
-                        (0 until l.length).any { (l.item(it) as Element).getAttribute("id").startsWith(Watermark.NAME) } })) // a watermark: the pages draw it
+                        (0 until l.length).any { Watermark.isOne((l.item(it) as Element).getAttribute("id")) } })) // a watermark: the pages draw it
                     runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
                 // Fields: a citation's is kept with its letters (written again as it was); other fields' shown text is
                 // read as text and the file said to have fields (saving makes a copy).
@@ -2441,7 +2441,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                             openComments += name
                         }
                     } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
-                    else if (e.localName == "custom-shape" && e.getAttributeNS(e.namespaceURI, "name").startsWith(Watermark.NAME)) Unit // the pages draw it
+                    else if ((e.localName == "custom-shape" || e.localName == "frame") && Watermark.isOne(e.getAttributeNS(e.namespaceURI, "name"))) Unit // a watermark: the pages draw it
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))
                     else notes += "other content"
                 }

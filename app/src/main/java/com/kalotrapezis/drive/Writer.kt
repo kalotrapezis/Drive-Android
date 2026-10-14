@@ -2183,14 +2183,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = "Shown on the pages (the eye at the top)"
     }
     /** Design › Watermark: [text] across every page (null: none), into the file's headers as it will be written. */
-    fun setWatermark(text: String?) = change {
+    fun setWatermark(text: String?, picture: Watermark.Picture? = null) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
-            if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet) else Watermark.odt(it, text, sheet) } }
+            if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet, picture) else Watermark.odt(it, text, sheet, picture) } }
             .onFailure { WriterLog.e("watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = if (text == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+        message = if (text == null && picture == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+        WriterLog.i("watermark: ${text ?: picture?.let { "picture ${it.bytes.size / 1024} KB" } ?: "none"}")
+    }
+    /** Design › Watermark › Picture watermark: a picture of the phone's behind every page, washed out (Word's way). */
+    val pickWatermark = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
+        if (picked != null) scope.launch {
+            val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
+            if (img?.bytes == null) { message = "Could not use that picture."; return@launch }
+            setWatermark(null, Watermark.Picture(img.bytes, img.extension, img.heightPt / img.widthPt))
+        }
     }
     var watermarking by remember { mutableStateOf(false) } // the custom watermark's page
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
@@ -3159,12 +3168,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Box {
                         var open by remember { mutableStateOf(false) }
                         val now = documentStyles.section.watermark
-                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null) { open = true }
+                        val picture = documentStyles.section.watermarkPicture != null
+                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture) { open = true }
                         DropdownMenu(open, { open = false }) {
                             Watermark.PRESETS.forEach { t -> DropdownMenuItem(text = { Text(t) }, trailingIcon = { if (t == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
                                 onClick = { open = false; setWatermark(t) }) }
                             DropdownMenuItem(text = { Text("Custom watermark…") }, onClick = { open = false; watermarking = true })
-                            if (now != null) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            DropdownMenuItem(text = { Text("Picture watermark…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                trailingIcon = { if (picture) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
+                                onClick = { open = false; pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                            if (now != null || picture) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
                                 onClick = { open = false; setWatermark(null) })
                         }
                     }

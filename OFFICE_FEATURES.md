@@ -162,7 +162,7 @@ one pass once the tabs' features are done.
 
 ### Design (Word's Design tab; OnlyOffice Σχεδίαση)
 - [x] APA 7 student paper (Design › APA 7 paper, asked 2026-09-30): Times New Roman 12, 1-inch margins, double spacing with no space between paragraphs, first lines 0.5 in, the page number top right, APA's heading levels 1–5 as Heading 1–5, references on a new page; optionally clears fonts/sizes/spacing set by hand and adds the title page (title, name, department & university, course, instructor, date) with the title again over the text — [ ] APA's abstract page, the professional paper (running head), Level 4–5 run-in headings
-- [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick) — [ ] a picture watermark, border styles and colours, borders on some sides only
+- [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick); a picture watermark (washed out, Word's VML imagedata / LibreOffice's frame in colour mode "watermark", 14 Oct) — [ ] border styles and colours, borders on some sides only
 - [x] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double) — the Normal style's
 - [ ] Style sets, theme colours and fonts, themes — rarely used; last
 

@@ -97,6 +97,7 @@ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.
 internal data class DocSection(val page: DocPage, val headers: Map<String, List<DocPara>> = emptyMap(), val footers: Map<String, List<DocPara>> = emptyMap(),
     val titlePage: Boolean = false, val pageStart: Int? = null, val pageFormat: String = "decimal", val continuous: Boolean = false,
     val watermark: String? = null /* Design › Watermark: its text */,
+    val watermarkPicture: ByteArray? = null /* Design › Watermark › Picture: its bytes (drawn washed out) */,
     val lineNumbers: LineNumbers? = null /* Layout › Line numbers */)
 
 /**
@@ -324,7 +325,9 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val refs = sect?.kids()?.filter { it.localName == "headerReference" }.orEmpty()
         val watermark = if (refs.isEmpty()) before?.watermark
             else refs.firstNotNullOfOrNull { r -> targets[r.attr(RELATIONSHIPS, "id")]?.let { parts[it] }?.let { Watermark.textIn(String(it, Charsets.UTF_8)) } }
-        return DocSection(page, headers, footers, watermark = watermark,
+        val watermarkPicture = if (refs.isEmpty()) before?.watermarkPicture
+            else refs.firstNotNullOfOrNull { r -> targets[r.attr(RELATIONSHIPS, "id")]?.let { Watermark.pictureIn(parts, it) } }
+        return DocSection(page, headers, footers, watermark = watermark, watermarkPicture = watermarkPicture,
             titlePage = sect?.kid(W, "titlePg")?.let { it.attr(W, "val").let { v -> v == null || v == "1" || v == "true" } } ?: false,
             pageStart = numbers?.attr(W, "start")?.toIntOrNull(), pageFormat = numbers?.attr(W, "fmt") ?: "decimal",
             continuous = sect?.kid(W, "type")?.attr(W, "val") == "continuous",
@@ -617,7 +620,11 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
                 ?.takeIf { "text:number-lines=\"false\"" !in it }?.let { c -> fun a(n: String) = Regex("""\s$n="([^"]*)"""").find(c)?.groupValues?.get(1)
                     LineNumbers(if (a("text:restart-on-page") == "true") "newPage" else "continuous", a("text:increment")?.toIntOrNull()?.coerceAtLeast(1) ?: 1, odfLength(a("text:offset"))) },
             watermark = master?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "custom-shape")?.let { l ->
-                (0 until l.length).map { l.item(it) as Element }.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "name").startsWith(Watermark.NAME) }?.textContent?.trim() })
+                (0 until l.length).map { l.item(it) as Element }.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "name").startsWith(Watermark.NAME) }?.textContent?.trim() },
+            watermarkPicture = master?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "frame")?.let { l ->
+                (0 until l.length).map { l.item(it) as Element }.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "name").startsWith(Watermark.PICTURE) }
+                    ?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "image")?.item(0)?.let { (it as Element).getAttributeNS("http://www.w3.org/1999/xlink", "href") }
+                    ?.let { Watermark.pictureInOdt(parts, it) } })
     }
 
     /**
@@ -821,12 +828,28 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
             canvas.drawText(text, (page.width - p.measureText(text)) / 2, page.height / 2 - (p.ascent() + p.descent()) / 2, p)
             canvas.restore()
         }
+        section.watermarkPicture?.let { bytes -> washedOut(bytes) }?.let { bmp ->
+            // Centred on the text, as wide as it (no taller), washed out (Word's Washout: its contrast and brightness).
+            val (w, h) = Watermark.pictureBox(bmp.height.toFloat() / bmp.width.coerceAtLeast(1), page)
+            val x = page.left + (page.textWidth - w) / 2; val y = page.top + (page.height - page.top - page.bottom - h) / 2
+            canvas.drawBitmap(bmp, null, android.graphics.RectF(x, y, x + w, y + h), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+        }
         floats(behind = true)
         drawParts(canvas, pieces, boxes, lines)
         for (n in lineNumbers) canvas.drawText(n.text, n.x - n.paint.measureText(n.text), n.y, n.paint)
         floats(behind = false)
     }
     companion object {
+    private val washed = java.util.WeakHashMap<ByteArray, android.graphics.Bitmap>()
+    /** A watermark picture as Word's Washout shows it (decoded once per picture). */
+    private fun washedOut(bytes: ByteArray): android.graphics.Bitmap? = synchronized(washed) { washed[bytes] } ?: runCatching {
+        val src = decodePicture(bytes, 1600) ?: return null
+        val out = android.graphics.Bitmap.createBitmap(src.width, src.height, android.graphics.Bitmap.Config.ARGB_8888)
+        // Word's gain 0.3 and black level 0.35: the colours kept at three tenths, lifted most of the way to white.
+        val m = android.graphics.ColorMatrix(floatArrayOf(0.3f, 0f, 0f, 0f, 178f, 0f, 0.3f, 0f, 0f, 178f, 0f, 0f, 0.3f, 0f, 178f, 0f, 0f, 0f, 1f, 0f))
+        Canvas(out).drawBitmap(src, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(m) })
+        out
+    }.getOrNull()?.also { synchronized(washed) { washed[bytes] = it } }
     /** Text, shading and lines, in points from the canvas's 0,0. */
     fun drawParts(canvas: Canvas, pieces: List<Piece>, boxes: List<Box>, lines: List<Line>) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)

@@ -368,6 +368,38 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a picture watermark is set in both kinds, read back, replaced by words and taken away`() {
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 1, 2, 3, 4) // the bytes are carried, not looked at
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a picture behind its text.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val page = DocStyles.of(kind, bytes).page
+            fun set(from: ByteArray, text: String?, picture: Watermark.Picture?) = OfficeFormats.zip(OfficeFormats.unzip(from).let {
+                if (kind == OfficeKind.Docx) Watermark.docx(it, text, page, picture) else Watermark.odt(it, text, page, picture) }, if (kind == OfficeKind.Odt) "mimetype" else null)
+            val pictured = set(bytes, null, Watermark.Picture(png, "png", 0.5f))
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("picture-watermark.${kind.extension}").writeBytes(pictured)
+            val styles = DocStyles.of(kind, pictured)
+            assertTrue(kind.name, styles.section.watermarkPicture?.contentEquals(png) == true)
+            assertEquals(kind.name, null, styles.section.watermark)
+            // Not a picture in the header's text, and no reason for a copy.
+            assertEquals(kind.name, false, styles.section.headers.values.flatten().any { p -> p.runs.any { it.image != null } })
+            assertEquals(kind.name, emptySet<String>(), OfficeFormats.read(pictured, kind).blocking)
+            // Words in its place: the picture goes; then none at all.
+            val worded = DocStyles.of(kind, set(pictured, "DRAFT", null)).section
+            assertEquals(kind.name, "DRAFT" to null, worded.watermark to worded.watermarkPicture)
+            assertEquals(kind.name, null, DocStyles.of(kind, set(set(pictured, null, null), null, null)).section.watermarkPicture)
+            // Set twice: one picture shape, not two.
+            val twice = set(pictured, null, Watermark.Picture(png, "png", 0.5f))
+            val shapes = OfficeFormats.unzip(twice).values.sumOf { Regex(Watermark.PICTURE + "1").findAll(String(it, Charsets.UTF_8)).count() }
+            assertEquals(kind.name, 1, shapes)
+            assertEquals(kind.name, doc.paras.single().text, OfficeFormats.read(twice, kind).paras.single().text)
+        }
+        // Its size: the text's width, no taller than the text.
+        val a4 = DocPage()
+        assertEquals(a4.textWidth, Watermark.pictureBox(0.5f, a4).first, 0.01f)
+        assertEquals(a4.height - a4.top - a4.bottom, Watermark.pictureBox(5f, a4).second, 0.01f)
+    }
+
     @Test fun `page colour and page border are set in both kinds, read back and taken away`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a colour and a box round it.")))))

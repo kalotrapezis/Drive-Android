@@ -1,4 +1,38 @@
-> **Latest — 14 October 2026.** Branch `writer-library` (pushed), all 205 unit tests pass. Newest debug build on the
+> **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
+> build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.
+>
+> **Done 14 Oct evening (phone, paper view):**
+> - **Typing no longer shakes the page.** Cause: Writer shows the text through its own VisualTransformation (`WriterBridge.Display`:
+>   fonts, the space between paragraphs, tabs); the library puts back its own (no fonts, no spacing) at every keystroke and
+>   Writer's came a frame later — text jumped half a page and back. Now, while composing, if the library's look is in
+>   (`showsWriters`), Writer's last look carried over the edit (`WriterBridge.carried`, `WriterCarriedTest`) goes in before
+>   the frame is drawn; not when the paragraph count changed (Enter: one frame may still flash). The zoomed page follows the
+>   cursor itself (`followCursor` responder + a LaunchedEffect on the styled layout); unstyled layouts are never used.
+>   MainActivity is `adjustResize` (the window slid up under the keyboard) — **other screens with text fields not checked**.
+> - **Writer's own handles** on the phone's scaled page (`PageHandles`: Compose's were placed as if unscaled, far off the
+>   words): dark blue, pointed nose, sized for the zoom, draggable; a **loupe** above the dragged handle (`Modifier.magnifier`).
+>   Selection colour dark blue (`SELECTION_BLUE`). Caret handle on a tap is Writer's too.
+> - **Selection tab** replaces Android's text menu (`WriterTextToolbar` via `LocalTextToolbar`; Compose's new context menu
+>   turned off in `MainActivity.onCreate` — `ComposeFoundationFlags.isNewContextMenuEnabled = false`, app-wide): last in the
+>   ribbon, brought into view when words are chosen or the menu is asked for, gone when let go. Cut, Copy, Paste, Paste text
+>   only, Select all, Copy/Paste formatting (`paint`, shared with Format painter), B I U.
+> - **Ribbon on the phone fits:** Home's Font/size on their own page, Borders apart, References' citations / Claude's sources /
+>   Update fields apart, View › Units labelled; the chosen tab scrolls out of the edge shade; Font is a window (`FontDialog`).
+>   Scrolling dialogs show a shade at the edge (`Modifier.shadedScroll`).
+> - **Sources:** Report, Thesis, Video (APA 7 entries; Word Report/Film, LibreOffice techreport/phdthesis/misc; the form;
+>   `TETRA_SOURCES_FORMAT.md` and the skill updated).
+> - **Files › New** (bottom island: Home / Favorites / Files / New): a dialog — Folder, a copy of each file in the hidden
+>   `<Tetra>/.templates` (none on the phone yet; the PC has `~/Tetra/Files/.templates`), and Writer's own empty Text file /
+>   Word document where `.templates` has none; chips in the kinds' colours (Word blue, text purple, folder amber) with
+>   `ic_file_word`; made in the open folder (never Trash), then opened. `DriveRules.newKinds/create`, `DriveNewTest`.
+> - Logs (memory `office-logging`): unstyled layouts skipped, layout height changes, cursor follows, text menu asks.
+>
+> **Open:** `Test-Words/Tetra test.docx` on the phone is full of test letters and lost a word earlier (cause not found;
+> not Copy) — restore it from File › Versions or the PC. Pressing Enter may still flash one frame. The rest of Phase 2
+> (citation tap-to-edit, reading mode, APA abstract page, page border styles, group/rotate, content controls) is proposed
+> as a separate session. Push `writer-library` when happy.
+>
+> **Earlier — 14 October 2026.** Branch `writer-library` (pushed), all 205 unit tests pass. Newest debug build on the
 > **tablet** (971f6b37); the **phone** (208c8192) is older (no Cross-reference, Make chart, typing shortcut) — install it. Beta 4 is published
 > (desktop + Android, 13 Oct). Read this, then THE PLAN below.
 >

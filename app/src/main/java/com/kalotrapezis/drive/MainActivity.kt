@@ -2295,9 +2295,18 @@ private fun driveItemIcon(item: DriveItem): Int = when {
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("In $where", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                kinds.forEach { k -> androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
-                    label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
-                    leadingIcon = { Icon(painterResource(if (k.extension == null) R.drawable.ic_folder else R.drawable.ic_note_add), null, Modifier.size(18.dp)) }) }
+                kinds.forEach { k ->
+                    // Each kind in its own colour and picture, as Files shows it: Word blue, text purple (asked 14 Oct).
+                    val ext = k.extension?.lowercase(Locale.ROOT)
+                    val tint = when (ext) { null -> Color(0xFFE0A030); "txt", "md" -> Category.Text.color; else -> driveExtensionColor(ext).takeIf { it != MaterialTheme.colorScheme.onSurfaceVariant } ?: Category.Text.color }
+                    val icon = when (ext) { null -> R.drawable.ic_folder; "docx", "doc", "odt" -> R.drawable.ic_file_word; "txt", "md" -> R.drawable.ic_file_text; else -> R.drawable.ic_file }
+                    androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
+                        label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
+                        leadingIcon = { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = if (kind == k) Color.White else tint) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = tint, selectedLabelColor = Color.White,
+                            containerColor = tint.copy(alpha = 0.12f), labelColor = MaterialTheme.colorScheme.onSurface),
+                        border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(enabled = true, selected = kind == k, borderColor = tint.copy(alpha = 0.5f), selectedBorderColor = tint))
+                }
             }
             OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") },
                 suffix = { kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { Text(".$it") } },
@@ -2491,7 +2500,12 @@ private fun driveSpaceColor(type: String): Color = when (type) {
 private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
     if (item.isDirectory) return folderColor?.let(::driveFolderAccent) ?: MaterialTheme.colorScheme.onSurfaceVariant
-    return when (item.file.extension.lowercase(Locale.ROOT)) {
+    return driveExtensionColor(item.file.extension)
+}
+
+/** A kind of file's colour, the same in the list and wherever its kind is named (New's choices). */
+@Composable internal fun driveExtensionColor(extension: String): Color {
+    return when (extension.lowercase(Locale.ROOT)) {
         "doc", "docx", "odt" -> Color(0xFF4F86E8)
         "xls", "xlsx", "csv" -> Color(0xFF55A96B)
         "pdf" -> Color(0xFFE3685F)

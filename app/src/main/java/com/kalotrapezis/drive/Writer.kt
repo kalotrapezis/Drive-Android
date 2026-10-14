@@ -82,6 +82,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.text.TextLayoutResult
@@ -2547,6 +2551,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
             val downScroll = rememberScrollState(); val sideScroll = rememberScrollState()
+            val densityHere = LocalDensity.current
+            /** The cursor on the page (unscaled), from the last styled layout, with room around it. */
+            fun cursorOnPage(): androidx.compose.ui.geometry.Rect? = editorLayout?.let { l ->
+                val at = state.selection.max.coerceIn(0, l.layoutInput.text.length)
+                with(densityHere) { l.getCursorRect(at).translate(margins.calculateLeftPadding(LayoutDirection.Ltr).toPx(), margins.calculateTopPadding().toPx())
+                    .let { c -> androidx.compose.ui.geometry.Rect(c.left - 32.dp.toPx(), c.top - 16.dp.toPx(), c.right + 32.dp.toPx(), c.bottom + 16.dp.toPx()) } }
+            }
             // Navigation: the heading brought near the top (the cursor alone only scrolled it just into view, under the ribbon).
             val densityNow = LocalDensity.current
             LaunchedEffect(goText) {
@@ -2594,24 +2605,36 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
-                    modifier = (if (printPhone) Modifier.scaledBy(pageScale).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
+                    modifier = (if (printPhone) Modifier.scaledBy(pageScale).followCursor { cursorOnPage() }.width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
                         else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                            var unstyled by remember { mutableStateOf(false) }
+                            val lastStyled = androidx.compose.ui.graphics.rememberGraphicsLayer()
                             // A selected picture or table has its blue frame: the selection's shading over its (invisible,
                             // picture-tall) letter only showed as a grey block behind it.
                             val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
                             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
-                                if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
+                                // Dark blue handles and shading, as Word's (asked 14 Oct: the theme's pale one hardly showed on the white page).
+                                if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(SELECTION_BLUE, Color.Transparent)
+                                else androidx.compose.foundation.text.selection.TextSelectionColors(SELECTION_BLUE, SELECTION_BLUE.copy(alpha = 0.35f))) {
                             // Line heights untrimmed: Compose's default trims the first and last line's, so a one-line paragraph (an empty
                             // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
-                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it; editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = {
+                                    // A keystroke can lay the text out once without its styles (the library, between the typed letter and its
+                                    // spans; every paragraph of the editor's carries a style): that layout is not the page — kept, its cursor
+                                    // shook the zoomed page up, down and sideways (14 Oct).
+                                    unstyled = it.layoutInput.text.paragraphStyles.isEmpty()
+                                    if (!unstyled) { layout = it; editorLayout = it }
+                                    editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
+                                // …and is not drawn either: the last styled frame stays on the screen for it (it flashed the page).
+                                modifier = Modifier.drawWithContent { if (!unstyled) lastStyled.record { this@drawWithContent.drawContent() }; drawLayer(lastStyled) }
+                                    .fillMaxWidth().heightIn(min = 520.dp).padding(margins))
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
                             layout?.let { l ->
@@ -4086,6 +4109,18 @@ private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDE
 
 /** A named tool of the ribbon (Save, Heading 1…). */
 /** A sideways-scrolling row with more beyond an edge: that edge shaded, so it shows there is more (the user, 2026-10-14). */
+/**
+ * The zoomed page scrolls to [cursor] (the styled layout's) whenever the editor asks to be brought into view — not to
+ * the rectangle the editor gives, which a one-frame unstyled layout puts elsewhere.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.followCursor(cursor: () -> androidx.compose.ui.geometry.Rect?) = this.bringIntoViewResponder(object : androidx.compose.foundation.relocation.BringIntoViewResponder {
+    override fun calculateRectForParent(localRect: androidx.compose.ui.geometry.Rect) = cursor() ?: localRect
+    override suspend fun bringChildIntoView(localRect: () -> androidx.compose.ui.geometry.Rect?) {}
+})
+
+private val SELECTION_BLUE = Color(0xFF0B3D91)
+
 internal fun Modifier.scrollShade(state: androidx.compose.foundation.ScrollState): Modifier = drawWithContent {
     drawContent()
     val w = 36.dp.toPx()
@@ -4093,6 +4128,19 @@ internal fun Modifier.scrollShade(state: androidx.compose.foundation.ScrollState
     if (state.value > 0) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(shade, Color.Transparent), 0f, w), size = androidx.compose.ui.geometry.Size(w, size.height))
     if (state.value < state.maxValue) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, shade), size.width - w, size.width),
         topLeft = androidx.compose.ui.geometry.Offset(size.width - w, 0f), size = androidx.compose.ui.geometry.Size(w, size.height))
+}
+
+/** A dialog's scrolling column: a shade at the top or bottom edge while there is more that way (asked 14 Oct). */
+internal fun Modifier.shadedScroll(): Modifier = composed {
+    val sc = rememberScrollState()
+    val bg = MaterialTheme.colorScheme.surfaceContainerHigh // AlertDialog's own colour
+    drawWithContent {
+        drawContent()
+        val h = 28.dp.toPx()
+        if (sc.value > 0) drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(bg, Color.Transparent), 0f, h), size = androidx.compose.ui.geometry.Size(size.width, h))
+        if (sc.value < sc.maxValue) drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, bg), size.height - h, size.height),
+            topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width, h))
+    }.verticalScroll(sc)
 }
 
 /** [outlined]: a thin border, for a button that is a word (Font's name) and would otherwise read as a label. */
@@ -4269,7 +4317,7 @@ private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () 
                     androidx.compose.material3.FilterChip(selected = how == k, onClick = { how = k }, label = { Text(label) }) }
             }
             if (captions.isEmpty()) Text("No captions yet: References › Caption puts one under a picture or table.", style = MaterialTheme.typography.bodyMedium)
-            Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.heightIn(max = 320.dp).shadedScroll()) {
                 captions.forEach { (i, text) -> Text(text.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
                     modifier = Modifier.fillMaxWidth().clickable { insert(i, how) }.padding(vertical = 10.dp)) }
             }
@@ -4312,7 +4360,7 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
                 if (shown == null) {
                     Text(if (entries.isEmpty()) "None yet. Writer keeps a copy every few minutes while you work, and the file as it was before it saves over it."
                         else "Open one to see its pages. Keeping one makes it the document and deletes the others.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Column(Modifier.shadedScroll()) {
                         entries.forEach { (f, session) ->
                             Row(Modifier.fillMaxWidth().clickable { open = f }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
@@ -4348,7 +4396,7 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
 private fun FontDialog(own: List<String>, others: List<String>, now: String?, dismiss: () -> Unit, choose: (String) -> Unit) {
     AlertDialog(onDismissRequest = dismiss, title = { Text("Font") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(Modifier.shadedScroll()) {
                 @Composable fun section(title: String, names: List<String>) {
                     if (names.isEmpty()) return
                     Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))

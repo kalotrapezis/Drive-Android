@@ -113,7 +113,7 @@ internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
         title = { Text("APA 7 student paper") },
         text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Times New Roman 12 · margins of 1 inch · double spacing, no extra space between paragraphs · first lines indented 0.5 inch · " +
                     "the page number top right · APA's heading levels as Heading 1–5 · references on a new page.", style = MaterialTheme.typography.bodyMedium)
                 check("Also clear fonts, sizes and spacing set by hand", clean) { clean = it }

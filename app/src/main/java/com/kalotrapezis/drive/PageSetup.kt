@@ -151,7 +151,7 @@ internal fun PageSetupDialog(now: DocPage, dismiss: () -> Unit, apply: (DocPage)
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Page setup", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Margins") {
                         PageSetup.MARGINS.forEach { (name, m) ->
                             Choice(name, abs(p.top - m[0]) < 1f && abs(p.bottom - m[1]) < 1f && abs(p.left - m[2]) < 1f && abs(p.right - m[3]) < 1f) {

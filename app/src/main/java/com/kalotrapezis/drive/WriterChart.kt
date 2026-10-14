@@ -65,7 +65,7 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
     AlertDialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false), modifier = Modifier.widthIn(max = 720.dp).padding(12.dp),
         title = { Text(if (editing) "Edit chart" else "Chart") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.shadedScroll(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // As it will look.
                 val preview = chart()
                 Canvas(Modifier.fillMaxWidth().height(180.dp).background(Color.White)) { drawIntoCanvas { c ->

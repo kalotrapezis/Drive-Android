@@ -107,7 +107,7 @@ internal fun TablePropertiesDialog(table: DocTable, row: Int, cell: Int, dismiss
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PropTab.entries.forEach { t -> Choice(t.label, tab == t) { tab = t } }
                 }
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f).fillMaxWidth().shadedScroll(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     when (tab) {
                         PropTab.Table -> {
                             Section("Alignment on the page") {
@@ -205,7 +205,7 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Paragraph", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Line spacing") {
                         LINE_SPACINGS.forEach { m ->
                             Choice(plain(m), draft.lineExact == null && kotlin.math.abs(draft.lineMultiple - m) < 0.01f) {
@@ -262,7 +262,7 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
             Column(Modifier.padding(20.dp)) {
                 Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
                 Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Font") {
                         (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }
                     }
@@ -329,7 +329,7 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
                 Text("Header, footer and page numbers", style = MaterialTheme.typography.titleLarge)
                 if (rich) Text("This document's header or footer has more than a line of text (a logo, a table…). Setting it here puts this in its place.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     OutlinedTextField(d.header, { d = d.copy(header = it.replace("\n", " ")) }, label = { Text("Header") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Section("Header stands") { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
                     OutlinedTextField(d.footer, { d = d.copy(footer = it.replace("\n", " ")) }, label = { Text("Footer") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -541,7 +541,7 @@ internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Symbol", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     SYMBOLS.forEach { (title, chars) -> Section(title) {
                         chars.codePoints().toArray().forEach { c -> val s = String(Character.toChars(c))
                             Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { insert(s) },
@@ -722,7 +722,7 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
                         TextButton(onClick = dismiss) { Text("Close") }
                     }
                     if (comments.isEmpty()) Text("No comments", modifier = Modifier.padding(top = 12.dp))
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.shadedScroll().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         comments.forEach { c -> CommentCard(c, c == here, act) }
                     }
                 }
@@ -744,7 +744,7 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Shapes", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
                         Choice("None", chosen == null) { set(null) }
                         colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c))

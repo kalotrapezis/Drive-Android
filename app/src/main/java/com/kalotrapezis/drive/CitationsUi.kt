@@ -65,7 +65,7 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), // a form half filled is not lost to a stray tap
         title = { Text(if (start == null) "New source" else "Edit source") },
         text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DocSource.Type.entries.forEach { t -> Choice(t.label, type == t) { type = t } }
                 }
@@ -117,7 +117,7 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
         onDismissRequest = dismiss,
         title = { Text("Insert citation") },
         text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     fun pick(on: Boolean) { if (!on) chosen -= s.tag else { if (!multiple) chosen.clear(); chosen += s.tag } }
@@ -146,7 +146,7 @@ internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss
         onDismissRequest = dismiss,
         title = { Text("Sources") },
         text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {

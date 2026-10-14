@@ -43,7 +43,7 @@ internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, d
                 Text("Styles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
                 // On white, as on the page: a style's own colour shows as it will print.
                 Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f, fill = false).padding(12.dp)) {
-                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+                Column(Modifier.fillMaxWidth().shadedScroll().padding(vertical = 4.dp)) {
                     styles.paragraphStyles().forEach { entry ->
                         val look = styles.look(DocPara(emptyList(), heading = entry.heading, keep = entry.id?.let { DocKeep(style = it) }))
                         val on = entry == here

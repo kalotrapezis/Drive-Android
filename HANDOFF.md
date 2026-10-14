@@ -77,23 +77,17 @@ citation to edit it; more source kinds (report, thesis, video); APA abstract pag
 watermark; page border styles; Arrange for floating objects (forward/backward, align, group, rotate), text on both
 sides of a picture, WordArt effects, chart axis titles / data labels / scatter; Insert › content controls (Developer).
 
-**Reference managers — Zotero, Mendeley, Consensus (asked 2026-10-14: "these are the big ones").** Bring a library's
-references into Writer's Sources (`DocSource`, References › Sources) so citations and the APA list come from it, nothing
-retyped. In order:
-1. **Import a file** (References › Sources › Import): **RIS** and **BibTeX** (all three export them — Zotero: File ›
-   Export Library; Mendeley: Export; Consensus: export of saved papers), plus **CSL-JSON** (Zotero's richest). Map
-   type (article, book, chapter, thesis, report, web page), authors, year, title, journal/volume/issue/pages, DOI, URL,
-   publisher, edition. Pick which to add; duplicates by DOI or title + year. Pure parsers with unit tests on real exports.
-2. **Zotero without a file:** Zotero's web API with the user's own key (read-only), or the desktop's `zotero.sqlite`
-   read on the PC and passed over sync — choose with the user (a key is a secret: stored like the sync token, never in
-   files or logs).
-3. **Documents written with the plugins:** Word files citing through Zotero's or Mendeley's Word add-in carry
-   `ADDIN ZOTERO_ITEM CSL_CITATION {json}` / `ADDIN CSL_CITATION {json}` fields — single-paragraph fields are already
-   kept (FIELD_CITE); next: read their JSON as sources, show them as citations, and keep `ZOTERO_BIBL` /
-   `ADDIN Mendeley Bibliography` blocks whole (today a bibliography field over paragraphs makes the file copy-only).
-   None of the user's 273 documents uses the add-ins yet (checked 14 Oct).
-4. Later, if wanted: export Writer's sources back as RIS/BibTeX; Mendeley's own API (OAuth) only if file import is not
-   enough.
+**Sources from the PDFs themselves (the user, 2026-10-14).** The user does *not* keep a reference manager — Zotero /
+Mendeley are "confusing and a waste of time"; the way they work: find papers with **Consensus**, download the **PDFs to
+the PC**, write; papers come and go, so **local** is right. So, in order:
+1. **References › Sources › From PDFs:** pick PDFs (or a folder, e.g. a course's `Έρευνα/`) and get a source for each —
+   read the PDF's own metadata and first page: DOI (then title, authors, year, journal, volume/issue/pages from the
+   text, or — only if the user agrees to go online — from doi.org), shown for a quick check before adding. Duplicates
+   by DOI or title + year. Pure extractor with unit tests on the user's own downloaded papers (copies).
+2. **Consensus's export** (RIS/BibTeX/CSV) read the same way, for when a reading list is exported rather than downloaded.
+3. Not planned unless asked: Zotero/Mendeley libraries or APIs. (Documents from others written with their Word add-ins —
+   `ADDIN ZOTERO_ITEM` / `CSL_CITATION` fields — already open and save; their bibliography block over paragraphs is
+   still copy-only.)
 
 ## Phase 3 — viewers, then SHIP
 - **Excel viewer** (the user's wishes, 30 Sep — memory `office-roadmap`): read a sheet comfortably on the phone; fuzzy

@@ -809,10 +809,8 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
     /** [key]: the picture's (DocImage.key), for Picture › Position to find it. */
     class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val key: String? = null,
-        val z: Long = 0 /* drawn over the lower ones (Word's relativeHeight, LibreOffice's z-index) */) {
-        fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) {
-            (picture as? ShapePicture)?.drawAt(canvas, x, y, w, h) ?: run { picture.setBounds(x.toInt(), y.toInt(), (x + w).toInt(), (y + h).toInt()); picture.draw(canvas) }
-        }
+        val z: Long = 0 /* drawn over the lower ones (Word's relativeHeight, LibreOffice's z-index) */, val turn: Float = 0f /* degrees clockwise, about its middle */) {
+        fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) = drawTurned(canvas, picture, x, y, w, h, turn)
     }
 
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
@@ -879,6 +877,26 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
  * box with a thin black line — and its words laid out inside it, [inset] from its sides.
  */
 /** A drawing in points drawn in a line, which counts in [scale]ths of a point. */
+/** [picture] in [x], [y], [w] × [h] (points), turned [turn] degrees clockwise about its middle. */
+internal fun drawTurned(canvas: Canvas, picture: android.graphics.drawable.Drawable, x: Float, y: Float, w: Float, h: Float, turn: Float) {
+    if (turn != 0f) { canvas.save(); canvas.rotate(turn, x + w / 2, y + h / 2) }
+    (picture as? ShapePicture)?.drawAt(canvas, x, y, w, h) ?: run { picture.setBounds(x.toInt(), y.toInt(), (x + w).toInt(), (y + h).toInt()); picture.draw(canvas) }
+    if (turn != 0f) canvas.restore()
+}
+
+/** A group's pieces, each in its place in the group's [w] × [h] box (points) and turned as it is. */
+internal class GroupDrawable(val w: Float, val h: Float, val parts: List<Pair<GroupPart, android.graphics.drawable.Drawable>>) : android.graphics.drawable.Drawable() {
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        canvas.save(); canvas.translate(b.left.toFloat(), b.top.toFloat()); canvas.scale(b.width() / w.coerceAtLeast(0.1f), b.height() / h.coerceAtLeast(0.1f))
+        for ((p, d) in parts) drawTurned(canvas, d, p.x, p.y, p.w, p.h, Arrange.rotationOf(p.img))
+        canvas.restore()
+    }
+    override fun setAlpha(alpha: Int) = Unit
+    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
+    @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+}
+
 private class InLineDrawable(val inner: android.graphics.drawable.Drawable, val scale: Float) : android.graphics.drawable.Drawable() {
     override fun draw(canvas: Canvas) {
         val b = bounds
@@ -1422,9 +1440,14 @@ internal object OfficePages {
             "top" -> if (place.fromV == "page") 0f else page.top
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
-        val picture = textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
-        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img))
+        return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes), x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
     }
+
+    /** What a floating picture, shape, text box, chart, equation or group draws (a grey box for what Writer cannot draw). */
+    fun pictureOf(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): android.graphics.drawable.Drawable =
+        img.group?.let { parts -> GroupDrawable(img.widthPt, img.heightPt, parts.map { it to pictureOf(doc, styles, it.img, pictureBytes) }) }
+            ?: img.math?.let { MathDrawable(it, doc.basePt) }
+            ?: textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
 
     /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */
     fun textBox(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): TextBoxDrawable? {
@@ -1487,7 +1510,7 @@ internal object OfficePages {
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
-                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))

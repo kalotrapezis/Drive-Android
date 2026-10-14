@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -2401,6 +2402,50 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         changePicture(key, PictureXml.placed(img, x, y, kind))
         WriterLog.i("align $key $how")
     }
+    // Arrange › Rotate, Group, Ungroup (Phase 2): any angle; two floating ones on a page made one (Word's group), and back.
+    var rotating by remember { mutableStateOf<String?>(null) }
+    var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
+    fun rotate(key: String, deg: Float) {
+        val img = pictures[key] ?: return
+        val turned = Arrange.rotated(img, deg) ?: run { message = "Just put in: a moment, then it can be rotated."; return }
+        changePicture(key, turned)
+        WriterLog.i("rotate $key to $deg°")
+    }
+    /** [runs] of the document's pictures changed by [swap] (null: taken out), the editor shown again. */
+    fun swapPictures(swap: (DocRun) -> List<DocRun>?) = change {
+        val cur = current()
+        meta = cur.copy(paras = cur.paras.map { p -> p.copy(runs = p.runs.flatMap { r -> if (r.image == null) listOf(r) else swap(r) ?: listOf(r) }) })
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
+        dirty = true; styleEdits++
+    }
+    fun groupWith(first: String, second: String) = scope.launch {
+        grouping = null
+        val a = pictures[first]; val b = pictures[second]
+        if (a?.raw == null || b?.raw == null) { message = "Just put in: a moment, then it can be grouped."; return@launch }
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val pa = laid.indexOfFirst { p -> p.floats.any { it.key == first } }; val pb = laid.indexOfFirst { p -> p.floats.any { it.key == second } }
+        if (pa < 0 || pb < 0) { message = "Both must float on the pages (Wrap text: not in line)"; return@launch }
+        if (pa != pb) { message = "Both must be on the same page"; return@launch }
+        fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
+        val g = Arrange.group(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
+            ?: run { message = "Writer cannot group these (an older kind of drawing?)"; return@launch }
+        pictures.remove(first); pictures.remove(second); pictures[g.key] = g
+        swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
+        message = "Grouped — moved, wrapped and arranged as one"
+        WriterLog.i("group $first + $second -> ${g.key}")
+    }
+    fun ungroup(key: String) = scope.launch {
+        val img = pictures[key] ?: return@launch
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
+        val pieces = Arrange.ungroup(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
+        pictures.remove(key); pieces.forEach { pictures[it.key] = it }
+        swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
+        message = "Ungrouped into ${pieces.size}"
+        WriterLog.i("ungroup $key -> ${pieces.size}")
+    }
+    // The second one tapped while grouping: joined to the first.
+    LaunchedEffect(selectedPicture?.second) { val first = grouping; val now = selectedPicture?.second; if (first != null && now != null && now != first) groupWith(first, now) }
     /** Picture › Position: the page a floating picture is on, as laid out, and its key. */
     var positioning by remember { mutableStateOf<Pair<LaidPage, String>?>(null) }
     fun position(key: String) = scope.launch {
@@ -3062,6 +3107,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 tab = WriterTab.Picture
                                             }
                                         Box(Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
+                                            .then(Arrange.rotationOf(img).takeIf { it != 0f && float != null }?.let { Modifier.rotate(it) } ?: Modifier) // turned (Arrange › Rotate)
                                             .then(if (selected) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
                                             .then(objectInput),
                                             contentAlignment = Alignment.Center) {
@@ -3069,6 +3115,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 laidTable?.first?.let { laid -> drawIntoCanvas { c ->
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
+                                                } }
+                                            } else if (img.group != null) {
+                                                // A group: its pieces, as the pages draw them.
+                                                val drawn = remember(img, documentStyles) { OfficePages.pictureOf(OfficeDoc(emptyList(), basePt = meta.basePt), documentStyles, img) { pictureBytes(it) } }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
+                                                    n.save(); n.scale(k, k); drawn.setBounds(0, 0, img.widthPt.toInt(), img.heightPt.toInt()); drawn.draw(n); n.restore()
                                                 } }
                                             } else if (img.math != null) {
                                                 // An equation: drawn as the pages draw it.
@@ -3097,7 +3150,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
-                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.group == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
                                             if (table != null && tab == WriterTab.Table) {
                                                 val from = mergeFrom?.takeIf { it.key == img.key }
@@ -3493,6 +3546,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         val floating = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine
                         RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
                         RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                        RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
+                        if (img?.group != null) RibbonButton("Ungroup", w, R.drawable.ic_group_objects, enabled = floating && kind == OfficeKind.Docx) { ungroup(key) }
+                        else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating && kind == OfficeKind.Docx, on = grouping == key) {
+                            grouping = if (grouping == key) null else key.also { message = "Now tap the other picture or shape to group with it" }
+                        }
                         Box {
                             var aligning by remember { mutableStateOf(false) }
                             RibbonButton("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating) { aligning = true }
@@ -3818,6 +3876,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
     @Composable fun Dialogs() {
+    rotating?.let { key -> RotateDialog(pictures[key]?.let { Arrange.rotationOf(it) } ?: 0f, { rotating = null }) { deg -> rotating = null; rotate(key, deg) } }
     equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }
     if (naming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }

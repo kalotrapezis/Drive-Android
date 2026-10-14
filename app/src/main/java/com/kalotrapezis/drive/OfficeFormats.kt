@@ -101,9 +101,10 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
     val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */,
     val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */,
-    val math: MathNode? = null /* an equation (Word's OMML, [raw]): what it shows, drawn by MathDrawable */) {
+    val math: MathNode? = null /* an equation (Word's OMML, [raw]): what it shows, drawn by MathDrawable */,
+    val group: List<GroupPart>? = null /* a group (Word's wpg): its pieces where they are in it, drawn one by one */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math, group)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -162,7 +163,8 @@ internal object PictureXml {
             val pageH = styled("style:horizontal-rel")?.startsWith("page") == true
             val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head || pageV) "page" else "paragraph"
             val alignH = styled("style:horizontal-pos")?.takeIf { it in setOf("center", "left", "right") }
-            return Place(if (from == "page" || pageH) "page" else "margin", odfLength(attr("svg:x")) ?: 0f, alignH, from, odfLength(attr("svg:y")) ?: 0f, null, wrap)
+            val turned = Arrange.odtTransform(head)?.second // turned: its place is in the transform
+            return Place(if (from == "page" || pageH) "page" else "margin", turned?.first ?: odfLength(attr("svg:x")) ?: 0f, alignH, from, turned?.second ?: odfLength(attr("svg:y")) ?: 0f, null, wrap)
         }
         if ("<wp:anchor" !in raw) return null
         fun axis(tag: String): Triple<String, Float?, String?> {
@@ -236,6 +238,9 @@ internal object PictureXml {
 
     /** ODF: the frame's anchor, and a graphic style of Writer's own saying how the text goes around it. */
     fun odt(xml: String, wrap: PictureWrap, onPage: Pair<Float, Float>? = null): String {
+        // Turned (Arrange › Rotate): its place is in its draw:transform — set straight, placed, turned again.
+        val turn = Arrange.odtTransform(xml.substring(0, xml.indexOf('>').coerceAtLeast(0)))?.first
+        if (turn != null) return Arrange.odtTurned(odt(Arrange.odtTurned(xml, 0f), wrap, onPage), turn)
         val end = xml.indexOf('>')
         val at = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { (x, y) -> " svg:x=\"${OdtWriter.fmt(x)}pt\" svg:y=\"${OdtWriter.fmt(y)}pt\"" } ?: ""
         // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
@@ -278,7 +283,7 @@ internal object PictureXml {
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
         val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
-        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart), wrap, file)
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart, img.look, img.math, img.group), wrap, file)
     }
 
     /**
@@ -1636,7 +1641,27 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A text box: its words (Word's own, not the older-Word copy in the fallback), for the pages to show.
         val box = (e.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } }
         val chart = (e.getElementsByTagNameNS("*", "chart").item(0) as Element?)?.getAttributeNS(R, "id")?.let { charts[it] }?.let { parts[it] }?.let { OfficeCharts.readDrawingml(it) }
-        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box, chart = chart)
+        // A group (Word's wpg): its pieces, each drawn in its place (only the first piece's picture or words showed before).
+        val group = (e.getElementsByTagNameNS("*", "wgp").item(0) as Element?)?.let { groupParts(it, w, h) }
+        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group)
+    }
+    /** A group's pieces in its box ([w] × [h] pt): pictures, shapes and text boxes, and groups inside it. */
+    fun groupParts(g: Element, w: Float, h: Float): List<GroupPart>? {
+        fun xfrm(e: Element) = e.kids().firstOrNull { it.localName.endsWith("spPr") || it.localName == "grpSpPr" }?.kids()?.firstOrNull { it.localName == "xfrm" }
+        fun num(x: Element?, kid: String, a: String) = x?.kids()?.firstOrNull { it.localName == kid }?.getAttribute(a)?.toFloatOrNull() ?: 0f
+        val gx = xfrm(g)
+        val sx = w / num(gx, "chExt", "cx").takeIf { it > 0 }.let { it ?: (w * 12700) }; val sy = h / num(gx, "chExt", "cy").takeIf { it > 0 }.let { it ?: (h * 12700) }
+        val out = ArrayList<GroupPart>()
+        for (k in g.kids().filter { it.localName in setOf("wsp", "pic", "grpSp") }) {
+            val kx = xfrm(k)
+            val x = (num(kx, "off", "x") - num(gx, "chOff", "x")) * sx; val y = (num(kx, "off", "y") - num(gx, "chOff", "y")) * sy
+            val pw = num(kx, "ext", "cx") * sx; val ph = num(kx, "ext", "cy") * sy
+            val relId = (k.getElementsByTagNameNS("*", "blip").item(0) as Element?)?.getAttributeNS(R, "embed")?.takeIf { it.isNotEmpty() }
+            val box = if (k.localName == "wsp") (k.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } } else null
+            val inner = if (k.localName == "grpSp") groupParts(k, pw, ph) else null
+            out += GroupPart(x, y, pw, ph, DocImage("f${imageCount++}", relId?.let { images[it] }, pw, ph, OfficeFormats.xml(k), box = box, group = inner))
+        }
+        return out.takeIf { it.isNotEmpty() }
     }
     var imageCount = 0
 

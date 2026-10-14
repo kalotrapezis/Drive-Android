@@ -25,3 +25,11 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Tap the equation → Picture tab → Edit equation → the linear form is there; change it → redrawn
   - [ ] Save, open on the PC in Word/LibreOffice → real equations (editable there); the file was not copied ("(copy)")
   - [ ] File › Export PDF → the equations are in the PDF
+
+- **4. Rotate, Group, Ungroup** (Picture tab, after Bring to front)
+  - [ ] Insert › Shapes two rectangles; Wrap text › In front of text on both; move one aside (Position)
+  - [ ] Rotate on one → 30° → turned in Edit and on the pages (View); 0° straightens it
+  - [ ] Group on the first, then tap the second → one object (one blue frame); Position moves both; Bring to front works
+  - [ ] Ungroup → two again, where they were, the turned one still turned
+  - [ ] Save → open on the PC in Word/LibreOffice: turned and grouped as on the phone
+  - [ ] An .odt: Rotate works; Group is greyed (Word files only)

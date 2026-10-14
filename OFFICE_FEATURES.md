@@ -132,7 +132,7 @@ one pass once the tabs' features are done.
       (the page as laid out, the text re-flowing on letting go), saved from the page's corner (Word positionH/V
       relativeFrom="page", ODT svg:x/y page-relative); **Square wrap flows the text beside it** on the pages (the side
       with more room; too little room: below it, as Word) — also beside paragraphs before its anchor (a second pass)
-      — [ ] text on both sides of a picture in the middle; forward/backward, align, group, rotate
+      ; forward/backward, align (14 Oct); rotate any angle, group / ungroup (Word) (15 Oct) — [ ] text on both sides of a picture in the middle, groups in .odt
 - [x] **Text box** (Insert › Text box, Picture › Edit text): Word's wps text box / LibreOffice's rectangle with words;
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
       editor — [ ] editing a file's text box keeps only its first words' look
@@ -173,7 +173,7 @@ one pass once the tabs' features are done.
 - [x] Page break, blank page (also on Layout) — [ ] column, section breaks
 - [ ] Line numbers, hyphenation
 - [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
-- [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct) — [ ] group, free rotation
+- [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup in Word files (15 Oct) — [ ] groups in .odt, a rotation handle
 
 ### References
 - [x] Table of contents (References: from Heading 1–3, at the cursor; Update table rewrites it in place with fresh page numbers) — written as plain paragraphs in the file's TOC 1–3 / Contents 1–3 styles with a dot leader, not a field: Word/LibreOffice show it as written — [ ] clickable entries, levels chosen

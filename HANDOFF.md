@@ -22,6 +22,16 @@
 >   display equation, else one in the line. **Picture › Edit equation** rewrites one (a file's own styling of it — fonts,
 >   colours — is not kept then). Not done: ODT's equations (MathML objects), typing inside the equation in place.
 >   `OfficeMathTest`.
+> - **Rotate, Group, Ungroup** (item 4), Picture tab › Arrange, for floating pictures, shapes and text boxes:
+>   **Rotate** any angle (slider, ±1/15/90°, typed) about the middle — Word's `a:xfrm rot`, LibreOffice's
+>   `draw:transform` (rotate + translate, the same numbers LibreOffice writes; `PictureXml.odt` keeps the transform when it
+>   re-wraps or moves one); drawn turned on the pages (`LaidPage.Floating.turn`, `drawTurned`) and in Edit (in front of /
+>   behind ones). **Group** (Word files): tap Group, then the other one — both must float on the same page; one Word
+>   `wpg:wgp` anchored on the page at their box's corner, each piece keeping its place, size and angle
+>   (`Arrange.group`). **Ungroup** puts each piece back as its own floating drawing where it was. Files' groups are now
+>   drawn piece by piece (`DocImage.group`, `GroupPart`, `GroupDrawable`; only the first piece showed before). Checked in
+>   LibreOffice (PDF of both kinds). Not done: groups in .odt (LibreOffice's draw:g), the wrap around a turned one
+>   (its unturned box), turning by dragging a handle. `ArrangeTest`.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

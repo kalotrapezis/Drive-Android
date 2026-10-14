@@ -37,11 +37,24 @@
 >   chat answer); Sources dialog: **Import sources file…**. None added twice; APA list updated at once. The skill:
 >   `skills/tetra-sources/SKILL.md` (also installed in `~/.claude/skills/`, zipped as `skills/tetra-sources.zip` for
 >   the Claude app) — change it together with the .md. Not yet tried on a device (the tablet locked); unit-tested.
+> - **Home › Multilevel** (14 Oct, afternoon): Word's three schemes — 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1. — on the
+>   list at the cursor (the whole list; its file numbering dropped for Writer's own). `OfficeDoc.numbering` holds the
+>   scheme for Writer's lists: saved in the DOCX abstractNum and the ODT list style (`display-levels`), drawn on the pages
+>   (`DocStyles.label`, shared with Word's listLabel), compound levels get a wider hanging indent. **Edit now shows "2.1."**
+>   (it showed "1." before — the theses number their sections so): `FileNumbering` keeps each level's last number (the
+>   editor numbers in document order) and, when a parent is renumbered, `WriterBridge.staleNumbers` + one reflow put the
+>   labels right ("list labels shown again" in the log; only for documents with compound levels). ODT lists' formats now
+>   reach the editor too (`OdtStyles.orderedLevels`). Test: `a multilevel scheme is saved, read back and labelled…`.
+> - **Empty list item fixed** (found on the way, older than Multilevel): Enter in any list showed the new item's number
+>   cut ("." for "3.") under a gap, and every paragraph command said "Put the cursor in a paragraph of text" there —
+>   `blockSpans` found the empty block at its number's start. Now after the number; no paragraph gap drawn after an
+>   item while it is empty. Test: `an empty list item is found after its number, not on it`. Checked on the tablet
+>   (Tetra test.docx, not saved): typing, indent, Enter, Undo, scheme change, View.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
 > viewers"):**
-> 1. Phase 2 continues — multilevel lists, AutoSave, picture watermark, Arrange for floating objects, chart options,
+> 1. Phase 2 continues — AutoSave, picture watermark, Arrange for floating objects, chart options,
 >    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
 > 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
 > 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width

@@ -195,13 +195,29 @@ private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
 
 /**
- * The editor numbers a list as the file does — "a.", "iii)", "B." — rather than always 1. 2. 3. (the pages already do).
- * shortcut: only a level's own number and what follows it ("%1.%2." shows "2."); the pages draw the whole label.
+ * The editor numbers a list as the file does — "a.", "iii)", "2.1." — rather than always 1. 2. 3. (the pages already do).
+ * The editor gives only an item's own number; it numbers in document order, so each level's last number is the
+ * parent's ("2.1."). Labels that order leaves stale (a parent renumbered) are put right by [WriterBridge.staleNumbers].
  */
-private class FileNumbering(val styles: DocStyles, val levels: List<Pair<String, String>?>) : com.mohamedrejeb.richeditor.paragraph.type.OrderedListStyleType {
-    override fun format(number: Int, listLevel: Int): String = levels.getOrNull(listLevel - 1)?.let { styles.number(number, it.first) } ?: number.toString()
-    override fun getSuffix(listLevel: Int): String = levels.getOrNull(listLevel - 1)?.second?.let { Regex("%[1-9]([^%]*)$").find(it)?.groupValues?.get(1) } ?: "."
+internal class FileNumbering(val styles: DocStyles, val levels: () -> List<Pair<String, String>?>) : com.mohamedrejeb.richeditor.paragraph.type.OrderedListStyleType {
+    val counts = IntArray(9)
+    val compound get() = levels().any { it != null && Regex("%[1-9]").findAll(it.second).count() > 1 }
+    override fun format(number: Int, listLevel: Int): String {
+        val l = (listLevel - 1).coerceIn(0, 8)
+        counts[l] = number; for (d in l + 1 until 9) counts[d] = 0
+        val all = levels()
+        val (fmt, text) = all.getOrNull(l) ?: return number.toString()
+        val head = Regex("%[1-9]").findAll(text).lastOrNull()?.let { text.substring(0, it.range.last + 1) } ?: return styles.number(number, fmt)
+        return styles.label(all.mapIndexed { i, x -> if (i == l) fmt to head else x }, l, counts) ?: number.toString()
+    }
+    override fun getSuffix(listLevel: Int): String = levels().getOrNull(listLevel - 1)?.second?.let { Regex("%[1-9]([^%]*)$").find(it)?.groupValues?.get(1) } ?: "."
 }
+/** Home › Multilevel list: Word's everyday schemes, each level's (numFmt, lvlText). */
+private val LIST_SCHEMES = listOf(
+    "1.  2.  3." to (0..8).map { "decimal" to "%${it + 1}." },
+    "1.  a.  i." to (0..8).map { listOf("decimal", "lowerLetter", "lowerRoman")[it % 3] to "%${it + 1}." },
+    "1.  1.1.  1.1.1." to (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } },
+)
 /** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
 private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
@@ -329,6 +345,8 @@ internal object WriterBridge {
         places.zipWithNext().mapNotNull { (a, b) ->
             if (a.para == b.para) return@mapNotNull null
             val p = doc.paras.getOrNull(a.para) ?: return@mapNotNull null
+            // An empty list item holds only its number: a gap of its own would split that line from its cursor.
+            if (a.from == a.to && p.list != null) return@mapNotNull null
             val next = doc.paras.getOrNull(b.para) ?: return@mapNotNull null
             val look = if (p.table == null) styles.look(p) else ParaLook()
             val after = if (next.table == null) styles.look(next) else ParaLook()
@@ -346,6 +364,21 @@ internal object WriterBridge {
                     TransformedText(if (typed.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else typed, OffsetMapping.Identity)
                 })
         }.onFailure { WriterLog.w("editor display", it) }
+    }
+
+    /** Whether a numbered item's label is not what document order gives it ("1.1." under an item that became 2.). */
+    fun staleNumbers(state: RichTextState, numbering: FileNumbering): Boolean {
+        val paras = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }
+            .onFailure { WriterLog.w("editor numbers", it) }.getOrNull() ?: return false
+        val fresh = FileNumbering(numbering.styles, numbering.levels)
+        fun get(o: Any?, name: String) = o?.javaClass?.getMethod(name)?.invoke(o) // the library's paragraph classes are internal
+        return runCatching {
+            paras.any { p ->
+                val t = get(p, "getType")?.takeIf { it.javaClass.simpleName == "OrderedList" } ?: return@any false
+                val level = get(t, "getLevel") as Int
+                (get(get(t, "getStartRichSpan"), "getText") as String).trimEnd() != (fresh.format(get(t, "getNumber") as Int, level) + fresh.getSuffix(level)).trimEnd()
+            }
+        }.onFailure { WriterLog.w("editor numbers", it) }.getOrDefault(false)
     }
 
     /** Replace only the displayed geometry; setRichTextDocument also clears typing Undo/Redo. */
@@ -724,8 +757,17 @@ internal object WriterBridge {
         rich.blocks.forEachIndexed { k, b ->
             // A picture or table is one character in the block and another on the screen.
             val needle = b.text.replace(OBJECT_MARK, EDITOR_PICTURE_CHAR)
-            val from = text.indexOf(needle, pos).takeIf { it >= 0 }
-                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return
+            // An empty list item is after its number, not on it ("" is found anywhere): its separator follows the
+            // number, which ends at a space — Writer's numbers ("2.") have none of their own, the library's ("2. ") one.
+            // shortcut: a number whose own text has a space ("Chapter 1") is passed only to that space.
+            val emptyItem = if (needle.isEmpty() && b.type is RichTextBlockType.ListItem) text.indexOf(' ', pos).takeIf { it >= 0 }?.let { sep ->
+                val next = rich.blocks.getOrNull(k + 1)
+                val nextStartsWithSpace = next == null || next.text.startsWith(' ') || (next.text.isEmpty() && next.type !is RichTextBlockType.ListItem)
+                if (text.getOrNull(sep + 1) == ' ' && !nextStartsWithSpace) sep + 1 else sep
+            } else null
+            val from = emptyItem
+                ?: text.indexOf(needle, pos).takeIf { it >= 0 }
+                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return WriterLog.w("editor block $k not found after $pos")
             each(k, from, from + b.text.length)
             pos = from + b.text.length + 1
         }
@@ -1131,6 +1173,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     // Typing after an undo: what was undone cannot come back (as in Word).
     LaunchedEffect(Unit) { snapshotFlow { state.history.canUndo }.collect { if (it) redone.clear() } }
+    // "2.1." under an item the editor just renumbered: shown again in document order (once per text, never in a loop).
+    LaunchedEffect(Unit) {
+        var relabeled: String? = null
+        snapshotFlow { state.annotatedString.text }.collect { text ->
+            val n = state.config.orderedListStyleType as? FileNumbering ?: return@collect
+            if (text == relabeled || !n.compound || !WriterBridge.staleNumbers(state, n)) return@collect
+            n.counts.fill(0)
+            WriterBridge.reflow(state, current(), pictures, documentStyles)
+            relabeled = state.annotatedString.text
+            WriterLog.i("list labels shown again")
+        }
+    }
 
     LaunchedEffect(reload) {
         loaded = false
@@ -1155,7 +1209,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         result.onSuccess { (bytes, doc, draft) ->
             original = bytes
             documentStyles = DocStyles.of(kind, bytes)
-            state.config.orderedListStyleType = FileNumbering(documentStyles, documentStyles.orderedLevels(doc.paras))
+            val fileLevels = documentStyles.orderedLevels(doc.paras)
+            state.config.orderedListStyleType = FileNumbering(documentStyles) { meta.numbering ?: fileLevels }
             pictures.clear()
             state.setRichTextDocument(WriterBridge.toEditor(doc, pictures, documentStyles))
             // What the editor shows, read back, must be what the file holds; if not, saving over it could change
@@ -1952,6 +2007,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
+    }
+    /** Home › Multilevel list: Writer's numbered lists counted as [levels] say; the list at the cursor becomes one of them. */
+    fun setNumbering(levels: List<Pair<String, String>>) {
+        if (!state.isOrderedList) state.addOrderedList()
+        chooseParagraphs { at, _ -> change {
+            val cur = current()
+            // The whole list the cursor is in, as Word changes a list rather than an item.
+            var from = at.min(); var to = at.max()
+            while (from > 0 && cur.paras[from - 1].list != null) from--
+            while (to + 1 < cur.paras.size && cur.paras[to + 1].list != null) to++
+            meta = cur.copy(numbering = levels, paras = cur.paras.mapIndexed { i, p -> if (i in from..to && p.list?.ordered == true && p.keep?.list != null) p.copy(keep = p.keep.copy(list = null)) else p })
+            dirty = true
+            state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
+            WriterLog.i("multilevel list ${levels.take(3)} on paragraphs $from..$to")
+        } }
     }
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
@@ -2864,6 +2934,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
                     Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
                     Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
+                    Box {
+                        var schemes by remember { mutableStateOf(false) }
+                        RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { schemes = true }
+                        DropdownMenu(schemes, { schemes = false }) {
+                            LIST_SCHEMES.forEach { (name, levels) -> DropdownMenuItem(text = { Text(name) }, onClick = { schemes = false; setNumbering(levels) }) }
+                        }
+                    }
                 }, {
                     listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))

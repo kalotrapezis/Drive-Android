@@ -492,6 +492,7 @@ internal data class OfficeDoc(
     val basePt: Float = 11f,
     val comments: List<DocComment> = emptyList(),
     val sources: List<DocSource> = emptyList(), // References: Word's sources part, or an ODT's bibliography marks' sources
+    val numbering: List<Pair<String, String>>? = null, // Writer's own numbered lists, each level's (numFmt, lvlText) (Home › Multilevel list); null: 1. 2. 3.
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {
@@ -1747,7 +1748,9 @@ private object DocxWriter {
                 append("""<w:abstractNum w:abstractNumId="$id"><w:multiLevelType w:val="hybridMultilevel"/>""")
                 for (l in 0..8) {
                     val indent = 720 * (l + 1)
-                    if (ordered) append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%${l + 1}."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="360"/></w:pPr></w:lvl>""")
+                    val (fmt, text) = doc.numbering?.getOrNull(l) ?: ("decimal" to "%${l + 1}.")
+                    val hanging = if (text.count { it == '%' } > 1) 360 + 144 * l else 360 // "1.1.1." needs more room than "1." (the pages: OfficePages.paragraph)
+                    if (ordered) append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="$fmt"/><w:lvlText w:val="$text"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="$hanging"/></w:pPr></w:lvl>""")
                     else append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${bulletChars[l % 3]}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="360"/></w:pPr></w:lvl>""")
                 }
                 append("</w:abstractNum>")
@@ -2555,7 +2558,11 @@ private object OdtWriter {
                 pattern.forEachIndexed { i, c ->
                     val indent = "%.3fcm".format(java.util.Locale.ROOT, 0.635 * (i + 1))
                     val props = """<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="$indent" fo:text-indent="-0.635cm" fo:margin-left="$indent"/></style:list-level-properties>"""
-                    if (c == 'n') auto.append("""<text:list-level-style-number text:level="${i + 1}" style:num-suffix="." style:num-format="1">$props</text:list-level-style-number>""")
+                    val (fmt, text) = doc.numbering?.getOrNull(i) ?: ("decimal" to "%${i + 1}.")
+                    val format = when (fmt) { "lowerLetter" -> "a"; "upperLetter" -> "A"; "lowerRoman" -> "i"; "upperRoman" -> "I"; else -> "1" }
+                    val shown = Regex("%[1-9]").findAll(text).count().coerceAtLeast(1) // "%1.%2." → two levels, joined by "." (ODF's way)
+                    val prefix = OfficeFormats.esc(text.substringBefore('%')); val suffix = OfficeFormats.esc(text.substringAfterLast('%').drop(1))
+                    if (c == 'n') auto.append("""<text:list-level-style-number text:level="${i + 1}" style:num-prefix="$prefix" style:num-suffix="$suffix" style:num-format="$format"${if (shown > 1) " text:display-levels=\"$shown\"" else ""}>$props</text:list-level-style-number>""")
                     else auto.append("""<text:list-level-style-bullet text:level="${i + 1}" text:bullet-char="${listOf("•", "◦", "▪")[i % 3]}">$props</text:list-level-style-bullet>""")
                 }
                 auto.append("</text:list-style>")

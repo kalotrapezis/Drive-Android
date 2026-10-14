@@ -208,6 +208,12 @@ internal abstract class DocStyles {
     }
     /** Word's bullets in the Symbol and Wingdings fonts are private-use characters: the bullets they draw. */
     fun bullet(text: String): String = text.map { c -> when (c) { '\uF0B7', '\uF06C' -> '•'; '\uF0A7', '\uF0FC' -> '▪'; '\uF06F' -> '◦'; '\uF0D8', '\uF0E0' -> '➢'; else -> if (c in '\uF000'..'\uF0FF') '•' else c } }.joinToString("")
+    /** A numbered item's label from Word's level texts ("%1.%2." → "2.1."), each level counted as [counts] says. */
+    fun label(levels: List<Pair<String, String>?>, level: Int, counts: IntArray): String? {
+        val (fmt, text) = levels.getOrNull(level) ?: return null
+        if (fmt == "bullet") return bullet(text)
+        return Regex("%([1-9])").replace(text) { m -> val l = m.groupValues[1].toInt() - 1; number(counts.getOrElse(l) { 1 }.coerceAtLeast(1), levels.getOrNull(l)?.first ?: "decimal") }
+    }
 
     companion object {
         fun of(kind: OfficeKind, bytes: ByteArray?): DocStyles = runCatching {
@@ -527,9 +533,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
 
     override fun listLabel(p: DocPara, counts: IntArray): String? {
         val levels = p.keep?.list?.substringBefore('|')?.let { numLevels[it] } ?: return null
-        val (fmt, text) = levels.getOrNull(p.list!!.level) ?: return null
-        if (fmt == "bullet") return bullet(text)
-        return Regex("%([1-9])").replace(text) { m -> val l = m.groupValues[1].toInt() - 1; number(counts.getOrElse(l) { 1 }.coerceAtLeast(1), levels.getOrNull(l)?.first ?: "decimal") }
+        return label(levels.asList(), p.list!!.level, counts)
     }
 
     override fun listIndent(p: DocPara): Pair<Float, Float> {
@@ -760,6 +764,15 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
         val shown = (l.attr(TEXT, "display-levels")?.toIntOrNull() ?: 1).coerceIn(1, level + 1)
         val numbers = (level - shown + 1..level).joinToString(".") { k -> number(counts[k].coerceAtLeast(1), listStyles[name to k]?.attr(STYLE, "num-format") ?: "1") }
         return (l.attr(STYLE, "num-prefix") ?: "") + numbers + (l.attr(STYLE, "num-suffix") ?: "")
+    }
+
+    // shortcut: as Word's, the first numbered list at each level speaks for the whole document.
+    override fun orderedLevels(paras: List<DocPara>): List<Pair<String, String>?> = (0..8).map { l ->
+        paras.firstNotNullOfOrNull { p -> p.list?.takeIf { it.ordered && it.level == l }?.let { p.keep?.list?.substringBefore('|') }?.let { listStyles[it to l] } }
+            ?.takeIf { it.localName != "list-level-style-bullet" }?.let { s ->
+                val shown = (s.attr(TEXT, "display-levels")?.toIntOrNull() ?: 1).coerceIn(1, l + 1)
+                (s.attr(STYLE, "num-format") ?: "1") to (s.attr(STYLE, "num-prefix") ?: "") + (l - shown + 1..l).joinToString(".") { "%${it + 1}" } + (s.attr(STYLE, "num-suffix") ?: "")
+            }
     }
 
     override fun listIndent(p: DocPara): Pair<Float, Float> {
@@ -1054,7 +1067,7 @@ internal object OfficePages {
                 for (d in list.level + 1 until 9) counters[d] = 0
             }
             val look = styles.look(p)
-            val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
+            val marker = if (list == null) null else styles.listLabel(p, counters) ?: if (list.ordered) doc.numbering?.takeIf { p.keep?.list == null }?.let { styles.label(it, list.level, counters) } ?: "${counters[list.level]}." else listOf("•", "◦", "▪")[list.level % 3]
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val drops = ArrayList<DropLetters>()
             val notesAt = ArrayList<Pair<Int, DocRun>>()
@@ -1420,7 +1433,11 @@ internal object OfficePages {
         val size = look.sizePt ?: doc.basePt
         val text = SpannableStringBuilder()
         // Indents: the list's own (a number hanging before the text), else the paragraph's.
-        val (left, first) = if (p.list != null && !look.listIndented) styles.listIndent(p).let { (l, hang) -> l to l - hang } else look.left to look.left + look.firstLine
+        val (left, first) = if (p.list != null && !look.listIndented) styles.listIndent(p).let { (l, hang) ->
+            // Writer's own "1.1.1." needs more room than "1." (as saved: OfficeFormats' hanging for a compound level).
+            val wide = p.keep?.list == null && p.list.ordered && (doc.numbering?.getOrNull(p.list.level)?.second?.count { it == '%' } ?: 0) > 1
+            l to l - if (wide) 18f + 7.2f * p.list.level else hang
+        } else look.left to look.left + look.firstLine
         if (marker != null) {
             text.append(marker).append('\t')
             // The number or bullet in the look of the paragraph's first letter (Word: its paragraph mark's).

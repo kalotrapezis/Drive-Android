@@ -89,6 +89,25 @@ class WriterBridgeTest {
         assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
     }
 
+    @Test fun `an empty list item is found after its number, not on it`() {
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), list = DocList(true, 0)),
+            DocPara(emptyList(), list = DocList(true, 0)), DocPara(emptyList(), list = DocList(false, 0)), DocPara(listOf(DocRun("end")))))))
+        val text = state.annotatedString.text
+        val rich = state.toRichTextDocument()
+        // "1. one 2.  •  end": each empty item's place is just before its separator, where the cursor stands.
+        assertEquals(listOf(3, 10, 13, 14), WriterBridge.blockPlaces(text, rich).map { it.from })
+        assertEquals(setOf(1), WriterBridge.paragraphsAt(text, rich, 10, 10))
+        assertEquals(setOf(2), WriterBridge.paragraphsAt(text, rich, 13, 13))
+        // Writer's own numbers have no space of their own ("1.one 2. end"), as the editor shows a file's lists.
+        state.config.orderedListStyleType = FileNumbering(object : DocStyles() { override fun look(p: DocPara) = ParaLook() }) { (0..8).map { "decimal" to "%${it + 1}." } }
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), list = DocList(true, 0)),
+            DocPara(emptyList(), list = DocList(true, 0)), DocPara(listOf(DocRun("end")))))))
+        val own = state.annotatedString.text
+        assertEquals("1.one 2. end", own.trimEnd())
+        assertEquals(listOf(2, 8, 9), WriterBridge.blockPlaces(own, state.toRichTextDocument()).map { it.from })
+    }
+
     @Test fun `clear formatting takes the letters' own looks off and leaves the style's`() {
         val title = DocKeep(style = "Title")
         val styles = object : DocStyles() {

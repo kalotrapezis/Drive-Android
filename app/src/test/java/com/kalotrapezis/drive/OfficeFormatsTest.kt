@@ -786,6 +786,31 @@ class OfficeFormatsTest {
         assertEquals("a)", DocStyles.of(OfficeKind.Docx, OfficeFormats.zip(saved, null)).listLabel(OfficeFormats.read(OfficeFormats.zip(saved, null), OfficeKind.Docx).paras[1], intArrayOf(1, 1)))
     }
 
+    @Test fun `a multilevel scheme is saved, read back and labelled in both formats and in the editor`() {
+        val legal = (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } }
+        val lettered = (0..8).map { listOf("decimal", "lowerLetter", "lowerRoman")[it % 3] to "%${it + 1}." }
+        fun item(t: String, level: Int) = DocPara(listOf(DocRun(t)), list = DocList(true, level))
+        val paras = listOf(item("One", 0), item("Two", 0), item("Sub", 1), item("Deep", 2))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(paras, numbering = legal), kind)
+            val back = OfficeFormats.read(bytes, kind)
+            val styles = DocStyles.of(kind, bytes)
+            assertEquals("$kind", "2.1.", styles.listLabel(back.paras[2], intArrayOf(2, 1)))
+            assertEquals("$kind", "2.1.1.", styles.listLabel(back.paras[3], intArrayOf(2, 1, 1)))
+            // The editor gives only an item's own number, in document order: the parents' come from the items before.
+            val editor = FileNumbering(styles) { styles.orderedLevels(back.paras) }
+            assertTrue("$kind", editor.compound)
+            val shown = listOf(1 to 1, 2 to 1, 1 to 2, 1 to 3).map { (n, l) -> editor.format(n, l) + editor.getSuffix(l) }
+            assertEquals("$kind", listOf("1.", "2.", "2.1.", "2.1.1."), shown)
+            val abc = OfficeFormats.write(OfficeDoc(paras, numbering = lettered), kind)
+            assertEquals("$kind", "a.", DocStyles.of(kind, abc).listLabel(OfficeFormats.read(abc, kind).paras[2], intArrayOf(2, 1)))
+            assertEquals("$kind", "i.", DocStyles.of(kind, abc).listLabel(OfficeFormats.read(abc, kind).paras[3], intArrayOf(2, 1, 1)))
+        }
+        // Without a scheme Writer's lists stay 1. 2. 3. at every level.
+        val plain = OfficeFormats.write(OfficeDoc(paras), OfficeKind.Docx)
+        assertEquals("1.", DocStyles.of(OfficeKind.Docx, plain).listLabel(OfficeFormats.read(plain, OfficeKind.Docx).paras[2], intArrayOf(2, 1)))
+    }
+
     @Test fun `a character style with no formatting of its own is no reason for a copy`() {
         val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
         val styles = String(parts.getValue("word/styles.xml"), Charsets.UTF_8)

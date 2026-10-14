@@ -18,6 +18,51 @@ internal data class DocChart(val kind: ChartKind, val title: String?, val catego
     val legend: Boolean = true)
 
 internal object OfficeCharts {
+    /**
+     * A chart of a table's numbers (asked 2026-10-14: "select a table and make it a chart, without rewriting every cell"):
+     * Word's way — the first row names the series, the first column the categories, each column of numbers a series.
+     * A header that is itself a number, or a first column of numbers, is data, not names. Null when there is nothing to draw.
+     */
+    fun fromTable(t: DocTable): DocChart? {
+        // Each cell at its column of the table's grid: a merged cell ("Total" over three) puts the next one where it belongs.
+        val rows = t.rows.map { r -> ArrayList<String>().also { out -> r.cells.forEach { c ->
+            out += c.paras.joinToString(" ") { it.text }.replace(OBJECT_MARK.toString(), "").trim()
+            repeat(TableEdit.span(c) - 1) { out += "" }
+        } } }.filter { r -> r.any { it.isNotEmpty() } }
+            // A totals row is left out: its bar would dwarf the others (the chart's own grid can take it back).
+            .filter { r -> r.firstOrNull()?.trim()?.trimEnd(':')?.lowercase() !in TOTALS }
+        if (rows.isEmpty()) return null
+        val width = rows.maxOf { it.size }
+        fun cell(r: Int, c: Int) = rows.getOrNull(r)?.getOrNull(c).orEmpty()
+        val namesRow = (1 until width).any { c -> cell(0, c).isNotEmpty() && number(cell(0, c)) == null }
+        val first = if (namesRow) 1 else 0
+        val labelsColumn = (first until rows.size).any { r -> cell(r, 0).isNotEmpty() && number(cell(r, 0)) == null }
+        val from = if (labelsColumn) 1 else 0
+        val categories = (first until rows.size).map { r -> if (labelsColumn) cell(r, 0) else "${r - first + 1}" }
+        val series = (from until width).mapNotNull { c ->
+            val values = (first until rows.size).map { r -> number(cell(r, c)) }
+            if (values.all { it == null }) null else ChartSeries(if (namesRow) cell(0, c).ifEmpty { "Series ${c - from + 1}" } else "Series ${c - from + 1}", values)
+        }
+        if (series.isEmpty() || categories.isEmpty()) return null
+        return DocChart(ChartKind.Column, null, categories, series)
+    }
+
+    private val TOTALS = setOf("total", "totals", "grand total", "sum", "σύνολο", "σύνολα", "γενικό σύνολο", "άθροισμα")
+
+    /** A cell's number as people write it: "1.234,5" (Greek), "1,234.5", "12%", "€ 30", "-4"; null for words. */
+    fun number(text: String): Double? {
+        var s = text.replace(Regex("""[\s\u00A0%€$£]"""), "")
+        if (s.isEmpty() || !Regex("""^[-+]?[\d.,]+$""").matches(s)) return null
+        val dot = s.lastIndexOf('.'); val comma = s.lastIndexOf(',')
+        s = when {
+            dot >= 0 && comma >= 0 -> if (comma > dot) s.replace(".", "").replace(',', '.') else s.replace(",", "")
+            comma >= 0 -> if (Regex("""^[-+]?\d{1,3}(,\d{3})+$""").matches(s)) s.replace(",", "") else s.replace(',', '.')
+            dot >= 0 -> if (Regex("""^[-+]?\d{1,3}(\.\d{3}){2,}$""").matches(s)) s.replace(".", "") else s
+            else -> s
+        }
+        return s.toDoubleOrNull()
+    }
+
     private const val C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
     private const val A = "http://schemas.openxmlformats.org/drawingml/2006/main"
     private const val CHART = "urn:oasis:names:tc:opendocument:xmlns:chart:1.0"

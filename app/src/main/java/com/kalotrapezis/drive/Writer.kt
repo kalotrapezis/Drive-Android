@@ -1044,8 +1044,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val selectedPicture by remember { derivedStateOf {
         val text = state.annotatedString.text
         val sel = state.selection
-        if (sel.collapsed) null else (sel.min until sel.max).firstOrNull { text.getOrNull(it) == EDITOR_PICTURE_CHAR }
-            ?.let { i -> keys.getOrNull(text.substring(0, i).count { it == EDITOR_PICTURE_CHAR })?.let { i to it } }
+        (if (sel.collapsed) null else (sel.min until sel.max).firstOrNull { text.getOrNull(it) == EDITOR_PICTURE_CHAR }
+            ?.let { i -> keys.getOrNull(text.substring(0, i).count { it == EDITOR_PICTURE_CHAR })?.let { i to it } })
+            // A cell being typed in keeps its table selected (the Table tab and Make chart): the cell's own field takes the
+            // focus, and with a physical keyboard the editor's selection then closed — the Table tab went (2026-10-14).
+            ?: cellEdit?.ref?.key?.let { key -> keys.indexOf(key).takeIf { it >= 0 }?.let { n ->
+                text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.getOrNull(n)?.let { i -> i to key } } }
     } }
     LaunchedEffect(selectedPicture) {
         if (selectedPicture == null) {
@@ -1879,6 +1883,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var wordArt by remember { mutableStateOf(false) } // Insert › WordArt: its words and colour being chosen
     /** Insert › Chart (the key null) or Picture › Edit data (a chart's key): the chart being made. */
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) }
+    var chartUnder by remember { mutableStateOf<String?>(null) } // Table › Make chart: the table (its key) the new chart goes under
     /**
      * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
      * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
@@ -2908,6 +2913,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                         RibbonButton("Cancel", w, R.drawable.ic_close) { mergeFrom = null; mergeTo = null }
                     }) else listOf({
+                        // The table's numbers as a chart under it (asked 2026-10-14), its look chosen in the chart's own dialog.
+                        RibbonButton("Make chart", w, R.drawable.ic_bar_chart, enabled = table != null) {
+                            commitCell()
+                            val key = selectedPicture?.second
+                            val made = key?.let { pictures[it]?.table }?.let { OfficeCharts.fromTable(it) }
+                            if (made == null) message = "The table has no numbers to chart." else { chartUnder = key; charting = null to made }
+                        }
+                    }, {
                         // Everyday tools on the ribbon, the rest behind ⋯ (asked 2026-09-28); three to a page, as a phone fits them.
                         RibbonButton("Row above", w, R.drawable.ic_add_row_above, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
                         RibbonButton("Row below", w, R.drawable.ic_add_row_below, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
@@ -3442,8 +3455,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     charting?.let { (key, start) ->
-        ChartDialog(start, key != null, { charting = null }) { ch ->
+        ChartDialog(start, key != null, { charting = null; chartUnder = null }) { ch ->
             charting = null
+            // From a table: a paragraph of its own right under it (a table is a paragraph "t<index>"), the table kept.
+            chartUnder?.let { tk ->
+                chartUnder = null
+                change {
+                    val cur = current()
+                    val at = (tk.removePrefix("t").toIntOrNull() ?: (cur.paras.size - 1)) + 1
+                    val w = minOf(396f, sheet.textWidth)
+                    val img = DocImage("c${System.nanoTime()}", null, w, w * 230f / 396f, chart = ch)
+                    pictures[img.key] = img
+                    meta = cur.copy(paras = cur.paras.take(at) + DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))) + cur.paras.drop(at))
+                    WriterLog.i("chart from table $tk: ${ch.series.size} series × ${ch.categories.size} categories, under paragraph ${at - 1}")
+                    dirty = true; reshow(); message = "Chart made from the table"
+                }
+                return@ChartDialog
+            }
             val old = key?.let { pictures[it] }
             if (old != null) {
                 // Written anew (Word's chart part, LibreOffice's object) where it was, as big, wrapped and placed as it was.

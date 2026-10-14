@@ -960,6 +960,21 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
 }
 
 /** Unsaved changes are kept as a file in the app's storage while typing, so closing the app never loses them. */
+/**
+ * This session's history (asked 2026-10-14: a live copy, as Word and LibreOffice keep one, gone on leaving): the working
+ * copy as it was every few minutes, the last 10, in Writer's own storage. Left behind only when Writer did not close.
+ */
+private fun sessionDir(context: Context, key: String) = File(File(context.filesDir, "writer-session"), key.hashCode().toUInt().toString())
+internal fun sessionVersions(context: Context, key: String): List<File> =
+    sessionDir(context, key).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name.substringBefore('.').toLongOrNull() ?: 0 }.orEmpty()
+private fun keepSessionCopy(context: Context, key: String, kind: OfficeKind, bytes: ByteArray) {
+    val last = sessionVersions(context, key).firstOrNull()?.name?.substringBefore('.')?.toLongOrNull() ?: 0
+    if (System.currentTimeMillis() - last < 2 * 60_000) return
+    val dir = sessionDir(context, key).apply { mkdirs() }
+    File(dir, "${System.currentTimeMillis()}.${kind.extension}").writeBytes(bytes)
+    sessionVersions(context, key).drop(10).forEach { it.delete() }
+}
+
 private fun draftFile(context: Context, key: String, kind: OfficeKind) =
     File(File(context.filesDir, "writer-drafts"), "${key.hashCode().toUInt()}.${kind.extension}")
 
@@ -1253,6 +1268,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
     LaunchedEffect(message) { message?.let { WriterLog.i("said: $it") } }
     DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
+    /**
+     * The package just written ([bytes], from [saved]) becomes the one Writer works from: a picture or shape added in
+     * Writer is in it now, so from here on it goes back as written (its own XML: Arrange, Position… work on it).
+     */
+    fun adopt(bytes: ByteArray, saved: OfficeDoc) {
+        val back = OfficeFormats.read(bytes, kind)
+        val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
+        val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
+        if (before.size == after.size) before.zip(after).forEach { (b, a) ->
+            if (pictures[b.key] === b) pictures[b.key] = a.with(key = b.key)
+        }
+        original = bytes
+        packageParts = OfficeFormats.unzip(bytes)
+        documentStyles = DocStyles.of(kind, bytes)
+        meta = meta.copy(unsupported = back.unsupported)
+    }
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
@@ -1276,12 +1307,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             delay(1500)
             val doc = recoverable()
+            val captured = editable() to styleEdits
             // Read the current URI here: this long-lived effect also survives Save a copy/first Save.
             val key = uri ?: "new"
             val source = original
-            withContext(Dispatchers.IO) { draftMutex.withLock {
-                if (dirty && key == (uri ?: "new")) runCatching { writeWriterDraft(draftFile(context, key, kind), OfficeFormats.write(doc, kind, source)) }.onFailure { WriterLog.e("draft", it) }
+            val written = withContext(Dispatchers.IO) { draftMutex.withLock {
+                if (dirty && key == (uri ?: "new")) runCatching { OfficeFormats.write(doc, kind, source).also { writeWriterDraft(draftFile(context, key, kind), it); keepSessionCopy(context, key, kind, it) } }.onFailure { WriterLog.e("draft", it) }.getOrNull() else null
             } }
+            // The working copy is the package from here on when it holds something Writer made that the file has not yet
+            // (a new picture or shape: its XML is written only in a package) — nothing waits for a Save (asked 2026-10-14).
+            if (written != null && cellEdit == null && (editable() to styleEdits) == captured && pictures.values.any { it.raw == null && it.table == null && it.chart == null }) {
+                adopt(written, doc); WriterLog.i("working copy adopted (new pictures have their XML)")
+            }
             // AutoSave: a little later, over the file itself — never a new or copy-only one (those Save asks about), nor
             // while a table cell is being typed in (the cell is not in the document until it is left).
             delay(1500)
@@ -1372,19 +1409,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val newer = editable() != saved.copy(unsupported = emptySet()) || styleEdits != savedStyleEdits
         uri = Uri.fromFile(target).toString()
         name = target.name
-        val back = OfficeFormats.read(bytes, kind)
-        // A picture added in Writer is in the file now: from here on it goes back as the file has it, not added again.
-        val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
-        val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
-        if (!newer && before.size == after.size) before.zip(after).forEach { (b, a) ->
-            if (pictures[b.key] === b) pictures[b.key] = a.with(key = b.key)
-        }
-        if (!newer) {
-            original = bytes
-            packageParts = OfficeFormats.unzip(bytes)
-            documentStyles = DocStyles.of(kind, bytes)
-            meta = meta.copy(unsupported = back.unsupported)
-        }
+        if (!newer) adopt(bytes, saved)
         // The target now holds the captured snapshot, even if the user has since typed or undone it.
         cleanDoc = if (newer) saved.copy(unsupported = emptySet()) else editable()
         cleanStyleEdits = savedStyleEdits
@@ -1524,6 +1549,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             uri = Uri.fromFile(target).toString(); name = target.name; renaming = false
             WriterLog.i("renamed to ${target.name}"); message = "Renamed ${target.name}"
         }
+    }
+    /** Versions › This session: the working copy as it was then, back in the editor (one step of Undo). */
+    fun restoreSession(copy: File) = change {
+        val bytes = runCatching { copy.readBytes() }.getOrNull() ?: return@change
+        val doc = runCatching { OfficeFormats.read(bytes, kind) }.onFailure { WriterLog.e("session copy", it) }.getOrNull() ?: run { message = "That copy could not be read."; return@change }
+        original = bytes; packageParts = OfficeFormats.unzip(bytes); documentStyles = DocStyles.of(kind, bytes)
+        pictures.clear()
+        meta = doc.copy(unsupported = meta.unsupported)
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
+        dirty = true; styleEdits++
+        message = "Back as it was then — Undo returns to now"
+        WriterLog.i("session copy ${copy.name} restored")
     }
     /** A version comes back: the document as it is now is kept as a version first, so restoring is undone the same way. */
     fun restore(version: File) {
@@ -2197,7 +2234,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val others = pictures.values.filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }.map { PictureXml.zOf(it) }
         // Word counts from about 251 million, LibreOffice from 0: below 0 the others go up one instead.
         val z = if (front) (others.maxOrNull() ?: PictureXml.zOf(img)) + 1 else (others.minOrNull() ?: PictureXml.zOf(img)) - 1
-        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = "Save the document first: then it can be arranged."; return }
+        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = "Just put in: a moment, then it can be arranged."; return }
         change {
             if (z < 0) pictures.values.toList().filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }
                 .forEach { o -> PictureXml.withZ(o, PictureXml.zOf(o) + 1)?.let { pictures[o.key] = it } }
@@ -2407,7 +2444,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             message = if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
         }
     }
-    fun leave() { commitCell(); if (dirty) leaving = true else back() }
+    /** Leaving the document: this session's history goes with it (a recovery draft stays only when Writer did not close). */
+    fun exit() {
+        // The name it was opened under too (Rename and Save as change it).
+        setOf(uri ?: "new", open ?: "new").forEach { k -> runCatching { sessionDir(context, k).deleteRecursively() } }
+        WriterLog.i("session history cleared"); back()
+    }
+    fun leave() { commitCell(); if (dirty) leaving = true else exit() }
     BackHandler { leave() }
 
     val ink = Color.Black
@@ -2957,7 +3000,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
                     RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
                     RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
-                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
+                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = loaded) { showVersions = true }
                 }, {
                     RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
                         file?.let { shareDriveFile(context, it) }
@@ -3529,11 +3572,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         onDismissRequest = { leaving = false },
         title = { Text("Save $name?") },
         text = { Text(if (meta.blocking.isNotEmpty() && file != null) "It has changes that are not saved. Saving makes a copy; the original stays as it is." else "It has changes that are not saved.") },
-        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { back() } }) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { exit() } }) { Text("Save") } },
         dismissButton = {
             Row {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
-                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); back() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
+                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); exit() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
             }
         },
     )
@@ -3836,12 +3879,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (showVersions) {
         val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }
+        val session = remember(reload, dirty) { sessionVersions(context, uri ?: "new") }
         val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
         AlertDialog(
             onDismissRequest = { showVersions = false },
             title = { Text("Versions") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // This session: the working copy every few minutes; gone when the document is closed.
+                    if (session.isNotEmpty()) {
+                        Text("This session", style = MaterialTheme.typography.titleSmall)
+                        session.forEach { v ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("As it was at " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())),
+                                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { showVersions = false; restoreSession(v) }) { Text("Bring back") }
+                            }
+                        }
+                        Text("Kept while the document is open; gone when you close it.", style = MaterialTheme.typography.bodySmall)
+                        Text("Saved", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                    }
                     Text(if (list.isEmpty()) "Writer keeps the file as it was before each save — the last 3. None yet: this document has not been saved over here."
                         else "The file as it was before each of Writer's saves. Restoring one keeps the document as it is now as a version too.", style = MaterialTheme.typography.bodySmall)
                     list.forEach { v ->

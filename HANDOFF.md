@@ -96,6 +96,13 @@
 > - **Comments › Edit** (14 Oct): a card's Edit opens its words; `OfficeFormats.withCommentText` keeps Word's comment tag
 >   and its last paragraph's `w14:paraId` (replies and resolved hang on it), LibreOffice's author and date. Test in
 >   CommentThreadsTest; checked on the tablet.
+> - **A live working copy** (14 Oct, the user: "as Word and LibreOffice do — a live copy that goes away on exit"): the
+>   recovery draft (written ~1.5 s after a change) is now also what Writer works from when it holds something new: a picture
+>   just put in gets its XML from it at once (`adopt`, shared with finishSave) — no "Save first" for Arrange/Position.
+>   **This session's history**: the working copy every 2 minutes, the last 10 (`writer-session/<key>/`), listed in
+>   Versions › This session ("Bring back" = one Undo step). Leaving the document (`exit()`: Back, Save, Don't save) clears
+>   it (both the opened and the current name); a killed app leaves the draft for recovery. Checked on the tablet with
+>   AutoSave off (a picture arranged seconds after inserting, the file untouched; Don't save removed the draft) and on.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

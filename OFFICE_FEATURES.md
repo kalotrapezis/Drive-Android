@@ -136,8 +136,8 @@ one pass once the tabs' features are done.
 - [x] **Text box** (Insert › Text box, Picture › Edit text): Word's wps text box / LibreOffice's rectangle with words;
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
       editor — [ ] editing a file's text box keeps only its first words' look
-- [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame — [ ] Word's text
-      effects (outline, shadow, glow, warp)
+- [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame; outline, shadow,
+      glow (15 Oct; glow in Word files) — [ ] warp, changing effects after
 - [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
       no per-section); drawn on the pages
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages

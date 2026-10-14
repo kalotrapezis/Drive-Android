@@ -308,27 +308,28 @@ internal object PictureXml {
      * line), or in an .odt LibreOffice's rectangle with its words in it (its look in Writer's shape style) — in line with
      * the text as made; the caller floats it. Its words are written by [boxText].
      */
-    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null): String {
+    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects()): String {
         // WordArt ([art]: its colour): no box round it, its words big and bold in that colour, on one line.
         val shape = if (art != null) newShape("rect", file, null, null, 0f, widthPt, heightPt) else newShape("rect", file, 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f, widthPt, heightPt)
-        return if (file == OfficeKind.Odt) boxText(shape, file, lines, art)
+        return if (file == OfficeKind.Odt) boxText(shape, file, lines, art, effects)
             else boxText(shape.replace("<wps:cNvSpPr/>", """<wps:cNvSpPr txBox="1"/>""")
-                .replace("<wps:bodyPr/>", """<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="${if (art != null) "none" else "square"}" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t"><a:noAutofit/></wps:bodyPr>"""), file, lines, art)
+                .replace("<wps:bodyPr/>", """<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="${if (art != null) "none" else "square"}" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t"><a:noAutofit/></wps:bodyPr>"""), file, lines, art, effects)
     }
     /** WordArt's words: bold, [ART_PT], its colour. */
     const val ART_PT = 36f
     /** An .odt's WordArt words are in a text style of Writer's, named for their colour; [odtArtStyle] writes it. */
-    fun odtArtStyle(name: String): String? = Regex("""Tetra_20_art_([0-9A-F]{6})""").matchEntire(name)?.let { m ->
-        """<style:style style:name="$name" style:family="text"><style:text-properties fo:font-size="${OdtWriter.fmt(ART_PT)}pt" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold" fo:color="#${m.groupValues[1]}"/></style:style>""" }
+    fun odtArtStyle(name: String): String? = Regex("""Tetra_20_art_([0-9A-F]{6})(_o)?(_s)?""").matchEntire(name)?.let { m ->
+        val effects = TextEffects(outline = if (m.groupValues[2].isNotEmpty()) 0 else null, shadow = m.groupValues[3].isNotEmpty()).odt()
+        """<style:style style:name="$name" style:family="text"><style:text-properties fo:font-size="${OdtWriter.fmt(ART_PT)}pt" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold" fo:color="#${m.groupValues[1]}"$effects/></style:style>""" }
     /**
      * A text box's words made [lines], a paragraph each, in its first paragraph's style and its first words' look —
      * or, when it has none yet, WordArt's in [art] (its colour).
      */
-    fun boxText(xml: String, file: OfficeKind, lines: List<String>, art: Int? = null): String {
+    fun boxText(xml: String, file: OfficeKind, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects()): String {
         fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if (file == OfficeKind.Odt) {
             val style = Regex("""<text:p\b[^>]*?(\stext:style-name="[^"]*")""").find(xml)?.groupValues?.get(1) ?: ""
-            val span = Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1) ?: art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) }
+            val span = Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1) ?: art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) + effects.odtName() }
             val paras = lines.joinToString("") { t -> esc(t).replace("\t", "<text:tab/>").let { w -> "<text:p$style>${span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w}</text:p>" } }
             Regex("""(<draw:text-box\b[^>]*>)[\s\S]*?(</draw:text-box>)""").find(xml)?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[2]) }
             // A shape: its words before its geometry.
@@ -341,7 +342,7 @@ internal object PictureXml {
         val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(xml)?.groupValues?.get(1) ?: return xml
         val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(first)?.value ?: ""
         val rPr = Regex("""<w:r>\s*(<w:rPr>[\s\S]*?</w:rPr>)""").find(first)?.groupValues?.get(1)
-            ?: art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/></w:rPr>""" } ?: ""
+            ?: art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
         val paras = lines.joinToString("") { "<w:p>$pPr<w:r>$rPr<w:t xml:space=\"preserve\">${esc(it)}</w:t></w:r></w:p>" }
         return xml.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
     }

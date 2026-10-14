@@ -68,6 +68,13 @@
 >   words" while words are chosen; a tap opens About this file (all counts). The tablet's counter beside the name is the
 >   same count. The whole document's count is worked out off the main thread 150 ms after typing stops (a thesis);
 >   the selection's at once. `TextCounts.label`, `TextCountsTest`.
+> - **WordArt effects** (item 10): Insert › WordArt has Outline, Shadow and Glow (Glow in Word files only). Word's
+>   `w14:glow` / `w14:shadow` / `w14:textOutline` in the words' run (each declaring w14, in Word's order); LibreOffice's
+>   `style:text-outline` / `fo:text-shadow` in Writer's art style (`Tetra_20_art_RRGGBB_o_s`). Files' own effects are
+>   drawn too: `TextEffects.of(run.font)` → `EffectSpan` per word (glow, shadow, fill, outline) on the pages and in the
+>   editor's text boxes. Outline black (grey round black letters), glow gold (blue round gold). `TextEffectsTest`.
+>   LibreOffice draws the .odt's outline and shadow; it ignores Word's w14 effects (Word shows them). Not done: warp
+>   (Word's text shapes), effects on ordinary text, changing a WordArt's effects after (Edit text keeps them).
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

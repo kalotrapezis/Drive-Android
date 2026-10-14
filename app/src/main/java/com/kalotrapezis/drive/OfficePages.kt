@@ -1574,6 +1574,11 @@ internal object OfficePages {
             // Tracked changes, as Word shows all markup: inserted underlined, deleted struck through, in the author's colour.
             r.change?.let { c -> span(ForegroundColorSpan(0xFF000000.toInt() or TrackChanges.color(c.author))); span(if (c.deleted) StrikethroughSpan() else UnderlineSpan()) }
             OfficeFonts.typeface(styles.fontName(r.font))?.let { span(TypefaceSpan(OfficeFonts.styled(it, r.bold || look.bold == true, r.italic || look.italic == true))) }
+            // WordArt's effects (outline, shadow, glow): each word drawn with them, the line still breaking between words.
+            TextEffects.of(r.font).takeIf { it.any }?.let { fx ->
+                val fill = 0xFF000000.toInt() or (r.color ?: look.color ?: 0)
+                Regex("""\S+""").findAll(text.substring(start, end)).forEach { m -> text.setSpan(EffectSpan(fx, fill, U), start + m.range.first, start + m.range.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            }
         }
         // An empty paragraph is still a line — as tall as its paragraph mark's size, as Word and LibreOffice make it (the
         // 602 cover's 17 pt empty lines came out 12 pt high; the text below rode up). Floating pictures take no room.

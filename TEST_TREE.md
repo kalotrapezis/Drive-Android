@@ -66,3 +66,9 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Under the name in the top bar: "N words"; type a word → it goes up a moment later
   - [ ] Choose some words → "12 of N words"; let go → back to N
   - [ ] Tap it → About this file with all the counts
+
+- **10. WordArt effects** (Insert › WordArt)
+  - [ ] Type words, blue, tick Outline + Shadow + Glow → the field previews them; Insert → on the pages: gold glow, shadow, black outline
+  - [ ] Picture › Edit text → change the words → the effects stay
+  - [ ] Save → Word on the PC shows the glow, shadow and outline (LibreOffice does not draw Word's effects)
+  - [ ] An .odt: only Outline and Shadow offered; LibreOffice shows them

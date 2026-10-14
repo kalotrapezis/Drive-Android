@@ -4227,19 +4227,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         tab = WriterTab.Picture
     }
     /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
-    fun putTextBox(lines: List<String>, art: Int?) {
+    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects()) {
         val (w, h) = if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
             else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
                 .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f } // as big as its words
-        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF))) }
-        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art), box = box), PictureWrap.Square, kind)
+        val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
+        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
+            font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
+        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx), box = box), PictureWrap.Square, kind)
+        if (fx.any) WriterLog.i("WordArt effects: $fx")
         pictures[img.key] = img
         val at = placePicture(img)
         state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         tab = WriterTab.Picture
     }
     boxing?.let { (key, words) ->
-        TextBoxDialog(words, { boxing = null }) { text, _ ->
+        TextBoxDialog(words, { boxing = null }) { text, _, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
@@ -4283,7 +4286,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             tab = WriterTab.Picture
         }
     }
-    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true) { text, color -> wordArt = false; putTextBox(text.split('\n'), color) }
+    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx -> wordArt = false; putTextBox(text.split('\n'), color, fx) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
@@ -4387,10 +4390,15 @@ private fun Modifier.pinchZoom(now: () -> Float, min: Float, max: Float, side: a
     }
 }
 
+/** WordArt's outline: black round coloured letters, grey round black ones; its glow gold, blue round gold letters. */
+private fun artOutline(color: Int) = if (color and 0xFFFFFF == 0) 0x7F7F7F else 0x000000
+private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 else 0xFFC000
+
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, done: (String, Int) -> Unit) {
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects) -> Unit) {
     var text by remember { mutableStateOf(initial) }
+    var outlined by remember { mutableStateOf(false) }; var shadowed by remember { mutableStateOf(false) }; var glowing by remember { mutableStateOf(false) }
     // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
     val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF70AD47, 0xFF000000).map { it.toInt() }
     var color by remember { mutableIntStateOf(colors[0]) }
@@ -4399,12 +4407,22 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(text, { text = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) else androidx.compose.material3.LocalTextStyle.current)
+                textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    // The effects as near as the field can show them: a glow or a shadow; outlined letters hollow.
+                    shadow = if (glowing) androidx.compose.ui.graphics.Shadow(Color(0xFF000000 or artGlow(color).toLong()), androidx.compose.ui.geometry.Offset.Zero, 12f)
+                        else if (shadowed) androidx.compose.ui.graphics.Shadow(Color(0x99000000), androidx.compose.ui.geometry.Offset(3f, 3f), 3f) else null,
+                    drawStyle = if (outlined) androidx.compose.ui.graphics.drawscope.Stroke(2f) else null) else androidx.compose.material3.LocalTextStyle.current)
             if (art) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 colors.forEach { c -> Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c)).border(3.dp, if (c == color) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape).clickable { color = c }) }
             }
+            // Word's text effects (Format › Text Effects): an outline, a shadow, a glow (Word files only: LibreOffice has none).
+            if (art) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Choice("Outline", outlined) { outlined = !outlined }
+                Choice("Shadow", shadowed) { shadowed = !shadowed }
+                if (glowAllowed) Choice("Glow", glowing) { glowing = !glowing }
+            }
         } },
-        confirmButton = { TextButton(onClick = { done(text, color) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null)) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 

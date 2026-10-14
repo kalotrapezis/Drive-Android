@@ -45,7 +45,7 @@ one pass once the tabs' features are done.
 - [x] File: Save as (beside the file, going on as the new one), Rename (draft and versions move with it), Print (Android printing of the PDF pages) — 14 Oct; Properties is About this file
 - [x] Word and character counter (1 Oct): tablet — in the top bar, of the selection when there is one ("12 of 1,234
       words"), a tap opens About; phone — File › About this file (words, characters with and without spaces, and the
-      selection's). Tables' words count, pictures do not
+      selection's). Tables' words count, pictures do not; the phone's top bar too, under the name: "12 of 1,234 words" (15 Oct)
 
 ### File
 - [x] Save over the file when nothing is lost; else a copy beside it
@@ -184,7 +184,7 @@ one pass once the tabs' features are done.
 
 ### Review
 - [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off — [ ] Tetra's own dictionaries (works without Gboard)
-- [x] Word count (File › About this file) — [ ] counter in the tablet's top bar, the selection's counts, characters (asked 30 Sep)
+- [x] Word count (File › About this file); live in the top bar on the tablet and the phone, with the selection's (15 Oct)
 - [x] Comments: read, add, delete, reply, resolve / reopen (Word's commentsExtended; LibreOffice's loext:parent-name / resolved), edit a comment's words (14 Oct)
 - [x] Track changes in Word files (Review tab): shown as Word's All Markup (inserted underlined, deleted struck through, in the author's colour; a bar beside changed lines; ¶ for split/joined paragraphs), the change at the cursor named (what · who · when), Previous / Next, Accept / Reject (then on to the next), Accept all / Reject all (tables' row and formatting changes too); kept on saving — a corrected .docx is no longer copy-only ; **recording** (Review › Track changes, Word files: typing is your insertion, Backspace/Delete strike through and walk on past, Enter/joins are paragraph marks, under your name — asked once) — [ ] tracking remembered in the file (Word's trackRevisions), the typed insertion's colour before the next redraw (underlined at once), recording pasted/Writer-made changes, ODT's tracked changes (still copy-only), reject restoring a paragraph's style/list
 - [ ] Read aloud (Android text-to-speech)

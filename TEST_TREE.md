@@ -61,3 +61,8 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] Cursor mid-text → Breaks › Column break → the rest starts the second column; "Column break" line in Edit
   - [ ] At the end → Breaks › Section break · next page → what follows is on a new page
   - [ ] Save → Word on the PC shows the same sections and columns; Backspace at a break's line takes it away
+
+- **9. Live word count**
+  - [ ] Under the name in the top bar: "N words"; type a word → it goes up a moment later
+  - [ ] Choose some words → "12 of N words"; let go → back to N
+  - [ ] Tap it → About this file with all the counts

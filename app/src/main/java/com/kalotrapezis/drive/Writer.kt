@@ -2743,15 +2743,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             androidx.compose.animation.AnimatedVisibility(barShown) { Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
-                Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
-                // A tablet counts words and characters in the top bar, of the selection when there is one, as Word's status
-                // bar does (asked 2026-09-30); a tap shows all the counts. A phone has them in File › About this file.
+                // The words, counted as one types (Word's status bar, Phase 2): of the selection too when there is one, worked
+                // out a moment after typing stops (a thesis is long); a tap shows all the counts (File › About this file).
+                val text = state.annotatedString.text
+                val sel = state.selection
+                val tables = keys.map { pictures[it]?.table } // a cell edited changes no text
+                val all by produceState(TextCounts(0, 0, 0), text, tables, loaded) { if (loaded) { delay(150); value = withContext(Dispatchers.Default) { counted(text) } } }
+                val part = remember(text, sel, tables) { if (sel.collapsed) null else counted(text, sel.min, sel.max) }
+                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                    Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // A phone: under the name. A tablet has room beside it (words and characters).
+                    if (phone && loaded) Text(TextCounts.label(all.words, part?.words), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                        modifier = Modifier.clickable { details = true })
+                }
                 if (!phone && loaded) {
-                    val text = state.annotatedString.text
-                    val sel = state.selection
-                    val tables = keys.map { pictures[it]?.table } // a cell edited changes no text
-                    val all = remember(text, tables) { counted(text) }
-                    val part = remember(text, sel, tables) { if (sel.collapsed) null else counted(text, sel.min, sel.max) }
                     Text(if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
                         else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
@@ -4340,6 +4345,8 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
         fun of(text: String) = TextCounts(WORD.findAll(text).count(),
             text.count { !it.isWhitespace() && it !in PICTURES }, text.count { it != '\n' && it != LINE_BREAK && it !in PICTURES })
         private val PICTURES = charArrayOf(OBJECT_MARK, EDITOR_PICTURE_CHAR, PICTURE_SPOT)
+        /** The live count's words (Word's status bar): "1,234 words", or the selection's "12 of 1,234 words". */
+        fun label(all: Int, chosen: Int?) = if (chosen == null) plural(all, "word") else "%,d of %s".format(chosen, plural(all, "word"))
     }
 }
 /** A paragraph's letters as Word counts them: a table's are its cells'. */

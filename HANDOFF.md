@@ -64,6 +64,10 @@
 >   dashed line. `BreaksTest`; LibreOffice renders a title + continuous break + two columns + column break + next-page
 >   section as meant. All 318 of the user's documents read and write without error; only `04_Academic_References` is
 >   copy-only (its fields).
+> - **Live word count** (item 9): the phone shows "1,234 words" under the document's name in the top bar, "12 of 1,234
+>   words" while words are chosen; a tap opens About this file (all counts). The tablet's counter beside the name is the
+>   same count. The whole document's count is worked out off the main thread 150 ms after typing stops (a thesis);
+>   the selection's at once. `TextCounts.label`, `TextCountsTest`.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

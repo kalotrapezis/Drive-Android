@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -81,6 +82,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
@@ -2125,6 +2128,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
     var hereFont by remember { mutableStateOf<String?>(null) }
+    var fontsOpen by remember { mutableStateOf(false) } // Home › Font's window
     // …and the ribbon which style it has.
     LaunchedEffect(loaded, viewing) {
         if (!loaded || viewing) return@LaunchedEffect
@@ -2982,15 +2986,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("Open", color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val tabsScroll = rememberScrollState()
+            Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
                 WriterTab.entries.filter { t -> when (t) {
                     WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                     WriterTab.Table -> selectedObject?.table != null
                     else -> true
                 } }.forEach { t ->
+                    // The chosen tab scrolls clear of the edge's shade (Design sat half under it on a phone).
+                    val seen = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                    var wide by remember { mutableStateOf(0) }
+                    val shade = with(LocalDensity.current) { 48.dp.toPx() }
+                    LaunchedEffect(tab == t, wide) { if (tab == t && wide > 0) seen.bringIntoView(androidx.compose.ui.geometry.Rect(-shade, 0f, wide + shade, 1f)) }
                     Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
+                        modifier = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
                             .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
                 }
             }
@@ -3047,7 +3057,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             if (state.selection.collapsed) set() else change { set() }
                         }
                     }
-                    Divider(w)
+                // Font and size on a page of their own: beside B I U they ran off a phone's width (found 14 Oct).
+                }, {
                     // Superscript and subscript are shown smaller: the size told and changed is the letters' own.
                     val shrink = if ((span.baselineShift?.multiplier ?: 0f) != 0f) SCRIPT_SIZE else 1f
                     val size = (WriterBridge.spOf(span.fontSize) ?: BASE_SP) / shrink
@@ -3058,19 +3069,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         t.getOrNull(i) == EDITOR_PICTURE_CHAR && (!state.selection.collapsed || i == 0 || t.getOrNull(i - 1) == '\n') || t.getOrNull(i - 1) == EDITOR_PICTURE_CHAR }
                     val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
-                    // Home › Font: the document's own fonts first, then those Writer draws as Word does (metric-compatible).
-                    Box {
-                        var fonts by remember { mutableStateOf(false) }
-                        RibbonButton(hereFont?.take(18) ?: "Font", w, enabled = !onObject) { fonts = true }
-                        DropdownMenu(fonts, { fonts = false }) {
-                            val own = remember(meta.paras, hereFont) { (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted() }
-                            (own + WRITER_FONTS.filter { it !in own }).forEach { name ->
-                                val face = remember(name) { OfficeFonts.typeface(name)?.let { androidx.compose.ui.text.font.FontFamily(it) } }
-                                DropdownMenuItem(text = { Text(name, fontFamily = face) }, trailingIcon = { if (name == hereFont) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
-                                    onClick = { fonts = false; setFont(name) })
-                            }
-                        }
-                    }
+                    // Home › Font: a window of the fonts, each shown in itself (the user: a modal, not a list).
+                    RibbonButton((hereFont ?: "Font").take(18), w, enabled = !onObject, outlined = true) { fontsOpen = true }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
                         Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
@@ -3114,7 +3114,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     listOf(styles[0] to "Normal", styles[1] to "Title", styles.first { it.heading == 1 } to "H1", styles.first { it.heading == 2 } to "H2", styles.first { it.heading == 3 } to "H3").forEach { (style, label) ->
                         RibbonButton(label, w, on = hereStyle == style) { applyStyle(style) }
                     }
-                    RibbonButton("Styles…", w, R.drawable.ic_more_vert) { stylesPage = true }
+                    RibbonButton("Styles…", w) { stylesPage = true }
                 }, {
                     Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
                     Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
@@ -3140,7 +3140,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             chooseParagraphs { at, look -> setSpacing(at, look, look.copy(lineMultiple = m, lineExact = null)); message = "Line spacing ${plain(m)} — it shows on the pages" }
                         }
                     }
-                    Divider(w)
+                }, {
                     // Borders (Word's menu, for paragraphs): each side on or off, a box, none, a horizontal line.
                     Box {
                         var bordering by remember { mutableStateOf(false) }
@@ -3433,6 +3433,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
                     RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
+                }, {
                     // With Claude (tetra-sources skill): ask in the Claude app, then paste its answer — the research's references at once.
                     RibbonButton("Ask Claude", w, R.drawable.ic_share, enabled = loaded) { askClaudeForSources() }
                     RibbonButton("Paste sources", w, R.drawable.ic_content_paste, enabled = loaded) { pasteSources() }
@@ -3444,6 +3445,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Captions and their numbers (Word's Insert Caption and F9).
                     RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
                     RibbonButton("Cross-reference", w, R.drawable.ic_link, enabled = loaded && kind == OfficeKind.Docx) { crossRefOpen = true }
+                }, {
                     RibbonButton("Update fields", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                 })
                 WriterTab.Review -> listOf({
@@ -3499,6 +3501,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 }, {
                     // Centimetres or inches for the rulers and every length (APA's margins are given in inches).
+                    Text("Units", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
                     RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
                     RibbonButton("inches", w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
                 })
@@ -3506,7 +3509,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
             // spread over the width they were too far apart). A phone swipes them page by page.
             if (LocalConfiguration.current.screenWidthDp >= 700) Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+                rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
             ) { pages.forEachIndexed { i, page -> if (i > 0) Divider(w); page() } }
             else androidx.compose.runtime.key(tab) {
@@ -3515,7 +3518,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Spread over the width; a page wider than the phone scrolls sideways (found 2026-09-30: Design's last
                     // three tools were off the screen, out of reach), then the next swipe turns the page.
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
+                        val sc = rememberScrollState()
+                        Row(Modifier.scrollShade(sc).horizontalScroll(sc).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
                     }
                 }
@@ -3570,6 +3574,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
         )
+    }
+    if (fontsOpen) {
+        val own = remember(meta.paras, hereFont) { (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted() }
+        FontDialog(own, WRITER_FONTS.filter { it !in own }, hereFont, { fontsOpen = false }) { fontsOpen = false; setFont(it) }
     }
     if (renaming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
@@ -4077,8 +4085,20 @@ private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("
 private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
 
 /** A named tool of the ribbon (Save, Heading 1…). */
-@Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
+/** A sideways-scrolling row with more beyond an edge: that edge shaded, so it shows there is more (the user, 2026-10-14). */
+internal fun Modifier.scrollShade(state: androidx.compose.foundation.ScrollState): Modifier = drawWithContent {
+    drawContent()
+    val w = 36.dp.toPx()
+    val shade = Color.Black.copy(alpha = 0.85f)
+    if (state.value > 0) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(shade, Color.Transparent), 0f, w), size = androidx.compose.ui.geometry.Size(w, size.height))
+    if (state.value < state.maxValue) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, shade), size.width - w, size.width),
+        topLeft = androidx.compose.ui.geometry.Offset(size.width - w, 0f), size = androidx.compose.ui.geometry.Size(w, size.height))
+}
+
+/** [outlined]: a thin border, for a button that is a word (Font's name) and would otherwise read as a label. */
+@Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, outlined: Boolean = false, click: () -> Unit) = Row(
     Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+        .then(if (outlined) Modifier.border(1.dp, tint.copy(alpha = 0.5f), CircleShape) else Modifier)
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
         .focusProperties { canFocus = false }
@@ -4321,4 +4341,34 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
             }
         }
     }
+}
+
+/** Home › Font: the document's fonts, then Word's everyday ones, each name and a sample written in its own face. */
+@Composable
+private fun FontDialog(own: List<String>, others: List<String>, now: String?, dismiss: () -> Unit, choose: (String) -> Unit) {
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Font") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                @Composable fun section(title: String, names: List<String>) {
+                    if (names.isEmpty()) return
+                    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                    names.forEach { name ->
+                        val face = remember(name) { OfficeFonts.typeface(name)?.let { androidx.compose.ui.text.font.FontFamily(it) } }
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .then(if (name == now) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier)
+                            .clickable { choose(name) }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(name, fontFamily = face, style = MaterialTheme.typography.titleMedium)
+                                Text("Aa Αα 123 — Η γρήγορη αλεπού", fontFamily = face, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (name == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+                section("In this document", own)
+                section("Word's fonts", others)
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

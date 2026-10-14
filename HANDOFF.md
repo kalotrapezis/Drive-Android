@@ -1,17 +1,40 @@
-> **Latest — 13 October 2026 (Phase 1, item 2 done).** The 2 October viewer/editor fixes
-> ([OPUS_VIEWER_EDITOR_HANDOFF.md](OPUS_VIEWER_EDITOR_HANDOFF.md)) are **integrated and committed** on `writer-library`
-> and merged to main (Beta 4). Then, surveyed with Writer's own reader on all 273 of the user's .docx/.odt outside
-> `Κλειδιά` and `Ιατρικά` (never opened) and `Test-Words`: **13 were copy-only, now none** — column breaks in one-column
-> documents (10 papers) are page breaks (with the empty line LibreOffice leaves after one), letter/roman lists are
-> numbered as the file says in the editor too (`FileNumbering`, one format per level per document — a shortcut),
-> formatting-free character styles pasted from the web no longer count. **Regression harness:** each document read
-> and written unchanged, both converted by LibreOffice, compared page by page — **266 of 267 identical** (was 260);
-> fixed on the way: Google Docs' `pageBreakBefore w:val="0"` swallowing breaks, a paragraph set left over a centred
-> style, a page break alone in its paragraph keeping its line, a heading's `numId 0` (a thesis's chapters renumbered).
-> Left: `Παραμύθι.docx` — joined right-to-left runs lay out a hair differently (no text lost). Not checked on a device:
-> the editor's lettered lists and left-aligned headings (unit-tested only); the 5 `WriterLayoutDeviceTest`s were not
-> rerun (the phone refuses the test APK: MIUI *Install via USB* is off). Next: Phase 1 items 1 (the letterhead report —
-> ask first), 3 and 4.
+> **Latest — 14 October 2026.** Branch `writer-library` (pushed), all 205 unit tests pass. Newest debug build on the
+> **tablet** (971f6b37) and, one commit older (no Cross-reference), on the **phone** (208c8192). Beta 4 is published
+> (desktop + Android, 13 Oct). Read this, then THE PLAN below.
+>
+> **Done 13–14 Oct (Phase 1 is finished except item 6):**
+> - **Item 1, the letterhead report** (`Ιατρικά/…/ΚΑΛΟΤΡΑΠΕΖΗΣ ΘΕΟΛΟΓΟΣ ΑΝΩ.odt`, user's OK given) matches LibreOffice
+>   page for page: an ODT frame's graphic style is read (`DocImage.look`, display only — `placeOf`, `wrapOf`,
+>   `ShapePicture.of(img)`): page-relative and centred placement, run-through wrap, no fill / no line; an ODT header's
+>   height includes its spacing. All 13 medical documents save identically.
+> - **Item 2, copy-only:** none of the user's 273 documents (outside `Κλειδιά`) is copy-only any more (13 were): column
+>   breaks in one-column documents, letter/roman lists (`FileNumbering` in the editor), formatting-free web character
+>   styles, **hidden text** (kept, left off the pages, grey dotted in Edit), **fields in one paragraph** (date, REF,
+>   PAGEREF, SEQ… kept in `DocRun.cite` after `FIELD_CITE`, written back as fields; Citations skip them). Still copy-only:
+>   TOC/BIBLIOGRAPHY written as plain fields over paragraphs, equations, a column break in a real multi-column section.
+> - **Save fidelity harness** (scratchpad scripts, rebuild from this description): read + write each document with
+>   Writer's own code in a throwaway unit test, convert both with LibreOffice, compare page text page by page. Results:
+>   user's .docx **266/267** identical (`Παραμύθι.docx`: joined right-to-left runs lay out a hair differently), .odt
+>   **10/10**, Test-Words **24/26** (the 2 others copy-only). Fixed on the way: Google Docs' `pageBreakBefore w:val="0"`
+>   swallowing breaks, `jc="left"` over a centred style, a page break alone keeping its line, a heading's `numId 0`, no
+>   space before at a page top after a carried break, column breaks' empty line.
+> - **Item 3, Edit vs View:** contents leaders now reach the page number (`EditorTab.widthPx`). The user's verdict on the
+>   paper view (Mobile view off): "now it's correct" — Edit on the page is what they want; see memory `writer-paper-view`.
+> - **Files opens .docx/.odt in Writer** (Settings › Office › "Open Word documents here", on); back returns to Files.
+> - **Phase 2 started:** References › **Caption** (Figure/Table/Equation/Εικόνα/Πίνακας, SEQ field, Word's Caption
+>   style added when missing), **Cross-reference** (entire caption or page; REF/PAGEREF to a `_Ref` bookmark on the
+>   caption) and **Update fields** (renumbers SEQ, refreshes REF/PAGEREF — `Fields.kt`). Checked on the tablet.
+> - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
+>
+> **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
+> viewers"):**
+> 1. Phase 2 continues — multilevel lists, AutoSave, picture watermark, Arrange for floating objects, chart options,
+>    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
+> 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
+> 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width
+>    (the file's gridSpan says Writer's); unverified against Word, left. Item 6 (.doc/.rtf): only 2 .doc files — suggest
+>    converting them once on the PC. The phone may hold an unsaved "New document" recovery draft from a caption test
+>    (ends "88"): discard it. The 5 `WriterLayoutDeviceTest`s still need MIUI *Install via USB* on to run.
 
 # THE PLAN (the user, 1 Oct 2026 evening) — read this first
 
@@ -28,10 +51,9 @@ viewers for Excel and PowerPoint so we can ship, and after that we slowly fix th
 ## Phase 1 — compatibility (Word files open, show and save as Word/LibreOffice do)
 Everything that makes a file **copy-only** or **show differently** from Word/LibreOffice. Check each against LibreOffice
 (convert original and Tetra's saved copy to PDF, compare page by page) and on both devices.
-1. **The letterhead medical report** (the user's screenshot, 30 Sep): huge empty bands top and bottom, the letterhead
-   box too low, blue shapes off the right edge — floating shapes in the header/footer probably counted as in-line and
-   placed from the wrong origin. Ask the user before pulling any such file; work on a copy.
-2. **Copy-only causes** seen in the user's files and the suite: hidden text (01), columns (03), fields — page numbers,
+1. ~~The letterhead medical report~~ — **done 14 Oct** (see the top).
+2. ~~Copy-only causes~~ — **done 13 Oct** for every cause in the user's files (see the top); left: equations, plain
+   multi-paragraph TOC/BIBLIOGRAPHY fields, column breaks in real multi-column sections. Originally: **Copy-only causes** seen in the user's files and the suite: hidden text (01), columns (03), fields — page numbers,
    dates, REF/PAGEREF/SEQ (04), equations (04), content controls around whole paragraphs / table rows / cells, legacy
    form fields. Survey the user's Documents (as done for forms: `unzip -p … word/document.xml | grep`) to rank them by
    how often they occur, then fix the most common first.
@@ -43,7 +65,7 @@ Everything that makes a file **copy-only** or **show differently** from Word/Lib
 6. Opening **.doc and .rtf** (old Word files) — at least to view, saving as .docx.
 
 ## Phase 2 — finish Word
-Captions and cross-references; multilevel lists; reading mode; AutoSave; format painter for paragraphs; tapping a
+~~Captions and cross-references~~ (done 14 Oct); multilevel lists; reading mode; AutoSave; format painter for paragraphs; tapping a
 citation to edit it; more source kinds (report, thesis, video); APA abstract page and run-in level 4–5 headings; picture
 watermark; page border styles; Arrange for floating objects (forward/backward, align, group, rotate), text on both
 sides of a picture, WordArt effects, chart axis titles / data labels / scatter; Insert › content controls (Developer).

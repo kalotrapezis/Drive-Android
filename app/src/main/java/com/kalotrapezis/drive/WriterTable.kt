@@ -651,10 +651,12 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { act.edit(c) }) { Text("Edit", color = Color(0xFF1A73E8)) }
-            TextButton(onClick = { act.reply(c) }) { Text("Reply", color = Color(0xFF1A73E8)) }
-            TextButton(onClick = { act.resolve(c) }) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8)) }
-            TextButton(onClick = { act.delete(c) }) { Text("Delete", color = Color(0xFF1A73E8)) }
+            // Four of them in the pane's width: closer than a button's own padding.
+            val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+            TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text("Edit", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text("Reply", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.resolve(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text("Delete", color = Color(0xFF1A73E8), maxLines = 1) }
         }
     }
 }
@@ -668,13 +670,15 @@ internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, v
  * as far as the one above needs.
  */
 @Composable
-internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions) {
+internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions,
+    placed: (List<Int>) -> Unit = {} /* each card's top as placed (px), pushed down below the one above: its line goes there */) {
     val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
     val tops = items.map { with(androidx.compose.ui.platform.LocalDensity.current) { it.second.roundToPx() } }
     androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }, modifier = modifier) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
         var bottom = 0
         val ys = placeables.mapIndexed { i, p -> maxOf(tops[i], bottom).also { bottom = it + p.height + gap } }
+        placed(ys)
         layout(constraints.maxWidth, bottom) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
     }
 }

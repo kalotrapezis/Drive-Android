@@ -127,6 +127,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.times
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
@@ -2571,13 +2572,38 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 .verticalScroll(downScroll)
                 .then(if (printPhone) Modifier.horizontalScroll(sideScroll) else Modifier)
                 .padding(horizontal = 10.dp, vertical = 8.dp)) {
+                // The comments' cards, and (as Word draws them) a line from each one's words to its card.
+                var cardTops by remember { mutableStateOf<List<Int>>(emptyList()) }
+                val ordered = if (paneOn && onPage && loaded) commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } to spans.maxOf { it.second.last + 1 } }
+                    .entries.sortedBy { it.value.first } else emptyList()
                 if (paneOn && onPage && loaded) {
                     val density = LocalDensity.current
-                    val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
-                    CommentPane(first.entries.sortedBy { it.value }.map { (c, at) ->
-                        c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at)) } ?: 0f).toDp() })
+                    CommentPane(ordered.map { (c, at) ->
+                        c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at.first < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at.first)) } ?: 0f).toDp() })
                     }, hereComment, Modifier.align(Alignment.TopCenter).offset(x = sheet.width * perPt / 2 - shift + 12.dp + COMMENT_PANE / 2).width(COMMENT_PANE),
-                        commentActions { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
+                        commentActions { c -> ordered.firstOrNull { it.key == c }?.let { state.selection = androidx.compose.ui.text.TextRange(it.value.first) } }) { if (it != cardTops) cardTops = it }
+                }
+                if (ordered.isNotEmpty() && !printPhone) editorLayout?.let { l ->
+                    val here = hereComment
+                    androidx.compose.foundation.Canvas(Modifier.matchParentSize().zIndex(1f)) {
+                        val sheetW = (sheet.width * perPt).toPx()
+                        val sheetX = (size.width - sheetW) / 2 - shift.toPx()
+                        val textX = sheetX + (sheet.left * perPt).toPx(); val textY = (margins.calculateTopPadding()).toPx()
+                        val paneX = sheetX + sheetW + 12.dp.toPx()
+                        ordered.forEachIndexed { k, (c, at) ->
+                            val top = cardTops.getOrNull(k) ?: return@forEachIndexed
+                            val end = at.second.coerceIn(0, l.layoutInput.text.length)
+                            val line = l.getLineForOffset((end - 1).coerceAtLeast(0))
+                            val x = textX + l.getHorizontalPosition(end, usePrimaryDirection = true); val y = textY + l.getLineBottom(line)
+                            val mine = c == here
+                            val color = if (mine) Color(0xFF1A73E8) else Color(0xFF757575)
+                            val dash = if (mine) null else androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 5f))
+                            // Under the words to the page's edge, then across to the card's first line.
+                            val edge = sheetX + sheetW - 4.dp.toPx()
+                            drawLine(color, androidx.compose.ui.geometry.Offset(x, y), androidx.compose.ui.geometry.Offset(edge, y), 1.dp.toPx(), pathEffect = dash)
+                            drawLine(color, androidx.compose.ui.geometry.Offset(edge, y), androidx.compose.ui.geometry.Offset(paneX, top + 22.dp.toPx()), 1.dp.toPx(), pathEffect = dash)
+                        }
+                    }
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
                     modifier = (if (printPhone) Modifier.scaledBy(pageScale).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)

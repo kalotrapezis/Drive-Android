@@ -103,6 +103,9 @@
 >   Versions › This session ("Bring back" = one Undo step). Leaving the document (`exit()`: Back, Save, Don't save) clears
 >   it (both the opened and the current name); a killed app leaves the draft for recovery. Checked on the tablet with
 >   AutoSave off (a picture arranged seconds after inserting, the file untouched; Don't save removed the draft) and on.
+> - **Comment lines** (14 Oct, the user's Word screenshot): on the tablet, a line from each comment's words (their end)
+>   under to the page's edge, then to its card — dashed grey, solid blue for the comment at the cursor; the pane reports
+>   where it placed each card (`CommentPane(placed)`). Card buttons tighter (Edit made Delete wrap). Checked on the tablet.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

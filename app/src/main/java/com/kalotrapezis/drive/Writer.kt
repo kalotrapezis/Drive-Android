@@ -2121,6 +2121,32 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             drawing = Drawing(usable.map { laid[it] }, usable.map { anchors[it] }, usable.indexOf(index[at.min()]).coerceAtLeast(0))
         }
     }
+    /** Arrange › Bring to front / Send to back: [key] over (or under) every other floating picture. */
+    fun arrange(key: String, front: Boolean) {
+        val img = pictures[key] ?: return
+        val others = pictures.values.filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }.map { PictureXml.zOf(it) }
+        // Word counts from about 251 million, LibreOffice from 0: below 0 the others go up one instead.
+        val z = if (front) (others.maxOrNull() ?: PictureXml.zOf(img)) + 1 else (others.minOrNull() ?: PictureXml.zOf(img)) - 1
+        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = "Save the document first: then it can be arranged."; return }
+        change {
+            if (z < 0) pictures.values.toList().filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }
+                .forEach { o -> PictureXml.withZ(o, PictureXml.zOf(o) + 1)?.let { pictures[o.key] = it } }
+            changePicture(key, moved)
+        }
+        message = if (front) "In front of the others — it shows on the pages" else "Behind the others — it shows on the pages"
+    }
+    /** Arrange › Align: [key] against the margins ("left", "center", "right", "top", "middle", "bottom"), staying put the other way. */
+    fun align(key: String, how: String) = scope.launch {
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val page = laid.firstOrNull { p -> p.floats.any { it.key == key } } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
+        val f = page.floats.first { it.key == key }
+        val pg = page.page
+        val x = when (how) { "left" -> pg.left; "center" -> pg.left + (pg.textWidth - f.w) / 2; "right" -> pg.width - pg.right - f.w; else -> f.x }
+        val y = when (how) { "top" -> pg.top; "middle" -> pg.top + (pg.height - pg.top - pg.bottom - f.h) / 2; "bottom" -> pg.height - pg.bottom - f.h; else -> f.y }
+        val img = pictures[key] ?: return@launch
+        changePicture(key, PictureXml.placed(img, x, y, kind))
+        WriterLog.i("align $key $how")
+    }
     /** Picture › Position: the page a floating picture is on, as laid out, and its key. */
     var positioning by remember { mutableStateOf<Pair<LaidPage, String>?>(null) }
     fun position(key: String) = scope.launch {
@@ -2601,7 +2627,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 val paraStarts = remember(text, floatsShown) { if (floatsShown.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()) }
                                 Box(Modifier.matchParentSize().padding(margins)) {
-                                    placed.forEach { (i, img, at) ->
+                                    // Drawn in the order the pages draw them (Arrange: the higher over the lower; else as in the text).
+                                    placed.sortedBy { PictureXml.zOf(it.second) }.forEach { (i, img, at) ->
                                         // In front of or behind the text: in its place on the page, its own size (from its paragraph's top).
                                         val float = floatsShown[img.key]
                                         val left = float?.let { with(density) { (it.x * scale).sp.toPx() } } ?: at.first
@@ -3068,6 +3095,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
                         // Floating ones are dragged where they go on their page.
                         RibbonButton("Position", w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
+                    }, {
+                        // Arrange (Word's): which floating picture is over which, and lined up with the margins.
+                        val floating = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine
+                        RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
+                        RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                        Box {
+                            var aligning by remember { mutableStateOf(false) }
+                            RibbonButton("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating) { aligning = true }
+                            DropdownMenu(aligning, { aligning = false }) {
+                                listOf("left" to "Align left", "center" to "Align centre", "right" to "Align right", "top" to "Align top", "middle" to "Align middle", "bottom" to "Align bottom")
+                                    .forEach { (how, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; align(key, how) }) }
+                            }
+                        }
                     }, {
                         RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
                         RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }

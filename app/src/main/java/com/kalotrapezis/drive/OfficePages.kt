@@ -808,7 +808,8 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
     class Box(val x: Float, val y: Float, val w: Float, val h: Float, val color: Int)
     class Line(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val width: Float, val color: Int)
     /** [key]: the picture's (DocImage.key), for Picture › Position to find it. */
-    class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val key: String? = null) {
+    class Floating(val picture: android.graphics.drawable.Drawable, val x: Float, val y: Float, val w: Float, val h: Float, val behind: Boolean, val key: String? = null,
+        val z: Long = 0 /* drawn over the lower ones (Word's relativeHeight, LibreOffice's z-index) */) {
         fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) {
             (picture as? ShapePicture)?.drawAt(canvas, x, y, w, h) ?: run { picture.setBounds(x.toInt(), y.toInt(), (x + w).toInt(), (y + h).toInt()); picture.draw(canvas) }
         }
@@ -819,7 +820,7 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
         page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
         page.border?.let { b -> canvas.drawRect(b.left, b.top, page.width - b.right, page.height - b.bottom, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE; strokeWidth = b.line.width; color = 0xFF000000.toInt() or b.line.color }) }
-        fun floats(behind: Boolean) = floats.filter { it.behind == behind && (skip == null || it.key != skip) }.forEach { it.drawAt(canvas) }
+        fun floats(behind: Boolean) = floats.filter { it.behind == behind && (skip == null || it.key != skip) }.sortedBy { it.z }.forEach { it.drawAt(canvas) }
         section.watermark?.let { text ->
             // Across the text's width, turned 45° up, light grey and half see-through, behind the text (Word's look).
             val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x80C0C0C0.toInt(); typeface = android.graphics.Typeface.DEFAULT; textSize = 100f }
@@ -1422,7 +1423,7 @@ internal object OfficePages {
             else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
         }
         val picture = textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
-        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key)
+        return LaidPage.Floating(picture, x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img))
     }
 
     /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */

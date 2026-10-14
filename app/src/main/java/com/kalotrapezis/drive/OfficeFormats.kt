@@ -223,7 +223,7 @@ internal object PictureXml {
             val place = (if (m.groupValues[1] == "anchor") Regex("""<wp:simplePos[^>]*/>[\s\S]*</wp:positionV>""").find(inner)?.value else null)
                 ?: """<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>"""
             val how = when (wrap) { PictureWrap.Square -> """<wp:wrapSquare wrapText="bothSides"/>"""; PictureWrap.TopBottom -> "<wp:wrapTopAndBottom/>"; else -> "<wp:wrapNone/>" }
-            """<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264" behindDoc="${if (wrap == PictureWrap.Behind) 1 else 0}" locked="0" layoutInCell="1" allowOverlap="1"$ns>$place$extent$effect$how$rest</wp:anchor>"""
+            """<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="${Regex("""relativeHeight="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1) ?: "251659264"}" behindDoc="${if (wrap == PictureWrap.Behind) 1 else 0}" locked="0" layoutInCell="1" allowOverlap="1"$ns>$place$extent$effect$how$rest</wp:anchor>"""
         }
         return xml.replaceRange(m.range, frame)
     }
@@ -253,6 +253,21 @@ internal object PictureXml {
         val raw = img.raw ?: return img.with(wrap = wrap)
         val place = img.onPage?.takeIf { wrap != PictureWrap.InLine } // placed on its page: it stays there
         return img.with(raw = if (file == OfficeKind.Docx) docx(raw, wrap).let { d -> place?.let { docxOnPage(d, it) } ?: d } else odt(raw, wrap, place), wrap = wrap)
+    }
+    /** Its place among the floating ones (higher in front): Word's relativeHeight, LibreOffice's draw:z-index; 0: not said. */
+    fun zOf(img: DocImage): Long {
+        val raw = img.raw ?: return 0
+        if (raw.startsWith("<draw:")) return Regex("""\sdraw:z-index="(\d+)"""").find(raw.substring(0, raw.indexOf('>').coerceAtLeast(0)))?.groupValues?.get(1)?.toLongOrNull() ?: 0
+        return Regex("""<wp:anchor\b[^>]*\brelativeHeight="(\d+)"""").find(raw)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+    }
+    /** [img] at [z] among the floating ones (Arrange › Bring to front / Send to back); null: it has no XML to say it in yet. */
+    fun withZ(img: DocImage, z: Long): DocImage? {
+        val raw = img.raw ?: return null
+        val out = if (raw.startsWith("<draw:")) {
+            val end = raw.indexOf('>')
+            raw.substring(0, end).replace(Regex("""\sdraw:z-index="[^"]*""""), "") + " draw:z-index=\"$z\"" + raw.substring(end)
+        } else Regex("""(<wp:anchor\b[^>]*\brelativeHeight=")\d+""").find(raw)?.let { raw.replaceRange(it.range, it.groupValues[1] + z) } ?: return null
+        return img.with(raw = out)
     }
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {

@@ -64,11 +64,17 @@
 >   `draw:color-mode="watermark"`. Words and picture replace each other. Read back into `DocSection.watermarkPicture`;
 >   the pages draw it (`washedOut`, a colour matrix ≈ Word's). Neither kind makes a file copy-only (`Watermark.isOne`).
 >   Test: `a picture watermark is set in both kinds…`; LibreOffice renders both; on the tablet set, autosaved, View right.
+> - **Arrange** (14 Oct), Picture tab, for floating pictures/shapes: **Bring to front / Send to back** — Word's
+>   `relativeHeight`, LibreOffice's `draw:z-index` (`PictureXml.zOf/withZ`; below 0 the others go up one); the pages and
+>   Edit draw floats in that order (`Floating.z`, `placed.sortedBy`); a new wrap keeps it. A picture just put in has no
+>   XML until saved ("Save the document first" — AutoSave makes that seconds). **Align** left/centre/right/top/middle/
+>   bottom against the margins, through Position (`PictureXml.placed`, page-relative). Test: `a floating picture's order…`.
+>   Checked on the tablet (two shapes, autosaved, reopened, LibreOffice agrees). Not done: group, free rotation.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
 > viewers"):**
-> 1. Phase 2 continues — Arrange for floating objects, chart options,
+> 1. Phase 2 continues — group/rotate for floating objects (later), chart options,
 >    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
 > 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
 > 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width

@@ -368,6 +368,24 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a floating picture's order among the others is read, changed and kept through a new wrap`() {
+        val anchor = """<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">""" +
+            """<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>""" +
+            """<wp:extent cx="1270000" cy="1270000"/><wp:wrapSquare wrapText="bothSides"/><wp:docPr id="1" name="P"/></wp:anchor></w:drawing>"""
+        val word = DocImage("a", null, 100f, 100f, anchor)
+        assertEquals(251659264L, PictureXml.zOf(word))
+        val front = PictureXml.withZ(word, 251659300L)!!
+        assertEquals(251659300L, PictureXml.zOf(front))
+        // A new wrap keeps its place among the others.
+        assertEquals(251659300L, PictureXml.zOf(PictureXml.withWrap(front, PictureWrap.InFront, OfficeKind.Docx)))
+        val frame = DocImage("b", null, 100f, 100f, """<draw:frame draw:name="P" draw:z-index="2" text:anchor-type="char" svg:width="100pt" svg:height="100pt"><draw:image xlink:href="Pictures/p.png"/></draw:frame>""")
+        assertEquals(2L, PictureXml.zOf(frame))
+        assertEquals(0L, PictureXml.zOf(PictureXml.withZ(frame, 0)!!))
+        assertEquals(1, Regex("draw:z-index").findAll(PictureXml.withZ(frame, 5)!!.raw!!).count())
+        // A picture just put in has no XML yet: nothing to say it in.
+        assertEquals(null, PictureXml.withZ(DocImage("c", null, 10f, 10f, null, byteArrayOf(1), "png"), 3))
+    }
+
     @Test fun `a picture watermark is set in both kinds, read back, replaced by words and taken away`() {
         val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 1, 2, 3, 4) // the bytes are carried, not looked at
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {

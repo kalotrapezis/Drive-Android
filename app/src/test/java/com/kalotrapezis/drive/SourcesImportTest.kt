@@ -37,4 +37,21 @@ class SourcesImportTest {
         val r = SourcesImport.read("Here is your file:\n```json\n{\"format\":\"tetra-sources\",\"sources\":[{\"title\":\"T\",\"year\":\"2020\"}]}\n```\n1 source.")
         assertEquals(listOf("T"), r.sources.map { it.title })
     }
+
+    @Test fun `reports, theses and videos - APA's entries, and kept through Word and LibreOffice`() {
+        val r = SourcesImport.read("""[{"type":"report","authors":[{"org":"World Health Organization"}],"year":"2021","title":"Mental health atlas 2020","number":"Report No. 7","publisher":"WHO"},
+            {"type":"thesis","authors":["Papadopoulos, Maria"],"year":"2019","title":"Reading in two languages","kind":"Master's thesis","university":"University of Patras"},
+            {"type":"video","authors":[{"org":"TED"}],"year":"2018","title":"How language shapes the way we think","platform":"YouTube","url":"https://youtu.be/x"}]""")
+        assertEquals(listOf(DocSource.Type.Report, DocSource.Type.Thesis, DocSource.Type.Video), r.sources.map { it.type })
+        val entries = r.sources.map { s -> Apa.entry(s).joinToString("") { it.text } }
+        assertEquals("World Health Organization. (2021). Mental health atlas 2020 (Report No. 7). WHO.", entries[0])
+        assertEquals("Papadopoulos, M. (2019). Reading in two languages [Master's thesis, University of Patras].", entries[1])
+        assertEquals("TED. (2018). How language shapes the way we think [Video]. YouTube. https://youtu.be/x", entries[2])
+        val tagged = r.sources.mapIndexed { i, s -> s.copy(tag = "S$i") }
+        val parts = mutableMapOf("[Content_Types].xml" to "<Types></Types>".toByteArray(), "word/document.xml" to ByteArray(0))
+        WordSources.write(parts, tagged)
+        assertEquals(tagged.map { it.type to it.container }, WordSources.read(parts).map { it.type to it.container })
+        val odt = tagged.map { s -> Regex(""" text:([\w-]+)="([^"]*)"""").findAll(Citations.odtAttributes(s)).associate { it.groupValues[1] to it.groupValues[2] } }
+        assertEquals(tagged.map { it.type to it.container }, odt.map { a -> Citations.odtSource { a[it] }!!.let { it.type to it.container } })
+    }
 }

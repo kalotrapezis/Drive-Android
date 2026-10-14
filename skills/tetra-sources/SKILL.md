@@ -65,7 +65,7 @@ A single JSON block (and, when you can make files, a file named `<topic>.sources
 
 | Field | Rule |
 |---|---|
-| `type` | `article`, `book`, `chapter` or `web` (`report`/`thesis` are read as book) |
+| `type` | `article`, `book`, `chapter`, `web`, `report` (+ `number`, `publisher`), `thesis` (+ `kind`, `university`) or `video` (+ `platform`) |
 | `authors` | in the paper's order; `{ "last", "first" }` with the given names as printed (full or initials), `{ "org" }` for an organisation |
 | `year` | `"2022"`; `""` when there is none (APA: n.d.) |
 | `title` | **required**; sentence case as APA wants it (capitalise only the first word, the first word after a colon, and proper nouns), no final full stop |

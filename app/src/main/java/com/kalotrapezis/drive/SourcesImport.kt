@@ -31,12 +31,15 @@ internal object SourcesImport {
                 "article", "journal", "journal article", "paper" -> DocSource.Type.Article
                 "chapter", "book chapter", "incollection" -> DocSource.Type.Chapter
                 "web", "webpage", "web page", "website", "online" -> DocSource.Type.Web
-                "book", "report", "thesis" -> DocSource.Type.Book
+                "report", "techreport" -> DocSource.Type.Report
+                "thesis", "dissertation", "phdthesis", "mastersthesis" -> DocSource.Type.Thesis
+                "video", "film" -> DocSource.Type.Video
+                "book" -> DocSource.Type.Book
                 else -> if (s("journal").isNotEmpty()) DocSource.Type.Article else DocSource.Type.Book
             }
             out += DocSource(
                 tag = "", type = type, authors = people(o.opt("authors")), year = s("year").take(16), title = title,
-                container = s("journal", "container", "website", "book"), publisher = s("publisher"),
+                container = s("journal", "container", "website", "book", "number", "kind", "platform"), publisher = s("publisher", "university", "institution"),
                 volume = s("volume"), issue = s("issue"), pages = s("pages").replace(Regex("""\s*-{1,2}\s*"""), "–"),
                 // A DOI stays bare (APA adds https://doi.org/, Word keeps it as its DOI); a web page's address as it is.
                 doi = s("doi").replace(Regex("""^(https?://(dx\.)?doi\.org/|doi:\s*)""", RegexOption.IGNORE_CASE), "").ifEmpty { s("url") },

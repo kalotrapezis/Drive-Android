@@ -21,7 +21,7 @@ internal data class DocSource(
     val wordType: String? = null, // Word's own source type when it is one Writer shows as another (Report as a book)
     val extra: String = "", // what Word's source has that Writer does not edit (its Guid, city, …), as the file had it
 ) {
-    enum class Type(val label: String) { Book("Book"), Article("Journal article"), Web("Web page"), Chapter("Book chapter") }
+    enum class Type(val label: String) { Book("Book"), Article("Journal article"), Web("Web page"), Chapter("Book chapter"), Report("Report"), Thesis("Thesis"), Video("Video") }
     data class Person(val last: String, val first: String = "") {
         /** "Κ. Μ." / "J. R." from the given names, as APA writes them. */
         val initials get() = first.split(' ', '-').filter { it.isNotBlank() }.joinToString(" ") { it.take(1).uppercase() + "." }
@@ -94,6 +94,18 @@ internal object Apa {
                 plain(". ")
                 if (s.publisher.isNotBlank()) plain(end(s.publisher) + (if (link.isNotEmpty()) " " else ""))
             }
+            // Report: *Title* (Report No. 12). Publisher. — Thesis: *Title* [Master's thesis, University]. — Video: *Title* [Video]. YouTube.
+            DocSource.Type.Report, DocSource.Type.Thesis, DocSource.Type.Video -> {
+                italic(s.title)
+                when (s.type) {
+                    DocSource.Type.Report -> if (s.container.isNotBlank()) plain(" (${s.container})")
+                    DocSource.Type.Thesis -> plain(" [" + listOf(s.container.ifBlank { "Thesis" }, s.publisher).filter { it.isNotBlank() }.joinToString(", ") + "]")
+                    else -> plain(" [Video]")
+                }
+                plain(if (who.isNotEmpty()) ". " else ". $date ")
+                val by = if (s.type == DocSource.Type.Video) s.container else if (s.type == DocSource.Type.Report) s.publisher else ""
+                if (by.isNotBlank() && by != s.authors.firstOrNull()?.last) plain(end(by) + " ")
+            }
             DocSource.Type.Web -> {
                 if (who.isNotEmpty()) { italic(s.title); plain(". ") } else { italic(s.title); plain(". $date ") }
                 if (s.container.isNotBlank() && s.container != s.authors.firstOrNull()?.last) plain(end(s.container) + " ")
@@ -129,13 +141,18 @@ internal object WordSources {
         "JournalArticle", "ArticleInAPeriodical" -> DocSource.Type.Article
         "InternetSite", "DocumentFromInternetSite" -> DocSource.Type.Web
         "BookSection" -> DocSource.Type.Chapter
+        "Report" -> DocSource.Type.Report
+        "Film" -> DocSource.Type.Video
         else -> DocSource.Type.Book
     }
     private fun wordOf(t: DocSource.Type) = when (t) {
         DocSource.Type.Book -> "Book"; DocSource.Type.Article -> "JournalArticle"; DocSource.Type.Web -> "InternetSite"; DocSource.Type.Chapter -> "BookSection"
+        DocSource.Type.Report, DocSource.Type.Thesis -> "Report"; DocSource.Type.Video -> "Film"
     }
     /** Where each kind keeps what it is in: a journal's name, a web site's, a chapter's book's title. */
-    private fun containerTag(t: DocSource.Type) = when (t) { DocSource.Type.Article -> "JournalName"; DocSource.Type.Web -> "InternetSiteTitle"; DocSource.Type.Chapter -> "BookTitle"; else -> null }
+    private fun containerTag(t: DocSource.Type) = when (t) { DocSource.Type.Article -> "JournalName"; DocSource.Type.Web -> "InternetSiteTitle"; DocSource.Type.Chapter -> "BookTitle"
+        // A report's number and a thesis's kind are Word's report type; a video's platform its distributor.
+        DocSource.Type.Report, DocSource.Type.Thesis -> "ThesisType"; DocSource.Type.Video -> "Distributor"; else -> null }
 
     fun read(parts: Map<String, ByteArray>): List<DocSource> {
         val xml = path(parts)?.let { parts[it] } ?: return emptyList()
@@ -153,8 +170,9 @@ internal object WordSources {
             fun v(name: String) = kid(src, name)?.textContent?.trim().orEmpty()
             val tag = v("Tag").ifBlank { return@mapNotNull null }
             val word = v("SourceType")
-            val type = typeOf(word)
-            val known = setOf("Tag", "SourceType", "Author", "Title", "Year", "Publisher", "JournalName", "InternetSiteTitle", "BookTitle", "Volume", "Issue", "Pages", "DOI", "URL", "Edition")
+            // Word keeps a thesis as a report whose type says so.
+            val type = typeOf(word).let { if (it == DocSource.Type.Report && THESIS.containsMatchIn(v("ThesisType"))) DocSource.Type.Thesis else it }
+            val known = setOf("Tag", "SourceType", "Author", "Title", "Year", "Publisher", "JournalName", "InternetSiteTitle", "BookTitle", "ThesisType", "Distributor", "Volume", "Issue", "Pages", "DOI", "URL", "Edition")
             val author = kid(src, "Author")
             DocSource(tag, type, people(kid(author, "Author")), v("Year"), v("Title"), containerTag(type)?.let { v(it) }.orEmpty(), v("Publisher"), v("Volume"), v("Issue"),
                 v("Pages"), v("DOI").ifBlank { v("URL") }, v("Edition"), people(kid(author, "Editor")),
@@ -164,6 +182,7 @@ internal object WordSources {
         }
     }
 
+    private val THESIS = Regex("thesis|dissertation|διατριβή|διπλωματική|εργασία", RegexOption.IGNORE_CASE)
     private fun esc(s: String) = OfficeFormats.esc(s)
     private fun names(tag: String, people: List<DocSource.Person>) = if (people.isEmpty()) "" else if (people.size == 1 && people[0].first.isBlank())
         "<b:$tag><b:Corporate>${esc(people[0].last)}</b:Corporate></b:$tag>"
@@ -316,14 +335,16 @@ internal object Citations {
     }
 
     // --- OpenDocument: a source is kept in the bibliography marks that cite it ---
-    private val ODT_TYPES = mapOf(DocSource.Type.Book to "book", DocSource.Type.Article to "article", DocSource.Type.Web to "www", DocSource.Type.Chapter to "incollection")
+    private val ODT_TYPES = mapOf(DocSource.Type.Book to "book", DocSource.Type.Article to "article", DocSource.Type.Web to "www", DocSource.Type.Chapter to "incollection",
+        DocSource.Type.Report to "techreport", DocSource.Type.Thesis to "phdthesis", DocSource.Type.Video to "misc")
     private fun names(people: List<DocSource.Person>) = people.joinToString("; ") { if (it.first.isBlank()) it.last else "${it.last}, ${it.first}" }
     private fun people(s: String) = s.split(';').map { it.trim() }.filter { it.isNotEmpty() }.map { n -> n.split(',', limit = 2).let { DocSource.Person(it[0].trim(), it.getOrElse(1) { "" }.trim()) } }
 
     /** The mark's attributes (text:…) for [s]. */
     fun odtAttributes(s: DocSource): String {
         fun a(name: String, v: String) = if (v.isBlank()) "" else " text:$name=\"${OfficeFormats.esc(v)}\""
-        val container = when (s.type) { DocSource.Type.Article -> a("journal", s.container); DocSource.Type.Chapter -> a("booktitle", s.container); DocSource.Type.Web -> a("note", s.container); else -> "" }
+        val container = when (s.type) { DocSource.Type.Article -> a("journal", s.container); DocSource.Type.Chapter -> a("booktitle", s.container); DocSource.Type.Web, DocSource.Type.Video -> a("note", s.container)
+            DocSource.Type.Report, DocSource.Type.Thesis -> a("report-type", s.container); else -> "" }
         return a("identifier", s.tag) + " text:bibliography-type=\"${ODT_TYPES.getValue(s.type)}\"" + a("author", names(s.authors)) + a("title", s.title) + a("year", s.year) +
             container + a("publisher", s.publisher) + a("volume", s.volume) + a("number", s.issue) + a("pages", s.pages) + a("edition", s.edition) +
             a("editor", names(s.editors)) + a("url", s.doi.let { d -> if (d.isBlank() || d.startsWith("http")) d else "https://doi.org/$d" })
@@ -331,8 +352,9 @@ internal object Citations {
     /** A source from a bibliography mark's attributes. */
     fun odtSource(attr: (String) -> String?): DocSource? {
         val tag = attr("identifier")?.takeIf { it.isNotBlank() } ?: return null
-        val type = ODT_TYPES.entries.firstOrNull { it.value == attr("bibliography-type") }?.key ?: DocSource.Type.Book
-        val container = when (type) { DocSource.Type.Article -> attr("journal"); DocSource.Type.Chapter -> attr("booktitle"); DocSource.Type.Web -> attr("note"); else -> null }.orEmpty()
+        val type = if (attr("bibliography-type") == "mastersthesis") DocSource.Type.Thesis else ODT_TYPES.entries.firstOrNull { it.value == attr("bibliography-type") }?.key ?: DocSource.Type.Book
+        val container = when (type) { DocSource.Type.Article -> attr("journal"); DocSource.Type.Chapter -> attr("booktitle"); DocSource.Type.Web, DocSource.Type.Video -> attr("note")
+            DocSource.Type.Report, DocSource.Type.Thesis -> attr("report-type"); else -> null }.orEmpty()
         return DocSource(tag, type, people(attr("author").orEmpty()), attr("year").orEmpty(), attr("title").orEmpty(), container, attr("publisher").orEmpty(),
             attr("volume").orEmpty(), attr("number").orEmpty(), attr("pages").orEmpty(), attr("url").orEmpty().removePrefix("https://doi.org/"), attr("edition").orEmpty(), people(attr("editor").orEmpty()))
     }

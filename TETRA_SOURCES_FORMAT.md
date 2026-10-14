@@ -60,7 +60,7 @@ Save it anywhere in the Tetra folder (it syncs like any file), e.g. next to the 
 
 | Field | Meaning |
 |---|---|
-| `type` | `article`, `book`, `chapter` or `web` (also accepted: `report`, `thesis` → book; missing → article when there is a `journal`, else book) |
+| `type` | `article`, `book`, `chapter`, `web`, `report`, `thesis` or `video` (missing → article when there is a `journal`, else book) |
 | `authors` | in order; each `{ "last", "first" }` (given names in full or initials), `{ "org" }` for an organisation, or a `"Last, First"` string |
 | `year` | `"2022"`; leave empty for n.d. |
 | `title` | the work's title, in sentence case as APA writes it — **required** (a source without one is skipped and named) |
@@ -68,6 +68,8 @@ Save it anywhere in the Tetra folder (it syncs like any file), e.g. next to the 
 | `volume`, `issue`, `pages` | as printed; `12-30` becomes `12–30` |
 | `doi` | `10.xxxx/…` (a `https://doi.org/` or `doi:` in front is taken off; APA's list shows it as `https://doi.org/10.xxxx/…`) — or `url` for a web page |
 | `publisher`, `edition`, `editors` | books and chapters |
+| `number` / `kind` / `platform` | a report's number (`Report No. 12`), a thesis's kind (`Master's thesis`), a video's site (`YouTube`) |
+| `university` / `institution` | a thesis's university, a report's publisher |
 | `pdf` | where the paper is, for the user; Writer ignores it today |
 
 Unknown fields are ignored; `format`/`version` are there for later. A bare list (`[ {…}, {…} ]`) is read too.

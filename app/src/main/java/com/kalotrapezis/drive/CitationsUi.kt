@@ -85,6 +85,9 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
                         field("Pages", pages, { pages = it }); field("Publisher", publisher, { publisher = it })
                     }
                     DocSource.Type.Web -> field("Web site", container, { container = it })
+                    DocSource.Type.Report -> { field("Report number (e.g. Report No. 12)", container, { container = it }); field("Publisher", publisher, { publisher = it }) }
+                    DocSource.Type.Thesis -> { field("Kind (e.g. Master's thesis, Doctoral dissertation)", container, { container = it }); field("University", publisher, { publisher = it }) }
+                    DocSource.Type.Video -> field("Where (e.g. YouTube)", container, { container = it })
                     DocSource.Type.Book -> { field("Edition (e.g. 2nd)", edition, { edition = it }); field("Publisher", publisher, { publisher = it }) }
                 }
                 field("DOI or web address", doi, { doi = it })

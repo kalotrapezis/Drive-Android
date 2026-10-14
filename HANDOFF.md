@@ -1,5 +1,5 @@
 > **Latest — 14 October 2026.** Branch `writer-library` (pushed), all 205 unit tests pass. Newest debug build on the
-> **tablet** (971f6b37) and, one commit older (no Cross-reference), on the **phone** (208c8192). Beta 4 is published
+> **tablet** (971f6b37); the **phone** (208c8192) is older (no Cross-reference, Make chart, typing shortcut) — install it. Beta 4 is published
 > (desktop + Android, 13 Oct). Read this, then THE PLAN below.
 >
 > **Done 13–14 Oct (Phase 1 is finished except item 6):**
@@ -24,6 +24,13 @@
 > - **Phase 2 started:** References › **Caption** (Figure/Table/Equation/Εικόνα/Πίνακας, SEQ field, Word's Caption
 >   style added when missing), **Cross-reference** (entire caption or page; REF/PAGEREF to a `_Ref` bookmark on the
 >   caption) and **Update fields** (renumbers SEQ, refreshes REF/PAGEREF — `Fields.kt`). Checked on the tablet.
+> - **Table › Make chart** (14 Oct): a table's numbers become a chart under it — header row = series, first column =
+>   categories, columns of words skipped, cells placed by the grid (merged cells), Greek and English number forms; the
+>   chart dialog opens prefilled. Totals rows stay in (the user's call). A cell being typed in keeps its table selected,
+>   so the Table tab stays with a physical keyboard. `OfficeCharts.fromTable`, `ChartFromTableTest`.
+> - **Typing shortcut** (14 Oct): `x^2`/`H_2O`/`e^(i+1)` + space → raised/lowered; Backspace on that space restores the
+>   typed word and it is left so. `ScriptShortcut.kt` (+ test), the watcher in `WriterScreen` (`scriptUndo`, `scriptKept`).
+>   Not real equations — Word's equation editor is still a copy-only cause.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

@@ -77,6 +77,24 @@ citation to edit it; more source kinds (report, thesis, video); APA abstract pag
 watermark; page border styles; Arrange for floating objects (forward/backward, align, group, rotate), text on both
 sides of a picture, WordArt effects, chart axis titles / data labels / scatter; Insert › content controls (Developer).
 
+**Reference managers — Zotero, Mendeley, Consensus (asked 2026-10-14: "these are the big ones").** Bring a library's
+references into Writer's Sources (`DocSource`, References › Sources) so citations and the APA list come from it, nothing
+retyped. In order:
+1. **Import a file** (References › Sources › Import): **RIS** and **BibTeX** (all three export them — Zotero: File ›
+   Export Library; Mendeley: Export; Consensus: export of saved papers), plus **CSL-JSON** (Zotero's richest). Map
+   type (article, book, chapter, thesis, report, web page), authors, year, title, journal/volume/issue/pages, DOI, URL,
+   publisher, edition. Pick which to add; duplicates by DOI or title + year. Pure parsers with unit tests on real exports.
+2. **Zotero without a file:** Zotero's web API with the user's own key (read-only), or the desktop's `zotero.sqlite`
+   read on the PC and passed over sync — choose with the user (a key is a secret: stored like the sync token, never in
+   files or logs).
+3. **Documents written with the plugins:** Word files citing through Zotero's or Mendeley's Word add-in carry
+   `ADDIN ZOTERO_ITEM CSL_CITATION {json}` / `ADDIN CSL_CITATION {json}` fields — single-paragraph fields are already
+   kept (FIELD_CITE); next: read their JSON as sources, show them as citations, and keep `ZOTERO_BIBL` /
+   `ADDIN Mendeley Bibliography` blocks whole (today a bibliography field over paragraphs makes the file copy-only).
+   None of the user's 273 documents uses the add-ins yet (checked 14 Oct).
+4. Later, if wanted: export Writer's sources back as RIS/BibTeX; Mendeley's own API (OAuth) only if file import is not
+   enough.
+
 ## Phase 3 — viewers, then SHIP
 - **Excel viewer** (the user's wishes, 30 Sep — memory `office-roadmap`): read a sheet comfortably on the phone; fuzzy
   search across cells (typos and accents forgiven, Greek and English); filter rows by a tap on a column's header;

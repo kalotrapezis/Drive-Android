@@ -41,7 +41,7 @@ one pass once the tabs' features are done.
 - [x] Undo/redo for Writer's own changes too (style, spacing, picture, table, header…), not only typing
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
 - [x] Share the file (as last saved) — as PDF with Export
-- [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
+- [x] Mobile view (text reflows to the phone) / Print layout (the page as it prints) — View tab; the phone keeps Print layout (Mobile view off, the user's choice)
 - [x] File: Save as (beside the file, going on as the new one), Rename (draft and versions move with it), Print (Android printing of the PDF pages) — 14 Oct; Properties is About this file
 - [x] Word and character counter (1 Oct): tablet — in the top bar, of the selection when there is one ("12 of 1,234
       words"), a tap opens About; phone — File › About this file (words, characters with and without spaces, and the
@@ -74,7 +74,7 @@ one pass once the tabs' features are done.
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
 - [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
-- [ ] Format painter (copy formatting)
+- [x] Format painter (copy formatting) — Home, and Copy/Paste formatting in the Selection tab
 - [x] More styles: Title, Subtitle, Quote, Heading 4–6 and the document's own (Home › Styles…); Normal, Title, H1–H3 on the ribbon; the editor draws each as the document defines it
 
 ### Viewing (asked 2026-09-29)
@@ -87,9 +87,9 @@ one pass once the tabs' features are done.
       document's own style, so every paragraph with it changes, in Word/LibreOffice too
 - [x] **Line spacing** quick buttons on Home (1 · 1.15 · 1.5 · 2) — shown on the pages and in the file; the editor keeps its own lines
 - [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left, right and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style" from there
-- [ ] **Page format**: margins, orientation, paper size (Layout)
+- [x] **Page format**: margins, orientation, paper size (Layout › Page setup)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
-- [ ] **Bibliography / citations** (references list, citation style — APA etc.)
+- [x] **Bibliography / citations** (references list, APA 7 — see References)
 - [ ] The editor cannot show space between paragraphs (library limit); what is set is saved and shows in Word,
       LibreOffice and Export PDF
 
@@ -177,8 +177,8 @@ one pass once the tabs' features are done.
 ### References
 - [x] Table of contents (References: from Heading 1–3, at the cursor; Update table rewrites it in place with fresh page numbers) — written as plain paragraphs in the file's TOC 1–3 / Contents 1–3 styles with a dot leader, not a field: Word/LibreOffice show it as written — [ ] clickable entries, levels chosen
 - [x] Footnotes and endnotes (References › Insert footnote / Insert endnote): the number in the text (superscript, numbered in order — endnotes i, ii…), the note's words in a bar at the cursor and a dialog (Edit, Delete note); on the pages at the foot of their page under a short line, endnotes after the text; kept as each program keeps them (Word's footnotes.xml/endnotes.xml, LibreOffice's text:note) — a file with notes no longer copy-only — [ ] the note's own formatting when its words are edited (edited notes become plain), numbering formats other than 1/i, footnotes in columns
-- [x] Citations and bibliography, APA 7 (References › Insert citation, Sources, References list / Update references, Update citations): Word's form — the kind of source, then its fields; APA writes the citation "(Smith & Jones, 2019, p. 47)" and the reference entry. Kept as each program keeps them: Word's CITATION fields and its sources part (Source Manager); LibreOffice's bibliography marks — [ ] other styles (the user: APA 7 only for now), more source kinds (report, thesis, video…), a citation's own options (no author, suppress year), tapping a citation to edit it
-- [ ] Captions, cross-references — later
+- [x] Citations and bibliography, APA 7 (References › Insert citation, Sources, References list / Update references, Update citations): Word's form — the kind of source, then its fields; APA writes the citation "(Smith & Jones, 2019, p. 47)" and the reference entry. Kept as each program keeps them: Word's CITATION fields and its sources part (Source Manager); LibreOffice's bibliography marks ; report, thesis, video sources (14 Oct); **a citation tapped** shows a bar — Edit each of its sources, Change… its sources or page (15 Oct) — [ ] other styles (the user: APA 7 only for now), a citation's own options (no author, suppress year)
+- [x] Captions, cross-references (References › Caption, Cross-reference, Update fields — 14 Oct)
 
 ### Review
 - [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off — [ ] Tetra's own dictionaries (works without Gboard)
@@ -191,7 +191,7 @@ one pass once the tabs' features are done.
 - [x] Zoom
 - [ ] Fit to width; multiple pages
 - [ ] Reading mode (no ribbon, bigger text)
-- [ ] Navigation pane: jump to a heading
+- [x] Navigation pane: jump to a heading
 
 ### On the phone
 - [x] Ribbon at the bottom; a strip on the keyboard; the tools in pages with dots (asked 2026-09-27)

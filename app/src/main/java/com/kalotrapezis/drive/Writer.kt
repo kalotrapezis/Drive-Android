@@ -1968,6 +1968,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     } }
     val hereNote by remember { derivedStateOf { state.selection.min.let { at -> notesShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
     var noteEditing by remember { mutableStateOf<Pair<DocNote, String>?>(null) } // the note, its number
+    // References › a citation tapped (Word's citation menu, Phase 2): its sources to edit, or the citation changed.
+    /** Each citation's place in the editor: Word's CITATION instruction (or an ODT mark's tag) and its letters. */
+    val citesShown by remember { derivedStateOf {
+        if (meta.paras.none { p -> p.runs.any { it.cite != null && !isField(it.cite) } }) emptyList() else {
+            val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
+            current().paras.flatMapIndexed { i, p ->
+                var at = 0
+                p.runs.flatMap { r -> (r.cite?.takeIf { !isField(it) }?.let { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { c to it } } ?: emptyList()).also { at += r.text.length } }
+            }
+        }
+    } }
+    /** The citation the cursor is inside (not at its edges: typing on after one is not a tap on it). */
+    val hereCite by remember { derivedStateOf { state.selection.min.let { at -> citesShown.firstOrNull { (_, r) -> at in r.first + 1..r.last } } } }
+    var citeChanging by remember { mutableStateOf<Pair<String, IntRange>?>(null) }
     fun insertNote(end: Boolean) = change {
         if (!state.selection.collapsed) state.selection = androidx.compose.ui.text.TextRange(state.selection.max)
         val start = state.selection.min
@@ -3141,6 +3155,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("Edit", color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
+            // A citation, the cursor in it: each of its sources (a tap edits it), and Change (its sources or page).
+            hereCite?.let { (c, r) -> CitationBar(c, meta.sources, w, { s, t -> WriterLog.i("citation: edit source $t"); if (s != null) sourceEdit = s else sourceNew = true }) { WriterLog.i("citation: change $c"); citeChanging = c to r } }
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
             hereWord?.let { (r, w, suggestions) ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -3804,6 +3820,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
+    }
+    citeChanging?.let { (c, r) ->
+        val (tags, page) = Citations.parse(c)
+        CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citeChanging = null }, { sourceNew = true }, tags, page) { list, newPage ->
+            citeChanging = null
+            state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1) // the old citation, replaced by the new
+            insertCitation(list, newPage)
+            WriterLog.i("citation changed: $c -> ${list.map { it.tag }} p.$newPage")
+        }
     }
     if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, how -> crossRefOpen = false; insertCrossReference(target, how) } }
     if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }

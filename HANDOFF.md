@@ -1,3 +1,13 @@
+> **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. Phase 2's Word gaps, one commit each; **none
+> checked on the phone yet** — the user tests tomorrow: walk `TEST_TREE.md` on the phone (208c8192),
+> Print layout, Mobile view off. `WriterScreen` is at the JVM's 64 KB method limit ("Method too large"): put new UI in
+> its own composable (as `CitationBar`), not inline.
+>
+> **Done 15 Oct:**
+> - **A citation tapped** (item 1): with the cursor inside a citation, a bar over the ribbon — *Edit Smith, 2020* for
+>   each of its sources (opens the source form; a tag with no source opens a new one) and *Change…* (the citation dialog
+>   with its sources and page ticked; replaces it in place). `CitationBar` (CitationsUi.kt), `citesShown`/`hereCite`.
+>
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.
 >

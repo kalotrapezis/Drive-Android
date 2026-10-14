@@ -29,8 +29,6 @@ internal object OfficeCharts {
             out += c.paras.joinToString(" ") { it.text }.replace(OBJECT_MARK.toString(), "").trim()
             repeat(TableEdit.span(c) - 1) { out += "" }
         } } }.filter { r -> r.any { it.isNotEmpty() } }
-            // A totals row is left out: its bar would dwarf the others (the chart's own grid can take it back).
-            .filter { r -> r.firstOrNull()?.trim()?.trimEnd(':')?.lowercase() !in TOTALS }
         if (rows.isEmpty()) return null
         val width = rows.maxOf { it.size }
         fun cell(r: Int, c: Int) = rows.getOrNull(r)?.getOrNull(c).orEmpty()
@@ -46,8 +44,6 @@ internal object OfficeCharts {
         if (series.isEmpty() || categories.isEmpty()) return null
         return DocChart(ChartKind.Column, null, categories, series)
     }
-
-    private val TOTALS = setOf("total", "totals", "grand total", "sum", "σύνολο", "σύνολα", "γενικό σύνολο", "άθροισμα")
 
     /** A cell's number as people write it: "1.234,5" (Greek), "1,234.5", "12%", "€ 30", "-4"; null for words. */
     fun number(text: String): Double? {

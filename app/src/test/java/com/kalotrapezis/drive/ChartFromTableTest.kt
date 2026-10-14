@@ -27,13 +27,13 @@ class ChartFromTableTest {
         assertNull(OfficeCharts.number("12a"))
     }
 
-    @Test fun `a merged cell keeps the columns where they are, and a totals row is left out`() {
+    @Test fun `a merged cell keeps the columns where they are, totals included`() {
         val span3 = DocCell("<w:tcPr><w:gridSpan w:val=\"3\"/></w:tcPr>", listOf(DocPara(listOf(DocRun("Total")))))
         val t = table(listOf("Item", "Description", "Quantity", "Amount"), listOf("A", "words", "2", "12.50"))
         val total = DocRow("", listOf(span3, DocCell("", listOf(DocPara(listOf(DocRun("56.25")))))))
         val ch = OfficeCharts.fromTable(t.copy(rows = t.rows + total))!!
         assertEquals(listOf("Quantity", "Amount"), ch.series.map { it.name })
-        assertEquals(listOf("A"), ch.categories) // the Total row left out
-        assertEquals(listOf(12.5), ch.series[1].values)
+        assertEquals(listOf("A", "Total"), ch.categories) // the whole table: its totals too (the user, 2026-10-14)
+        assertEquals(listOf(12.5, 56.25), ch.series[1].values)
     }
 }

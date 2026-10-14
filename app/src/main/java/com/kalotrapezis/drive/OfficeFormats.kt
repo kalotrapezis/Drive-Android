@@ -1356,6 +1356,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         var keepStyle: String? = null
         var ownNumbering = false // the paragraph says itself whether it is a list item (numId 0: it is not)
         val keepParts = ArrayList<Pair<String, String>>()
+        val bookmarkNames = HashMap<String, String>() // a bookmark's id → its name, while its paragraph is read
         p.kid(W, "pPr")?.let { pPr ->
             for (e in pPr.kids()) when (e.localName) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
@@ -1390,7 +1391,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         columnBreak = false
         val done = ArrayList<DocPara>()
         fun keep(): DocKeep? {
-            var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS } // a bookmark once
+            var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS && it.first != LABEL_BOOKMARKS } // a bookmark once
             // Not "parts has one": Google Docs writes <w:pageBreakBefore w:val="0"/> on every paragraph, and a break before
             // such a paragraph was lost (a paper's contents moved up onto its cover page — 2026-10-13).
             if (afterPageBreak && parts.none { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }) parts = parts.filter { it.first != "pageBreakBefore" } + ("pageBreakBefore" to "<w:pageBreakBefore/>")
@@ -1435,8 +1436,18 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     // A bookmark (the contents' links and page numbers go to the headings' _Toc ones): kept on its paragraph.
                     "bookmarkStart" -> e.attr(W, "name")?.takeIf { it != "_GoBack" }?.let { n ->
+                        e.attr(W, "id")?.let { bookmarkNames[it] = n }
                         keepParts.indexOfFirst { it.first == BOOKMARKS }.let { i -> if (i < 0) keepParts += BOOKMARKS to n else keepParts[i] = BOOKMARKS to keepParts[i].second + " " + n } }
-                    "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
+                    // One that ends just after a caption's number (Word's "Only label and number"): kept as that.
+                    "bookmarkEnd" -> e.attr(W, "id")?.let { bookmarkNames[it] }?.let { n ->
+                        val i = keepParts.indexOfFirst { it.first == BOOKMARKS }
+                        val names = keepParts.getOrNull(i)?.second?.split(' ').orEmpty()
+                        if (n in names && runs.lastOrNull()?.cite?.let { isField(it) && it.drop(1).trimStart().startsWith("SEQ ", true) } == true) {
+                            if (names.size == 1) keepParts.removeAt(i) else keepParts[i] = BOOKMARKS to (names - n).joinToString(" ")
+                            keepParts.indexOfFirst { it.first == LABEL_BOOKMARKS }.let { j -> if (j < 0) keepParts += LABEL_BOOKMARKS to n else keepParts[j] = LABEL_BOOKMARKS to keepParts[j].second + " " + n }
+                        }
+                    }
+                    "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
                     // A move's two ends are named: its deletion and insertion are kept, the pairing is not.
                     "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd" -> Unit
                     else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
@@ -1641,7 +1652,9 @@ internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "picture", "bib
 internal const val SDT_BLOCK = "sdtBlock"
 internal const val SDT_PART = "sdtPart"
 internal const val BOOKMARKS = "bookmarks"
-internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS)
+/** Bookmarks round a caption's label and number only ("Figure 1"): from the paragraph's start to its first SEQ field's end. */
+internal const val LABEL_BOOKMARKS = "labelBookmarks"
+internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS, LABEL_BOOKMARKS)
 /** A spacing element with no space before, its attributes in the order the parser gives them back (so it reads back the same). */
 private fun noSpaceBefore(spacing: String): String {
     val attrs = Regex("""\s([\w:]+)="[^"]*"""").findAll(spacing).filter { it.groupValues[1] !in setOf("w:before", "w:beforeAutospacing") }.map { it.value.trim() }.toList()
@@ -1918,7 +1931,9 @@ private object DocxWriter {
                 body.append("</w:pPr>")
             }
             val marks = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
-            marks.forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
+            var labelMarks = p.keep?.parts?.firstOrNull { it.first == LABEL_BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
+            (marks + labelMarks).forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
+            fun endLabels() { labelMarks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }; labelMarks = emptyList() }
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
             // A citation: its letters inside its field, as Word writes one (begin, instruction, separate, text, end).
@@ -1926,6 +1941,8 @@ private object DocxWriter {
             fun citeTo(c: String?) {
                 if (c == cite) return
                 if (cite != null) body.append("""<w:r><w:fldChar w:fldCharType="end"/></w:r>""")
+                // The caption's number ends its "label and number" bookmarks.
+                if (cite?.drop(1)?.trimStart()?.startsWith("SEQ ", true) == true) endLabels()
                 if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c.removePrefix(FIELD_CITE.toString()))} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
                 cite = c
             }
@@ -1969,6 +1986,7 @@ private object DocxWriter {
             citeTo(null); controlTo(null)
             // A comment ends here unless the next paragraph goes on in it.
             commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
+            endLabels()
             marks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }
             body.append("</w:p>")
         }

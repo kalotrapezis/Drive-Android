@@ -17,19 +17,31 @@ internal object Fields {
     fun update(doc: OfficeDoc, pageOf: (Int) -> Int? = { null }): OfficeDoc {
         val numbered = renumber(doc)
         val marked = HashMap<String, Int>() // bookmark → its paragraph
-        numbered.paras.forEachIndexed { i, p -> p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.forEach { marked[it] = i } }
+        val labels = HashSet<String>() // those round a caption's label and number only
+        numbered.paras.forEachIndexed { i, p ->
+            p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.forEach { marked[it] = i }
+            p.keep?.parts?.firstOrNull { it.first == LABEL_BOOKMARKS }?.second?.split(' ')?.forEach { marked[it] = i; labels += it }
+        }
         return numbered.copy(paras = numbered.paras.map { p ->
             if (p.runs.none { instr(it)?.let { i -> i.startsWith("REF ", true) || i.startsWith("PAGEREF ", true) } == true }) p
             else p.copy(runs = fieldsOf(p.runs) { instr ->
                 val words = instr.split(Regex("\\s+"))
                 val target = words.getOrNull(1)?.let { marked[it] } ?: return@fieldsOf null
                 when (words[0].uppercase()) {
-                    "REF" -> numbered.paras[target].text.trim()
+                    "REF" -> if (words[1] in labels) labelAndNumber(numbered.paras[target]) else numbered.paras[target].text.trim()
                     "PAGEREF" -> pageOf(target)?.toString()
                     else -> null
                 }
             })
         })
+    }
+
+    /** A caption's label and number ("Figure 3"): its letters up to the end of its first SEQ field. */
+    fun labelAndNumber(p: DocPara): String {
+        val f = p.runs.indexOfFirst { instr(it)?.startsWith("SEQ ", true) == true }.takeIf { it >= 0 } ?: return p.text.trim()
+        var e = f
+        while (e + 1 < p.runs.size && p.runs[e + 1].cite == p.runs[f].cite) e++ // the field's letters may be several runs
+        return p.runs.take(e + 1).joinToString("") { it.text }.trim()
     }
 
     /** [runs] with each kept field's letters (its runs, one field) replaced by [shown] of its instruction (null: kept). */

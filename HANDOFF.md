@@ -78,12 +78,18 @@
 >   charts before. Fixed: the chart's title was read from the first `c:title` anywhere (an axis's, if it had none).
 >   Dialog: two axis-title fields, Data labels next to Stacked. Test: `axis titles, data labels and a scatter…`;
 >   LibreOffice renders all eight (4 kinds × 2 formats); the preview checked on the tablet.
+> - **Cross-reference › Only label and number** (14 Oct): "Figure 2" alone, as Word's — a `_Ref` bookmark from the
+>   caption's start to the end of its first SEQ field (`LABEL_BOOKMARKS`, beside the paragraph's `BOOKMARKS`): written with
+>   its `bookmarkEnd` after the field, read back as that when a file's bookmark ends there, shown by Update fields
+>   (`Fields.labelAndNumber`). LibreOffice reads the same file's bookmark round "Figure 1" exactly. Test in FieldsTest.
+>   General bookmarks round part of a paragraph are still kept on the whole paragraph.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
 > viewers"):**
-> 1. Phase 2 continues — group/rotate for floating objects (later),
->    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
+> 1. Phase 2 left: group/rotate for floating objects, and the smaller items of Phase 2's list below (reading mode,
+>    format painter for paragraphs, tapping a citation to edit it, more source kinds, APA abstract page, page border
+>    styles, content controls). Then Phase 3: the Excel and PowerPoint viewers.
 > 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
 > 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width
 >    (the file's gridSpan says Writer's); unverified against Word, left. Item 6 (.doc/.rtf): only 2 .doc files — suggest

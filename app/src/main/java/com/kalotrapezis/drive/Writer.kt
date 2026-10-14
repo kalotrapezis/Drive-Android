@@ -1805,13 +1805,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // and PAGEREF fields to a hidden _Ref bookmark on the caption (Word's own way).
     var crossRefOpen by remember { mutableStateOf(false) }
     fun captions(doc: OfficeDoc) = doc.paras.indices.filter { i -> doc.paras[i].runs.any { Fields.instr(it)?.startsWith("SEQ ", true) == true } }
-    fun insertCrossReference(target: Int, page: Boolean) = change {
+    /** [how]: "caption" (its words), "label" (its label and number only: "Figure 3"), "page". */
+    fun insertCrossReference(target: Int, how: String) = change {
         val cur = current()
         val p = cur.paras.getOrNull(target) ?: return@change
-        val marks = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ').orEmpty()
+        val page = how == "page"
+        // Label and number: a bookmark round those alone (Word's), else one on the whole caption.
+        val key = if (how == "label") LABEL_BOOKMARKS else BOOKMARKS
+        val marks = p.keep?.parts?.firstOrNull { it.first == key }?.second?.split(' ').orEmpty()
         val name = marks.firstOrNull { it.startsWith("_Ref") } ?: "_Ref${(100000000..999999999).random()}"
         val instr = FIELD_CITE + (if (page) "PAGEREF" else "REF") + " $name \\h"
-        val text = if (page) (pageOfPara(target) ?: 1).toString() else p.text.trim()
+        val text = if (page) (pageOfPara(target) ?: 1).toString() else if (how == "label") Fields.labelAndNumber(p) else p.text.trim()
         if (!state.selection.collapsed) state.removeSelectedText()
         val start = state.selection.min
         state.addTextAfterSelection(text)
@@ -1820,9 +1824,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         // The caption gets its bookmark (once); the paragraphs are the same ones, the reference only added letters.
         meta = if (name in marks) withRef else withRef.copy(paras = withRef.paras.mapIndexed { i, q -> if (i != target) q else {
             val keep = q.keep ?: DocKeep()
-            q.copy(keep = keep.copy(parts = keep.parts.filter { it.first != BOOKMARKS } + (BOOKMARKS to (marks + name).joinToString(" "))))
+            q.copy(keep = keep.copy(parts = keep.parts.filter { it.first != key } + (key to (marks + name).joinToString(" "))))
         } })
-        WriterLog.i("cross-reference: ${if (page) "page" else "caption"} of paragraph $target ($name)")
+        WriterLog.i("cross-reference: $how of paragraph $target ($name)")
         dirty = true; reshow(); message = "Cross-reference inserted"
     }
     // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
@@ -3455,7 +3459,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
     }
-    if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, page -> crossRefOpen = false; insertCrossReference(target, page) } }
+    if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, how -> crossRefOpen = false; insertCrossReference(target, how) } }
     if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
     if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }, { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
         { sourcesOpen = false; pasteSources() }, { askClaudeForSources() }) { deleteSource(it) }
@@ -4105,18 +4109,19 @@ private fun CaptionDialog(dismiss: () -> Unit, insert: (String, String) -> Unit)
 
 /** References › Cross-reference: one of the document's captions, shown as its words or as its page. */
 @Composable
-private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () -> Unit, insert: (Int, Boolean) -> Unit) {
-    var page by remember { mutableStateOf(false) }
+private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () -> Unit, insert: (Int, String) -> Unit) {
+    var how by remember { mutableStateOf("caption") }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Cross-reference") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.FilterChip(selected = !page, onClick = { page = false }, label = { Text("Entire caption") })
-                androidx.compose.material3.FilterChip(selected = page, onClick = { page = true }, label = { Text("Page number") })
+            // Word's "Insert reference to".
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("caption" to "Entire caption", "label" to "Only label and number", "page" to "Page number").forEach { (k, label) ->
+                    androidx.compose.material3.FilterChip(selected = how == k, onClick = { how = k }, label = { Text(label) }) }
             }
             if (captions.isEmpty()) Text("No captions yet: References › Caption puts one under a picture or table.", style = MaterialTheme.typography.bodyMedium)
             Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                 captions.forEach { (i, text) -> Text(text.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
-                    modifier = Modifier.fillMaxWidth().clickable { insert(i, page) }.padding(vertical = 10.dp)) }
+                    modifier = Modifier.fillMaxWidth().clickable { insert(i, how) }.padding(vertical = 10.dp)) }
             }
         } },
         confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })

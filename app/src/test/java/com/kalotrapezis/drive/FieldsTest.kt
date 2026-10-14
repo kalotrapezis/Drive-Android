@@ -49,4 +49,24 @@ class FieldsTest {
         assertEquals("As Figure 1: Map on page 2 and old", Fields.update(doc) { if (it == 1) 2 else 1 }.paras[0].text)
         assertEquals("As Figure 1: Map on page ? and old", Fields.update(doc).paras[0].text) // no pages: the page left as it was
     }
+
+    @Test fun `a cross-reference to the label and number only shows "Figure 2", in the file as Word keeps it`() {
+        val doc = OfficeDoc(listOf(
+            DocPara(listOf(DocRun("Figure "), seq("SEQ Figure \\* ARABIC", "1"), DocRun(": Before"))),
+            DocPara(listOf(DocRun("As "), DocRun("old", cite = FIELD_CITE + "REF _Ref7 \\h"), DocRun(" shows."))),
+            DocPara(listOf(DocRun("Figure "), seq("SEQ Figure \\* ARABIC", "1"), DocRun(": A map")), keep = DocKeep("Caption", listOf(LABEL_BOOKMARKS to "_Ref7"))),
+        ))
+        assertEquals("As Figure 2 shows.", Fields.update(doc).paras[1].text)
+        // Saved: the bookmark ends after the number's field, before the rest of the caption — and reads back as that.
+        val bytes = OfficeFormats.write(doc, OfficeKind.Docx)
+        java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("label-and-number.docx").writeBytes(bytes)
+        val xml = String(OfficeFormats.unzip(bytes).getValue("word/document.xml"), Charsets.UTF_8)
+        val caption = xml.substring(xml.indexOf("w:name=\"_Ref7\""))
+        val id = Regex("""w:id="(\d+)"""").find(xml.substring(xml.lastIndexOf("<w:bookmarkStart", xml.indexOf("w:name=\"_Ref7\""))))!!.groupValues[1]
+        val end = caption.indexOf("<w:bookmarkEnd w:id=\"$id\"/>")
+        assert(end > caption.indexOf("fldCharType=\"end\"") && end < caption.indexOf(": A map")) { caption }
+        val back = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(listOf(LABEL_BOOKMARKS to "_Ref7"), back.paras[2].keep?.parts?.filter { it.first == LABEL_BOOKMARKS || it.first == BOOKMARKS })
+        assertEquals("As Figure 2 shows.", Fields.update(back).paras[1].text)
+    }
 }

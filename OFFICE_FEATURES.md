@@ -42,7 +42,7 @@ one pass once the tabs' features are done.
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
 - [x] Share the file (as last saved) — as PDF with Export
 - [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
-- [ ] ⋯ menu: Save as, Rename, Print, Properties
+- [x] File: Save as (beside the file, going on as the new one), Rename (draft and versions move with it), Print (Android printing of the PDF pages) — 14 Oct; Properties is About this file
 - [x] Word and character counter (1 Oct): tablet — in the top bar, of the selection when there is one ("12 of 1,234
       words"), a tap opens About; phone — File › About this file (words, characters with and without spaces, and the
       selection's). Tables' words count, pictures do not

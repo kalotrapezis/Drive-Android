@@ -1013,6 +1013,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var tab by remember { mutableStateOf(WriterTab.Home) }
     var message by remember { mutableStateOf<String?>(null) }
     var naming by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) } // File › Rename
     var leaving by remember { mutableStateOf(false) }
     var linking by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
@@ -1444,6 +1445,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     LaunchedEffect(autoSaveDue) { if (autoSaveDue > 0 && dirty) save(auto = true) }
+    /** A new document's first Save, or Save as (File): beside the document it was, under [typed], and goes on as that one. */
     fun saveNew(typed: String) {
         if (saving) return
         val clean = typed.trim().removeSuffix(".${kind.extension}")
@@ -1451,7 +1453,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         saving = true
         scope.launch {
             try {
-            val dir = TextEditorStore(context).saveDirectory()
+            val dir = currentFile()?.parentFile ?: TextEditorStore(context).saveDirectory()
             val target = File(dir, "$clean.${kind.extension}")
             val doc = current()
             val savedStyleEdits = styleEdits
@@ -1468,7 +1470,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 }
             }
-            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved in ${TextEditorStore(context).saveFolder}" }
+            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved as ${target.name}" }
                 .onFailure { WriterLog.e("could not save new", it); message = it.message }
             } catch (error: Exception) { WriterLog.e("finish save new", error); message = error.message ?: "Could not finish saving." }
             finally { saving = false }
@@ -1489,6 +1491,38 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             result.onSuccess { message = "Saved ${it.name} in ${dir.name}" }.onFailure { message = it.message ?: "Could not make the PDF." }
+        }
+    }
+    /** File › Print: the pages as Export PDF makes them, to Android's printing (a printer, or Save as PDF). */
+    fun print() {
+        scope.launch {
+            val doc = current()
+            val pdf = withContext(Dispatchers.IO) { runCatching {
+                File(context.cacheDir, "print.pdf").also { f -> f.outputStream().use { OfficePdf.write(doc, DocStyles.of(kind, original), it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } } }
+            }.onFailure { WriterLog.e("print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+            val manager = context.getSystemService(android.print.PrintManager::class.java) ?: return@launch
+            manager.print(name.substringBeforeLast('.'), PdfPrintAdapter(pdf, name.substringBeforeLast('.')), null)
+            WriterLog.i("print ${pdf.length() / 1024} KB")
+        }
+    }
+    /** File › Rename: the file itself, its recovery draft and its versions with it. */
+    fun rename(typed: String) {
+        val f = currentFile() ?: return
+        val clean = typed.trim().removeSuffix(".${kind.extension}")
+        if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
+        val target = File(f.parentFile, "$clean.${kind.extension}")
+        if (target == f) { renaming = false; return }
+        if (target.exists()) { message = "${target.name} is already there. Choose another name."; return }
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { draftMutex.withLock { runCatching {
+                val oldDraft = draftFile(context, draftKey, kind); val oldVersions = versionsDir(context, f)
+                check(f.renameTo(target)) { "Could not rename ${f.name}." }
+                if (oldDraft.isFile) oldDraft.renameTo(draftFile(context, Uri.fromFile(target).toString(), kind))
+                if (oldVersions.isDirectory) oldVersions.renameTo(versionsDir(context, target))
+            }.onFailure { WriterLog.e("rename", it) }.isSuccess } }
+            if (!ok) { message = "Could not rename it."; return@launch }
+            uri = Uri.fromFile(target).toString(); name = target.name; renaming = false
+            WriterLog.i("renamed to ${target.name}"); message = "Renamed ${target.name}"
         }
     }
     /** A version comes back: the document as it is now is kept as a version first, so restoring is undone the same way. */
@@ -2912,6 +2946,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         message = if (!autoSave) "AutoSave off — Save when you want the file changed" else if (file == null) "AutoSave on — once the document has a name" else if (meta.blocking.isNotEmpty()) "AutoSave on — but this file is saved only as a copy" else "AutoSave on"
                     }
                 }, {
+                    RibbonButton("Save as", w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
+                    RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
+                    RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
                     RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
                     RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
                 }, {
@@ -3456,22 +3493,30 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
 
     if (naming) {
-        var typed by remember { mutableStateOf("") }
+        var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }
         AlertDialog(
             onDismissRequest = { naming = false },
             title = { Text("Save as") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") })
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // A new document chooses its kind; a file stays what it is (its own package is what is written).
+                    if (file == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OfficeKind.entries.forEach { k -> RibbonButton(if (k == OfficeKind.Docx) "Word (.docx)" else "OpenDocument (.odt)", MaterialTheme.colorScheme.onSurface, on = kind == k) { kind = k } }
                     }
-                    Text("In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                    Text(file?.parentFile?.let { "Beside ${file.name}, in ${it.name}. Writer goes on with the new one." } ?: "In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
         )
+    }
+    if (renaming) {
+        var typed by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
+        AlertDialog(onDismissRequest = { renaming = false }, title = { Text("Rename") },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") }) },
+            confirmButton = { TextButton(onClick = { rename(typed) }) { Text("Rename") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } })
     }
     if (leaving) AlertDialog(
         onDismissRequest = { leaving = false },
@@ -4158,4 +4203,17 @@ private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () 
             }
         } },
         confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** File › Print: a PDF already made, handed to Android's printing as it is. */
+private class PdfPrintAdapter(val pdf: File, val title: String) : android.print.PrintDocumentAdapter() {
+    override fun onLayout(old: android.print.PrintAttributes?, new: android.print.PrintAttributes, cancel: android.os.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
+        if (cancel?.isCanceled == true) { callback.onLayoutCancelled(); return }
+        callback.onLayoutFinished(android.print.PrintDocumentInfo.Builder("$title.pdf").setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), old != new)
+    }
+    override fun onWrite(pages: Array<out android.print.PageRange>, out: android.os.ParcelFileDescriptor, cancel: android.os.CancellationSignal?, callback: WriteResultCallback) {
+        runCatching { pdf.inputStream().use { input -> java.io.FileOutputStream(out.fileDescriptor).use { input.copyTo(it) } } }
+            .onSuccess { callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES)) }
+            .onFailure { callback.onWriteFailed(it.message) }
+    }
 }

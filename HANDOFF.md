@@ -88,6 +88,11 @@
 >   (`chosenOrWord`, now shared with Aa and Comment) as Word's `rFonts` / ODF's `fo:font-family` (`OfficeFormats.withFont`,
 >   shared with Drop cap; `WriterBridge.restyled`, which Format painter uses now). Typed letters after take it on.
 >   Checked on the tablet (Courier New on a word, autosaved, the XML right); test `a font chosen for some letters…`.
+> - **File › Save as, Rename, Print** (14 Oct): Save as beside the file (a named file keeps its kind; a new one chooses),
+>   Writer goes on with the new one; Rename moves the recovery draft and the versions too; Print hands the Export PDF
+>   pages to Android (`PdfPrintAdapter`). Checked on the tablet: Save as and Rename (then AutoSave to the renamed file);
+>   Print opens the dialog with 27 KB of pages, but the tablet's Konica Minolta print plugin crashes and cancels it — not
+>   Writer; try it on the phone.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

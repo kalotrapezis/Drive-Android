@@ -146,8 +146,8 @@ one pass once the tabs' features are done.
       Headings 1–3 at once — [ ] Word's theme fonts/colours, more sets
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
-      no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) — [ ] scatter as
-      x/y, axis titles, data labels; Word's own Edit data (it needs the embedded workbook)
+      no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
+      axis titles, data labels (14 Oct) — [ ] Word's own Edit data (it needs the embedded workbook)
 - [ ] Later: equations (√x,
       kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
       date picker, check box — OnlyOffice's last Insert button)

@@ -205,6 +205,9 @@ private const val STYLE_ALPHA = 0xFEL
 /** A tracked change's letters: its author's colour, two steps short of opaque (never saved as the letters' own). */
 private const val CHANGE_ALPHA = 0xFDL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
+/** The letters' own "not bold" / "not italic" under a bold or italic style (DocRun.unbold/unitalic): weight 399, a see-through shadow 0x02. */
+private const val UNBOLD_WEIGHT = 399
+private const val UNSLANT = 0x02L
 /** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
 
@@ -315,7 +318,7 @@ internal object WriterBridge {
 
     /** Visual font and separator styles never enter the editable document or its saved runs. */
     fun displayText(shown: AnnotatedString, rich: RichTextDocument, doc: OfficeDoc, styles: DocStyles,
-        fontFamily: (String?) -> FontFamily? = { name -> OfficeFonts.typeface(name)?.let { FontFamily(it) } }): AnnotatedString {
+        fontFamily: (String?) -> FontFamily? = { name -> OfficeFonts.family(name) }): AnnotatedString {
         val places = blockPlaces(shown.text, rich)
         val fonts = AnnotatedString.Builder(shown).apply {
             doc.paras.forEachIndexed { para, p ->
@@ -392,24 +395,29 @@ internal object WriterBridge {
     }.getOrDefault(true)
 
     /**
-     * Writer's last look [old] carried over to [now] (the editor's text a keystroke later): the letters typed take the look
-     * of those before them, removed ones take theirs away. Null when the text changed elsewhere than in one place.
+     * Writer's look [shown] — made from the editor's text [base] — over the editor's text [now], a keystroke or a Bold later:
+     * the editor's own styles as they are now, and only what Writer added to [base] (fonts, the space between paragraphs),
+     * moved past the letters typed or removed (those typed at a span's end take it on). Null when it cannot be laid so.
      */
-    fun carried(old: AnnotatedString, now: String): AnnotatedString? {
-        val o = old.text
-        if (o == now) return old
+    fun carried(shown: AnnotatedString, base: AnnotatedString, now: AnnotatedString): AnnotatedString? {
+        fun <T> added(all: List<AnnotatedString.Range<T>>, had: List<AnnotatedString.Range<T>>): List<AnnotatedString.Range<T>> {
+            val left = had.groupingBy { it }.eachCount().toMutableMap()
+            return all.filter { r -> val n = left[r] ?: 0; if (n > 0) { left[r] = n - 1; false } else true }
+        }
+        val o = base.text; val t = now.text
         var pre = 0
-        while (pre < o.length && pre < now.length && o[pre] == now[pre]) pre++
+        while (pre < o.length && pre < t.length && o[pre] == t[pre]) pre++
         var suf = 0
-        while (suf < o.length - pre && suf < now.length - pre && o[o.length - 1 - suf] == now[now.length - 1 - suf]) suf++
-        val oldEnd = o.length - suf; val delta = now.length - o.length
+        while (suf < o.length - pre && suf < t.length - pre && o[o.length - 1 - suf] == t[t.length - 1 - suf]) suf++
+        val oldEnd = o.length - suf; val delta = t.length - o.length
         fun start(x: Int) = if (x <= pre) x else if (x >= oldEnd) x + delta else pre
         fun end(x: Int) = if (x < pre) x else if (x >= oldEnd && (x > pre || delta > 0)) x + delta else pre
         fun <T> moved(list: List<AnnotatedString.Range<T>>) = list.mapNotNull { r ->
             val a = start(r.start); val z = end(r.end)
             if (z < a || (z == a && r.end > r.start)) null else AnnotatedString.Range(r.item, a, z)
         }
-        return runCatching { AnnotatedString(now, moved(old.spanStyles), moved(old.paragraphStyles)) }.getOrNull()
+        return runCatching { AnnotatedString(t, now.spanStyles + moved(added(shown.spanStyles, base.spanStyles)),
+            now.paragraphStyles + moved(added(shown.paragraphStyles, base.paragraphStyles))) }.getOrNull()
     }
 
     /** Whether a numbered item's label is not what document order gives it ("1.1." under an item that became 2.). */
@@ -475,8 +483,10 @@ internal object WriterBridge {
                 // The paragraph style's look, where the letters have none of their own.
                 if (r.image == null && r.text.isNotEmpty()) {
                     if (r.sizePt == null && r.script == 0) look.sizePt?.takeIf { kotlin.math.abs(it - doc.basePt) > 0.01f }?.let { marks += RichTextSpanMark.FontSize(range, ((it + STYLE_SIZE) * scale).sp) }
-                    if (!r.bold && look.bold == true) marks += RichTextSpanMark.FontWeight(range, STYLE_WEIGHT)
-                    if (!r.italic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
+                    if (!r.bold && !r.unbold && look.bold == true) marks += RichTextSpanMark.FontWeight(range, STYLE_WEIGHT)
+                    if (r.unbold) marks += RichTextSpanMark.FontWeight(range, UNBOLD_WEIGHT)
+                    if (r.unitalic) marks += RichTextSpanMark.Shadow(range, UNSLANT, 0f, 0f, 0f)
+                    if (!r.italic && !r.unitalic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
                     if (r.color == null) look.color?.takeIf { it != 0 }?.let { marks += RichTextSpanMark.TextColor(range, (STYLE_ALPHA shl 24) or it.toLong()) }
                 }
                 // Capitals, small capitals, double lines: drawn by the editor too (the letters stay as typed).
@@ -618,7 +628,8 @@ internal object WriterBridge {
                 val styleSlant = b.spans.any { it is RichTextSpanMark.Shadow && a in it.range && it.argb == STYLE_SLANT }
                 for (m in b.spans) if (a in m.range) r = when (m) {
                     is RichTextSpanMark.Bold -> r.copy(bold = true)
-                    is RichTextSpanMark.FontWeight -> if (m.weight == STYLE_WEIGHT) r else r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.FontWeight -> if (m.weight == STYLE_WEIGHT) r else if (m.weight == UNBOLD_WEIGHT) r.copy(unbold = true) else r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.Shadow -> if (m.argb == UNSLANT) r.copy(unitalic = true) else r
                     is RichTextSpanMark.Italic -> if (styleSlant) r else r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
@@ -689,6 +700,7 @@ internal object WriterBridge {
                 is RichTextSpanMark.Bold, is RichTextSpanMark.Underline, is RichTextSpanMark.Strikethrough,
                 is RichTextSpanMark.BaselineShift, is RichTextSpanMark.Highlight -> true
                 is RichTextSpanMark.FontWeight -> m.weight != STYLE_WEIGHT
+                is RichTextSpanMark.Shadow -> m.argb == UNSLANT
                 is RichTextSpanMark.Italic -> m.range !in slanted
                 is RichTextSpanMark.FontSize -> spOf(m.size)?.let { !isStyleSize(it / scale) } ?: false
                 is RichTextSpanMark.TextColor -> (m.argb ushr 24).let { it != STYLE_ALPHA && it != CHANGE_ALPHA }
@@ -1194,7 +1206,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var editorTextWidth by remember { mutableIntStateOf(0) }
     var shownTabs by remember { mutableStateOf<List<EditorTab>>(emptyList()) }
     // Writer's last look of the text and how many paragraphs the editor had then (not state: read while composing).
-    val lastLook = remember { arrayOfNulls<Pair<AnnotatedString, Int>>(1) }
+    val lastLook = remember { arrayOfNulls<Pair<AnnotatedString, AnnotatedString>>(1) } // Writer's look and the editor's text it was made from
     LaunchedEffect(loaded, state.annotatedString, documentStyles, styleEdits, onPage, WriterBridge.editorWidthSp, editorTextWidth, shownZoom) {
         if (!loaded) return@LaunchedEffect
         val doc = current()
@@ -1206,7 +1218,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (tabs != shownTabs && tabs.isNotEmpty()) WriterLog.i("editor tabs: ${tabs.size}, leaders ${tabs.count { it.leader != null }}, widths px ${tabs.take(6).joinToString { "%.0f".format(it.widthPx) }}")
         shownTabs = tabs
         WriterBridge.displayText(state, displayed)
-        lastLook[0] = displayed to state.annotatedString.paragraphStyles.size
+        lastLook[0] = displayed to state.annotatedString
     }
 
     // Undo for what Writer changes itself (a style, spacing, a picture, a table, the header…): the editor's own undo
@@ -2033,6 +2045,31 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
         WriterLog.i("format painted on ${sel.max - sel.min} letters")
     }
+    // Bold and Italic as Word's: on where the paragraph's style makes the words bold/italic too; off there takes the style's
+    // off for these words (asked 14 Oct: "if the style commands titles to be bold, show that in the buttons as well").
+    fun boldHere(s: SpanStyle) = (s.fontWeight?.weight ?: 400) >= 600
+    fun toggleBold(s: SpanStyle) {
+        val weight = s.fontWeight?.weight
+        if (weight != null && weight >= 600) {
+            state.removeSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            if (weight == STYLE_WEIGHT) { state.removeSpanStyle(SpanStyle(fontWeight = FontWeight(STYLE_WEIGHT))); state.addSpanStyle(SpanStyle(fontWeight = FontWeight(UNBOLD_WEIGHT))) }
+        } else {
+            state.removeSpanStyle(SpanStyle(fontWeight = FontWeight(UNBOLD_WEIGHT)))
+            state.addSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        }
+        WriterLog.i("bold ${if (weight != null && weight >= 600) "off" else "on"} (was weight $weight) on ${state.selection}")
+    }
+    fun toggleItalic(s: SpanStyle) {
+        val slantColor = s.shadow?.color?.toArgb()?.toLong()?.and(0xFFFFFFFFL)
+        if (s.fontStyle == FontStyle.Italic) {
+            state.removeSpanStyle(SpanStyle(fontStyle = FontStyle.Italic))
+            if (slantColor == STYLE_SLANT) { state.removeSpanStyle(SpanStyle(shadow = s.shadow)); state.addSpanStyle(SpanStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(UNSLANT.toInt()), Offset.Zero, 0f))) }
+        } else {
+            if (slantColor == UNSLANT) state.removeSpanStyle(SpanStyle(shadow = s.shadow))
+            state.addSpanStyle(SpanStyle(fontStyle = FontStyle.Italic))
+        }
+        WriterLog.i("italic ${if (s.fontStyle == FontStyle.Italic) "off" else "on"} on ${state.selection}")
+    }
     /** Selection › Copy formatting: kept here, for Paste formatting (also on other words, later). */
     var copiedLook by remember { mutableStateOf<DocRun?>(null) }
     // Words chosen: the Selection tab comes up (Android's floating menu is Writer's own); let go, the tab before it is back.
@@ -2724,10 +2761,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             // comes only after the next frame — so its last look, carried over the typed letters, goes in now,
                             // before this frame is drawn (the text jumped half a page up and back at each letter, 14 Oct).
                             val heldText = state.annotatedString
-                            if (!WriterBridge.showsWriters(state)) lastLook[0]?.let { (look, paras) ->
-                                if (heldText.paragraphStyles.size == paras) WriterBridge.carried(look, heldText.text)?.let { WriterBridge.displayText(state, it) }
-                                    ?: WriterLog.i("look not carried: the text changed in more than one place")
-                                else WriterLog.i("look not carried: paragraphs ${paras} → ${heldText.paragraphStyles.size}")
+                            if (!WriterBridge.showsWriters(state)) lastLook[0]?.let { (look, base) ->
+                                WriterBridge.carried(look, base, heldText)?.let { WriterBridge.displayText(state, it) } ?: WriterLog.i("look not carried over: its paragraphs would overlap")
                             }
                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
@@ -3136,7 +3171,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val tabsScroll = rememberScrollState()
             Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
-                WriterTab.entries.filter { t -> when (t) {
+                // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
+                (listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
                     WriterTab.Selection -> tab == WriterTab.Selection
                     WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                     WriterTab.Table -> selectedObject?.table != null
@@ -3181,8 +3217,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // Typing in a table cell: Home formats the cell's text.
                 WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
                     { p, r -> r.sizePt ?: documentStyles.look(p).sizePt ?: meta.basePt }) { c -> cellEdit = e.copy(cell = c) } } ?: listOf({
-                    Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
-                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                    Tool(R.drawable.ic_format_bold, "Bold", w, on = boldHere(span)) { toggleBold(span) }
+                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
                     Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
                     Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
                     // Superscript and subscript: read back in at once, so they show smaller as a file's do.
@@ -3369,8 +3405,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
                 }, {
-                    Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
-                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                    Tool(R.drawable.ic_format_bold, "Bold", w, on = boldHere(span)) { toggleBold(span) }
+                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
                     Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
                     RibbonButton("Comment", w, R.drawable.ic_comment) { tab = WriterTab.Insert; message = "Insert › Comment puts it on these words" }
                 })

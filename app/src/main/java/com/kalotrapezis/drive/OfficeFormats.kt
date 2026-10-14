@@ -28,6 +28,10 @@ internal data class DocRun(
     val text: String,
     val bold: Boolean = false,
     val italic: Boolean = false,
+    // Not bold / not italic though the paragraph's style is (Word's w:b w:val="0", ODF's font-weight normal): a heading's
+    // words unbolded on purpose (asked 14 Oct).
+    val unbold: Boolean = false,
+    val unitalic: Boolean = false,
     val underline: Boolean = false,
     val strike: Boolean = false,
     val sizePt: Float? = null, // null: the document's own size
@@ -1561,8 +1565,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             for (e in rPr.kids()) {
                 val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
                 when (e.localName) {
-                    "b" -> look = look.copy(bold = on)
-                    "i" -> look = look.copy(italic = on)
+                    "b" -> look = look.copy(bold = on, unbold = !on)
+                    "i" -> look = look.copy(italic = on, unitalic = !on)
                     "strike" -> look = look.copy(strike = on)
                     "u" -> {
                         look = look.copy(underline = e.attr(W, "val") != "none")
@@ -2114,8 +2118,8 @@ private object DocxWriter {
         val props = ArrayList<Pair<String, String>>()
         r.font?.let { raw -> RAW_ELEMENT.findAll(raw).forEach { m -> val name = m.groupValues[1].removePrefix("w:"); if (name != "u" || r.underline) props += name to m.value } }
         style?.let { props += "rStyle" to """<w:rStyle w:val="$it"/>""" }
-        if (r.bold) props += "b" to "<w:b/>"
-        if (r.italic) props += "i" to "<w:i/>"
+        if (r.bold) props += "b" to "<w:b/>" else if (r.unbold) props += "b" to """<w:b w:val="0"/>"""
+        if (r.italic) props += "i" to "<w:i/>" else if (r.unitalic) props += "i" to """<w:i w:val="0"/>"""
         if (r.strike) props += "strike" to "<w:strike/>"
         r.color?.let { props += "color" to """<w:color w:val="${OfficeFormats.hex(it)}"/>""" }
         r.sizePt?.let { props += "sz" to """<w:sz w:val="${(it * 2).roundToInt()}"/>""" }
@@ -2241,8 +2245,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             if (!(ns == FO || ns == STYLE)) continue // another program's own (revision ids…)
             if (local.endsWith("-asian") || local.endsWith("-complex")) { carry(); continue }
             when (local) {
-                "font-weight" -> l = l.copy(bold = v == "bold" || (v.toIntOrNull() ?: 400) >= 600)
-                "font-style" -> l = l.copy(italic = v == "italic" || v == "oblique")
+                "font-weight" -> (v == "bold" || (v.toIntOrNull() ?: 400) >= 600).let { b -> l = l.copy(bold = b, unbold = !b) }
+                "font-style" -> (v == "italic" || v == "oblique").let { i -> l = l.copy(italic = i, unitalic = !i) }
                 "text-underline-style" -> if (!inLink) l = l.copy(underline = v != "none")
                 "text-line-through-style" -> l = l.copy(strike = v != "none")
                 "font-size" -> size(v, basePt)?.let { l = l.copy(sizePt = it) } ?: run { notes += "other text effects" }
@@ -2588,7 +2592,9 @@ private object OdtWriter {
                 val name = fresh("TT")
                 val p = buildString {
                     if (r.bold) append(""" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold"""")
+                    else if (r.unbold) append(""" fo:font-weight="normal" style:font-weight-asian="normal" style:font-weight-complex="normal"""")
                     if (r.italic) append(""" fo:font-style="italic" style:font-style-asian="italic" style:font-style-complex="italic"""")
+                    else if (r.unitalic) append(""" fo:font-style="normal" style:font-style-asian="normal" style:font-style-complex="normal"""")
                     if (r.underline) append(""" style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"""")
                     if (r.strike) append(""" style:text-line-through-style="solid" style:text-line-through-type="single"""")
                     r.sizePt?.let { val s = fmt(it); append(""" fo:font-size="${s}pt" style:font-size-asian="${s}pt" style:font-size-complex="${s}pt"""") }

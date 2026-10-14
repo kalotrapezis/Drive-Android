@@ -1634,6 +1634,36 @@ internal object OfficeFonts {
         }
     }
 
+    private val composeFamilies = HashMap<String, androidx.compose.ui.text.font.FontFamily?>()
+
+    /**
+     * The editor's family for a document's font name: its four faces as fonts of their own, so the letters' Bold and
+     * Italic pick theirs (a family made of one Typeface was drawn upright and regular whatever the letters said, 14 Oct).
+     */
+    fun family(name: String?): androidx.compose.ui.text.font.FontFamily? {
+        val n = name?.lowercase()?.trim() ?: return null
+        val file = when {
+            "times" in n || n == "liberation serif" -> "LiberationSerif"
+            "arial" in n || "helvetica" in n || n == "liberation sans" -> "LiberationSans"
+            "calibri" in n || "carlito" in n -> "Carlito"
+            "cambria" in n || "caladea" in n -> "Caladea"
+            listOf("mono", "courier", "consol").any { it in n } -> return androidx.compose.ui.text.font.FontFamily.Monospace
+            listOf("serif", "georgia", "garamond", "book", "palatino", "roman").any { it in n } && "sans" !in n -> "LiberationSerif"
+            else -> return null
+        }
+        val a = assets ?: return null
+        return synchronized(composeFamilies) {
+            composeFamilies.getOrPut(file) {
+                runCatching {
+                    fun f(style: String, w: androidx.compose.ui.text.font.FontWeight, italic: Boolean) = androidx.compose.ui.text.font.Font("fonts/$file-$style.ttf", a, w,
+                        if (italic) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal)
+                    val w4 = androidx.compose.ui.text.font.FontWeight.Normal; val w7 = androidx.compose.ui.text.font.FontWeight.Bold
+                    androidx.compose.ui.text.font.FontFamily(f("Regular", w4, false), f("Bold", w7, false), f("Italic", w4, true), f("BoldItalic", w7, true))
+                }.getOrNull()
+            }
+        }
+    }
+
     fun styled(tf: Typeface?, bold: Boolean, italic: Boolean): Typeface =
         Typeface.create(tf ?: Typeface.DEFAULT, if (bold) 700 else 400, italic)
 }

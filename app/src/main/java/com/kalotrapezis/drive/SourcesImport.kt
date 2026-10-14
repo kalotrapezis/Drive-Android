@@ -12,7 +12,12 @@ import org.json.JSONObject
 internal object SourcesImport {
     data class Result(val sources: List<DocSource>, val skipped: List<String>)
 
-    fun read(json: String): Result {
+    fun read(text: String): Result {
+        // Pasted from a chat: the JSON may come inside ``` marks or with a sentence round it — from the first { or [ on.
+        val json = text.indexOfFirst { it == '{' || it == '[' }.takeIf { it >= 0 }?.let { a ->
+            val z = if (text[a] == '{') text.lastIndexOf('}') else text.lastIndexOf(']')
+            if (z > a) text.substring(a, z + 1) else null
+        } ?: text
         val root = runCatching { JSONObject(json) }.getOrNull()
         val list = root?.optJSONArray("sources") ?: runCatching { JSONArray(json) }.getOrNull()
             ?: throw IllegalArgumentException("This is not a Tetra sources file (no \"sources\" list).")

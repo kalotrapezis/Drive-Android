@@ -1661,8 +1661,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; reshow()
     }
     /** References › Sources › Import: a Tetra sources file's references added (none twice), the list brought up to date. */
-    fun importSources(uri: Uri) {
-        val read = runCatching { context.contentResolver.openInputStream(uri)?.use { String(it.readBytes(), Charsets.UTF_8) }?.let(SourcesImport::read) }
+    fun importSourcesText(text: () -> String?) {
+        val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException("Nothing to import.") }
         val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: "That file could not be read."; WriterLog.w("sources import", read.exceptionOrNull()); return }
         change {
             val cur = current()
@@ -1674,7 +1674,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             WriterLog.i("sources import: ${r.sources.size} read, ${added.size} added, skipped ${r.skipped}")
         }
     }
+    fun importSources(uri: Uri) = importSourcesText { context.contentResolver.openInputStream(uri)?.use { String(it.readBytes(), Charsets.UTF_8) } }
     val pickSources = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked -> picked?.let { importSources(it) } }
+    /** The sources Claude made (tetra-sources skill), copied from its answer. */
+    fun pasteSources() = importSourcesText {
+        context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+            ?: throw IllegalArgumentException("Nothing copied: copy Claude's answer (the JSON) first.")
+    }
+    /** A request for the Claude app (Android's share sheet): this paper's sources as a Tetra sources file. */
+    fun askClaudeForSources() {
+        val cur = current()
+        val topic = cur.paras.firstOrNull { it.heading == 1 || it.keep?.style?.lowercase() == "title" }?.text?.trim()?.takeIf { it.isNotEmpty() }
+            ?: cur.paras.firstOrNull { it.text.isNotBlank() }?.text?.trim()?.take(160).orEmpty()
+        val have = cur.sources.joinToString("\n") { "- " + Apa.entry(it).joinToString("") { r -> r.text } }
+        val ask = buildString {
+            append("Using the tetra-sources skill, make a Tetra sources file (JSON) for my paper \"$name\"")
+            if (topic.isNotEmpty()) append(" — its topic: $topic")
+            append(".\nOnly real, checked references with their DOIs. I will paste your JSON into Tetra.")
+            if (have.isNotEmpty()) append("\nIt already cites (leave these out):\n$have")
+        }
+        WriterLog.i("ask Claude for sources: ${cur.sources.size} known")
+        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), "Ask Claude for sources"))
+    }
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
     fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
         val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
@@ -3132,6 +3153,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
                     RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
+                    // With Claude (tetra-sources skill): ask in the Claude app, then paste its answer — the research's references at once.
+                    RibbonButton("Ask Claude", w, R.drawable.ic_share, enabled = loaded) { askClaudeForSources() }
+                    RibbonButton("Paste sources", w, R.drawable.ic_content_paste, enabled = loaded) { pasteSources() }
                 }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
@@ -3287,7 +3311,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, page -> crossRefOpen = false; insertCrossReference(target, page) } }
     if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
-    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }, { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { deleteSource(it) }
+    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }, { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+        { sourcesOpen = false; pasteSources() }, { askClaudeForSources() }) { deleteSource(it) }
     if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
     dropCapPage?.let { (at, now) ->
         val first = current().paras.getOrNull(at)?.runs?.firstOrNull { it.image == null && it.text.isNotEmpty() }

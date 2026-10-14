@@ -32,4 +32,9 @@ class SourcesImportTest {
         assertTrue(SourcesImport.same(DocSource("", title = "t ", doi = ""), listOf(DocSource("a", title = "T"))))
         assertTrue(!SourcesImport.same(DocSource("", title = "T", year = "2021"), listOf(DocSource("a", title = "T", year = "2020"))))
     }
+
+    @Test fun `pasted from a chat, the JSON is found inside the words and the marks`() {
+        val r = SourcesImport.read("Here is your file:\n```json\n{\"format\":\"tetra-sources\",\"sources\":[{\"title\":\"T\",\"year\":\"2020\"}]}\n```\n1 source.")
+        assertEquals(listOf("T"), r.sources.map { it.title })
+    }
 }

@@ -137,7 +137,8 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
 
 /** References › Sources: the document's sources — edit one, add one, take one away (a cited one says so). */
 @Composable
-internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss: () -> Unit, edit: (DocSource?) -> Unit, import: () -> Unit = {}, delete: (DocSource) -> Unit) {
+internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss: () -> Unit, edit: (DocSource?) -> Unit, import: () -> Unit = {},
+    paste: () -> Unit = {}, askClaude: () -> Unit = {}, delete: (DocSource) -> Unit) {
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("Sources") },
@@ -157,6 +158,9 @@ internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss
                 Choice("+ New source…", false) { edit(null) }
                 // A Tetra sources file (TETRA_SOURCES_FORMAT.md): the research's references, into this draft at once.
                 Choice("Import sources file…", false) { import() }
+                // With Claude (the tetra-sources skill): ask in the Claude app, copy its answer, paste it here.
+                Choice("Ask Claude for sources…", false) { askClaude() }
+                Choice("Paste sources (copied from Claude)", false) { paste() }
             }
         },
         confirmButton = { TextButton(onClick = dismiss) { Text("Done") } },

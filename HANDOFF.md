@@ -31,6 +31,12 @@
 > - **Typing shortcut** (14 Oct): `x^2`/`H_2O`/`e^(i+1)` + space → raised/lowered; Backspace on that space restores the
 >   typed word and it is left so. `ScriptShortcut.kt` (+ test), the watcher in `WriterScreen` (`scriptUndo`, `scriptKept`).
 >   Not real equations — Word's equation editor is still a copy-only cause.
+> - **Sources with Claude** (14 Oct): Tetra's own sources file — `TETRA_SOURCES_FORMAT.md`, `SourcesImport.kt` (+ test,
+>   which reads the example in the .md, so the two cannot drift). References tab, after Sources: **Ask Claude** (share
+>   sheet with a request naming the paper and the sources it has) and **Paste sources** (clipboard, JSON found inside a
+>   chat answer); Sources dialog: **Import sources file…**. None added twice; APA list updated at once. The skill:
+>   `skills/tetra-sources/SKILL.md` (also installed in `~/.claude/skills/`, zipped as `skills/tetra-sources.zip` for
+>   the Claude app) — change it together with the .md. Not yet tried on a device (the tablet locked); unit-tested.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

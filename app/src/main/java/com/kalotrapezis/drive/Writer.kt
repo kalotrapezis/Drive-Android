@@ -1245,6 +1245,59 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
 
+    // Word's typing shortcut (ScriptShortcut, asked 2026-10-14): "x^2" then a space → x², "H_2O " → H₂O; Backspace on that
+    // space straight after brings the word back as typed.
+    var scriptUndo by remember { mutableStateOf<Triple<Int, Int, String>?>(null) } // (word's start, the space's place, the word as typed)
+    var scriptKept by remember { mutableStateOf<Pair<Int, String>?>(null) } // a word brought back as typed: left so after the next space (Word's)
+    LaunchedEffect(loaded) {
+        if (!loaded) return@LaunchedEffect
+        var was = state.annotatedString.text
+        snapshotFlow { state.annotatedString.text to state.selection }.collect { (text, sel) ->
+            val prev = was; was = text
+            if (text == prev || !sel.collapsed || cellEdit != null) return@collect
+            val undo = scriptUndo; scriptUndo = null
+            if (undo != null && text.length == prev.length - 1 && sel.min == undo.second && prev.getOrNull(undo.second) == ' ' &&
+                text.startsWith(prev.substring(0, undo.second))) {
+                change {
+                    state.removeTextRange(androidx.compose.ui.text.TextRange(undo.first, undo.second))
+                    state.selection = androidx.compose.ui.text.TextRange(undo.first)
+                    state.addTextAfterSelection(undo.third)
+                    val typed = androidx.compose.ui.text.TextRange(undo.first, undo.first + undo.third.length)
+                    state.selection = typed
+                    listOf(androidx.compose.ui.text.style.BaselineShift.Superscript, androidx.compose.ui.text.style.BaselineShift.Subscript).forEach { state.removeSpanStyle(SpanStyle(baselineShift = it)) }
+                    state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), androidx.compose.ui.text.TextRange(typed.max))
+                    dirty = true
+                }
+                scriptKept = undo.first to undo.third
+                WriterLog.i("script shortcut undone: ${undo.third}")
+                was = state.annotatedString.text
+                return@collect
+            }
+            // A space just typed after a word.
+            val space = sel.min - 1
+            if (text.length != prev.length + 1 || text.getOrNull(space) != ' ' || !text.startsWith(prev.substring(0, space))) return@collect
+            val start = (space - 1 downTo 0).firstOrNull { text[it].isWhitespace() || text[it] == EDITOR_PICTURE_CHAR }?.plus(1) ?: 0
+            val word = text.substring(start, space)
+            if (scriptKept == start to word) return@collect // brought back as typed on purpose
+            val raises = ScriptShortcut.find(word).takeIf { it.isNotEmpty() } ?: return@collect
+            val drop = raises.flatMap { r -> listOf(r.mark) + if (r.bracketed) listOf(r.from - 1, r.to) else emptyList() }.sortedDescending()
+            fun shifted(i: Int) = i - drop.count { it < i }
+            change {
+                drop.forEach { d -> state.removeTextRange(androidx.compose.ui.text.TextRange(start + d, start + d + 1)) }
+                raises.forEach { r ->
+                    state.selection = androidx.compose.ui.text.TextRange(start + shifted(r.from), start + shifted(r.to))
+                    state.addSpanStyle(SpanStyle(baselineShift = if (r.up) androidx.compose.ui.text.style.BaselineShift.Superscript else androidx.compose.ui.text.style.BaselineShift.Subscript))
+                }
+                val after = sel.min - drop.size
+                state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), androidx.compose.ui.text.TextRange(after))
+                dirty = true
+                scriptUndo = Triple(start, after - 1, word)
+            }
+            WriterLog.i("script shortcut: $word → ${ScriptShortcut.shown(word, raises)}")
+            was = state.annotatedString.text
+        }
+    }
+
     suspend fun finishSave(target: File, bytes: ByteArray, saved: OfficeDoc, savedStyleEdits: Int, oldDraftKey: String) {
         val newer = editable() != saved.copy(unsupported = emptySet()) || styleEdits != savedStyleEdits
         uri = Uri.fromFile(target).toString()

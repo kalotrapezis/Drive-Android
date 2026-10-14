@@ -100,9 +100,10 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */,
     val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
     val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */,
-    val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */) {
+    val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */,
+    val math: MathNode? = null /* an equation (Word's OMML, [raw]): what it shows, drawn by MathDrawable */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -128,6 +129,7 @@ internal object PictureXml {
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
     fun kind(img: DocImage): String {
         if (img.table != null) return "Table"
+        if (img.math != null) return "Equation"
         val raw = img.raw ?: return "Picture"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
@@ -1431,7 +1433,16 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         }
         fun content(parent: Element, link: String?) {
             for (e in parent.kids()) {
-                if (e.namespaceURI != W) { notes += if (e.localName == "oMath" || e.localName == "oMathPara") "equations" else "other content"; continue }
+                if (e.namespaceURI != W) {
+                    // An equation (Phase 2): drawn from what it shows, its XML written back as it was.
+                    if (e.localName == "oMath" || e.localName == "oMathPara") {
+                        val math = runCatching { OfficeMath.read(e) }.getOrNull()
+                        if (math == null) { notes += "equations"; continue }
+                        if (e.localName == "oMathPara" && runs.none { it.text.isNotBlank() } && align == DocAlign.Start) align = DocAlign.Center // a display: centred, as Word shows it
+                        runs += DocRun(OBJECT_MARK.toString(), image = OfficeMath.image("f${imageCount++}", math, OfficeFormats.xml(e), basePt))
+                    } else notes += "other content"
+                    continue
+                }
                 when (e.localName) {
                     "pPr" -> Unit
                     "r" -> run(e, link, runs, ::breakLine)
@@ -2114,6 +2125,7 @@ private object DocxWriter {
     var picture: (DocImage) -> String = { it.raw ?: "" }
 
     private fun run(r: DocRun, style: String?, basePt: Float): String = buildString {
+        if (r.image?.math != null) { append(r.image.raw.orEmpty()); return@buildString } // an equation stands beside the runs, not in one
         // Writer's own settings and the ones carried from the file, in the order Word requires.
         val props = ArrayList<Pair<String, String>>()
         r.font?.let { raw -> RAW_ELEMENT.findAll(raw).forEach { m -> val name = m.groupValues[1].removePrefix("w:"); if (name != "u" || r.underline) props += name to m.value } }

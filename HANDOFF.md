@@ -11,6 +11,17 @@
 >   (as Mobile view) at 140 % (− / + in the top bar, 100–260 %, remembered as `readingZoom`), read only (words can still
 >   be chosen and copied); a tablet reads in a 720 dp column. *Close reading* or Back returns to Edit. `reading` in
 >   WriterScreen; the dialogs moved into a local `Dialogs()` to stay under the method limit.
+> - **Equations** (item 3): Word's OMML read into a small tree (`OfficeMath.kt`: `MathNode`, `OfficeMath.read/parse`),
+>   laid out (`MathBox`: fractions, scripts, roots, ∑/∫ with limits, brackets stretched, functions, lim, accents, bars,
+>   matrices, equation arrays) and drawn by `MathDrawable` (Caladea = Cambria's metrics) in the editor, the pages and the
+>   PDF, as an inline object (`DocImage.math`, its XML in `raw`, written back untouched beside the runs — never inside a
+>   `w:r`). A display equation (`m:oMathPara`) centres its paragraph. Equations are **no longer a copy-only cause**
+>   (04_Academic_References: read, saved, identical in LibreOffice; it stays copy-only for its fields).
+>   **Insert › Equation** (Word files): Word's linear form typed (x^2, a/b, sqrt(x), root(3,x), ∑_(i=1)^n, ∫_a^b,
+>   lim_(x→0), hat(x), vec(x), matrix(a&b@c&d), \alpha…) with a live preview and piece buttons; an empty paragraph gets a
+>   display equation, else one in the line. **Picture › Edit equation** rewrites one (a file's own styling of it — fonts,
+>   colours — is not kept then). Not done: ODT's equations (MathML objects), typing inside the equation in place.
+>   `OfficeMathTest`.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

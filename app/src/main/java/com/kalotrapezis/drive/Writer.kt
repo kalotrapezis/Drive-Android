@@ -1114,7 +1114,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
-    remember { OfficeFonts.assets = context.applicationContext.assets; WriterUnits.load(context); WriterBridge.documentHeadings() }
+    remember { OfficeFonts.assets = context.applicationContext.assets; OfficeMath.measure = MathDrawable.measure(); WriterUnits.load(context); WriterBridge.documentHeadings() }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
@@ -1664,6 +1664,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val at = state.selection
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
         dirty = true; styleEdits++ // the text may be the same: the draft is kept all the same
+    }
+    // Insert › Equation (Phase 2): Word's OMML, typed in its linear form; in an empty paragraph a display of its own,
+    // centred (Word's), else in the line. Picture › Edit equation writes it again (the file's own look of it is not kept).
+    var equationOpen by remember { mutableStateOf<Pair<String, MathNode?>?>(null) } // the equation's key ("" for a new one), what it shows
+    fun putEquation(key: String, math: MathNode) = change {
+        val old = pictures[key]
+        if (old != null) {
+            val display = old.raw?.trimStart()?.startsWith("<m:oMathPara") == true
+            changePicture(key, OfficeMath.image(key, math, OfficeMath.equation(math, display), meta.basePt))
+            WriterLog.i("equation $key edited: ${OfficeMath.linear(math)}")
+            return@change
+        }
+        if (kind != OfficeKind.Docx) { message = "Equations go in Word documents (.docx) — Save as .docx first"; return@change }
+        val text = state.annotatedString.text
+        val sel = state.selection.min
+        val lineStart = text.lastIndexOf('\n', sel - 1) + 1
+        val lineEnd = text.indexOf('\n', sel).let { if (it < 0) text.length else it }
+        val display = text.substring(lineStart, lineEnd).isBlank()
+        val img = OfficeMath.image("n" + java.util.UUID.randomUUID(), math, OfficeMath.equation(math, display), meta.basePt)
+        pictures[img.key] = img
+        val at = placePicture(img)
+        if (display) {
+            val para = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), at, at + 1).firstOrNull()?.first
+            if (para != null) { meta = current().let { d -> d.copy(paras = d.paras.mapIndexed { i, p -> if (i == para) p.copy(align = DocAlign.Center) else p }) }; state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection) }
+        }
+        state.selection = androidx.compose.ui.text.TextRange(at + 1)
+        WriterLog.i("equation inserted (${if (display) "display" else "in line"}): ${OfficeMath.linear(math)}")
     }
     // Picture › Replace: another photo in its place, as wide as it was, wrapped as it was.
     val replacePicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
@@ -3043,6 +3070,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
                                                 } }
+                                            } else if (img.math != null) {
+                                                // An equation: drawn as the pages draw it.
+                                                val drawn = remember(img.math) { MathDrawable(img.math, meta.basePt) }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c -> drawn.setBounds(0, 0, this.size.width.toInt(), this.size.height.toInt()); drawn.draw(c.nativeCanvas) } }
                                             } else if (img.chart != null) {
                                                 // A chart: drawn from what it shows, as the pages draw it.
                                                 val drawn = remember(img.chart) { ChartDrawable(img.chart) }
@@ -3066,7 +3097,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
-                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
                                             if (table != null && tab == WriterTab.Table) {
                                                 val from = mergeFrom?.takeIf { it.key == img.key }
@@ -3418,6 +3449,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     } }
                 }, {
                     RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
+                    RibbonButton("Equation", w, R.drawable.ic_functions, enabled = loaded) { equationOpen = "" to null }
                 })
                 WriterTab.Selection -> listOf({
                     RibbonButton("Cut", w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
@@ -3443,6 +3475,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     listOf({
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
+                        img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
                         img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
@@ -3785,6 +3818,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
 
     // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
     @Composable fun Dialogs() {
+    equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }
     if (naming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }
         AlertDialog(

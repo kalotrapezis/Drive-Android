@@ -148,8 +148,9 @@ one pass once the tabs' features are done.
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
       no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
       axis titles, data labels (14 Oct) — [ ] Word's own Edit data (it needs the embedded workbook)
-- [ ] Later: equations (√x,
-      kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
+- [x] **Equations** (15 Oct): Word's equations read, drawn and kept (no longer copy-only); Insert › Equation in Word's
+      linear form with a preview, Picture › Edit equation — [ ] LibreOffice's (MathML objects), typing inside one in place
+- [ ] Later: SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
       date picker, check box — OnlyOffice's last Insert button)
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)

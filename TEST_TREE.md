@@ -16,3 +16,12 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] From the pages (open a document): the book icon → reading mode
   - [ ] Back (or Close reading) → Edit, on the page (Print layout) as before; Mobile view still off
   - [ ] A document with pictures and a table reads sensibly (pictures in the text)
+
+- **3. Equations** (Insert, Picture)
+  - [ ] Open `Test-Words/04_Academic_References.docx` → E = mc² drawn as maths (no grey "Equation" box), in Edit and on the pages
+  - [ ] A new .docx: an empty line, Insert › Equation, type `x = (-b +- sqrt(b^2-4ac))/(2a)` → the preview shows the fraction and root; Insert → centred on its own line
+  - [ ] In a line of words: Insert › Equation `a^2+b^2=c^2` → sits in the line, not too high or low
+  - [ ] Try the piece buttons: ∑, ∫, lim, matrix, α
+  - [ ] Tap the equation → Picture tab → Edit equation → the linear form is there; change it → redrawn
+  - [ ] Save, open on the PC in Word/LibreOffice → real equations (editable there); the file was not copied ("(copy)")
+  - [ ] File › Export PDF → the equations are in the PDF

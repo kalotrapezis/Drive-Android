@@ -128,6 +128,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
@@ -1560,25 +1561,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         meta = doc.copy(unsupported = meta.unsupported)
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
         dirty = true; styleEdits++
-        message = "Back as it was then — Undo returns to now"
-        WriterLog.i("session copy ${copy.name} restored")
-    }
-    /** A version comes back: the document as it is now is kept as a version first, so restoring is undone the same way. */
-    fun restore(version: File) {
-        val f = file ?: return
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val temp = File(f.parentFile, ".${f.name}.tetra-saving")
-                    version.copyTo(temp, overwrite = true)
-                    keepPrevious(context, f)
-                    check(temp.renameTo(f))
-                    draftFile(context, draftKey, kind).delete()
-                }.isSuccess
-            }
-            if (ok) { reload++; message = "Restored the file as it was before ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(version.name.substringBefore('.').toLong()))}" }
-            else message = "Could not restore it."
-        }
+        message = "This version is the document now — Undo returns to before"
+        WriterLog.i("version ${copy.name} brought back")
     }
     /**
      * Puts [img] at the cursor and reads the document back in (so its line makes room for it); returns where it is.
@@ -3904,43 +3888,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }
     if (showVersions) {
-        val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }
-        val session = remember(reload, dirty) { sessionVersions(context, uri ?: "new") }
-        val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
-        AlertDialog(
-            onDismissRequest = { showVersions = false },
-            title = { Text("Versions") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // This session: the working copy every few minutes; gone when the document is closed.
-                    if (session.isNotEmpty()) {
-                        Text("This session", style = MaterialTheme.typography.titleSmall)
-                        session.forEach { v ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("As it was at " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())),
-                                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { showVersions = false; restoreSession(v) }) { Text("Bring back") }
-                            }
-                        }
-                        Text("Kept while the document is open; gone when you close it.", style = MaterialTheme.typography.bodySmall)
-                        Text("Saved", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                    }
-                    Text(if (list.isEmpty()) "Writer keeps the file as it was before each save — the last 3. None yet: this document has not been saved over here."
-                        else "The file as it was before each of Writer's saves. Restoring one keeps the document as it is now as a version too.", style = MaterialTheme.typography.bodySmall)
-                    list.forEach { v ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Before the save at " + format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())), style = MaterialTheme.typography.titleSmall)
-                                Text("${(v.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = { showVersions = false; restore(v) }, enabled = !dirty) { Text("Restore") }
-                        }
-                    }
-                    if (dirty && list.isNotEmpty()) Text("Save or undo your changes first.", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Close") } },
-        )
+        // History (the user, 2026-10-14): every version as pages to look at; one kept becomes the document, the rest go.
+        val entries = remember(reload, dirty, showVersions) {
+            (sessionVersions(context, uri ?: "new").map { it to true } + (file?.let { versions(context, it) }.orEmpty()).map { it to false })
+                .sortedByDescending { it.first.name.substringBefore('.').toLongOrNull() ?: it.first.lastModified() }
+        }
+        HistoryDialog(entries, kind, { showVersions = false }) { chosen ->
+            showVersions = false
+            restoreSession(chosen)
+            // The others, older and newer, deleted; the one kept stays as the only version.
+            entries.map { it.first }.filter { it != chosen }.forEach { it.delete() }
+            WriterLog.i("history: kept ${chosen.name}, ${entries.size - 1} others deleted")
+        }
     }
     if (details) AlertDialog(
         onDismissRequest = { details = false },
@@ -4308,5 +4267,58 @@ private class PdfPrintAdapter(val pdf: File, val title: String) : android.print.
         runCatching { pdf.inputStream().use { input -> java.io.FileOutputStream(out.fileDescriptor).use { input.copyTo(it) } } }
             .onSuccess { callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES)) }
             .onFailure { callback.onWriteFailed(it.message) }
+    }
+}
+
+/**
+ * File › Versions: this session's copies (every few minutes) and the file as it was before saves, newest first. One
+ * opened shows its pages; "Keep this one" makes it the document and deletes every other version.
+ */
+@Composable
+private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, dismiss: () -> Unit, keep: (File) -> Unit) {
+    var open by remember { mutableStateOf<File?>(null) }
+    val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    fun timeOf(f: File) = format.format(java.util.Date(f.name.substringBefore('.').toLongOrNull() ?: f.lastModified()))
+    androidx.compose.ui.window.Dialog(onDismissRequest = { if (open != null) open = null else dismiss() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.systemBarsPadding().padding(16.dp)) {
+                val shown = open
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (shown != null) TextButton(onClick = { open = null }) { Text("‹ All versions") }
+                    Text(if (shown == null) "Versions" else timeOf(shown), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    if (shown != null) Button(onClick = { keep(shown) }) { Text("Keep this one") }
+                    TextButton(onClick = dismiss) { Text("Close") }
+                }
+                if (shown == null) {
+                    Text(if (entries.isEmpty()) "None yet. Writer keeps a copy every few minutes while you work, and the file as it was before it saves over it."
+                        else "Open one to see its pages. Keeping one makes it the document and deletes the others.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        entries.forEach { (f, session) ->
+                            Row(Modifier.fillMaxWidth().clickable { open = f }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(timeOf(f), style = MaterialTheme.typography.titleSmall)
+                                    Text((if (session) "While you worked — goes when the document closes" else "The file before a save") + " · ${(f.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Open", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                } else {
+                    // Its pages, as View shows a document.
+                    val pages by produceState<List<LaidPage>?>(null, shown) {
+                        value = withContext(Dispatchers.Default) { runCatching {
+                            val bytes = shown.readBytes()
+                            val parts = OfficeFormats.unzip(bytes)
+                            OfficePages.layout(OfficeFormats.read(bytes, kind), DocStyles.of(kind, bytes)) { img -> img.bytes ?: img.part?.let { parts[it] } }
+                        }.onFailure { WriterLog.e("history pages", it) }.getOrNull() }
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF3A3A3A))) {
+                        pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / 11f).sp.toDp() }, Modifier.fillMaxSize()) }
+                            ?: Text("Laying out the pages…", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+            }
+        }
     }
 }

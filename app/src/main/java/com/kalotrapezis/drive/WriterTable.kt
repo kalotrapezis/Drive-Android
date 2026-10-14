@@ -672,14 +672,40 @@ internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, v
 @Composable
 internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions,
     placed: (List<Int>) -> Unit = {} /* each card's top as placed (px), pushed down below the one above: its line goes there */) {
-    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
-    val tops = items.map { with(androidx.compose.ui.platform.LocalDensity.current) { it.second.roundToPx() } }
-    androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }, modifier = modifier) { measurables, constraints ->
-        val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
-        var bottom = 0
-        val ys = placeables.mapIndexed { i, p -> maxOf(tops[i], bottom).also { bottom = it + p.height + gap } }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val gap = with(density) { 8.dp.roundToPx() }
+    val slack = with(density) { 48.dp.roundToPx() } // pushed further below its words than this: the pane is crowded
+    val tops = items.map { with(density) { it.second.roundToPx() } }
+    // Crowded (the user, 2026-10-14): every card but the one at the cursor folds to a line, so each stays by its words;
+    // a tap on it (or on its words) opens it.
+    androidx.compose.ui.layout.SubcomposeLayout(modifier) { constraints ->
+        val loose = constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)
+        fun stack(heights: List<Int>): List<Int> { var bottom = 0; return heights.mapIndexed { i, h -> maxOf(tops[i], bottom).also { bottom = it + h + gap } } }
+        val full = subcompose("full") { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }.map { it.measure(loose) }
+        val crowded = stack(full.map { it.height }).withIndex().any { (i, y) -> y - tops[i] > slack }
+        val placeables = if (!crowded) full else subcompose("folded") {
+            items.forEach { (c, _) -> if (c == here) CommentCard(c, true, act) else FoldedComment(c, act) }
+        }.map { it.measure(loose) }
+        val ys = stack(placeables.map { it.height })
         placed(ys)
-        layout(constraints.maxWidth, bottom) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
+        layout(constraints.maxWidth, (ys.lastOrNull() ?: 0) + (placeables.lastOrNull()?.height ?: 0)) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
+    }
+}
+
+/** A comment folded to one line (a crowded pane): who, and its words' start. */
+@Composable
+private fun FoldedComment(c: DocComment, act: CommentActions) = Surface(
+    color = if (c.done) Color(0xFFF1F3F4) else Color.White, contentColor = Color(0xFF202124), shape = RoundedCornerShape(8.dp),
+    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDADCE0)),
+    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = { act.open(c) })) {
+    Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(20.dp).clip(CircleShape).background(Color(0xFFFFB300)), contentAlignment = Alignment.Center) {
+            Text(c.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
+        }
+        Text(c.text.replace('\n', ' '), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f).padding(start = 8.dp))
+        val replies = act.repliesOf(c).size
+        if (replies > 0) Text("+$replies", style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368))
     }
 }
 

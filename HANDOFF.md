@@ -106,6 +106,14 @@
 > - **Comment lines** (14 Oct, the user's Word screenshot): on the tablet, a line from each comment's words (their end)
 >   under to the page's edge, then to its card — dashed grey, solid blue for the comment at the cursor; the pane reports
 >   where it placed each card (`CommentPane(placed)`). Card buttons tighter (Edit made Delete wrap). Checked on the tablet.
+> - **Versions as pages** (14 Oct, the user): File › Versions is a full screen — this session's copies and the file
+>   before saves, newest first; one opened shows its pages (laid out as View); **Keep this one** makes it the document (one
+>   Undo step; AutoSave then saves it) and deletes every other version, older and newer. The old restore-over-the-file is
+>   gone. Checked on the tablet (two session copies + a saved one; kept the oldest: the others went).
+> - **Comments fold when crowded** (14 Oct, agreed with the user): when a card would sit more than 48 dp below its words,
+>   every card but the one at the cursor folds to a line (initials, first words, +replies); a tap on it, or on its words,
+>   opens it (`CommentPane` is a SubcomposeLayout: measured open first, folded only if crowded). Checked on the tablet.
+>   Initials are the first letters of the name's first two words ("Theologos Kalotrapezis" → TK).
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint

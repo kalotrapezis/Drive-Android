@@ -1637,7 +1637,34 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         WriterLog.i("caption: $label at paragraph $at")
         dirty = true; reshow(); message = "Caption inserted"
     }
-    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind)); dirty = true; reshow(); message = "Citations, references and numbers updated" }
+    var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
+    /** The page a paragraph is on, as the pages laid it out last (Print layout); null when there are no pages. */
+    fun pageOfPara(j: Int): Int? = if (!onPage) null else (pageStarts.lastOrNull { it.first <= j }?.second ?: 1)
+    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind), ::pageOfPara); dirty = true; reshow(); message = "Citations, references and numbers updated" }
+    // References › Cross-reference (Phase 2): a caption's words or its page, kept up to date by Update fields — Word's REF
+    // and PAGEREF fields to a hidden _Ref bookmark on the caption (Word's own way).
+    var crossRefOpen by remember { mutableStateOf(false) }
+    fun captions(doc: OfficeDoc) = doc.paras.indices.filter { i -> doc.paras[i].runs.any { Fields.instr(it)?.startsWith("SEQ ", true) == true } }
+    fun insertCrossReference(target: Int, page: Boolean) = change {
+        val cur = current()
+        val p = cur.paras.getOrNull(target) ?: return@change
+        val marks = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ').orEmpty()
+        val name = marks.firstOrNull { it.startsWith("_Ref") } ?: "_Ref${(100000000..999999999).random()}"
+        val instr = FIELD_CITE + (if (page) "PAGEREF" else "REF") + " $name \\h"
+        val text = if (page) (pageOfPara(target) ?: 1).toString() else p.text.trim()
+        if (!state.selection.collapsed) state.removeSelectedText()
+        val start = state.selection.min
+        state.addTextAfterSelection(text)
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + text.length)
+        val withRef = OfficeFormats.withCite(current(), spans, instr)
+        // The caption gets its bookmark (once); the paragraphs are the same ones, the reference only added letters.
+        meta = if (name in marks) withRef else withRef.copy(paras = withRef.paras.mapIndexed { i, q -> if (i != target) q else {
+            val keep = q.keep ?: DocKeep()
+            q.copy(keep = keep.copy(parts = keep.parts.filter { it.first != BOOKMARKS } + (BOOKMARKS to (marks + name).joinToString(" "))))
+        } })
+        WriterLog.i("cross-reference: ${if (page) "page" else "caption"} of paragraph $target ($name)")
+        dirty = true; reshow(); message = "Cross-reference inserted"
+    }
     // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
     /** Each note's reference, where it is in the editor: the note and its number. */
     val notesShown by remember { derivedStateOf {
@@ -1881,7 +1908,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // top, so typing above them moves them with it. Worked out again after each Writer change, not each keystroke.
     var floatsShown by remember { mutableStateOf<Map<String, FloatShown>>(emptyMap()) }
     var headPage by remember { mutableStateOf<LaidPage?>(null) } // the first page as laid out: its header, shown faded above the text
-    var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
     LaunchedEffect(meta, styleEdits, documentStyles, onPage, loaded) { // styleEdits: a picture changed (meta stays)
         if (!loaded) return@LaunchedEffect
         val doc = current()
@@ -3032,6 +3058,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     // Captions and their numbers (Word's Insert Caption and F9).
                     RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
+                    RibbonButton("Cross-reference", w, R.drawable.ic_link, enabled = loaded && kind == OfficeKind.Docx) { crossRefOpen = true }
                     RibbonButton("Update fields", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                 })
                 WriterTab.Review -> listOf({
@@ -3177,6 +3204,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
     }
+    if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, page -> crossRefOpen = false; insertCrossReference(target, page) } }
     if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
     if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }) { deleteSource(it) }
     if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
@@ -3806,4 +3834,23 @@ private fun CaptionDialog(dismiss: () -> Unit, insert: (String, String) -> Unit)
         } },
         confirmButton = { TextButton(onClick = { insert(label, text) }) { Text("Insert") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** References › Cross-reference: one of the document's captions, shown as its words or as its page. */
+@Composable
+private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () -> Unit, insert: (Int, Boolean) -> Unit) {
+    var page by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Cross-reference") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.FilterChip(selected = !page, onClick = { page = false }, label = { Text("Entire caption") })
+                androidx.compose.material3.FilterChip(selected = page, onClick = { page = true }, label = { Text("Page number") })
+            }
+            if (captions.isEmpty()) Text("No captions yet: References › Caption puts one under a picture or table.", style = MaterialTheme.typography.bodyMedium)
+            Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                captions.forEach { (i, text) -> Text(text.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
+                    modifier = Modifier.fillMaxWidth().clickable { insert(i, page) }.padding(vertical = 10.dp)) }
+            }
+        } },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

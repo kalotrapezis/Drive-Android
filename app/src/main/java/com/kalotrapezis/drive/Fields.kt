@@ -2,16 +2,55 @@ package com.kalotrapezis.drive
 
 /**
  * Word's fields Writer keeps (a date, a reference, a sequence number: [FIELD_CITE]) brought up to date — what Word's
- * F9 does. Today the numbers: each SEQ field ("Figure 3", "Table 2") counted again in document order, so deleting a
- * figure renumbers the ones after it (asked 2026-10-13, Phase 2: captions and cross-references).
+ * F9 does: each SEQ field ("Figure 3", "Table 2") counted again in document order, so deleting a figure renumbers the
+ * ones after it, and each cross-reference (REF, PAGEREF) shows its caption or page as they are now (asked 2026-10-13,
+ * Phase 2: captions and cross-references).
  */
 internal object Fields {
     /** The instruction of a kept field ("SEQ Figure \* ARABIC"), or null for a run that is none. */
     fun instr(r: DocRun): String? = r.cite?.takeIf { isField(it) }?.drop(1)?.trim()
 
+    /**
+     * [doc] with its fields brought up to date: every SEQ number counted again, then each REF showing its bookmarked
+     * paragraph's words as they are now and each PAGEREF its page ([pageOf] a paragraph's page; null: left as it was).
+     */
+    fun update(doc: OfficeDoc, pageOf: (Int) -> Int? = { null }): OfficeDoc {
+        val numbered = renumber(doc)
+        val marked = HashMap<String, Int>() // bookmark → its paragraph
+        numbered.paras.forEachIndexed { i, p -> p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.forEach { marked[it] = i } }
+        return numbered.copy(paras = numbered.paras.map { p ->
+            if (p.runs.none { instr(it)?.let { i -> i.startsWith("REF ", true) || i.startsWith("PAGEREF ", true) } == true }) p
+            else p.copy(runs = fieldsOf(p.runs) { instr ->
+                val words = instr.split(Regex("\\s+"))
+                val target = words.getOrNull(1)?.let { marked[it] } ?: return@fieldsOf null
+                when (words[0].uppercase()) {
+                    "REF" -> numbered.paras[target].text.trim()
+                    "PAGEREF" -> pageOf(target)?.toString()
+                    else -> null
+                }
+            })
+        })
+    }
+
+    /** [runs] with each kept field's letters (its runs, one field) replaced by [shown] of its instruction (null: kept). */
+    private fun fieldsOf(runs: List<DocRun>, shown: (String) -> String?): List<DocRun> {
+        val out = ArrayList<DocRun>()
+        var k = 0
+        while (k < runs.size) {
+            val r = runs[k]
+            val text = instr(r)?.let(shown)
+            if (text == null) { out += r; k++; continue }
+            var e = k + 1
+            while (e < runs.size && runs[e].cite == r.cite && runs[e].image == null) e++
+            out += r.copy(text = text)
+            k = e
+        }
+        return out
+    }
+
     /** [doc] with every SEQ field's shown number counted again. */
     // shortcut: body paragraphs only (not inside tables, notes, headers); SEQ's \s (restart at a heading level) is not followed.
-    fun update(doc: OfficeDoc): OfficeDoc {
+    fun renumber(doc: OfficeDoc): OfficeDoc {
         val counts = HashMap<String, Int>()
         val paras = doc.paras.map { p ->
             if (p.runs.none { instr(it)?.startsWith("SEQ ", ignoreCase = true) == true }) return@map p

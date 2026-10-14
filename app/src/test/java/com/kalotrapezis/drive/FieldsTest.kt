@@ -38,4 +38,15 @@ class FieldsTest {
         assertEquals("Figure 1: The map", back.paras[1].text)
         assertEquals(emptySet<String>(), back.blocking)
     }
+
+    @Test fun `a cross-reference follows its caption's number and page`() {
+        val marked = DocKeep("Caption", listOf(BOOKMARKS to "_Ref123"))
+        val doc = OfficeDoc(listOf(
+            DocPara(listOf(DocRun("As "), DocRun("Figure 9: Map", cite = FIELD_CITE + "REF _Ref123 \\h"), DocRun(" on page "), DocRun("?", cite = FIELD_CITE + "PAGEREF _Ref123 \\h"),
+                DocRun(" and "), DocRun("old", cite = FIELD_CITE + "REF _RefGone \\h"))),
+            DocPara(listOf(DocRun("Figure "), seq("SEQ Figure \\* ARABIC", "9"), DocRun(": Map")), keep = marked),
+        ))
+        assertEquals("As Figure 1: Map on page 2 and old", Fields.update(doc) { if (it == 1) 2 else 1 }.paras[0].text)
+        assertEquals("As Figure 1: Map on page ? and old", Fields.update(doc).paras[0].text) // no pages: the page left as it was
+    }
 }

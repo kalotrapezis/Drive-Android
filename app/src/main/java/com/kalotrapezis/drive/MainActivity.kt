@@ -69,6 +69,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -1674,6 +1675,7 @@ private fun DriveTab(
     var toolsOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
+    var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
     var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf<String?>(null) }
@@ -1777,6 +1779,7 @@ private fun DriveTab(
                 home = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Home) },
                 favorites = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Favorites) },
                 files = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Files); refresh() },
+                new = { newOpen = true },
                 expand = { toolsOpen = true },
                 visible = !toolsOpen && selection.isEmpty(),
             )
@@ -1828,6 +1831,17 @@ private fun DriveTab(
     )
     bulkPanel?.let { panel ->
         DriveBulkSheet(panel, chosen, metadata, { items, action -> performAll(items, action); selection = emptySet() }) { bulkPanel = null }
+    }
+    // New (asked 14 Oct): made in the folder open in Files (Drive's top elsewhere, never in Trash), then opened.
+    if (newOpen) {
+        val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
+        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root) }, { newOpen = false }) { kind, name ->
+            val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
+            newOpen = false
+            refresh()
+            if (kind.extension == null) openFolder(made) else error = openFile(made, false)
+            null
+        }
     }
     if (emptyTrashConfirm) EmptyTrashSheet(
         dismiss = { emptyTrashConfirm = false },
@@ -2269,17 +2283,43 @@ private fun driveItemIcon(item: DriveItem): Int = when {
     else -> R.drawable.ic_file
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+/** New: what to make ([kinds]) and its name; [create] gives back a problem to show, or null when done. */
+@Composable private fun NewItemDialog(where: String, kinds: List<DriveNew>, dismiss: () -> Unit, create: (DriveNew, String) -> String?) {
+    var kind by remember { mutableStateOf(kinds.first()) }
+    var name by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("New") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("In $where", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                kinds.forEach { k -> androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
+                    label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
+                    leadingIcon = { Icon(painterResource(if (k.extension == null) R.drawable.ic_folder else R.drawable.ic_note_add), null, Modifier.size(18.dp)) }) }
+            }
+            OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") },
+                suffix = { kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { Text(".$it") } },
+                isError = problem != null, supportingText = problem?.let { { Text(it) } },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus))
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { problem = create(kind, name.trim()) }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
 private fun driveItemIconDescription(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else "File"
 
 private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
 @Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
 
-@Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
+@Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, new: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
     IslandBottomBar(expand, visible, modifier) {
         IslandNavigationItem("Home", pane == DrivePane.Home, R.drawable.ic_home, home)
         IslandNavigationItem("Favorites", pane == DrivePane.Favorites, if (pane == DrivePane.Favorites) R.drawable.ic_favorite else R.drawable.ic_favorite_border, favorites)
         IslandNavigationItem("Files", pane == DrivePane.Files, R.drawable.ic_folder, files)
+        IslandNavigationItem("New", false, R.drawable.ic_add, new)
     }
 }
 

@@ -2072,11 +2072,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** Selection › Copy formatting: kept here, for Paste formatting (also on other words, later). */
     var copiedLook by remember { mutableStateOf<DocRun?>(null) }
-    // Words chosen: the Selection tab comes up (Android's floating menu is Writer's own); let go, the tab before it is back.
+    // Words chosen: the Selection tab is there (first; Android's floating menu is Writer's own) but the tab in use stays
+    // (asked 14 Oct: Home stays the default); let go, it goes, and if it was in use the tab before it is back.
+    val selectionTabShown by remember { derivedStateOf { (!state.selection.collapsed || textToolbar.shown) && selectedPicture == null && cellEdit == null } }
     LaunchedEffect(Unit) {
-        snapshotFlow { (!state.selection.collapsed || textToolbar.shown) && selectedPicture == null && cellEdit == null }.collect { chosen ->
-            if (chosen && tab != WriterTab.Selection) { beforeSelection = tab; tab = WriterTab.Selection; WriterLog.i("selection tab: ${state.selection}") }
-            else if (!chosen && tab == WriterTab.Selection) { tab = beforeSelection ?: WriterTab.Home; beforeSelection = null }
+        snapshotFlow { selectionTabShown }.collect { chosen ->
+            if (!chosen && tab == WriterTab.Selection) tab = beforeSelection ?: WriterTab.Home
+            if (chosen) beforeSelection = tab.takeIf { it != WriterTab.Selection } ?: beforeSelection
         }
     }
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager }
@@ -3173,7 +3175,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
                 // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
                 (listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
-                    WriterTab.Selection -> tab == WriterTab.Selection
+                    WriterTab.Selection -> selectionTabShown || tab == WriterTab.Selection
                     WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                     WriterTab.Table -> selectedObject?.table != null
                     else -> true
@@ -3404,11 +3406,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         message = if (copiedLook != null) "Formatting copied — choose other words, then Paste formatting" else "No formatting here to copy"
                     }
                     RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
-                }, {
-                    Tool(R.drawable.ic_format_bold, "Bold", w, on = boldHere(span)) { toggleBold(span) }
-                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
-                    Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
-                    RibbonButton("Comment", w, R.drawable.ic_comment) { tab = WriterTab.Insert; message = "Insert › Comment puts it on these words" }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")

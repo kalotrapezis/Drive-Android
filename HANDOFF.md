@@ -13,9 +13,14 @@
 >   words): dark blue, pointed nose, sized for the zoom, draggable; a **loupe** above the dragged handle (`Modifier.magnifier`).
 >   Selection colour dark blue (`SELECTION_BLUE`). Caret handle on a tap is Writer's too.
 > - **Selection tab** replaces Android's text menu (`WriterTextToolbar` via `LocalTextToolbar`; Compose's new context menu
->   turned off in `MainActivity.onCreate` — `ComposeFoundationFlags.isNewContextMenuEnabled = false`, app-wide): last in the
->   ribbon, brought into view when words are chosen or the menu is asked for, gone when let go. Cut, Copy, Paste, Paste text
->   only, Select all, Copy/Paste formatting (`paint`, shared with Format painter), B I U.
+>   turned off in `MainActivity.onCreate` — `ComposeFoundationFlags.isNewContextMenuEnabled = false`, app-wide): first in
+>   the ribbon while words are chosen (or the menu is asked for), **never taking the focus** — Home stays (the user's call
+>   after trying both). Cut, Copy, Paste, Paste text only, Select all, Copy/Paste formatting (`paint`, shared with Format
+>   painter); B I U stay in Home only.
+> - **Bold/Italic on headings, as Word:** letters were never drawn bold/italic in Edit (the editor's fonts were single
+>   Typefaces — now `OfficeFonts.family`, four faces); B/I are lit where the style makes words bold/italic, and pressing
+>   them there takes it off for those words — `DocRun.unbold/unitalic` (Word `w:b/w:i w:val="0"`, ODF `normal`; read,
+>   kept, written; `UnboldTest`; editor marks weight 399 / shadow 0x02). Edit's headings now bold as View draws them.
 > - **Ribbon on the phone fits:** Home's Font/size on their own page, Borders apart, References' citations / Claude's sources /
 >   Update fields apart, View › Units labelled; the chosen tab scrolls out of the edge shade; Font is a window (`FontDialog`).
 >   Scrolling dialogs show a shade at the edge (`Modifier.shadedScroll`).

@@ -53,7 +53,7 @@ one pass once the tabs' features are done.
 - [x] Unsaved changes kept as a draft; leaving asks Save / Don't save
 - [x] Versions (File): the file as it was before each of the last 3 saves; Restore keeps the current one as a version too
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
-- [ ] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only
+- [x] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only — File › AutoSave and Settings › Office (14 Oct)
 - [ ] Open .doc / .rtf (read; save as .docx)
 
 ### Home
@@ -69,7 +69,7 @@ one pass once the tabs' features are done.
       line (an empty paragraph with a line under it). Word's pBdr / ODT fo:border (+ join-border); drawn on the pages
       (and PDF) as Word groups them, outlined in the editor — [ ] border style and colour (behind ⋯)
 - [x] Change case (Aa beside the eraser: Sentence case, lowercase, UPPERCASE, Capitalise Each Word; the chosen letters or the word at the cursor; looks kept; Greek capitals without accents, final ς)
-- [ ] Multilevel list — later
+- [x] Multilevel list — Home › Multilevel: 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1.; "2.1." shown in Edit as on the pages (14 Oct)
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
 - [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing

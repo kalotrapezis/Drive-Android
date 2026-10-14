@@ -182,6 +182,10 @@ internal class TextEditorStore(context: Context) {
     var opensOffice: Boolean
         get() = prefs.getBoolean("opens_office", true)
         set(on) { prefs.edit().putBoolean("opens_office", on).apply() }
+    /** Writer saves over the file by itself after a pause (Word's AutoSave), when it can save over it at all. */
+    var autoSave: Boolean
+        get() = prefs.getBoolean("office_autosave", true)
+        set(on) { prefs.edit().putBoolean("office_autosave", on).apply() }
 
     /** Where Save puts a new file, under the phone's storage (default Tetra/Documents). */
     var saveFolder: String

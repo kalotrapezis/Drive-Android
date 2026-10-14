@@ -994,7 +994,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val scope = rememberCoroutineScope()
     val state = remember { RichTextState() }
     var uri by remember { mutableStateOf(open) }
-    val file: File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
+    /** The file as of now ([uri] changes on Save a copy and a first Save; long-lived effects must not keep an old one). */
+    fun currentFile(): File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
+    val file: File? = currentFile()
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }
@@ -1022,6 +1024,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val draftKey = uri ?: "new"
     var saving by remember { mutableStateOf(false) }
     val draftMutex = remember { Mutex() }
+    var autoSaveDue by remember { mutableIntStateOf(0) } // counted up by the draft's pause; saved by the effect after save()
+    var versionKept by remember { mutableStateOf(false) } // this session's first save kept the file as it was opened
+    var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) }
     var cleanDoc by remember { mutableStateOf<OfficeDoc?>(null) }
     var cleanStyleEdits by remember { mutableIntStateOf(0) }
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
@@ -1271,6 +1276,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             withContext(Dispatchers.IO) { draftMutex.withLock {
                 if (dirty && key == (uri ?: "new")) runCatching { writeWriterDraft(draftFile(context, key, kind), OfficeFormats.write(doc, kind, source)) }.onFailure { WriterLog.e("draft", it) }
             } }
+            // AutoSave: a little later, over the file itself — never a new or copy-only one (those Save asks about), nor
+            // while a table cell is being typed in (the cell is not in the document until it is left).
+            delay(1500)
+            if (autoSave && dirty && currentFile() != null && meta.blocking.isEmpty() && cellEdit == null) autoSaveDue++
         }
     }
     // The pages, laid out again whenever they are shown (after editing, they show the edits).
@@ -1391,10 +1400,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         } while ((editable() to styleEdits) != captured)
     }
     /** Save over the file — only when nothing in it would be lost; otherwise a copy beside it. */
-    fun save(asCopy: Boolean = false, then: () -> Unit = {}) {
+    fun save(asCopy: Boolean = false, auto: Boolean = false, then: () -> Unit = {}) {
         if (saving) return
-        val f = file
-        if (f == null) { naming = true; return }
+        val f = currentFile()
+        if (f == null) { if (!auto) naming = true; return }
         saving = true
         scope.launch {
             try {
@@ -1410,7 +1419,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
                     val temp = File(target.parentFile, ".${target.name}.tetra-saving")
                     temp.writeBytes(bytes)
-                    if (!copy) keepPrevious(context, f)
+                    // AutoSave keeps the file as it was opened, once: three Versions would not outlast a minute of saves.
+                    if (!copy && !(auto && versionKept)) keepPrevious(context, f)
                     check(temp.renameTo(target)) { "Could not save ${target.name}." }
                     // Its time is now (the phone's storage was seen keeping the old one): sync and the hash cache know it changed.
                     target.setLastModified(System.currentTimeMillis())
@@ -1418,15 +1428,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             result.onSuccess { (target, bytes) ->
-                WriterLog.i("saved ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
+                WriterLog.i("${if (auto) "autosaved" else "saved"} ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
+                if (!copy) versionKept = true
                 finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey)
-                message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
+                if (!auto) message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
                 if (!dirty) then()
-            }.onFailure { WriterLog.e("could not save", it); message = it.message ?: "Could not save." }
+            }.onFailure { WriterLog.e("could not save", it); message = (if (auto) "AutoSave: " else "") + (it.message ?: "Could not save.") }
             } catch (error: Exception) { WriterLog.e("finish save", error); message = error.message ?: "Could not finish saving." }
             finally { saving = false }
         }
     }
+    LaunchedEffect(autoSaveDue) { if (autoSaveDue > 0 && dirty) save(auto = true) }
     fun saveNew(typed: String) {
         if (saving) return
         val clean = typed.trim().removeSuffix(".${kind.extension}")
@@ -2830,6 +2842,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.File -> listOf({
                     RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                     RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { commitCell(); save(asCopy = true) }
+                    RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
+                        autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
+                        message = if (!autoSave) "AutoSave off — Save when you want the file changed" else if (file == null) "AutoSave on — once the document has a name" else if (meta.blocking.isNotEmpty()) "AutoSave on — but this file is saved only as a copy" else "AutoSave on"
+                    }
                 }, {
                     RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
                     RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }

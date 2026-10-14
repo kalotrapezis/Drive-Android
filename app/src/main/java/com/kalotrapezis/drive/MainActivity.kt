@@ -1510,6 +1510,14 @@ private fun SettingsTab(
                     }
                     Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
                 }
+                var auto by remember { mutableStateOf(office.autoSave) }
+                Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AutoSave", style = MaterialTheme.typography.titleSmall)
+                        Text(if (auto) "Writer saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Writer saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = auto, onCheckedChange = { auto = it; office.autoSave = it })
+                }
             }
         }
         item {

@@ -50,11 +50,18 @@
 >   `blockSpans` found the empty block at its number's start. Now after the number; no paragraph gap drawn after an
 >   item while it is empty. Test: `an empty list item is found after its number, not on it`. Checked on the tablet
 >   (Tetra test.docx, not saved): typing, indent, Enter, Undo, scheme change, View.
+> - **AutoSave** (14 Oct, on by default as in Word): about 3 s after typing stops (1.5 s draft + 1.5 s), Writer saves
+>   over the file — only a named file that is not copy-only, never while a table cell is typed in. The file as opened is
+>   kept in Versions **once per session** (three Versions would not outlast a minute of saves); manual Save keeps one each
+>   time as before. No "Saved" message for it (the title's dot goes). Switch: File › AutoSave and Settings › Office
+>   (`TextEditorStore.autoSave`). `save()` reads the file from `uri` now (`currentFile()`): the long-lived draft effect
+>   must not save to the old file after Save a copy. Checked on the tablet: opening saves nothing; typing → "autosaved"
+>   in the log twice, one Version (the original bytes); Tetra test.docx restored after.
 > - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
 >
 > **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
 > viewers"):**
-> 1. Phase 2 continues — AutoSave, picture watermark, Arrange for floating objects, chart options,
+> 1. Phase 2 continues — picture watermark, Arrange for floating objects, chart options,
 >    cross-reference "label and number only" (needs a bookmark round part of a paragraph: bookmarks are per paragraph).
 > 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
 > 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width

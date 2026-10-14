@@ -7,6 +7,10 @@
 > - **A citation tapped** (item 1): with the cursor inside a citation, a bar over the ribbon — *Edit Smith, 2020* for
 >   each of its sources (opens the source form; a tag with no source opens a new one) and *Change…* (the citation dialog
 >   with its sources and page ticked; replaces it in place). `CitationBar` (CitationsUi.kt), `citesShown`/`hereCite`.
+> - **Reading mode** (item 2): View › Reading mode, or the book in the pages' top bar — no ribbon, the text reflowed
+>   (as Mobile view) at 140 % (− / + in the top bar, 100–260 %, remembered as `readingZoom`), read only (words can still
+>   be chosen and copied); a tablet reads in a 720 dp column. *Close reading* or Back returns to Edit. `reading` in
+>   WriterScreen; the dialogs moved into a local `Dialogs()` to stay under the method limit.
 >
 > **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
 > build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.

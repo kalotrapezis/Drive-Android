@@ -1096,6 +1096,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // ways, as the pages view. View › Mobile view keeps the text to the screen instead (remembered).
     var pageZoom by remember { mutableFloatStateOf(1f) }
     var mobileView by remember { mutableStateOf(context.getSharedPreferences("writer", Context.MODE_PRIVATE).getBoolean("mobileView", false)) }
+    // View › Reading mode (Word's Read Mode, Phase 2): no ribbon, the text reflowed bigger, nothing typed; its size remembered.
+    var reading by remember { mutableStateOf(false) }
+    var readingZoom by remember { mutableIntStateOf(context.getSharedPreferences("writer", Context.MODE_PRIVATE).getInt("readingZoom", 140)) }
     var finding by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
@@ -1128,14 +1131,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val paneOn = tablet && meta.comments.isNotEmpty() && !panelHidden
     val perPt100 = with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }
     // A tablet keeps the page whole (a landscape page, the pane beside it): shown smaller rather than reflowed.
-    val printPhone = !tablet && !mobileView
-    val shownZoom = if (printPhone) 100 else if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
+    val printPhone = !tablet && !mobileView && !reading
+    val readingWidth = minOf(screen, 720.dp) // a tablet's reading column, not the whole screen's width
+    val shownZoom = if (reading) readingZoom else if (printPhone) 100 else if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
     val perPt = with(LocalDensity.current) { (BASE_SP * shownZoom / 100f / meta.basePt).sp.toDp() }
-    val onPage = printPhone || screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
+    val onPage = !reading && (printPhone || screen >= 700.dp && sheet.width * perPt + 24.dp <= screen)
     WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
     // Else the page's text is the screen less its margins (10 + 22 dp a side, below).
     WriterBridge.editorWidthSp = if (printPhone) sheet.textWidth * BASE_SP / meta.basePt
-        else with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
+        else with(LocalDensity.current) { ((if (reading) readingWidth else screen) - 64.dp).toSp().value }
     // The phone's page drawn this many times smaller or larger than laid out: the screen's width at pageZoom 1.
     val pageScale = if (printPhone) (screen - 20.dp) / (sheet.width * perPt) * pageZoom else 1f
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
@@ -1325,7 +1329,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: "This file could not be read." }
     }
     // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
-    LaunchedEffect(viewing) { WriterLog.i(if (viewing) "view mode" else "edit mode") }
+    LaunchedEffect(viewing, reading) { WriterLog.i(if (reading) "reading mode at $readingZoom%" else if (viewing) "view mode" else "edit mode") }
     LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
     LaunchedEffect(message) { message?.let { WriterLog.i("said: $it") } }
     DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
@@ -2567,7 +2571,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         WriterLog.i("session history cleared"); back()
     }
     fun leave() { commitCell(); if (dirty) leaving = true else exit() }
-    BackHandler { leave() }
+    BackHandler { if (reading) reading = false else leave() }
 
     val ink = Color.Black
     val w = islandContentColor()
@@ -2634,7 +2638,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
-                if (viewing) {
+                if (reading) {
+                    Tool(R.drawable.ic_remove, "Smaller text", w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    Tool(R.drawable.ic_add, "Bigger text", w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    RibbonButton("Close reading", w, R.drawable.ic_close) { reading = false }
+                } else if (viewing) {
+                    Tool(R.drawable.ic_menu_book, "Reading mode", w, enabled = loaded) { viewing = false; reading = true }
                     Tool(R.drawable.ic_view_list, "Navigation", w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
                     Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
@@ -2753,7 +2762,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
                     modifier = (if (printPhone) Modifier.scaledBy(pageScale).followCursor { cursorOnPage() }.width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
-                        else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
+                        else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
+                        else if (reading) Modifier.align(Alignment.TopCenter).width(readingWidth) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
@@ -2780,7 +2790,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             if (!WriterBridge.showsWriters(state)) lastLook[0]?.let { (look, base) ->
                                 WriterBridge.carried(look, base, heldText)?.let { WriterBridge.displayText(state, it) } ?: WriterLog.i("look not carried over: its paragraphs would overlap")
                             }
-                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
+                            BasicRichTextEditor(state, readOnly = reading, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
                                 cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = {
                                     // A keystroke can lay the text out once without its styles (the library, between the typed letter and its
@@ -3142,7 +3152,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val physicalKeyboard = config.keyboard == android.content.res.Configuration.KEYBOARD_QWERTY &&
             config.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
         val island = !imeOpen || physicalKeyboard
-        if (!viewing) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+        if (!viewing && !reading) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
@@ -3711,6 +3721,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
                     }
                     // A phone: the page as it prints (Print layout), or the text to the screen's width (Mobile view).
+                    RibbonButton("Reading mode", w, R.drawable.ic_menu_book) { commitCell(); reading = true }
                     if (!tablet) RibbonButton("Mobile view", w, R.drawable.ic_wrap_text, on = mobileView) {
                         mobileView = !mobileView
                         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putBoolean("mobileView", mobileView).apply()
@@ -3772,6 +3783,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
 
+    // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
+    @Composable fun Dialogs() {
     if (naming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }
         AlertDialog(
@@ -4155,6 +4168,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
         confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
     )
+    }
+    Dialogs()
 }
 
 /** "1 word", "1,234 words". */

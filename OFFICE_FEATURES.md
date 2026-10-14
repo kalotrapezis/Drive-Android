@@ -190,7 +190,7 @@ one pass once the tabs' features are done.
 ### View
 - [x] Zoom
 - [ ] Fit to width; multiple pages
-- [ ] Reading mode (no ribbon, bigger text)
+- [x] Reading mode (no ribbon, bigger text): View › Reading mode or the book over the pages; text reflowed at 140 %, − / +, read only (15 Oct)
 - [x] Navigation pane: jump to a heading
 
 ### On the phone

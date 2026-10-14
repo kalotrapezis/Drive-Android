@@ -9,3 +9,10 @@ Tick each leaf; a failing one: note what you saw beside it.
   - [ ] *Change…* → "Change citation", its source ticked (and page); pick another / add a page → replaced in place, no extra space
   - [ ] Cursor just after a citation (typing on) → no bar
   - [ ] Save, reopen in LibreOffice/Word → the citation is still a citation field
+
+- **2. Reading mode** (View)
+  - [ ] View › Reading mode → no ribbon, no keyboard, text bigger and reflowed to the screen
+  - [ ] − / + in the top bar change the size; leave and come back → the size is remembered
+  - [ ] From the pages (open a document): the book icon → reading mode
+  - [ ] Back (or Close reading) → Edit, on the page (Print layout) as before; Mobile view still off
+  - [ ] A document with pictures and a table reads sensibly (pictures in the text)

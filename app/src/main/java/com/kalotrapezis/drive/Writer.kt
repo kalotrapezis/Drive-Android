@@ -1660,6 +1660,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         meta = Citations.update(cur.copy(sources = list), kind)
         dirty = true; reshow()
     }
+    /** References › Sources › Import: a Tetra sources file's references added (none twice), the list brought up to date. */
+    fun importSources(uri: Uri) {
+        val read = runCatching { context.contentResolver.openInputStream(uri)?.use { String(it.readBytes(), Charsets.UTF_8) }?.let(SourcesImport::read) }
+        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: "That file could not be read."; WriterLog.w("sources import", read.exceptionOrNull()); return }
+        change {
+            val cur = current()
+            val added = ArrayList<DocSource>()
+            for (s in r.sources) if (!SourcesImport.same(s, cur.sources + added)) added += s.copy(tag = Citations.tagFor(kind, s, (cur.sources + added).map { it.tag }))
+            meta = Citations.update(cur.copy(sources = cur.sources + added), kind)
+            dirty = true; reshow()
+            message = "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else "") + (if (r.skipped.isNotEmpty()) "; skipped: ${r.skipped.joinToString()}" else "")
+            WriterLog.i("sources import: ${r.sources.size} read, ${added.size} added, skipped ${r.skipped}")
+        }
+    }
+    val pickSources = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked -> picked?.let { importSources(it) } }
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
     fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
         val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
@@ -3272,7 +3287,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, page -> crossRefOpen = false; insertCrossReference(target, page) } }
     if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
-    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }) { deleteSource(it) }
+    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }, { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }) { deleteSource(it) }
     if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
     dropCapPage?.let { (at, now) ->
         val first = current().paras.getOrNull(at)?.runs?.firstOrNull { it.image == null && it.text.isNotEmpty() }

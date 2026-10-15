@@ -222,7 +222,14 @@
 >   letter is no longer given twice its spacing there (the number, not the picture, starts the line). `WriterBridgeTest`;
 >   on the tablet "1. [WordArt] Page 1". **Still:** "text." goes to the next line with the sun after it — the editor's
 >   picture letter (U+FFFD) is a letter to Android's line breaker, so no line breaks between a picture and the word it
->   touches ("text.☀" is one word). Not list-only; the pages are right. Next (agreed): the same strips for WordArt, page numbers,
+>   touches ("text.☀" is one word). Not list-only; the pages are right.
+>   **Fixed (15 Oct, late night):** Writer's display layer (`WriterBridge.Display`) lays each picture letter as U+FFFC
+>   (`breakablePictures`: same length and marks, so every offset holds; the editor's own text keeps U+FFFD — it is
+>   Compose's inline-content letter, the library's choice). Android breaks a line before and after U+FFFC (line-break
+>   class CB), so only the picture moves, as in Word; `pictureGlyph` is measured on U+FFFC. The pictures drawn over the text are found in
+>   the laid-out text by either letter. While the library's own
+>   look shows (a keystroke, before Writer's comes back) the picture is U+FFFD again for that moment. `WriterBridgeTest`;
+>   on the tablet "1. [WordArt] Page 1 text." on one line, the sun on the next. Next (agreed): the same strips for WordArt, page numbers,
 >   lists, headers & footers.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,

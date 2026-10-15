@@ -82,7 +82,7 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] Home › Multilevel: five schemes drawn as they read, I. A. 1. among them (Claude)
   - [x] The ribbon slides back after Cancel (Claude)
   - [x] Gallery_test, Edit: the numbered paragraph starting with the WordArt shows "1." at the text's size and "Page 1" whole (Claude)
-  - [ ] …and "text." stays on its line (a picture touching a word still takes the word with it to the next line)
+  - [x] …and "text." stays on its line, the sun alone on the next (Claude)
   - [ ] A thesis copy: i ii iii, open in Word → Format Page Numbers shows i, ii, iii
   - [ ] On the phone: each strip one thin row, the keyboard away
 

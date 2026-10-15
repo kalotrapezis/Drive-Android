@@ -290,7 +290,7 @@ internal object WriterBridge {
         }))
     })
 
-    /** How wide the editor's picture character is, for its size (measured by the screen; about 1 elsewhere). */
+    /** How wide the editor's picture character is (as Display lays it: U+FFFC), for its size (measured by the screen; about 1 elsewhere). */
     var pictureGlyph = 1f
     /** A line of the editor's text, top to bottom, for each point of its size. */
     var lineRatio = 1.17f
@@ -379,9 +379,21 @@ internal object WriterBridge {
 
     /** Writer's look of the editor's text (fonts, the space between paragraphs, tabs); [shown] is what it was made from. */
     class Display(val shown: AnnotatedString) : VisualTransformation {
+        private val laid = breakablePictures(shown)
         // An IME update can precede the display effect. Always keep the input's length/offsets valid.
         override fun filter(text: AnnotatedString) =
-            TransformedText(if (text.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else text, OffsetMapping.Identity)
+            TransformedText(if (text.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) laid else text, OffsetMapping.Identity)
+    }
+
+    /**
+     * [s] laid with each picture letter as U+FFFC, same length and marks: Android breaks a line before and after that one
+     * (U+FFFD, the editor's, is a letter to it, so a picture took the word it touches down with it). Word moves only the picture.
+     */
+    fun breakablePictures(s: AnnotatedString): AnnotatedString {
+        if (EDITOR_PICTURE_CHAR !in s.text) return s
+        val marks = ArrayList<AnnotatedString.Range<out AnnotatedString.Annotation>>()
+        s.mapAnnotations { marks += it; it }
+        return AnnotatedString(s.text.replace(EDITOR_PICTURE_CHAR, OBJECT_MARK), marks)
     }
 
     fun displayText(state: RichTextState, shown: AnnotatedString) {
@@ -1144,7 +1156,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
     remember { OfficeFonts.assets = context.applicationContext.assets; OfficeMath.measure = MathDrawable.measure(); WriterUnits.load(context); WriterBridge.documentHeadings() }
-    remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
+    remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(OBJECT_MARK.toString()) / 100f } // the letter Display lays it as
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var documentStyles by remember { mutableStateOf<DocStyles>(DocStyles.Plain) }
@@ -3124,7 +3136,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 val density = LocalDensity.current
                                 val scale = BASE_SP / meta.basePt
                                 // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
-                                val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
+                                val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR || text[it] == OBJECT_MARK }.mapIndexedNotNull { n, i -> // U+FFFC: as Display lays it
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 if (shownTabs.any { it.leader != null }) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {

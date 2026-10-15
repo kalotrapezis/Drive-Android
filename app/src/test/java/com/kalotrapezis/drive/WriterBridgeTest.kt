@@ -28,6 +28,22 @@ class WriterBridgeTest {
         assertEquals(WriterBridge.comparable(odd), WriterBridge.comparable(WriterBridge.fromEditor(WriterBridge.toEditor(OfficeDoc(odd, basePt = 11f)), 11f)))
     }
 
+    @Test fun `a picture is laid as a letter a line may break at, nothing else changed`() {
+        val s = androidx.compose.ui.text.buildAnnotatedString {
+            append("Page 1 text.")
+            pushStringAnnotation("androidx.compose.foundation.text.inlineContent", "picture")
+            pushStyle(androidx.compose.ui.text.SpanStyle(letterSpacing = androidx.compose.ui.unit.TextUnit(3f, androidx.compose.ui.unit.TextUnitType.Sp))); append('\uFFFD'); pop()
+            pop()
+            append(" more")
+        }
+        val laid = WriterBridge.breakablePictures(s)
+        assertEquals("Page 1 text.${OBJECT_MARK} more", laid.text)
+        assertEquals(s.spanStyles, laid.spanStyles)
+        assertEquals(s.getStringAnnotations(0, s.length), laid.getStringAnnotations(0, laid.length))
+        val plain = androidx.compose.ui.text.AnnotatedString("no picture")
+        assert(WriterBridge.breakablePictures(plain) === plain)
+    }
+
     @Test fun `a picture goes where the mark was typed, and nothing else moves`() {
         val img = DocImage("k", "word/media/a.png", 10f, 10f)
         val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("ab"))), DocPara(listOf(DocRun("cd$PICTURE_SPOT", bold = true), DocRun("ef"))), DocPara(listOf(DocRun("gh")))))

@@ -235,7 +235,7 @@ object DriveRules {
 }
 
 fun fileTypeGroup(extension: String): String = when (extension.lowercase(Locale.ROOT)) {
-    "doc", "docx", "odt" -> "Documents"
+    "doc", "docx", "odt", "rtf" -> "Documents"
     "xls", "xlsx", "csv" -> "Spreadsheets"
     "pdf" -> "PDF"
     "txt", "md" -> "Text"

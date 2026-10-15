@@ -17,6 +17,11 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] `Eq_lo.odt` (LibreOffice's formulas): a²+√b in the line and the ∑ display drawn as maths; Insert › Equation x=(-b+-sqrt(b^2-4ac))/(2a) → drawn; saved → LibreOffice shows a real formula (Claude)
   - [ ] Open the saved `Eq_lo.odt` in LibreOffice on the PC and double-click the new equation: LibreOffice's formula editor opens it
 
+- **13. Older files**
+  - [x] A copy of a .doc (the recruitment list): opens with "An older DOC file…" — justified, bold, underlined, numbers 1–15 as LibreOffice; a word typed, Save → `name.docx` beside it, the .doc as it was; LibreOffice shows the .docx the same (Claude; copies deleted)
+  - [x] `Rtf_test.rtf`: heading, bold/red italic/big underlined, link, 2×2 table (Claude)
+  - [ ] Open `protocol.doc` (Σπουδές › … › Μάθημα 4) from Files: looks as in LibreOffice (don't save over anything: Save makes protocol.docx)
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

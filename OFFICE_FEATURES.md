@@ -56,7 +56,7 @@ one pass once the tabs' features are done.
 - [x] Versions (File): the file as it was before each of the last 3 saves; Restore keeps the current one as a version too
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 - [x] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only — File › AutoSave and Settings › Office (14 Oct)
-- [ ] Open .doc / .rtf (read; save as .docx)
+- [x] Open .doc / .rtf (read; save as .docx) — Writer's own readers (LegacyDocs.kt): text, letters' looks, alignment, spacing, indents, headings, numbered lists, links, tables, page breaks (an .rtf's PNG/JPEG pictures); Save writes name.docx beside it (15 Oct, evening) — [ ] a .doc's pictures, headers and footers, footnotes
 
 ### Home
 - [x] Bold, Italic, Underline, Strikethrough

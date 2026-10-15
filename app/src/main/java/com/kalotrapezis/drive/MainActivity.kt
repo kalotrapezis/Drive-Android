@@ -494,7 +494,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
         }
         // A Word or LibreOffice document opens in Writer (Settings › Office); Open with… still offers other apps.
-        if (!forceChooser && file.extension.lowercase(Locale.ROOT) in setOf("docx", "odt") && TextEditorStore(context).opensOffice) {
+        if (!forceChooser && file.extension.lowercase(Locale.ROOT) in setOf("docx", "odt", "doc", "rtf") && TextEditorStore(context).opensOffice) {
             WriterLog.i("open from Files: ${file.name}")
             driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
             writerOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Writer
@@ -2299,7 +2299,7 @@ private fun driveItemIcon(item: DriveItem): Int = when {
                     // Each kind in its own colour and picture, as Files shows it: Word blue, text purple (asked 14 Oct).
                     val ext = k.extension?.lowercase(Locale.ROOT)
                     val tint = when (ext) { null -> Color(0xFFE0A030); "txt", "md" -> Category.Text.color; else -> driveExtensionColor(ext).takeIf { it != MaterialTheme.colorScheme.onSurfaceVariant } ?: Category.Text.color }
-                    val icon = when (ext) { null -> R.drawable.ic_folder; "docx", "doc", "odt" -> R.drawable.ic_file_word; "txt", "md" -> R.drawable.ic_file_text; else -> R.drawable.ic_file }
+                    val icon = when (ext) { null -> R.drawable.ic_folder; "docx", "doc", "odt", "rtf" -> R.drawable.ic_file_word; "txt", "md" -> R.drawable.ic_file_text; else -> R.drawable.ic_file }
                     androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
                         label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
                         leadingIcon = { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = if (kind == k) Color.White else tint) },
@@ -2506,7 +2506,7 @@ private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "
 /** A kind of file's colour, the same in the list and wherever its kind is named (New's choices). */
 @Composable internal fun driveExtensionColor(extension: String): Color {
     return when (extension.lowercase(Locale.ROOT)) {
-        "doc", "docx", "odt" -> Color(0xFF4F86E8)
+        "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
         "xls", "xlsx", "csv" -> Color(0xFF55A96B)
         "pdf" -> Color(0xFFE3685F)
         "txt", "md" -> Color(0xFF9AA3A4)

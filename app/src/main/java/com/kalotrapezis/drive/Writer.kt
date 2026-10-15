@@ -948,7 +948,7 @@ private const val OFFICE_RECENT = 50
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
-    .filter { it.isFile && OfficeKind.of(it.name) != null && !it.name.startsWith("~$") }
+    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name)) && !it.name.startsWith("~$") }
     .map { OfficeFile(it, it.relativeTo(root).path) }
     .sortedByDescending { it.file.lastModified() }
     .toList()
@@ -1284,8 +1284,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         WriterLog.i("open ${file?.name ?: "a new document"} (${kind.name}${file?.let { ", ${it.length() / 1024} KB" } ?: ""})")
         val result = withContext(Dispatchers.IO) {
             runCatching {
+                // An older file (.doc, .rtf): read by Writer's own readers; it has no package — saving writes a .docx beside it.
+                val legacy = file?.let { LegacyDocs.isLegacy(it.name) } == true
                 val bytes = file?.readBytes()
-                val doc = bytes?.let { WriterLog.timed("read the file") { OfficeFormats.read(it, kind) } } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
+                val doc = bytes?.let { WriterLog.timed("read the file") { if (legacy) LegacyDocs.read(it, file!!.name) else OfficeFormats.read(it, kind) } } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
                 var draftPackage: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
@@ -1293,7 +1295,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     OfficeFormats.read(draftBytes, kind)
                 }.getOrNull() }
                 // With a draft, the file as it will be written starts from the draft (styles, header and footer as changed).
-                val start = draftPackage ?: bytes
+                val start = draftPackage ?: bytes?.takeIf { !legacy }
                 packageParts = start?.let { OfficeFormats.unzip(it) }.orEmpty()
                 Triple(start, doc, draft)
             }
@@ -1512,7 +1514,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = WriterLog.timed("wrote the file") { OfficeFormats.write(doc, kind, source) }
-                    val target = if (copy) freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension) else f
+                    // An older file (.doc, .rtf) becomes "name.docx" beside it, the first time (then a copy's name).
+                    val target = if (!copy) f else File(f.parentFile!!, "${f.nameWithoutExtension}.${kind.extension}").takeIf { f.extension != kind.extension && !it.exists() }
+                        ?: freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension)
                     // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
                     val temp = File(target.parentFile, ".${target.name}.tetra-saving")
                     temp.writeBytes(bytes)
@@ -2817,7 +2821,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val copyOnly = meta.blocking.isNotEmpty()
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
-                    Text(if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
+                    Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) "An older ${name.substringAfterLast('.').uppercase()} file: saving makes ${name.substringBeforeLast('.')}.docx beside it; the original stays as it is."
+                        else if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
                         else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }

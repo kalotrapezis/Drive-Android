@@ -59,6 +59,21 @@
 >   has neither, so nothing shows; its "text glow" tokens (`loext:glow-text-*`) are dropped when a Writer document is
 >   read, and Word's `w14:glow` is dropped when LibreOffice opens a .docx. So Glow stays offered in Word files only.
 >
+> - **.doc and .rtf** (item 3): Writer's own readers, `LegacyDocs.kt` (no library): **Word 97–2003** — the OLE
+>   compound file (`Compound`: FAT, DIFAT, mini stream), the FIB, the piece table (compressed/Unicode pieces), CHPX and
+>   PAPX FKPs, the style sheet (each style's sprms through its bases: Normal's size, a style's alignment/looks, "heading
+>   N" by name), lists (LSTF/LVL/LFO: numbered or bulleted; a numbered list's count carried over the paragraphs between
+>   its items, as Word counts), tables (cell/row marks, TTP), fields (instructions hidden, HYPERLINK as a link), page
+>   breaks, line breaks; Word 6/95 and password-protected files say so. **RTF** — groups, control words, code pages
+>   (`\ansicpg`, a font's `\fcharset` — Greek 161 → 1253), `\u` with `\uc`, font/colour/style tables, letters'
+>   looks, paragraphs (`\pard`, `\q*`, `\sb/\sa/\li/\fi`, `\pagebb`, `\page`), `\intbl`/`\cell`/`\row`
+>   tables, `\fldrslt` links, PNG/JPEG `\pict`; headers, footers, footnotes, objects skipped (said). Both open from
+>   Files and the Office list; the banner says "An older DOC file: saving makes name.docx beside it"; Save writes
+>   `name.docx` (then "(copy)") and goes on as it — never over the .doc. `LegacyDocsTest` (LibreOffice's .doc and .rtf
+>   of one Word file, Greek code page and \u); the sweep reads the user's two .doc (321 documents); on the phone the
+>   recruitment .doc looked as LibreOffice shows it (justified, bold/underlined, numbers 1–15), saved as .docx —
+>   LibreOffice the same. Not read: a .doc's pictures, headers/footers, footnotes, comments (said in the banner list).
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

@@ -16,6 +16,8 @@ internal data class HeaderFooter(
     // Even pages their own (Word's "different odd and even", LibreOffice's left pages): their header and footer, the
     // number on the other side (a book's outer edge).
     val oddEven: Boolean = false, val evenHeader: String = "", val evenFooter: String = "",
+    // The pages numbered i, ii, iii (a thesis's front matter): Word's pgNumType fmt, LibreOffice's page style num-format.
+    val roman: Boolean = false,
 ) {
     /** On even pages: a left or right one the other way round (centred stays). */
     fun mirrored(a: DocAlign) = when (a) { DocAlign.Start -> DocAlign.End; DocAlign.End -> DocAlign.Start; else -> a }
@@ -60,7 +62,8 @@ internal data class HeaderFooter(
                 when { inHeader -> NumberPlace.Header; PAGE_FIELD in f -> NumberPlace.Footer; else -> null },
                 numberAlign(if (inHeader) section.headers["default"] else section.footers["default"]) ?: DocAlign.End,
                 format, section.titlePage,
-                evenAndOdd, text(line(section.headers["even"])), text(line(section.footers["even"])))
+                evenAndOdd, text(line(section.headers["even"])), text(line(section.footers["even"])),
+                roman = section.pageFormat == "lowerRoman" || section.pageFormat == "i")
         }
 
         /**
@@ -124,6 +127,14 @@ internal object HeaderFooterEdit {
         val open = if (at == null) "<w:sectPr>" else if (selfClosing) xml.substring(at, tagEnd!! - 1) + ">" else xml.substring(at, tagEnd!! + 1)
         var inner = if (at == null || selfClosing) "" else xml.substring(tagEnd!! + 1, end!! - "</w:sectPr>".length)
         inner = inner.replace(Regex("""<w:(header|footer)Reference\b[^>]*/>"""), "").replace(Regex("""<w:titlePg\b[^>]*/>"""), "")
+        // i, ii, iii: the page numbers' fmt (a start kept); pgNumType before cols…titlePg and the rest.
+        val numType = Regex("""<w:pgNumType\b[^>]*/>""").find(inner)
+        if (numType != null) inner = inner.replace(numType.value, numType.value.replace(Regex("""\sw:fmt="[^"]*""""), "")
+            .let { if (hf.roman) it.replace("<w:pgNumType", "<w:pgNumType w:fmt=\"lowerRoman\"") else it }).replace("<w:pgNumType/>", "")
+        else if (hf.roman) {
+            val later = Regex("""<w:(cols|formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
+            inner = inner.substring(0, later) + "<w:pgNumType w:fmt=\"lowerRoman\"/>" + inner.substring(later)
+        }
         if (hf.firstDifferent) {
             // titlePg goes before textDirection, bidi, rtlGutter, docGrid, printerSettings (whichever comes first).
             val later = Regex("""<w:(textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
@@ -210,6 +221,10 @@ internal object HeaderFooterEdit {
             Regex("""<style:page-layout\b[^>]*style:name="${Regex.escape(layoutName)}"[^>]*?(?:/>|>[\s\S]*?</style:page-layout>)""").find(xml)?.let { lm ->
                 var l = lm.value
                 if (l.endsWith("/>") && l.indexOf('>') == l.length - 1) l = l.dropLast(2) + "></style:page-layout>"
+                // i, ii, iii: the page layout's number format.
+                l = l.replace(Regex("""\sstyle:num-format="[^"]*""""), "")
+                if (hf.roman) l = if ("<style:page-layout-properties" in l) l.replaceFirst("<style:page-layout-properties", "<style:page-layout-properties style:num-format=\"i\"")
+                    else l.replaceFirst(Regex("""(<style:page-layout\b[^>]*>)"""), "$1<style:page-layout-properties style:num-format=\"i\"/>")
                 for ((kind, gap) in listOf("header" to "margin-bottom", "footer" to "margin-top")) {
                     if ("<style:$kind>" !in ordered) continue
                     val filled = """<style:$kind-style><style:header-footer-properties fo:min-height="0cm" fo:$gap="0.25cm"/></style:$kind-style>"""

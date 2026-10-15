@@ -91,6 +91,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.unit.LayoutDirection
@@ -235,12 +236,9 @@ internal class FileNumbering(val styles: DocStyles, val levels: () -> List<Pair<
 }
 /** Home › Font: Word's everyday fonts, each drawn by a font of the same widths (Carlito, Caladea, Liberation). */
 private val WRITER_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
-/** Home › Multilevel list: Word's everyday schemes, each level's (numFmt, lvlText). */
-private val LIST_SCHEMES = listOf(
-    "1.  2.  3." to (0..8).map { "decimal" to "%${it + 1}." },
-    "1.  a.  i." to (0..8).map { listOf("decimal", "lowerLetter", "lowerRoman")[it % 3] to "%${it + 1}." },
-    "1.  1.1.  1.1.1." to (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } },
-)
+/** The ribbon's and a gallery strip's way in and out: quick, from and to the bottom. */
+private val SLIDE_IN = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(180)) { it } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180))
+private val SLIDE_OUT = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(140)) { it } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
 /** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
 private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
@@ -1157,6 +1155,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
     var viewing by remember { mutableStateOf(open != null) }
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
+    var galleryViewing by remember { mutableStateOf<Boolean?>(null) } // a page gallery: whether the pages were shown before it
     var pagesIndex by remember { mutableStateOf<IntArray?>(null) } // the page each paragraph starts on, in [pages]
     var navOpen by remember { mutableStateOf(false) }
     var goPage by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a page to scroll to (and when it was asked)
@@ -1405,9 +1404,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     // The pages, laid out again whenever they are shown (after editing, they show the edits).
-    LaunchedEffect(viewing, loaded) {
+    // A page gallery's choice (styleEdits) shows at once, the pages kept on screen meanwhile.
+    LaunchedEffect(viewing, loaded, if (galleryViewing != null) styleEdits else 0) {
         if (!viewing || !loaded) return@LaunchedEffect
-        pages = null
+        if (galleryViewing == null) pages = null
         val doc = current()
         val parts = packageParts
         val index = IntArray(doc.paras.size) { -1 }
@@ -2465,10 +2465,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var galleryChosen by remember { mutableStateOf<Any?>(null) } // the choice being previewed on the page
     var galleryStart by remember { mutableStateOf<WriterSnapshot?>(null) } // the document as it was when the gallery opened
     var galleryUndo by remember { mutableIntStateOf(0) }
-    fun openGallery(g: DesignGallery) { galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g }
+    fun openGallery(g: DesignGallery) {
+        galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g
+        // Page numbers, headers and footers sit where the editor shows no page: the pages are shown while choosing.
+        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { galleryViewing = viewing; viewing = true }
+    }
+    fun galleryClosed() { galleryViewing?.let { viewing = it }; galleryViewing = null }
     // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
-    fun galleryCancel() { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; WriterLog.i("gallery: cancelled") }
-    fun galleryOk() { while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex); designGallery = null; galleryChosen = null; WriterLog.i("gallery: kept") }
+    fun galleryCancel() { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; galleryClosed(); WriterLog.i("gallery: cancelled") }
+    var artKey by remember { mutableStateOf<String?>(null) } // the WordArt a gallery put in
+    fun galleryOk() {
+        while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex)
+        // WordArt put in: its words typed next, as Word selects "Your text here".
+        if (designGallery == DesignGallery.WordArt) artKey?.let { boxing = it to "Your text here" }
+        designGallery = null; galleryChosen = null; galleryClosed(); WriterLog.i("gallery: kept")
+    }
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
@@ -2680,7 +2691,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = "Shown on the pages (the eye at the top)"
+        if (designGallery == null) message = "Shown on the pages (the eye at the top)"
     }
     /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
     fun editStyle(entry: StyleEntry, edit: StyleChange) = change {
@@ -2730,6 +2741,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
         message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
     }
+    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String {
+        val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
+            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
+            // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
+            .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
+        val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
+        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
+            font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
+        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), PictureWrap.Square, kind)
+        if (fx.any) WriterLog.i("WordArt effects: $fx")
+        pictures[img.key] = img
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        tab = WriterTab.Picture
+        return img.key
+    }
     fun applyStyleSet(set: StyleSet) = change {
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
@@ -2743,6 +2771,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
         message = "${set.label}: Normal, Title and the headings"
+    }
+    /** A gallery's card tapped: the document as it was, then this choice on it (a live preview; OK keeps it). */
+    fun galleryPick(c: Any) {
+        val last = galleryChosen
+        if (last != null) galleryStart?.let(::show)
+        WriterLog.i("gallery pick: $c")
+        when (c) {
+            is StyleSet -> { galleryChosen = c; applyStyleSet(c) }
+            is ThemeColors -> { galleryChosen = c; applyTheme(c, null) }
+            is ThemeFonts -> { galleryChosen = c; applyTheme(null, c) }
+            is ArtStyle, is ArtBend -> {
+                val style = c as? ArtStyle ?: (last as? Pair<*, *>)?.first as? ArtStyle ?: ART_STYLES[0]
+                val bend = c as? ArtBend ?: (last as? Pair<*, *>)?.second as? ArtBend ?: ArtBend(null)
+                galleryChosen = style to bend
+                artKey = putTextBox(listOf("Your text here"), 0xFF000000.toInt() or style.color,
+                    TextEffects(if (style.outline) artOutline(style.color) else null, style.shadow, if (style.glow) artGlow(style.color) else null), bend.warp)
+            }
+            is NumberSpot -> { galleryChosen = c; setHeaderFooter(c.on(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd)))
+                goPage = (if (c.place == HeaderFooter.NumberPlace.Footer) -1 else 0) to System.nanoTime() } // where it went, in view
+            is HeaderLayout -> { galleryChosen = c; val hf = c.make(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd), name.substringBeforeLast('.'))
+                setHeaderFooter(hf); goPage = 0 to System.nanoTime() }
+            is ListScheme -> { galleryChosen = c; setNumbering(c.levels) }
+        }
     }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
     fun setIndents(now: RulerIndents) {
@@ -2892,7 +2943,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             } }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
-                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage) }
+                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage,
+                    covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
@@ -3421,12 +3473,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         LaunchedEffect(imeOpen) { if (!imeOpen) ribbonOverKeyboard = false }
         val keyboardBar = !island && !ribbonOverKeyboard && LocalConfiguration.current.screenWidthDp < 700
         // A Design gallery: in the ribbon's place, a strip of its choices (asked 15 Oct); the page above shows the one tapped.
-        if (!viewing && !reading) designGallery?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk,
-            pickSet = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyStyleSet(it) },
-            pickColors = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(it, null) },
-            pickFonts = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(null, it) }, modifier = Modifier.align(Alignment.BottomCenter)) }
+        var stripOf by remember { mutableStateOf<DesignGallery?>(null) } // kept while its strip slides away
+        if (designGallery != null && stripOf != designGallery) stripOf = designGallery
+        androidx.compose.animation.AnimatedVisibility(designGallery != null && (!viewing || galleryViewing != null) && !reading,
+            Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { stripOf?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk, ::galleryPick,
+            more = if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { { galleryCancel(); headerPage = true } } else null,
+            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.')) } }
         // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
-        if (!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+        // The ribbon and a gallery's strip slide down and up as they take each other's place (asked 15 Oct).
+        androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
+            Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
@@ -3618,13 +3674,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
                     Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
                     Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
-                    Box {
-                        var schemes by remember { mutableStateOf(false) }
-                        RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { schemes = true }
-                        DropdownMenu(schemes, { schemes = false }) {
-                            LIST_SCHEMES.forEach { (name, levels) -> DropdownMenuItem(text = { Text(name) }, onClick = { schemes = false; setNumbering(levels) }) }
-                        }
-                    }
+                    RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }
                 }, {
                     listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
@@ -3672,15 +3722,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                 }, {
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
-                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { wordArt = true }
+                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { openGallery(DesignGallery.WordArt) }
                     RibbonButton("Chart", w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
                 }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).
-                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { headerPage = true }
-                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { headerPage = true }
+                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { openGallery(DesignGallery.HeaderFooter) }
+                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { openGallery(DesignGallery.PageNumbers) }
                 }, {
                     // Word's Drop Cap: none, dropped, in the margin, or its options page.
                     Box {
@@ -4070,7 +4120,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             }
-        }
+        } }
         message?.let { m ->
             LaunchedEffect(m) { delay(2800); message = null }
             Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {
@@ -4399,22 +4449,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         tab = WriterTab.Picture
     }
     /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
-    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null) {
-        val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
-            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
-            // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
-            .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
-        val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
-        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
-            font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
-        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), PictureWrap.Square, kind)
-        if (fx.any) WriterLog.i("WordArt effects: $fx")
-        pictures[img.key] = img
-        val at = placePicture(img)
-        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
-        tab = WriterTab.Picture
-    }
     boxing?.let { (key, words) ->
         TextBoxDialog(words, { boxing = null }) { text, _, _, _ ->
             boxing = null
@@ -4572,7 +4606,9 @@ private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 e
 @Composable
 private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects, TextWarp?) -> Unit) {
     var bend by remember { mutableStateOf<TextWarp?>(null) }
-    var text by remember { mutableStateOf(initial) }
+    // A gallery's WordArt: "Your text here" chosen, so the first letter typed replaces it (as Word does).
+    var field by remember { mutableStateOf(TextFieldValue(initial, androidx.compose.ui.text.TextRange(if (initial == "Your text here") 0 else initial.length, initial.length))) }
+    val text = field.text
     var outlined by remember { mutableStateOf(false) }; var shadowed by remember { mutableStateOf(false) }; var glowing by remember { mutableStateOf(false) }
     // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
     val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF70AD47, 0xFF000000).map { it.toInt() }
@@ -4581,7 +4617,7 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(text, { text = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            OutlinedTextField(field, { field = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     // The effects as near as the field can show them: a glow or a shadow; outlined letters hollow.
                     shadow = if (glowing) androidx.compose.ui.graphics.Shadow(Color(0xFF000000 or artGlow(color).toLong()), androidx.compose.ui.geometry.Offset.Zero, 12f)
@@ -4860,10 +4896,17 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
  * page in view, down each page's side. A phone fits the page to its width, no rulers.
  */
 @Composable
-private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null) {
+private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null, covered: Dp = 0.dp) {
     var zoom by remember { mutableFloatStateOf(1f) }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
-    LaunchedEffect(goTo) { goTo?.let { (page, _) -> list.animateScrollToItem(page.coerceIn(0, pages.lastIndex)) } } // Navigation: a heading's page
+    val coveredPx = with(LocalDensity.current) { covered.toPx() }
+    // Navigation: a heading's page. A page as -(n + 1): its foot, clear of a strip [covered] at the bottom (a footer's gallery).
+    LaunchedEffect(goTo) { goTo?.let { (page, _) ->
+        val p = (if (page < 0) -page - 1 else page).coerceIn(0, pages.lastIndex)
+        list.animateScrollToItem(p)
+        if (page < 0) list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == p }?.let { item ->
+            list.animateScrollBy(item.offset + item.size - (list.layoutInfo.viewportEndOffset - coveredPx)) }
+    } }
     BoxWithConstraints(modifier) {
         val rulers = maxWidth >= 700.dp
         val ruler = if (rulers) 18.dp else 0.dp
@@ -4886,7 +4929,7 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
                     .transformable(androidx.compose.foundation.gestures.rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(0.5f, 4f) }, canPan = { false }),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 72.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = maxOf(72.dp, covered + 16.dp)),
             ) {
                 items(pages.size) { i ->
                     val laid = pages[i]

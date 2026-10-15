@@ -198,7 +198,23 @@
 >   (WordArt stretched 186×49 → 243×78 pt, turned 55°). The object's tab is named for what is chosen (asked 15 Oct: "Picture should be Image;
 >   if it is WordArt, why not say so"): Image, WordArt, Shape, Text box, Chart, SmartArt, Equation (`PictureXml.kind`;
 >   WordArt: a bent text box, LibreOffice fontwork, Writer's art style, or Word's `wrap="none"` text box). The user
->   will ask for a Greek UI after Word: keep labels short (Greek words run longer; the ribbon scrolls). Next (agreed): the same strips for WordArt, page numbers,
+>   will ask for a Greek UI after Word: keep labels short (Greek words run longer; the ribbon scrolls).
+>
+> - **More strips in the ribbon's place** (asked 15 Oct): **Insert › WordArt** (looks: five colours plain, outline,
+>   shadow, glow — Word files only — and the bends; a tap puts "Your text here" in that look on the page, OK opens
+>   Edit text with it chosen, as Word), **Insert › Page numbers** (a small page per place, no words — the user: the
+>   picture says it; Page 1 of 3, 1 / 3, **i ii iii**, None, Your own… = the old window), **Insert › Header & footer**
+>   (layouts filled with the file's name: title centred / left with page right / right / above with page below /
+>   book's outer edges / None; Your own…), **Home › Multilevel** (1. 1. 1., 1. a. i., 1.1.1., **I. A. 1.**,
+>   **i. a. 1.**). Page numbers and headers show the **pages** while choosing (the editor shows no footer), laid out
+>   again on each tap and scrolled to where it went (`PagesView` `covered`, a page as -(n+1) = its foot). Card names
+>   sit above the cards in white on the strip (the user: better contrast). The ribbon and a strip **slide** down and
+>   up as they swap (`SLIDE_IN`/`SLIDE_OUT`, 180/140 ms). **Roman page numbers**: `HeaderFooter.roman` — Word's
+>   `pgNumType w:fmt="lowerRoman"` (its start kept), LibreOffice's page layout `style:num-format="i"`, both read back
+>   (`DocSection.pageFormat`); LibreOffice shows i, ii, iii for both (`roman.docx/.odt`). `GalleriesTest`,
+>   `OfficeFormatsTest` (header cases). Not done: 3-D WordArt (the user: skip it for now).
+>   **Seen, not fixed:** in the editor a numbered paragraph that starts with floating pictures (Gallery_test: the WordArt
+>   and the sun before "Page 1 text.") shows its first letter apart ("P" … "age 1 text."); the file is right. Next (agreed): the same strips for WordArt, page numbers,
 >   lists, headers & footers.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,

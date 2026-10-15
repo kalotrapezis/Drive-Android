@@ -75,6 +75,15 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] A photo: the corner keeps its proportions; a side stretches it
   - [ ] On the phone: the handles are big enough for a finger
 
+- **24. Strips: WordArt, Page numbers, Header & footer, Multilevel** — tablet
+  - [x] Insert › WordArt: orange, then Arch up → on the page at once; OK → Edit text with "Your text here" (Claude)
+  - [x] Insert › Page numbers: the pages show; Top right → 1 in the header; Bottom centre → scrolled to the foot; i ii iii → "i" (Claude)
+  - [x] Insert › Header & footer: Title right → the file's name in the header; Cancel → as it was (Claude)
+  - [x] Home › Multilevel: five schemes drawn as they read, I. A. 1. among them (Claude)
+  - [x] The ribbon slides back after Cancel (Claude)
+  - [ ] A thesis copy: i ii iii, open in Word → Format Page Numbers shows i, ii, iii
+  - [ ] On the phone: each strip one thin row, the keyboard away
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

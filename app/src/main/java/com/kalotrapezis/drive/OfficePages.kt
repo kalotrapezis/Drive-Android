@@ -664,6 +664,8 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
             // LibreOffice draws a page's border round its margins.
             border = edge?.let { PageBorder(it, len("margin-left") ?: d.left, top, len("margin-right") ?: d.right, bottom, edgeSides) }),
             headers, footers, titlePage = "first" in headers || "first" in footers,
+            // Its pages numbered i, ii… (the page style's num-format; "1" the usual).
+            pageFormat = props?.attr(STYLE, "num-format")?.takeIf { it.isNotEmpty() && it != "1" } ?: "decimal",
             // LibreOffice numbers lines for the whole document (styles.xml), from page to page or on each page anew.
             lineNumbers = parts["styles.xml"]?.let { String(it, Charsets.UTF_8) }?.let { Regex("""<text:linenumbering-configuration\b[^>]*""").find(it)?.value }
                 ?.takeIf { "text:number-lines=\"false\"" !in it }?.let { c -> fun a(n: String) = Regex("""\s$n="([^"]*)"""").find(c)?.groupValues?.get(1)

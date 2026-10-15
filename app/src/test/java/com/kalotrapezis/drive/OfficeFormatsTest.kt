@@ -766,12 +766,14 @@ class OfficeFormatsTest {
             // Several lines; even pages their own (a book: the title on even pages, the chapter on odd ones, numbers outside).
             HeaderFooter(header = "Chapter 1\nIntroduction", headerAlign = DocAlign.End, footer = "Faculty of Education", footerAlign = DocAlign.Center,
                 number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.End, oddEven = true, evenHeader = "My thesis", evenFooter = "Faculty of Education"),
+            // Front matter: i, ii, iii.
+            HeaderFooter(number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, roman = true),
         )) {
             for (kind in OfficeKind.entries) {
                 val start = OfficeFormats.write(doc, kind)
                 val parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(OfficeFormats.unzip(start), hf, DocPage()) else HeaderFooterEdit.odt(OfficeFormats.unzip(start), hf, DocPage())
                 val bytes = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
-                if (hf.oddEven) File("build/office-roundtrip").apply { mkdirs() }.resolve("odd-even.${kind.extension}") // for a look in LibreOffice
+                if (hf.oddEven || hf.roman) File("build/office-roundtrip").apply { mkdirs() }.resolve("${if (hf.roman) "roman" else "odd-even"}.${kind.extension}") // for a look in LibreOffice
                     .writeBytes(OfficeFormats.write(OfficeDoc(List(3) { i -> DocPara(listOf(DocRun("Page ${i + 1}")), keep = if (i > 0) OfficeFormats.withPageBreak(null, kind, true) else null) }), kind, bytes))
                 // Saved again with new text: the page setup and its header and footer stay.
                 val saved = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun("Changed"))))), kind, bytes)

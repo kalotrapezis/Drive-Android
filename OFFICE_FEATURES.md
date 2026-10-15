@@ -172,8 +172,8 @@ one pass once the tabs' features are done.
 
 ### Layout (Word's Layout; OnlyOffice Διάταξη)
 - [x] Margins (Normal = 1 in/APA, Narrow, Moderate, Wide, 2.5 cm, or custom in cm/in), orientation, size (A4, Letter, Legal, A5, A3) — Layout tab, one Page setup page; every section of a Word file (pgSz/pgMar, header distances kept), every page layout of an ODT (the header band allowed for); a tablet shows a page too wide smaller rather than reflowing
-- [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) ; column breaks, columns in part of a document through continuous section breaks (15 Oct) — [ ] balancing a continuous section
-- [x] Page break, blank page (also on Layout); Layout › Breaks: column break, section break next page / continuous (Word files) (15 Oct)
+- [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) ; column breaks, columns in part of a document through continuous section breaks (15 Oct); in .odt a section's own columns (LibreOffice's text:section), files' sections kept and shown, page styles changing mid-document start a page of their size (15 Oct, evening) — [ ] balancing a continuous section
+- [x] Page break, blank page (also on Layout); Layout › Breaks: column break, section break next page / continuous (15 Oct; .odt: LibreOffice's text:section, 15 Oct evening)
 - [ ] Line numbers, hyphenation
 - [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
 - [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup in Word files (15 Oct) — [ ] groups in .odt, a rotation handle

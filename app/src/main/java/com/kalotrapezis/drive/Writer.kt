@@ -1782,8 +1782,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             blank && i == here - 1 -> p.copy(heading = 0, list = null, keep = OfficeFormats.withPageBreak(null, kind, true)) // the empty page: a plain paragraph
             else -> p
         } })
+        // Layout › Breaks › Section in an .odt: the text from the cursor on in a section of its own (LibreOffice's).
+        if (section != null && kind == OfficeKind.Odt) {
+            meta = OdtSections.insert(meta, here, section == "nextPage") { it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) }
+            WriterLog.i("odt section ($section) from paragraph $here")
+        }
         // Layout › Breaks › Section (Word files): a section ends with the paragraph before the cursor's.
-        if (section != null) {
+        if (section != null && kind == OfficeKind.Docx) {
             val base = original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)
             val body = SectionBreaks.bodySect(String(OfficeFormats.unzip(base).let { it.getValue(documentPath(it)) }, Charsets.UTF_8)) ?: "<w:sectPr/>"
             val (withBreak, newBody) = SectionBreaks.insert(meta, here - 1, body, section)
@@ -2591,9 +2596,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun sectioned() = kind == OfficeKind.Docx && meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }
     /** Layout › Columns: the whole document's — or, once it has section breaks, the cursor's section's (Word's "This section"). */
     fun setColumns(n: Int) = change {
+        val sel = state.selection.min
+        // An .odt with the cursor in a section (LibreOffice's): that section's columns.
+        if (kind == OfficeKind.Odt) WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull()
+            ?.let { at -> OdtSections.withColumns(current(), at, n) }?.let { meta = it; dirty = true; styleEdits++; WriterLog.i("odt section: $n columns"); return@change }
         if (!sectioned()) { setPage(sheet.copy(columns = n)); return@change }
         val cur = current()
-        val sel = state.selection.min
         val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull() ?: 0
         val end = (here until cur.paras.size).firstOrNull { j -> cur.paras[j].keep?.parts?.any { it.first == "sectPr" } == true }
         if (end != null) meta = cur.copy(paras = cur.paras.mapIndexed { j, p -> if (j != end) p else p.copy(keep = p.keep!!.copy(parts = p.keep.parts.map {
@@ -3066,6 +3074,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         (if (sections.getOrNull(i)?.continuous == true) "Section break (continuous)" else "Section break (next page)")
                                             .takeIf { meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true },
                                         "Column break".takeIf { looks[i]?.columnBreakBefore == true },
+                                        "Section break".takeIf { kind == OfficeKind.Odt && OdtSections.tags(meta.paras[i]) != OdtSections.tags(meta.paras[i - 1]) },
                                     ).takeIf { it.isNotEmpty() }?.let { i to it.joinToString(" · ") } }.toMap()
                                 }
                                 val breaks = breakNames.keys.toList()
@@ -3800,14 +3809,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
-                    // Layout › Breaks (Phase 2): a column break; section breaks (Word files) — a new page, or on down the same one.
+                    // Layout › Breaks (Phase 2): a column break; section breaks — a new page, or on down the same one.
                     Box {
                         var breaking by remember { mutableStateOf(false) }
                         RibbonButton("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded) { breaking = true }
                         DropdownMenu(breaking, { breaking = false }) {
                             DropdownMenuItem(text = { Text("Column break") }, onClick = { breaking = false; insertPageBreak(false, column = true); WriterLog.i("column break") })
-                            DropdownMenuItem(text = { Text("Section break · next page") }, enabled = kind == OfficeKind.Docx, onClick = { breaking = false; insertPageBreak(false, section = "nextPage") })
-                            DropdownMenuItem(text = { Text("Section break · continuous") }, enabled = kind == OfficeKind.Docx, onClick = { breaking = false; insertPageBreak(false, section = "continuous") })
+                            DropdownMenuItem(text = { Text("Section break · next page") }, onClick = { breaking = false; insertPageBreak(false, section = "nextPage") })
+                            DropdownMenuItem(text = { Text("Section break · continuous") }, onClick = { breaking = false; insertPageBreak(false, section = "continuous") })
                         }
                     }
                 }, {

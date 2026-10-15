@@ -64,3 +64,55 @@ internal object SectionBreaks {
         return doc.copy(paras = paras) to changed
     }
 }
+
+/**
+ * LibreOffice's sections (text:section): part of the text with columns of its own (as Word's continuous section break
+ * makes), or named, protected. Each paragraph inside one carries the opening tags of the sections round it, outermost
+ * first, as its [PART]; the writer puts them round the paragraphs again. Layout › Breaks › Section in an .odt starts
+ * one of Writer's ([TETRA] + its columns) at the cursor; Layout › Columns there sets the cursor's section's columns.
+ */
+internal object OdtSections {
+    const val PART = "odtSection"
+    const val TETRA = "Tetra_20_sect_"
+    private val TAG = Regex("""<text:section\b[^>]*>""")
+
+    fun tags(p: DocPara): List<String> = p.keep?.parts?.firstOrNull { it.first == PART }?.second?.let { v -> TAG.findAll(v).map { it.value }.toList() }.orEmpty()
+    /** [p] inside the section opened by [tag] (outside the ones it was in already). */
+    fun within(p: DocPara, tag: String): DocPara = withTags(p, listOf(tag) + tags(p))
+    private fun withTags(p: DocPara, tags: List<String>): DocPara {
+        val k = p.keep ?: DocKeep()
+        val parts = k.parts.filter { it.first != PART } + (if (tags.isEmpty()) emptyList() else listOf(PART to tags.joinToString("")))
+        return p.copy(keep = k.copy(parts = parts).takeIf { !it.isEmpty })
+    }
+    fun styleName(tag: String) = Regex("""text:style-name="([^"]*)"""").find(tag)?.groupValues?.get(1)
+    /** Writer's section style for [name] ([TETRA] + its columns): columns ½ inch apart, filled one after the other. */
+    fun style(name: String): String {
+        val n = name.removePrefix(TETRA).toIntOrNull()?.coerceIn(1, 6) ?: 1
+        val cols = (0 until n).joinToString("") { k -> """<style:column style:rel-width="${65535 / n}*" fo:start-indent="${if (k == 0) "0" else "0.25"}in" fo:end-indent="${if (k == n - 1) "0" else "0.25"}in"/>""" }
+        return """<style:style style:name="$name" style:family="section"><style:section-properties text:dont-balance-text-columns="true" style:editable="false"><style:columns fo:column-count="$n" fo:column-gap="0.5in">$cols</style:columns></style:section-properties></style:style>"""
+    }
+
+    /**
+     * Layout › Breaks › Section in an .odt: the paragraphs from [at] to the end of the section the cursor is in move into
+     * a new one of Writer's (with its columns, or one column); [newPage] starts it on a new page (LibreOffice's page
+     * break before its first paragraph, [pageBreak]).
+     */
+    fun insert(doc: OfficeDoc, at: Int, newPage: Boolean, pageBreak: (DocPara) -> DocPara): OfficeDoc {
+        val here = doc.paras.getOrNull(at) ?: return doc
+        val was = tags(here)
+        var end = at
+        while (end < doc.paras.size && tags(doc.paras[end]) == was) end++
+        val name = "Section" + (1 + doc.paras.flatMap(::tags).mapNotNull { Regex("""text:name="Section(\d+)"""").find(it)?.groupValues?.get(1)?.toIntOrNull() }.fold(0, ::maxOf))
+        val tag = """<text:section text:style-name="${was.lastOrNull()?.let(::styleName)?.takeIf { it.startsWith(TETRA) } ?: (TETRA + "1")}" text:name="$name">"""
+        return doc.copy(paras = doc.paras.mapIndexed { i, p ->
+            if (i !in at until end) p else withTags(p, was.dropLast(if (was.lastOrNull()?.let(::styleName)?.startsWith(TETRA) == true) 1 else 0) + tag)
+                .let { if (i == at && newPage) pageBreak(it) else it }
+        })
+    }
+    /** Layout › Columns with the cursor in a section ([at]'s): that section (each paragraph in it) set to [n] columns. */
+    fun withColumns(doc: OfficeDoc, at: Int, n: Int): OfficeDoc? {
+        val inner = tags(doc.paras.getOrNull(at) ?: return null).lastOrNull() ?: return null
+        val changed = inner.replace(Regex("""text:style-name="[^"]*""""), """text:style-name="$TETRA$n"""")
+        return doc.copy(paras = doc.paras.map { p -> tags(p).let { t -> if (inner in t) withTags(p, t.map { if (it == inner) changed else it }) else p } })
+    }
+}

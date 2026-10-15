@@ -564,6 +564,37 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
     private val listLevels = HashMap<Pair<String, Int>, Element>() // (list style, level) → list-level-label-alignment
     private val listStyles = HashMap<Pair<String, Int>, Element>() // (list style, level) → the level's own style
     override val section: DocSection
+    private val sectionColumns = HashMap<String, Pair<Int, Float>>() // a section style's columns and the gap between them
+    private val masterPages = HashMap<String, Element>() // a page style's page-layout-properties, by its name
+    private var mainMaster: String? = null
+
+    /**
+     * LibreOffice's sections and page styles: a paragraph whose style names another page style starts a page of that
+     * style's size, margins and columns; inside a text:section, its columns from where it begins (on down the page).
+     * shortcut: another page style's headers, footers and borders are the main one's; read them when a file needs it.
+     */
+    override fun sections(paras: List<DocPara>): List<DocSection> {
+        if (paras.none { p -> p.keep?.parts?.any { it.first == OdtSections.PART || it.first == "master" } == true }) return super.sections(paras)
+        val made = HashMap<Triple<String?, Int, Float>, DocSection>() // one each, so the layout sees where one changes
+        var base = section; var masterName: String? = null
+        return paras.map { p ->
+            p.keep?.parts?.firstOrNull { it.first == "master" }?.second?.takeIf { it.isNotEmpty() && it != masterName }?.let { m ->
+                masterName = m
+                base = masterPages[m]?.let { pr -> fun len(n: String) = odfLength(pr.attr(FO, n))
+                    val top = len("margin-top") ?: section.page.top; val bottom = len("margin-bottom") ?: section.page.bottom
+                    section.copy(page = section.page.copy(width = len("page-width") ?: section.page.width, height = len("page-height") ?: section.page.height,
+                        top = top, bottom = bottom, left = len("margin-left") ?: section.page.left, right = len("margin-right") ?: section.page.right, header = top, footer = bottom,
+                        columns = pr.kid(STYLE, "columns")?.attr(FO, "column-count")?.toIntOrNull()?.coerceIn(1, 6) ?: 1,
+                        columnGap = odfLength(pr.kid(STYLE, "columns")?.attr(FO, "column-gap")) ?: 36f)) }?.takeIf { m != mainMaster } ?: section
+            }
+            val cols = OdtSections.tags(p).lastOrNull()?.let(OdtSections::styleName)?.let { n -> sectionColumns[n] ?: n.removePrefix(OdtSections.TETRA).toIntOrNull()?.let { it to 36f } }
+                ?: (base.page.columns to base.page.columnGap)
+            made.getOrPut(Triple(masterName, cols.first, cols.second)) {
+                // The first of a page style starts a page; a section on down the same one.
+                base.copy(page = base.page.copy(columns = cols.first, columnGap = cols.second), continuous = made.keys.any { it.first == masterName })
+            }
+        }
+    }
 
     init {
         val styles = parts["styles.xml"]?.let { OfficeFormats.parse(it).documentElement }
@@ -577,6 +608,8 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
                     "style" -> {
                         if (s.attr(STYLE, "family") == "paragraph" && group.localName == "styles") s.attr(STYLE, "name")?.let { named[it] = s }
                         s.attr(STYLE, "family")?.takeIf { it.startsWith("table") }?.let { f -> s.attr(STYLE, "name")?.let { tableStyles["$f/$it"] = s } }
+                        if (s.attr(STYLE, "family") == "section") s.attr(STYLE, "name")?.let { n -> s.kid(STYLE, "section-properties")?.kid(STYLE, "columns")?.let { c ->
+                            sectionColumns[n] = (c.attr(FO, "column-count")?.toIntOrNull()?.coerceIn(1, 6) ?: 1) to (odfLength(c.attr(FO, "column-gap")) ?: 36f) } }
                     }
                     "page-layout" -> s.attr(STYLE, "name")?.let { layouts[it] = s }
                     "list-style" -> s.attr(STYLE, "name")?.let { name ->
@@ -586,7 +619,11 @@ private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
                         } }
                     }
                 }
-                "master-styles" -> master = group.kids().firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: group.kids().firstOrNull()
+                "master-styles" -> {
+                    master = group.kids().firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: group.kids().firstOrNull()
+                    mainMaster = master?.attr(STYLE, "name")
+                    group.kids().forEach { m -> m.attr(STYLE, "name")?.let { n -> m.attr(STYLE, "page-layout-name")?.let { layouts[it] }?.kid(STYLE, "page-layout-properties")?.let { masterPages[n] = it } } }
+                }
             }
         }
         // Title, Subtitle and Quotations as LibreOffice makes them, for a document without: shown before it is saved with them.

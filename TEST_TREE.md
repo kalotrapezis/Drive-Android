@@ -10,6 +10,8 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
 - **12. .odt parity**
   - [x] `Controls_test.odt` (LibreOffice's own, six controls): no copy banner; tap Pear → bar "Fruit" → Apple; tap ☒ → Untick; Save → LibreOffice shows Apple and ☐, still controls (Claude)
   - [ ] An .odt: Insert › Content control › Drop-down → open in LibreOffice: a real drop-down
+  - [x] `Section_test.odt`: cursor at the first body line → Layout › Breaks › Section break · continuous → a dashed "Section break"; Columns › Two → the pages: title across, text in two columns; LibreOffice the same (Claude)
+  - [ ] An .odt: Breaks › Section break · next page at the end → a new page; Backspace at its line
 
 # Test tree — Writer's Word gaps (15 Oct 2026)
 

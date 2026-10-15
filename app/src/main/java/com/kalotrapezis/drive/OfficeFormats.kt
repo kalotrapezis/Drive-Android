@@ -2463,7 +2463,15 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "list" -> list(e, out, null, 0, null)
                 "sequence-decls", "variable-decls", "user-field-decls", "dde-connection-decls", "soft-page-break", "bookmark", "bookmark-start", "bookmark-end" -> Unit
                 "tracked-changes" -> notes += "tracked changes"
-                "section" -> { notes += "sections"; block(e, out, list, level) }
+                // A section (LibreOffice's columns in part of the text, a protected or named part): each of its paragraphs
+                // carries its opening tag (an outer one's first), written round them again (OdtSections).
+                "section" -> {
+                    val start = out.size
+                    block(e, out, list, level)
+                    if (out.size == start) notes += "sections"
+                    val tag = "<text:section${attrs(e)}>"
+                    for (k in start until out.size) out[k] = OdtSections.within(out[k], tag)
+                }
                 "table-of-content", "alphabetical-index", "illustration-index", "table-index", "object-index", "user-index", "bibliography" ->
                     { notes += "fields (page numbers, dates, contents)"; e.kid(TEXT, "index-body")?.let { block(it, out, list, level) } }
                 "numbered-paragraph" -> { notes += "other list formats"; block(e, out, list, level) }
@@ -2837,7 +2845,7 @@ private object OdtWriter {
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
             val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
-            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" })
+            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" && it.first != OdtSections.PART })
             append("<$tag text:style-name=\"$style\"")
             if (p.heading > 0) append(" text:outline-level=\"${p.heading}\"")
             append(">")
@@ -2896,8 +2904,17 @@ private object OdtWriter {
         /** Paragraphs, lists and tables as the body has them; a table's cells hold the same (a table in a cell too). */
         fun blockXml(paras: List<DocPara>, text: StringBuilder) {
         var i = 0
+        var sections = emptyList<String>() // the sections open here, outermost first
+        fun sectionTo(p: DocPara?) {
+            val want = p?.let(OdtSections::tags).orEmpty()
+            val same = sections.zip(want).takeWhile { (a, b) -> a == b }.size
+            repeat(sections.size - same) { text.append("</text:section>") }
+            want.drop(same).forEach { text.append(it); Regex("""text:style-name="(${OdtSections.TETRA}\d+)"""").find(it)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) auto.append(OdtSections.style(n)) } }
+            sections = want
+        }
         while (i < paras.size) {
             val p = paras[i]
+            sectionTo(p)
             p.table?.let { t ->
                 // A table as the file had it: its attributes and columns raw, header rows grouped, merged-away cells kept.
                 text.append("<table:table${t.props}>").append(t.grid)
@@ -2921,7 +2938,7 @@ private object OdtWriter {
             }
             if (p.list == null) { text.append(paragraphXml(p)); i++; continue }
             var end = i
-            while (end < paras.size && paras[end].list != null && paras[end].table == null) end++
+            while (end < paras.size && paras[end].list != null && paras[end].table == null && OdtSections.tags(paras[end]) == sections) end++
             val items = paras.subList(i, end)
             // The file's own list style, when every item still belongs to it and is still of its kind at its level.
             val source = items.first().keep?.list
@@ -2944,6 +2961,7 @@ private object OdtWriter {
             text.append("</text:list>")
             i = end
         }
+        sectionTo(null)
         }
         val text = StringBuilder().also { blockXml(doc.paras, it) }
 

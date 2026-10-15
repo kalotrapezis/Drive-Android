@@ -22,6 +22,18 @@
 >   copy-only. `ContentControlTest` (LibreOffice 26.2's own conversion of the six kinds, `test/resources/controls.odt`);
 >   filled on the phone, LibreOffice shows it.
 >
+> - **.odt sections** (item 2): LibreOffice's `text:section` was copy-only (and lost on saving); now each paragraph in
+>   one carries its opening tag(s) as the keep part `odtSection` (`OdtSections`, OfficeBreaks.kt), written round them
+>   again (nested ones too; a list stops at a section's edge). The pages draw a section's columns from where it begins
+>   (`OdtStyles.sections`: the section style's `style:columns`), and a paragraph naming another page style
+>   (`style:master-page-name`, as LibreOffice's conversion of a Word next-page section) starts a page of that style's
+>   size, margins and columns (its headers: the main one's — shortcut). **Layout › Breaks › Section break** works in
+>   .odt: the text from the cursor to the end of its section goes into a new `Tetra_20_sect_N` section (N columns,
+>   ½ in apart, not balanced — LibreOffice's `dont-balance-text-columns`), *next page* with a page break before;
+>   **Layout › Columns** with the cursor in a section sets that section's. Edit names it "Section break".
+>   `OdtSectionsTest` (LibreOffice's own conversion of Breaks_test, `test/resources/sections.odt`); on the phone a
+>   title + continuous break + two columns, and LibreOffice draws the saved file the same.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

@@ -160,7 +160,7 @@ one pass once the tabs' features are done.
 - [x] **Content controls** (Insert › Content control, 15 Oct): plain/rich text, check box, drop-down and combo
       list, date picker, with a title; filled from the form bar; .odt's too — LibreOffice's loext:content-control read,
       filled, written and inserted (15 Oct, evening) — [ ] picture controls
-- [ ] Later: SmartArt
+- [x] SmartArt shown (15 Oct, evening): from the drawing Word saves with it (word/diagrams/drawing*.xml), each shape and its words where they stand, theme colours; kept in the file as it was — [ ] editing SmartArt, an .odt's (LibreOffice turns it into shapes)
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)
 - [x] A **drawing box** (Draw › Drawing box): drawn in with finger or pen, put in the text as a see-through PNG in a

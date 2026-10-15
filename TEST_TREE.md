@@ -49,6 +49,10 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] Open one of your Word files with shapes drawn in Word (theme colours): they show filled as in Word
   - [ ] An .odt: put in a cloud and a flowchart decision → open in LibreOffice on the PC: the same shapes
 
+- **19. SmartArt** — tablet
+  - [x] `SmartArt_test.docx`: three blue chevrons Plan, Write, Submit with white words, as Word shows (Claude)
+  - [ ] A Word file with real SmartArt from Word (if you have one): shown as in Word; Save keeps it SmartArt in Word
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

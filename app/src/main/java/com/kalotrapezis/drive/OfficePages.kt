@@ -979,13 +979,14 @@ private class InLineDrawable(val inner: android.graphics.drawable.Drawable, val 
     @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 }
 
-internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>) : android.graphics.drawable.Drawable() {
+internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>, /** 't', 'c' or 'b': where its words stand */ val anchor: Char = 't') : android.graphics.drawable.Drawable() {
     override fun draw(canvas: Canvas) {
         val b = bounds
         (frame ?: ShapePicture("rect", 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f)).drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat())
         canvas.save()
         canvas.clipRect(b)
-        canvas.translate(b.left + inset.first, b.top + inset.second)
+        val room = (b.height() - 2 * inset.second - text.height).coerceAtLeast(0f)
+        canvas.translate(b.left + inset.first, b.top + inset.second + when (anchor) { 'c' -> room / 2; 'b' -> room; else -> 0f })
         LaidPage.drawParts(canvas, text.pieces, text.boxes, text.lines)
         canvas.restore()
     }
@@ -1530,7 +1531,9 @@ internal object OfficePages {
         val paras = img.box ?: return null
         val inset = 7.2f to 3.6f
         val text = runCatching { stack(doc, paras, styles, DocPage(), (img.widthPt - 2 * inset.first).coerceAtLeast(8f), pictureBytes, null, 0f, 0f) }.getOrNull() ?: return null
-        return TextBoxDrawable(ShapePicture.of(img), text, inset)
+        // Its words' place in it (Word's bodyPr anchor: SmartArt's and many text boxes' are centred).
+        val anchor = img.raw?.let { Regex("""<(?:wps|a):bodyPr\b[^>]*\banchor="(\w+)"""").find(it)?.groupValues?.get(1) }.let { when (it) { "ctr" -> 'c'; "b" -> 'b'; else -> 't' } }
+        return TextBoxDrawable(ShapePicture.of(img), text, inset, anchor)
     }
 
     /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */
@@ -1907,12 +1910,8 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             // Its adjustments (a rounded corner's size, an arrow's head…): Word's "val n".
             val adjust = Regex("""<a:gd name="(\w+)" fmla="val (-?\d+)"""").findAll(Regex("""<a:avLst>([\s\S]*?)</a:avLst>""").find(sp)?.groupValues?.get(1).orEmpty())
                 .associate { it.groupValues[1] to it.groupValues[2].toDouble() }
-            fun color(xml: String?): Int? {
-                if (xml == null || "<a:noFill" in xml) return null
-                val m = Regex("""<a:srgbClr val="([0-9A-Fa-f]{6})"(?:\s*/>|>([\s\S]*?)</a:srgbClr>)""").find(xml) ?: return null
-                val alpha = Regex("""<a:alpha val="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1)?.toIntOrNull()?.let { Math.round(it * 255 / 100000f) } ?: 255
-                return (alpha shl 24) or m.groupValues[1].toInt(16)
-            }
+            // A colour as given (its own, or the theme's — SmartArt's and Word's own shapes name the theme's), its alpha too.
+            fun color(xml: String?): Int? = if (xml == null || "<a:noFill" in xml) null else themeColor(xml)
             val ln = Regex("""<a:ln\b([^>]*)>([\s\S]*?)</a:ln>""").find(sp)
             // What is before the outline is the fill (spPr's order: geometry, fill, outline); none said there: the
             // shape style's (Word's own shapes take the theme's accent, its outline darker).

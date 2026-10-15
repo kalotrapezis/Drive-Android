@@ -136,6 +136,15 @@
 >   when the user typed by mistake) — a picture's place-holder size is now marked (`pictureSp`, fraction .371) and never
 >   given to letters; a place-holder left without its picture (half undone) is not written. `WriterBridgeTest`.
 >
+> - **SmartArt shown** (item 5): a `dgm:relIds` drawing is read from the drawing Word saves beside its data (the data
+>   part's `dsp:dataModelExt relId` → `word/diagrams/drawing*.xml`): each `dsp:sp` becomes a group piece (its spPr/style
+>   read as a Word shape — any preset, theme colours) with its words (`dsp:txBody`: alignment, size, bold/italic, colour
+>   or the style's font colour) — drawn as a group on the pages and in the editor; the SmartArt and its five parts are
+>   written back untouched. Text boxes now honour `bodyPr anchor` (centred/bottom words), and shapes' fills given as
+>   theme colours inside spPr are read (were blank). None of the user's files has SmartArt: `smartart.docx` (made as Word
+>   saves one; LibreOffice opens it) — `SmartArtTest`; on the tablet the chevrons Plan → Write → Submit, white words on
+>   blue. Not done: editing SmartArt (Word's own data model); one without a saved drawing stays a grey box.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

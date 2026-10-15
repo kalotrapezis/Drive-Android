@@ -1811,8 +1811,46 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         val chart = (e.getElementsByTagNameNS("*", "chart").item(0) as Element?)?.getAttributeNS(R, "id")?.let { charts[it] }?.let { parts[it] }?.let { OfficeCharts.readDrawingml(it) }
         // A group (Word's wpg): its pieces, each drawn in its place (only the first piece's picture or words showed before).
         val group = (e.getElementsByTagNameNS("*", "wgp").item(0) as Element?)?.let { groupParts(it, w, h) }
+            ?: (e.getElementsByTagNameNS("*", "relIds").item(0) as Element?)?.let { smartArt(it) }
         return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group)
     }
+    /**
+     * SmartArt, shown (not edited): the drawing Word saves beside its data (word/diagrams/drawing*.xml — the data part
+     * names it in dsp:dataModelExt), each shape where it stands with its words, as a group's pieces. The SmartArt itself
+     * is kept in the file as it was. Null: no saved drawing (an old file; shown as a grey box).
+     */
+    fun smartArt(ids: Element): List<GroupPart>? {
+        val docRels = parts[relsPath(docPath)]?.let { OfficeFormats.parse(it).documentElement.kids() }.orEmpty()
+        fun target(id: String) = docRels.firstOrNull { it.getAttribute("Id") == id }?.getAttribute("Target")?.let { resolve(dir, it) }
+        val data = ids.getAttributeNS(R, "dm").takeIf { it.isNotEmpty() }?.let(::target)?.let { parts[it] } ?: return null
+        val drawingId = Regex("""dataModelExt\b[^>]*\brelId="([^"]+)"""").find(String(data, Charsets.UTF_8))?.groupValues?.get(1) ?: return null
+        val root = target(drawingId)?.let { parts[it] }?.let { OfficeFormats.parse(it).documentElement } ?: return null
+        val out = ArrayList<GroupPart>()
+        fun num(x: Element?, kid: String, a: String) = x?.kids()?.firstOrNull { it.localName == kid }?.getAttribute(a)?.toFloatOrNull()?.div(12700f) ?: 0f
+        val all = root.getElementsByTagNameNS("*", "sp")
+        for (i in 0 until all.length) {
+            val sp = all.item(i) as Element
+            val xfrm = sp.kids().firstOrNull { it.localName == "spPr" }?.kids()?.firstOrNull { it.localName == "xfrm" }
+            val w = num(xfrm, "ext", "cx"); val h = num(xfrm, "ext", "cy")
+            if (w <= 0f || h <= 0f) continue
+            // As a Word shape (wps) for the shape's drawing: its geometry, fill, outline and style's theme colours.
+            val xml = OfficeFormats.xml(sp).replace("<dsp:spPr", "<wps:spPr").replace("</dsp:spPr>", "</wps:spPr>").replace("<dsp:style", "<wps:style").replace("</dsp:style>", "</wps:style>")
+            val fontColor = Regex("""<a:fontRef\b[^>]*>([\s\S]*?)</a:fontRef>""").find(xml)?.groupValues?.get(1)?.let { ShapePicture.themeColor(it) }?.and(0xFFFFFF)
+            val paras = sp.kids().firstOrNull { it.localName == "txBody" }?.kids()?.filter { it.localName == "p" }?.map { p ->
+                val algn = p.kids().firstOrNull { it.localName == "pPr" }?.getAttribute("algn")
+                val runs = p.kids().filter { it.localName == "r" }.map { r ->
+                    val pr = r.kids().firstOrNull { it.localName == "rPr" }
+                    val color = pr?.kids()?.firstOrNull { it.localName == "solidFill" }?.let { ShapePicture.themeColor(OfficeFormats.xml(it)) }?.and(0xFFFFFF) ?: fontColor
+                    DocRun(r.kids().firstOrNull { it.localName == "t" }?.textContent.orEmpty(), bold = pr?.getAttribute("b") == "1", italic = pr?.getAttribute("i") == "1",
+                        sizePt = pr?.getAttribute("sz")?.toFloatOrNull()?.div(100f), color = color)
+                }
+                DocPara(OfficeFormats.tidy(runs), align = when (algn) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start })
+            }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
+            out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml, box = paras))
+        }
+        return out.takeIf { it.isNotEmpty() }
+    }
+
     /** A group's pieces in its box ([w] × [h] pt): pictures, shapes and text boxes, and groups inside it. */
     fun groupParts(g: Element, w: Float, h: Float): List<GroupPart>? {
         fun xfrm(e: Element) = e.kids().firstOrNull { it.localName.endsWith("spPr") || it.localName == "grpSpPr" }?.kids()?.firstOrNull { it.localName == "xfrm" }

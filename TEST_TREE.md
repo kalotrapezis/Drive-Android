@@ -7,6 +7,10 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] A text box with bold, red italic and blue underlined words: Picture › Edit text, add words to each line → each keeps its look; saved, LibreOffice the same (Claude)
   - [x] Tap an equation → an "Equation" bar with x=(a+b)/2; type +sqrt(y^2) → the page shows it a moment later; saved, LibreOffice shows the equation (Claude)
 
+- **12. .odt parity**
+  - [x] `Controls_test.odt` (LibreOffice's own, six controls): no copy banner; tap Pear → bar "Fruit" → Apple; tap ☒ → Untick; Save → LibreOffice shows Apple and ☐, still controls (Claude)
+  - [ ] An .odt: Insert › Content control › Drop-down → open in LibreOffice: a real drop-down
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

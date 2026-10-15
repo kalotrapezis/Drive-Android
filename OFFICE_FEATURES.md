@@ -151,8 +151,9 @@ one pass once the tabs' features are done.
       axis titles, data labels (14 Oct) — [ ] Word's own Edit data (it needs the embedded workbook)
 - [x] **Equations** (15 Oct): Word's equations read, drawn and kept (no longer copy-only); Insert › Equation in Word's
       linear form with a preview, Picture › Edit equation ; typing in one in place — an equation chosen shows its linear form in a bar over the ribbon, the page redrawing it as you type (15 Oct) — [ ] LibreOffice's (MathML objects)
-- [x] **Content controls** (Insert › Content control, Word files, 15 Oct): plain/rich text, check box, drop-down and combo
-      list, date picker, with a title; filled from the form bar — [ ] picture controls, .odt's
+- [x] **Content controls** (Insert › Content control, 15 Oct): plain/rich text, check box, drop-down and combo
+      list, date picker, with a title; filled from the form bar; .odt's too — LibreOffice's loext:content-control read,
+      filled, written and inserted (15 Oct, evening) — [ ] picture controls
 - [ ] Later: SmartArt
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)

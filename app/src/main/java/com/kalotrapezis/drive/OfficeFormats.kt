@@ -2651,6 +2651,14 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                             openComments += name
                         }
                     } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
+                    // LibreOffice's content control (a form's field): its letters carry it, as Word's sdtPr (Forms.fromOdt).
+                    else if (e.namespaceURI == LOEXT && e.localName == "content-control") {
+                        val attrs = (0 until e.attributes.length).map { e.attributes.item(it) }.filter { it.namespaceURI == LOEXT }.associate { it.localName to it.nodeValue }
+                        val items = e.kids().filter { it.namespaceURI == LOEXT && it.localName == "list-item" }.map { (it.getAttributeNS(LOEXT, "display-text").ifEmpty { it.getAttributeNS(LOEXT, "value") }) to it.getAttributeNS(LOEXT, "value") }
+                        val pr = Forms.fromOdt(attrs, items).takeIf { look.control == null }
+                        if (pr == null) notes += "content controls"
+                        content(e, if (pr != null) look.copy(control = pr) else look, inLink)
+                    } else if (e.namespaceURI == LOEXT && e.localName == "list-item") Unit
                     else if ((e.localName == "custom-shape" || e.localName == "frame") && Watermark.isOne(e.getAttributeNS(e.namespaceURI, "name"))) Unit // a watermark: the pages draw it
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))
                     else notes += "other content"
@@ -2740,7 +2748,7 @@ private object OdtWriter {
             }
         }
         fun textStyle(r: DocRun): String? {
-            val look = r.copy(text = "", link = null, image = null, comments = emptyList())
+            val look = r.copy(text = "", link = null, image = null, comments = emptyList(), control = null)
             if (look == DocRun("")) return null
             return textStyles.getOrPut(look) {
                 val name = fresh("TT")
@@ -2843,8 +2851,14 @@ private object OdtWriter {
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) append("""<text:a xlink:type="simple" xlink:href="${OfficeFormats.esc(link)}">""")
                 var q = k
+                var control: String? = null // a form's content control open here (LibreOffice's, from Word's sdtPr)
                 while (q < end) {
                     val r = runs[q++]
+                    if (r.control != control) {
+                        if (control != null) append("</loext:content-control>")
+                        control = r.control
+                        control?.let { append(Forms.odt(it)) }
+                    }
                     commentMarks(r.comments)
                     if (r.image != null) { append(frame(r.image)); prev = "x"; continue }
                     // A note, where its reference is: LibreOffice's, its number shown, its paragraphs inside.
@@ -2870,6 +2884,7 @@ private object OdtWriter {
                     prev = r.text
                     if (s != null) append("</text:span>")
                 }
+                if (control != null) { append("</loext:content-control>"); control = null }
                 if (link != null) append("</text:a>")
                 k = end
             }

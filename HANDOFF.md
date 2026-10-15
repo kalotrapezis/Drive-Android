@@ -14,6 +14,14 @@
 >   form in a bar over the ribbon (`EquationBar`, with piece buttons); the page redraws it 350 ms after typing stops
 >   (a red form: not yet an equation, nothing changed). `TextBoxRunsTest`; both checked in LibreOffice and on the phone.
 >
+> - **.odt content controls** (item 2): LibreOffice's `loext:content-control` (text, rich text, check box, drop-down,
+>   combo box, date) is read as the Word sdtPr the rest of Writer fills (`Forms.fromOdt`) and written back as
+>   LibreOffice's (`Forms.odt`; list items, check states, date format/language/current date, title, tag, id) — so the
+>   form bar fills them and Insert › Content control works in .odt too. Before, an .odt with one was copy-only and lost
+>   its letters. Not kept: LibreOffice's look-only attributes (colour, appearance, lock). A picture control stays
+>   copy-only. `ContentControlTest` (LibreOffice 26.2's own conversion of the six kinds, `test/resources/controls.odt`);
+>   filled on the phone, LibreOffice shows it.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

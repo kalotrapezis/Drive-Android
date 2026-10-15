@@ -2186,7 +2186,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Insert › Content control (Phase 2, Word's Developer tab): a new one at the cursor, its placeholder grey until filled.
     var controlNew by remember { mutableStateOf(false) }
     fun insertControl(newKind: Forms.New, title: String, items: List<String>, format: String) = change {
-        if (kind != OfficeKind.Docx) { message = "Content controls go in Word documents (.docx)"; return@change }
         val (pr, shown) = Forms.newControl(newKind, title, items, format)
         if (!state.selection.collapsed) state.removeSelectedText()
         val start = state.selection.min

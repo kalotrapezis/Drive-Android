@@ -594,6 +594,7 @@ internal data class OfficeDoc(
     val comments: List<DocComment> = emptyList(),
     val sources: List<DocSource> = emptyList(), // References: Word's sources part, or an ODT's bibliography marks' sources
     val numbering: List<Pair<String, String>>? = null, // Writer's own numbered lists, each level's (numFmt, lvlText) (Home › Multilevel list); null: 1. 2. 3.
+    val citeStyle: CiteStyle = CiteStyle.APA, // References › Style: the citations' and the list's (Word's sources part's StyleName)
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {
@@ -638,7 +639,7 @@ internal object OfficeFormats {
         val parts = unzip(bytes)
         return numberNotes(when (kind) {
             OfficeKind.Docx -> DocxReader(parts).read()
-            OfficeKind.Odt -> OdtReader(parts).read()
+            OfficeKind.Odt -> OdtReader(parts).read().let { it.copy(citeStyle = CiteStyle.infer(it)) }
         })
     }
 
@@ -1334,7 +1335,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         readNotes()
         val paras = ArrayList<DocPara>()
         block(body, paras)
-        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts))
+        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts), citeStyle = CiteStyle.ofWord(WordSources.styleName(parts)))
     }
 
     /** A drop cap's framed letter paragraph and the paragraph it drops into, as one paragraph with a [DropCap]. */
@@ -2217,7 +2218,7 @@ private object DocxWriter {
         parts[docPath] = out.toByteArray()
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
-        WordSources.write(parts, doc.sources)
+        WordSources.write(parts, doc.sources, doc.citeStyle)
         return OfficeFormats.zip(parts)
     }
 

@@ -89,6 +89,16 @@
 >   the file sets, tablet view, headers/page numbers/tables on the pages, built on the PDF layout, the Picture tab, line
 >   numbers and hyphenation, Tetra's own spelling dictionaries (Hunspell, Greek and English, in the app's assets).
 >
+> - **Citation styles** (item 5): References › Style (the button that said "APA 7") — APA 7, **MLA 9**, **Chicago
+>   author-date (17th)** (`CitationStyles.kt`: `CiteStyle`, `Mla`, `ChicagoAD`). MLA: (Kurlansky 47), Works Cited
+>   (heading plain), "Smith, John, and Ann Jones. “Title.” *Journal*, vol. 12, no. 3, 2019, pp. 45–67, doi.org/…".
+>   Chicago: (Kurlansky 2018, 47), (Lee, Kim, and Park 2020), References, "Smith, John, and Ann Jones. 2019. “Title.”
+>   *Journal* 12 (3): 45–67. https://doi.org/…". Choosing one rewrites every citation and the list. Kept: a Word file's
+>   sources part `StyleName`/`SelectedStyle` (Word's own names — Word stays in the style when it updates its fields);
+>   an .odt's style is told by its list's heading ("Works Cited") and its citations' shape ("Name 2020" → Chicago);
+>   `OfficeDoc.citeStyle`. Dialog previews still show APA's form (shortcut). `CitationStylesTest`; on the phone MLA then
+>   Chicago on a copy of Phase2_test, saved — LibreOffice the same.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

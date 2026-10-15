@@ -29,6 +29,11 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] Hide keyboard on the bar → the keyboard goes, the ribbon island is back
   - [ ] Settings › Office › Read aloud speed 1.5× → Read aloud is faster
 
+- **15. Citation styles** (References)
+  - [x] A copy with a citation: the "APA 7" button → MLA 9 → "(Walker 47)"; References list → "Works Cited", MLA's entry (Claude)
+  - [x] → Chicago (author-date) → "(Walker 2018, 47)", "References", Chicago's entry; saved, LibreOffice the same (Claude)
+  - [ ] Open that file in Word on the PC: References › Style shows Chicago; Update Citations and Bibliography keeps it
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

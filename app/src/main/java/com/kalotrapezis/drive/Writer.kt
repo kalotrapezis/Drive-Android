@@ -1910,7 +1910,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun reshow() = state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
     fun saveSource(s: DocSource) = change {
         val cur = current()
-        val tagged = if (s.tag.isBlank()) s.copy(tag = Citations.tagFor(kind, s, cur.sources.map { it.tag })) else s
+        val tagged = if (s.tag.isBlank()) s.copy(tag = Citations.tagFor(kind, s, cur.sources.map { it.tag }, cur.citeStyle)) else s
         val list = if (cur.sources.any { it.tag == tagged.tag }) cur.sources.map { if (it.tag == tagged.tag) tagged else it } else cur.sources + tagged
         meta = Citations.update(cur.copy(sources = list), kind)
         dirty = true; reshow()
@@ -1922,7 +1922,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         change {
             val cur = current()
             val added = ArrayList<DocSource>()
-            for (s in r.sources) if (!SourcesImport.same(s, cur.sources + added)) added += s.copy(tag = Citations.tagFor(kind, s, (cur.sources + added).map { it.tag }))
+            for (s in r.sources) if (!SourcesImport.same(s, cur.sources + added)) added += s.copy(tag = Citations.tagFor(kind, s, (cur.sources + added).map { it.tag }, cur.citeStyle))
             meta = Citations.update(cur.copy(sources = cur.sources + added), kind)
             dirty = true; reshow()
             message = "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else "") + (if (r.skipped.isNotEmpty()) "; skipped: ${r.skipped.joinToString()}" else "")
@@ -1954,7 +1954,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
     fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
         val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
-        val text = Citations.text(cite, meta.sources)
+        val text = Citations.text(cite, meta.sources, meta.citeStyle)
         if (!state.selection.collapsed) state.removeSelectedText()
         // After a word, a space first (Word's), not part of the citation.
         state.annotatedString.text.getOrNull(state.selection.min - 1)?.takeIf { !it.isWhitespace() && it != '(' }?.let { state.addTextAfterSelection(" ") }
@@ -3890,7 +3890,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
-                    Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    // References › Style (Word's): APA 7, MLA 9 or Chicago author-date — the citations and the list written again in it.
+                    Box {
+                        var styling by remember { mutableStateOf(false) }
+                        RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { styling = true }
+                        DropdownMenu(styling, { styling = false }) {
+                            CiteStyle.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; change {
+                                meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
+                                message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
+                            } }) }
+                        }
+                    }
                 }, {
                     // Captions and their numbers (Word's Insert Caption and F9).
                     RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }

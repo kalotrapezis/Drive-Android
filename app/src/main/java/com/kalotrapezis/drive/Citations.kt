@@ -201,13 +201,20 @@ internal object WordSources {
             el("Volume", s.volume) + el("Issue", s.issue) + el("Pages", s.pages) + el("Edition", s.edition) + link + rest + "</b:Source>"
     }
 
-    /** [sources] into the package: the part rewritten (its style settings kept), or made with its properties and links. */
-    fun write(parts: MutableMap<String, ByteArray>, sources: List<DocSource>) {
+    /** The style Word's citations are in (the part's StyleName: "APA", "MLA", "Chicago"…). */
+    fun styleName(parts: Map<String, ByteArray>): String? = path(parts)?.let { String(parts.getValue(it), Charsets.UTF_8) }
+        ?.let { Regex("""<b:Sources\b[^>]*\bStyleName="([^"]*)"""").find(it)?.groupValues?.get(1) }
+
+    /** [sources] into the package: the part rewritten (its other settings kept, its style [style]), or made with its properties and links. */
+    fun write(parts: MutableMap<String, ByteArray>, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA) {
         val at = path(parts)
         if (at == null && sources.isEmpty()) return
         val old = at?.let { String(parts.getValue(it), Charsets.UTF_8) }
-        val head = old?.let { Regex("""<b:Sources\b[^>]*>""").find(it)?.value }
-            ?: """<b:Sources xmlns:b="$B" xmlns="$B" SelectedStyle="\APASixthEditionOfficeOnline.xsl" StyleName="APA" Version="6">"""
+        // Word's own name for the style it is in, unless the file already says one Writer reads as the same.
+        val head = (old?.let { Regex("""<b:Sources\b[^>]*>""").find(it)?.value }
+            ?: """<b:Sources xmlns:b="$B" xmlns="$B" SelectedStyle="${style.wordXsl}" StyleName="${style.wordName}" Version="6">""")
+            .let { h -> if (CiteStyle.ofWord(Regex("""\bStyleName="([^"]*)"""").find(h)?.groupValues?.get(1)) == style) h
+                else h.replace(Regex("""\s(StyleName|SelectedStyle|Version)="[^"]*""""), "").removeSuffix(">") + """ SelectedStyle="${style.wordXsl}" StyleName="${style.wordName}">""" }
         val xml = """<?xml version="1.0" standalone="no"?>""" + head + sources.joinToString("") { source(it) } + "</b:Sources>"
         if (at != null) { parts[at] = xml.toByteArray(); return }
         val n = generateSequence(1) { it + 1 }.first { "customXml/item$it.xml" !in parts }
@@ -255,11 +262,11 @@ internal object Citations {
     fun cite(kind: OfficeKind, tags: List<String>, page: String): String = if (kind == OfficeKind.Odt) tags.first()
         else "CITATION ${tags.first()} \\l 1033" + tags.drop(1).joinToString("") { " \\m $it" } + (if (page.isNotBlank()) " \\p $page" else "")
 
-    /** What a citation shows: APA's parenthetical, from its sources (a missing one by its tag). */
-    fun text(cite: String, sources: List<DocSource>): String {
+    /** What a citation shows: its [style]'s parenthetical, from its sources (a missing one by its tag). */
+    fun text(cite: String, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA): String {
         val (tags, page) = parse(cite)
         val found = tags.mapNotNull { t -> sources.firstOrNull { it.tag == t } }
-        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else Apa.parenthetical(found, page)
+        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else style.parenthetical(found, page)
     }
 
     /** Where the reference list is (its heading, if it has one, and its entries), or null. */
@@ -267,7 +274,7 @@ internal object Citations {
         val first = doc.paras.indexOfFirst { it.keep?.style == entryStyle(kind) }.takeIf { it >= 0 } ?: return null
         var last = first
         while (last + 1 < doc.paras.size && doc.paras[last + 1].keep?.style == entryStyle(kind)) last++
-        val start = if (first > 0 && doc.paras[first - 1].text.trim() == HEADING) first - 1 else first
+        val start = if (first > 0 && doc.paras[first - 1].text.trim() in CiteStyle.HEADINGS) first - 1 else first
         return start..last
     }
 
@@ -276,8 +283,9 @@ internal object Citations {
         val used = usedTags(doc)
         // The sources cited, in APA's order; with none cited yet, every source (a list made first, cited after).
         val list = doc.sources.filter { it.tag in used }.ifEmpty { doc.sources }
-        val heading = DocPara(listOf(DocRun(HEADING, bold = true)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true)) // APA: on a new page
-        val entries = Apa.sorted(list).map { DocPara(Apa.entry(it), keep = DocKeep(style = entryStyle(kind))) }
+        // APA, MLA and Chicago alike: on a new page, its heading centred (APA's bold; MLA's and Chicago's plain).
+        val heading = DocPara(listOf(DocRun(doc.citeStyle.heading, bold = doc.citeStyle == CiteStyle.APA)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true))
+        val entries = doc.citeStyle.sorted(list).map { DocPara(doc.citeStyle.entry(it), keep = DocKeep(style = entryStyle(kind))) }
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }
 
@@ -287,9 +295,13 @@ internal object Citations {
      * A new source's tag: Word's (Smi20); in an OpenDocument the citation itself ("Smith & Jones, 2019"; 2019a, 2019b
      * when two are alike), which is what LibreOffice shows for a mark.
      */
-    fun tagFor(kind: OfficeKind, s: DocSource, taken: Collection<String>): String {
+    fun tagFor(kind: OfficeKind, s: DocSource, taken: Collection<String>, style: CiteStyle = CiteStyle.APA): String {
         if (kind == OfficeKind.Docx) return Apa.newTag(s, taken)
-        val base = "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
+        val base = when (style) {
+            CiteStyle.APA -> "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
+            CiteStyle.MLA -> Mla.citeNames(s)
+            CiteStyle.Chicago -> "${ChicagoAD.citeNames(s)} ${s.year.ifBlank { "n.d." }}"
+        }
         return (sequenceOf(base) + ('a'..'z').asSequence().map { "$base$it" }).first { it !in taken }
     }
 
@@ -298,7 +310,7 @@ internal object Citations {
         // An OpenDocument's tags are the citations themselves: made again from the sources, the marks renamed with them.
         val doc = if (kind == OfficeKind.Docx) doc0 else {
             val taken = HashSet<String>()
-            val renamed = doc0.sources.associate { s -> s.tag to tagFor(kind, s, taken).also { taken += it } }
+            val renamed = doc0.sources.associate { s -> s.tag to tagFor(kind, s, taken, doc0.citeStyle).also { taken += it } }
             doc0.copy(sources = doc0.sources.map { it.copy(tag = renamed.getValue(it.tag)) },
                 paras = doc0.paras.map { p -> if (p.runs.none { it.cite in renamed }) p else p.copy(runs = p.runs.map { r -> r.cite?.let { c -> renamed[c]?.let { r.copy(cite = it) } } ?: r }) })
         }
@@ -312,7 +324,7 @@ internal object Citations {
                     if (c == null || isField(c)) { out += runs[k]; k++; continue }
                     var e = k
                     while (e < runs.size && runs[e].cite == c) e++
-                    out += runs[k].copy(text = text(c, doc.sources))
+                    out += runs[k].copy(text = text(c, doc.sources, doc.citeStyle))
                     k = e
                 }
                 p.copy(runs = out)

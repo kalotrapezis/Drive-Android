@@ -243,28 +243,46 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
 /**
  * Says when something under Tetra changed — a file pushed, synced, saved by another app, renamed or deleted — so
  * Files and its search show it without a refresh. Android watches one folder at a time, so this watches every
- * visible folder and looks again after each burst of changes, which also picks up a folder just made.
+ * visible folder, and looks for folders again only when one is added: on the tablet that look takes seconds
+ * (700 folders), and while it runs nothing is watched, so the list is read once more after it.
  */
 internal class DriveWatcher(private val root: File, private val changed: () -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private var observer: FileObserver? = null
-    private var stopped = false
-    private val settle = Runnable { Thread(::watch).start(); changed() }
+    @Volatile private var stopped = false
+    private var newFolder = false
+    private val settle = Runnable {
+        changed()
+        if (newFolder) {
+            newFolder = false
+            Thread { watch(); main.post { if (!stopped) changed() } }.start()
+        }
+    }
 
     init { Thread(::watch).start() }
 
-    @Synchronized private fun watch() {
-        if (stopped) return
-        observer?.stopWatching()
+    private fun watch() {
         val folders = root.walkTopDown().onEnter { it == root || !it.name.startsWith(".") }.filter { it.isDirectory }.toList()
+        synchronized(this) { if (!stopped) start(folders) }
+    }
+
+    private fun start(folders: List<File>) {
+        observer?.stopWatching()
         observer = object : FileObserver(folders, CREATE or DELETE or MOVED_FROM or MOVED_TO or CLOSE_WRITE) {
             override fun onEvent(event: Int, path: String?) {
                 if (path == null || path.startsWith(".")) return // the apps' own dot files are not in the list
-                main.removeCallbacks(settle)
-                main.postDelayed(settle, 300) // a copy is many writes; answer once it settles
+                val folderArrived = (event and IS_FOLDER) != 0 && (event and (CREATE or MOVED_TO)) != 0
+                main.post {
+                    if (stopped) return@post
+                    if (folderArrived) newFolder = true
+                    main.removeCallbacks(settle)
+                    main.postDelayed(settle, 300) // a copy is many writes; answer once it settles
+                }
             }
         }.also { it.startWatching() }
     }
+
+    private companion object { const val IS_FOLDER = 0x40000000 } // inotify's IN_ISDIR, which FileObserver passes on
 
     @Synchronized fun stop() {
         stopped = true

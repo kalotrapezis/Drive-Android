@@ -2457,6 +2457,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Arrange › Rotate, Group, Ungroup (Phase 2): any angle; two floating ones on a page made one (Word's group), and back.
     var rotating by remember { mutableStateOf<String?>(null) }
     var shapeOptions by remember { mutableStateOf<String?>(null) } // Picture › Shape options: the shape's key
+    var designGallery by remember { mutableStateOf<DesignGallery?>(null) } // Design › Style set / Colours / Fonts
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
@@ -3801,31 +3802,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // APA's run-in headings (levels 4 and 5): the chosen words, or the paragraph's first sentence, bold at its start.
                     RibbonButton("APA level 4", w, enabled = loaded) { apaRunIn(4) }
                     RibbonButton("APA level 5", w, enabled = loaded) { apaRunIn(5) }
-                    // Word's Document Formatting gallery: a set of looks for Normal, Title and the headings at once.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            StyleSet.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyStyleSet(set) }) }
-                        }
-                    }
-                    // Word's Colours and Fonts (its theme): a Word file's theme; Fonts in an .odt set the styles' own fonts.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            ThemeColors.entries.forEach { set -> DropdownMenuItem(text = { Row(verticalAlignment = Alignment.CenterVertically) {
-                                set.accents.forEach { c -> Box(Modifier.size(14.dp).background(Color(0xFF000000 or c.toLong()))) }
-                                Text(set.label, modifier = Modifier.padding(start = 10.dp)) } }, onClick = { open = false; applyTheme(set, null) }) }
-                        }
-                    }
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            ThemeFonts.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyTheme(null, set) }) }
-                        }
-                    }
+                    // Word's Document Formatting gallery, Colours and Fonts (its theme): windows of pictures of the choices.
+                    RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { designGallery = DesignGallery.StyleSets }
+                    RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { designGallery = DesignGallery.Colours }
+                    RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { designGallery = DesignGallery.Fonts }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
@@ -4093,6 +4073,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }
+    designGallery?.let { g -> DesignGalleryDialog(g, { designGallery = null }, { designGallery = null; applyStyleSet(it) }, { designGallery = null; applyTheme(it, null) }, { designGallery = null; applyTheme(null, it) }) }
     shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
         ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
             shapeOptions = null

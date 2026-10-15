@@ -154,7 +154,7 @@ one pass once the tabs' features are done.
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
       no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
-      axis titles, data labels (14 Oct) — [ ] Word's own Edit data (it needs the embedded workbook)
+      axis titles, data labels (14 Oct); Word's own Edit Data works on Writer's charts — their numbers in an embedded workbook, the chart pointing at its cells (15 Oct, evening)
 - [x] **Equations** (15 Oct): Word's equations read, drawn and kept (no longer copy-only); Insert › Equation in Word's
       linear form with a preview, Picture › Edit equation ; typing in one in place — an equation chosen shows its linear form in a bar over the ribbon, the page redrawing it as you type (15 Oct); LibreOffice's formulas (MathML objects) read and drawn, Insert › Equation and Edit equation in .odt write LibreOffice Math objects (15 Oct, evening)
 - [x] **Content controls** (Insert › Content control, 15 Oct): plain/rich text, check box, drop-down and combo

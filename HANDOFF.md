@@ -155,6 +155,15 @@
 >   bend and fitted to its length, **inside the box** (the first try ran out of it — the user: "the rectangle should
 >   contain the letters"), clipped to it. Edit text keeps the bend. `TextEffectsTest`; on the tablet an arch;
 >   LibreOffice draws the saved .docx as an arch.
+>   **After the user's eye** ("the T at the beginning is cut off"): the arches stop short of the box's corners.
+>
+> - **Charts: Word's Edit Data** (item 5): every chart Writer writes into a .docx (new, or a file's whose data was
+>   changed) now carries an embedded Excel workbook (`word/embeddings/Microsoft_Excel_Worksheet_tetraN.xlsx`, made by
+>   `ChartWriter.workbook`: Sheet1, A1 empty, series names along row 1, categories down A, inline strings) and the chart
+>   points at its cells (`c:strRef`/`c:numRef` with `Sheet1!$B$2:$B$4` and the values cached, `c:externalData r:id`, the
+>   chart part's rels, the xlsx content type) — what Word does, so Word's Edit Data opens the same numbers.
+>   `ChartsTest`; LibreOffice draws the chart and opens the embedded workbook with the numbers. Not checked on a
+>   device (the tablet was busy with the Files session); not checked in Word (no Word here).
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone

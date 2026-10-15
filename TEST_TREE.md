@@ -57,6 +57,9 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] "Tetra Writer", Arch up → an arch inside its box; LibreOffice draws the saved .docx as an arch (Claude)
   - [ ] Try Arch down, Circle, Wave, Slant up on a copy; open in Word on the PC: the same bends
 
+- **21. Charts in Word**
+  - [ ] Insert › Chart in a Word copy, Save → in Word on the PC: right-click the chart › Edit Data → Excel opens with the same numbers; change one → the chart follows
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

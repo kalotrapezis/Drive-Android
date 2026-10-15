@@ -2109,8 +2109,14 @@ private object DocxWriter {
         picture = { img -> (img.raw ?: img.chart?.let { ch ->
                 // A new chart (Insert › Chart, or one whose data Writer changed): its own part, as Word keeps one.
                 val name = generateSequence(1) { it + 1 }.map { "${dir}charts/chart$it.xml" }.first { it !in parts }
-                parts[name] = ChartWriter.drawingml(ch).toByteArray()
+                parts[name] = ChartWriter.drawingml(ch, workbook = true).toByteArray()
                 types = types.replace("</Types>", """<Override PartName="/$name" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>""")
+                // Its numbers in an embedded workbook, as Word keeps them: Word's Edit Data opens it.
+                val book = generateSequence(1) { it + 1 }.map { "${dir}embeddings/Microsoft_Excel_Worksheet_tetra$it.xlsx" }.first { it !in parts }
+                parts[book] = ChartWriter.workbook(ch)
+                parts[name.substringBeforeLast('/') + "/_rels/" + name.substringAfterLast('/') + ".rels"] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/${book.substringAfterLast('/')}"/></Relationships>""").toByteArray()
+                if (!Regex("""Extension="xlsx"""", RegexOption.IGNORE_CASE).containsMatchIn(types))
+                    types = types.replace("</Types>", """<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/></Types>""")
                 val rel = newRel(REL_CHART, name.removePrefix(dir), false)
                 val cx = (img.widthPt * 12700).toLong(); val cy = (img.heightPt * 12700).toLong(); val id = docPrId++
                 """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Chart $id"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="$R" r:id="$rel"/></a:graphicData></a:graphic></wp:inline></w:drawing>"""

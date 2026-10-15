@@ -83,10 +83,11 @@ internal enum class TextWarp(val label: String, val word: String, val fontwork: 
         val n = 48
         return (0..n).map { i -> val t = i / n.toFloat()
             when (this) {
-                // An arch: the top of an ellipse from the bottom corners, its letters' tops at the box's top.
-                ArchUp -> { val a = Math.PI * (1 - t); (w / 2 + (w / 2 - m * 0.6f) * Math.cos(a)).toFloat() to (h - (h - m) * Math.sin(a)).toFloat() }
+                // An arch: the top of an ellipse, short of its ends (their letters stood up and out of the box — the user:
+                // "the T at the beginning is cut off"), its letters' tops at the box's top.
+                ArchUp -> { val a = Math.PI * (0.88 - 0.76 * t); (w / 2 + (w / 2 - m * 0.5f) / Math.cos(Math.PI * 0.12) * Math.cos(a)).toFloat() to (h - m * 0.15f - (h - m * 1.15f) * (Math.sin(a) - Math.sin(Math.PI * 0.12)) / (1 - Math.sin(Math.PI * 0.12))).toFloat() }
                 // A smile: the bottom of an ellipse, its ends a letter below the top, its middle at the bottom.
-                ArchDown -> { val a = Math.PI * (1 - t); (w / 2 + (w / 2 - m * 0.6f) * Math.cos(a)).toFloat() to (m + (h * 0.97f - m) * Math.sin(a)).toFloat() }
+                ArchDown -> { val a = Math.PI * (0.88 - 0.76 * t); (w / 2 + (w / 2 - m * 0.5f) / Math.cos(Math.PI * 0.12) * Math.cos(a)).toFloat() to (m * 1.1f + (h * 0.97f - m * 1.1f) * (Math.sin(a) - Math.sin(Math.PI * 0.12)) / (1 - Math.sin(Math.PI * 0.12))).toFloat() }
                 // Round the box's ellipse clockwise from its left, the letters outside it, inside the box.
                 Circle -> { val a = Math.PI + 2 * Math.PI * t; (w / 2 + (w / 2 - m) * Math.cos(a)).toFloat() to (h / 2 + (h / 2 - m) * Math.sin(a)).toFloat() }
                 Wave -> t * w to (h / 2 + m / 2 - (h - m) * 0.3f * Math.sin(2 * Math.PI * t)).toFloat()

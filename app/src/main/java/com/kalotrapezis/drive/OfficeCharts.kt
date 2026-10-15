@@ -166,10 +166,11 @@ internal object ChartWriter {
     private fun colorOf(ch: DocChart, k: Int) = ch.series[k].color ?: OfficeCharts.PALETTE[k % OfficeCharts.PALETTE.size]
 
     /**
-     * Word's chart part (c:chartSpace), its data written in it (Word draws a chart from the numbers its part keeps).
-     * ponytail: no spreadsheet inside, so Word's own "Edit data" cannot open one — Writer's Edit data can.
+     * Word's chart part (c:chartSpace). With a [workbook] (Word's own way): its numbers point at the cells of the
+     * embedded Excel workbook ([workbook]'s, Sheet1: A1 empty, series names along row 1, categories down column A),
+     * each with its values cached — so Word's own Edit Data opens the same numbers; without, the numbers in the part.
      */
-    fun drawingml(ch: DocChart): String {
+    fun drawingml(ch: DocChart, workbook: Boolean = false): String {
         val round = ch.kind == ChartKind.Pie || ch.kind == ChartKind.Doughnut
         val n = ch.categories.size
         val sb = StringBuilder("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart>""")
@@ -184,7 +185,8 @@ internal object ChartWriter {
         sb.append("""<c:varyColors val="${if (round) 1 else 0}"/>""")
         ch.series.forEachIndexed { k, s ->
             val fill = """<a:solidFill><a:srgbClr val="${hex(colorOf(ch, k))}"/></a:solidFill>"""
-            sb.append("""<c:ser><c:idx val="$k"/><c:order val="$k"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx>""")
+            val col = column(k + 1); val last = ch.categories.size + 1
+            sb.append("""<c:ser><c:idx val="$k"/><c:order val="$k"/><c:tx>${if (workbook) """<c:strRef><c:f>Sheet1!$$col$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${esc(s.name)}</c:v></c:pt></c:strCache></c:strRef>""" else "<c:v>${esc(s.name)}</c:v>"}</c:tx>""")
             sb.append(when {
                 ch.kind == ChartKind.Line -> """<c:spPr><a:ln w="28575" cap="rnd">$fill<a:round/></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr>$fill</c:spPr></c:marker>"""
                 scatter -> """<c:spPr><a:ln w="19050"><a:noFill/></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr>$fill</c:spPr></c:marker>"""
@@ -196,17 +198,13 @@ internal object ChartWriter {
             if (ch.dataLabels) sb.append("""<c:dLbls><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>""")
             if (scatter) {
                 // x: the categories as numbers (one that is not is left out, as Word leaves a blank).
-                sb.append("""<c:xVal><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="$n"/>""")
-                ch.categories.forEachIndexed { i, c -> OfficeCharts.number(c)?.let { sb.append("""<c:pt idx="$i"><c:v>${num(it)}</c:v></c:pt>""") } }
-                sb.append("""</c:numLit></c:xVal><c:yVal><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="$n"/>""")
-                s.values.forEachIndexed { i, v -> if (v != null && i < n) sb.append("""<c:pt idx="$i"><c:v>${num(v)}</c:v></c:pt>""") }
-                sb.append("</c:numLit></c:yVal>")
+                sb.append(numbers("xVal", "Sheet1!\$A\$2:\$A\$$last", ch.categories.map { OfficeCharts.number(it) }, workbook))
+                sb.append(numbers("yVal", "Sheet1!$$col$2:$$col$$last", s.values.take(n), workbook))
             } else {
-                sb.append("""<c:cat><c:strLit><c:ptCount val="$n"/>""")
+                if (workbook) sb.append("""<c:cat><c:strRef><c:f>Sheet1!${'$'}A${'$'}2:${'$'}A${'$'}$last</c:f><c:strCache><c:ptCount val="$n"/>""") else sb.append("""<c:cat><c:strLit><c:ptCount val="$n"/>""")
                 ch.categories.forEachIndexed { i, c -> sb.append("""<c:pt idx="$i"><c:v>${esc(c)}</c:v></c:pt>""") }
-                sb.append("""</c:strLit></c:cat><c:val><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="$n"/>""")
-                s.values.forEachIndexed { i, v -> if (v != null && i < n) sb.append("""<c:pt idx="$i"><c:v>${num(v)}</c:v></c:pt>""") }
-                sb.append("</c:numLit></c:val>")
+                sb.append(if (workbook) "</c:strCache></c:strRef></c:cat>" else "</c:strLit></c:cat>")
+                sb.append(numbers("val", "Sheet1!$$col$2:$$col$$last", s.values.take(n), workbook))
             }
             if (ch.kind == ChartKind.Line || scatter) sb.append("""<c:smooth val="0"/>""")
             sb.append("</c:ser>")
@@ -230,8 +228,49 @@ internal object ChartWriter {
         }
         sb.append("</c:plotArea>")
         if (ch.legend) sb.append("""<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>""")
-        sb.append("""<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:solidFill><a:srgbClr val="595959"/></a:solidFill></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:chartSpace>""")
+        sb.append("""<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:solidFill><a:srgbClr val="595959"/></a:solidFill></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>""")
+        // The workbook its numbers are in (the chart part's relationship rId1).
+        if (workbook) sb.append("""<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>""")
+        sb.append("</c:chartSpace>")
         return sb.toString()
+    }
+    /** A series' numbers: the workbook's cells [ref] with their values cached, or the values themselves. */
+    private fun numbers(tag: String, ref: String, values: List<Double?>, workbook: Boolean): String {
+        val pts = values.mapIndexedNotNull { i, v -> v?.let { """<c:pt idx="$i"><c:v>${num(it)}</c:v></c:pt>""" } }.joinToString("")
+        val body = """<c:formatCode>General</c:formatCode><c:ptCount val="${values.size}"/>$pts"""
+        return if (workbook) "<c:$tag><c:numRef><c:f>$ref</c:f><c:numCache>$body</c:numCache></c:numRef></c:$tag>" else "<c:$tag><c:numLit>$body</c:numLit></c:$tag>"
+    }
+    /** A spreadsheet column's letters: 0 → A, 26 → AA. */
+    fun column(k: Int): String = if (k < 26) ('A' + k).toString() else column(k / 26 - 1) + ('A' + k % 26)
+
+    /**
+     * The chart's data as Word embeds it: a small Excel workbook (.xlsx), Sheet1 — A1 empty, the series' names along
+     * row 1, the categories down column A (numbers for a scatter's x), the values beside them.
+     */
+    fun workbook(ch: DocChart): ByteArray {
+        fun cell(ref: String, v: Any?): String = when (v) {
+            null -> ""
+            is Double -> """<c r="$ref"><v>${num(v)}</v></c>"""
+            else -> """<c r="$ref" t="inlineStr"><is><t xml:space="preserve">${esc(v.toString())}</t></is></c>"""
+        }
+        val rows = StringBuilder()
+        rows.append("""<row r="1">""" + ch.series.mapIndexed { k, s -> cell("${column(k + 1)}1", s.name) }.joinToString("") + "</row>")
+        ch.categories.forEachIndexed { i, c ->
+            val r = i + 2
+            val first = if (ch.kind == ChartKind.Scatter) OfficeCharts.number(c) ?: c else c
+            rows.append("""<row r="$r">""" + cell("A$r", first) + ch.series.mapIndexed { k, s -> cell("${column(k + 1)}$r", s.values.getOrNull(i)) }.joinToString("") + "</row>")
+        }
+        val sheet = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>$rows</sheetData></worksheet>"""
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(out).use { z ->
+            fun put(name: String, xml: String) { z.putNextEntry(java.util.zip.ZipEntry(name)); z.write(xml.toByteArray()); z.closeEntry() }
+            put("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>""")
+            put("_rels/.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>""")
+            put("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>""")
+            put("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>""")
+            put("xl/worksheets/sheet1.xml", sheet)
+        }
+        return out.toByteArray()
     }
 
     /** LibreOffice's chart object: its content.xml, the data in its own table (the first column the categories). */

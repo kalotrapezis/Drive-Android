@@ -140,19 +140,55 @@ internal enum class StyleSet(val label: String, val changes: Map<String, StyleCh
         "Title" to StyleChange(font = "Georgia", sizePt = 30f, bold = false, italic = true, color = 0x7B2C2C, align = DocAlign.Center, after = 12f),
         "Heading 1" to StyleChange(font = "Georgia", sizePt = 17f, bold = false, italic = false, color = 0x7B2C2C, before = 20f, after = 6f),
         "Heading 2" to StyleChange(font = "Georgia", sizePt = 13.5f, bold = false, italic = true, color = 0x7B2C2C, before = 14f, after = 4f),
-        "Heading 3" to StyleChange(font = "Georgia", sizePt = 12f, bold = true, italic = false, color = 0x333333, before = 10f, after = 2f)));
+        "Heading 3" to StyleChange(font = "Georgia", sizePt = 12f, bold = true, italic = false, color = 0x333333, before = 10f, after = 2f))),
+    Word2010("Word 2010", mapOf(
+        "Normal" to StyleChange(font = "Calibri", sizePt = 11f, color = -1, line = 1.15f, before = 0f, after = 10f),
+        "Title" to StyleChange(font = "Cambria", sizePt = 26f, bold = false, color = 0x17365D, after = 15f),
+        "Heading 1" to StyleChange(font = "Cambria", sizePt = 14f, bold = true, italic = false, color = 0x365F91, before = 24f, after = 0f),
+        "Heading 2" to StyleChange(font = "Cambria", sizePt = 13f, bold = true, italic = false, color = 0x4F81BD, before = 10f, after = 0f),
+        "Heading 3" to StyleChange(font = "Cambria", sizePt = 11f, bold = true, italic = false, color = 0x4F81BD, before = 10f, after = 0f))),
+    Word2003("Word 2003", mapOf(
+        "Normal" to StyleChange(font = "Times New Roman", sizePt = 12f, color = -1, line = 1f, before = 0f, after = 0f),
+        "Title" to StyleChange(font = "Arial", sizePt = 16f, bold = true, color = -1, align = DocAlign.Center, before = 12f, after = 3f),
+        "Heading 1" to StyleChange(font = "Arial", sizePt = 16f, bold = true, italic = false, color = -1, before = 12f, after = 3f),
+        "Heading 2" to StyleChange(font = "Arial", sizePt = 14f, bold = true, italic = true, color = -1, before = 12f, after = 3f),
+        "Heading 3" to StyleChange(font = "Arial", sizePt = 13f, bold = true, italic = false, color = -1, before = 12f, after = 3f))),
+    Centered("Centred", mapOf(
+        "Normal" to StyleChange(font = "Calibri", sizePt = 11f, color = -1, line = 1.15f, before = 0f, after = 8f),
+        "Title" to StyleChange(font = "Calibri Light", sizePt = 30f, bold = false, color = 0x1F3864, align = DocAlign.Center, after = 12f),
+        "Heading 1" to StyleChange(font = "Calibri Light", sizePt = 18f, bold = false, italic = false, color = 0x1F3864, align = DocAlign.Center, before = 18f, after = 6f),
+        "Heading 2" to StyleChange(font = "Calibri Light", sizePt = 14f, bold = false, italic = false, color = 0x2F5496, align = DocAlign.Center, before = 12f, after = 4f),
+        "Heading 3" to StyleChange(font = "Calibri", sizePt = 12f, bold = true, italic = false, color = 0x2F5496, align = DocAlign.Center, before = 10f, after = 2f))),
+    Casual("Casual", mapOf(
+        "Normal" to StyleChange(font = "Trebuchet MS", sizePt = 11f, color = 0x3B3838, line = 1.25f, before = 0f, after = 8f),
+        "Title" to StyleChange(font = "Trebuchet MS", sizePt = 28f, bold = true, color = 0xC55A11, after = 8f),
+        "Heading 1" to StyleChange(font = "Trebuchet MS", sizePt = 16f, bold = true, italic = false, color = 0xC55A11, before = 16f, after = 4f),
+        "Heading 2" to StyleChange(font = "Trebuchet MS", sizePt = 13f, bold = true, italic = false, color = 0x7F6000, before = 12f, after = 4f),
+        "Heading 3" to StyleChange(font = "Trebuchet MS", sizePt = 11f, bold = true, italic = true, color = 0x7F6000, before = 10f, after = 2f))),
+    Minimalist("Minimalist", mapOf(
+        "Normal" to StyleChange(font = "Arial", sizePt = 10f, color = 0x404040, line = 1.4f, before = 0f, after = 10f),
+        "Title" to StyleChange(font = "Arial", sizePt = 22f, bold = false, color = 0x000000, after = 18f),
+        "Heading 1" to StyleChange(font = "Arial", sizePt = 13f, bold = false, italic = false, color = 0x000000, before = 20f, after = 8f),
+        "Heading 2" to StyleChange(font = "Arial", sizePt = 11f, bold = true, italic = false, color = 0x404040, before = 14f, after = 4f),
+        "Heading 3" to StyleChange(font = "Arial", sizePt = 10f, bold = true, italic = false, color = 0x808080, before = 10f, after = 2f)));
+
+    companion object {
+        /** Design › Fonts as a set of fonts only: the headings and the title in its heading font, the text in its body font. */
+        fun fontsOnly(f: ThemeFonts): Map<String, StyleChange> = listOf("Title", "Heading 1", "Heading 2", "Heading 3").associateWith { StyleChange(font = f.heading) } + ("Normal" to StyleChange(font = f.body))
+        fun apply(changes: Map<String, StyleChange>, xml: String, kind: OfficeKind, styles: DocStyles): String {
+            var out = xml
+            val entries = styles.paragraphStyles()
+            for ((name, edit) in changes) {
+                val entry = entries.firstOrNull { it.name == name } ?: continue
+                val key = styles.styleKey(entry) ?: continue
+                out = if (kind == OfficeKind.Docx) StyleEdit.docx(out, key, entry.heading, styles.normalId, edit) else StyleEdit.odt(out, key, entry.heading, edit)
+                // LibreOffice's plain paragraphs are "Standard" (Text body is based on it): both take Normal's look.
+                if (kind == OfficeKind.Odt && name == "Normal" && key != "Standard") out = StyleEdit.odt(out, "Standard", 0, edit)
+            }
+            return out
+        }
+    }
 
     /** The document's styles part ([xml]) with this set's styles changed (those it has, and those it lacks added). */
-    fun applyTo(xml: String, kind: OfficeKind, styles: DocStyles): String {
-        var out = xml
-        val entries = styles.paragraphStyles()
-        for ((name, edit) in changes) {
-            val entry = entries.firstOrNull { it.name == name } ?: continue
-            val key = styles.styleKey(entry) ?: continue
-            out = if (kind == OfficeKind.Docx) StyleEdit.docx(out, key, entry.heading, styles.normalId, edit) else StyleEdit.odt(out, key, entry.heading, edit)
-            // LibreOffice's plain paragraphs are "Standard" (Text body is based on it): both take Normal's look.
-            if (kind == OfficeKind.Odt && name == "Normal" && key != "Standard") out = StyleEdit.odt(out, "Standard", 0, edit)
-        }
-        return out
-    }
+    fun applyTo(xml: String, kind: OfficeKind, styles: DocStyles): String = apply(changes, xml, kind, styles)
 }

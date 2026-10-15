@@ -60,6 +60,11 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
 - **21. Charts in Word**
   - [ ] Insert › Chart in a Word copy, Save → in Word on the PC: right-click the chart › Edit Data → Excel opens with the same numbers; change one → the chart follows
 
+- **22. Design › Colours, Fonts, Style sets** — tablet
+  - [x] `Theme_test.docx` (SmartArt on the theme's accent): Colours › Green → green chevrons (Claude)
+  - [ ] A copy of one of your Word files: Colours › Violet, Fonts › Georgia → headings and shapes follow; open in Word: Design shows Violet / Georgia
+  - [ ] Style set › Word 2010 and › Minimalist on a copy with headings
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

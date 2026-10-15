@@ -294,6 +294,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             fun latin(tag: String) = Regex("""<a:$tag>[\s\S]*?<a:latin typeface="([^"]*)"""").find(t)?.groupValues?.get(1)?.takeIf { it.isNotEmpty() }
             minorFont = latin("minorFont"); majorFont = latin("majorFont")
         }
+        ShapePicture.theme = DocTheme.colorsOf(parts)
         val doc = OfficeFormats.parse(parts.getValue(documentPath(parts))).documentElement
         background = doc.kid(W, "background")?.attr(W, "color")?.takeIf { it != "auto" }?.let { OfficeFormats.parseHex(it) }
         bodySect = doc.kid(W, "body")?.kid(W, "sectPr")
@@ -1889,14 +1890,20 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             }
         }
 
-        /** Office's theme colours (its default theme), for Word shapes that name them. */
+        /**
+         * The open document's theme colours (its theme part, when its styles are read — one document is open at a time),
+         * for Word shapes that name them; Office's default theme until then.
+         */
+        @Volatile var theme: Map<String, Int> = emptyMap()
+        private val THEME_NAMES = mapOf("tx1" to "dk1", "bg1" to "lt1", "tx2" to "dk2", "bg2" to "lt2")
         private val THEME = mapOf("accent1" to 0x4472C4, "accent2" to 0xED7D31, "accent3" to 0xA5A5A5, "accent4" to 0xFFC000, "accent5" to 0x5B9BD5,
             "accent6" to 0x70AD47, "dk1" to 0x000000, "lt1" to 0xFFFFFF, "dk2" to 0x44546A, "lt2" to 0xE7E6E6, "tx1" to 0x000000, "bg1" to 0xFFFFFF, "tx2" to 0x44546A, "bg2" to 0xE7E6E6)
         /** A colour as DrawingML gives it (srgbClr or a theme's schemeClr), with its shade, lumMod/lumOff and alpha. */
         fun themeColor(xml: String?): Int? {
             xml ?: return null
             val m = Regex("""<a:(srgbClr|schemeClr)\s+val="(\w+)"(?:\s*/>|>([\s\S]*?)</a:\1>)""").find(xml) ?: return null
-            var rgb = if (m.groupValues[1] == "srgbClr") m.groupValues[2].toIntOrNull(16) ?: return null else THEME[m.groupValues[2]] ?: return null
+            val name = m.groupValues[2]
+            var rgb = if (m.groupValues[1] == "srgbClr") name.toIntOrNull(16) ?: return null else theme[THEME_NAMES[name] ?: name] ?: THEME[name] ?: return null
             val mods = m.groupValues[3]
             fun mod(n: String) = Regex("""<a:$n val="(\d+)"""").find(mods)?.groupValues?.get(1)?.toFloatOrNull()?.div(100000f)
             fun each(f: (Float) -> Float) { rgb = (f(((rgb shr 16) and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() shl 16 or ((f(((rgb shr 8) and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() shl 8) or (f((rgb and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() }

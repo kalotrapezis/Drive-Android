@@ -2686,6 +2686,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
     }
     /** Design › Style sets: Normal, Title and Headings 1–3 changed together, one step to undo. */
+    /**
+     * Design › Colours / Fonts: a Word file's theme colours or fonts; in an .odt (no theme) Fonts set the headings' and
+     * the text's styles. The pages and editor shown again with them.
+     */
+    fun applyTheme(colors: ThemeColors?, fonts: ThemeFonts?) = change {
+        val cur = current()
+        var parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
+        val done = runCatching {
+            if (kind == OfficeKind.Docx) {
+                colors?.let { parts = DocTheme.withColors(parts, it) }
+                fonts?.let { f ->
+                    parts = DocTheme.withFonts(parts, f)
+                    // Styles that name a font of their own keep it in Word: the headings and the text take the theme's here.
+                    val path = stylesPath(parts, kind)
+                    parts[path] = StyleSet.apply(StyleSet.fontsOnly(f), String(parts.getValue(path), Charsets.UTF_8), kind, documentStyles).toByteArray()
+                }
+            } else fonts?.let { f -> val path = stylesPath(parts, kind); parts[path] = StyleSet.apply(StyleSet.fontsOnly(f), String(parts.getValue(path), Charsets.UTF_8), kind, documentStyles).toByteArray() }
+        }.onFailure { WriterLog.e("theme", it) }.isSuccess
+        if (!done) { message = "The theme could not be changed."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        meta = cur
+        dirty = true; styleEdits++
+        state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
+        message = (colors?.label?.let { "Colours: $it" } ?: "") + (fonts?.label?.let { "Fonts: $it" } ?: "")
+        WriterLog.i("theme: ${colors?.name} ${fonts?.name}")
+    }
     fun applyStyleSet(set: StyleSet) = change {
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
@@ -3780,6 +3807,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { open = true }
                         DropdownMenu(open, { open = false }) {
                             StyleSet.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyStyleSet(set) }) }
+                        }
+                    }
+                    // Word's Colours and Fonts (its theme): a Word file's theme; Fonts in an .odt set the styles' own fonts.
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            ThemeColors.entries.forEach { set -> DropdownMenuItem(text = { Row(verticalAlignment = Alignment.CenterVertically) {
+                                set.accents.forEach { c -> Box(Modifier.size(14.dp).background(Color(0xFF000000 or c.toLong()))) }
+                                Text(set.label, modifier = Modifier.padding(start = 10.dp)) } }, onClick = { open = false; applyTheme(set, null) }) }
+                        }
+                    }
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { open = true }
+                        DropdownMenu(open, { open = false }) {
+                            ThemeFonts.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyTheme(null, set) }) }
                         }
                     }
                 }, {

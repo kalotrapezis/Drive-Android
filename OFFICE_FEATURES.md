@@ -150,7 +150,7 @@ one pass once the tabs' features are done.
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages
       hyphenate by the paragraph's language (Greek or English) — [ ] manual hyphenation, hyphenation zone/limits
 - [x] **Style sets** (Design, 1 Oct): Basic (Word), Classic (Times), Modern (Arial), Elegant (Georgia) — Normal, Title,
-      Headings 1–3 at once — [ ] Word's theme fonts/colours, more sets
+      Headings 1–3 at once; nine sets (+ Word 2010, Word 2003, Centred, Casual, Minimalist); Design › Colours (Word's seven palettes, the file's theme) and Design › Fonts (seven pairs: the theme's in Word files, the styles' in .odt) (15 Oct, evening)
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
       no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
@@ -174,7 +174,7 @@ one pass once the tabs' features are done.
 - [x] APA 7 student paper (Design › APA 7 paper, asked 2026-09-30): Times New Roman 12, 1-inch margins, double spacing with no space between paragraphs, first lines 0.5 in, the page number top right, APA's heading levels 1–5 as Heading 1–5, references on a new page; optionally clears fonts/sizes/spacing set by hand and adds the title page (title, name, department & university, course, instructor, date) with the title again over the text ; the abstract page and run-in level 4–5 headings (15 Oct); the professional paper — its running head (short title in capitals) top left on every page, the title page without course/instructor/date (15 Oct, evening)
 - [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick); a picture watermark (washed out, Word's VML imagedata / LibreOffice's frame in colour mode "watermark", 14 Oct) ; border styles (solid, double, dotted, dashed), colours and some sides only (15 Oct) — [ ] art borders
 - [x] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double) — the Normal style's
-- [ ] Style sets, theme colours and fonts, themes — rarely used; last
+- [x] Style sets, theme colours and fonts (15 Oct, evening) — [ ] whole themes (effects), .odt's theme colours (LibreOffice 7.6+'s loext:theme)
 
 ### Layout (Word's Layout; OnlyOffice Διάταξη)
 - [x] Margins (Normal = 1 in/APA, Narrow, Moderate, Wide, 2.5 cm, or custom in cm/in), orientation, size (A4, Letter, Legal, A5, A3) — Layout tab, one Page setup page; every section of a Word file (pgSz/pgMar, header distances kept), every page layout of an ODT (the header band allowed for); a tablet shows a page too wide smaller rather than reflowing

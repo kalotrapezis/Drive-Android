@@ -165,6 +165,17 @@
 >   `ChartsTest`; LibreOffice draws the chart and opens the embedded workbook with the numbers. Not checked on a
 >   device (the tablet was busy with the Files session); not checked in Word (no Word here).
 >
+> - **Design › Colours, Fonts, more style sets** (item 5, `DesignThemes.kt`): Colours — Word's palettes (Office,
+>   Office 2007–2010, Blue, Green, Red, Violet, Grayscale) written into the file's theme (`a:clrScheme`; a Word file
+>   without a theme — Writer's own new ones — gets Office's whole theme part, rels and content type); every `w:color`
+>   that names a theme colour gets its new value (themeShade/themeTint, rounded as Word: accent1 549E39 shaded BF →
+>   3F762B), so the pages and Word agree; Word files only (LibreOffice text documents' theme is its newer loext:theme —
+>   not done). Shapes, SmartArt and charts now take **the open document's theme colours** (`ShapePicture.theme`, set
+>   when its styles are read) rather than always Office's. Fonts — seven pairs written as the theme's major/minor fonts
+>   (Word) and as the Title/Headings/Normal styles' fonts (both formats; .odt has no theme). Style sets: + Word 2010,
+>   Word 2003, Centred, Casual, Minimalist. `DesignThemesTest`; LibreOffice draws the theme-shaded heading #3F762B;
+>   on the tablet Colours › Green turned the SmartArt green.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

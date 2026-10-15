@@ -268,6 +268,36 @@ internal object OfficeMath {
         return out.toString()
     }
 
+    // ---- tree → words (Review › Read aloud says an equation as Word's Read Aloud does)
+
+    /** [n] in words, Greek ([greek]) or English: "x ίσον a συν b διά 2". */
+    fun spoken(n: MathNode, greek: Boolean): String {
+        fun w(en: String, el: String) = if (greek) el else en
+        fun say(n: MathNode): String = when (n) {
+            is MathNode.Row -> n.items.joinToString(" ") { say(it) }
+            is MathNode.Text -> n.text.map { c -> SPOKEN[c]?.let { (en, el) -> " ${w(en, el)} " } ?: c.toString() }.joinToString("")
+            is MathNode.Frac -> "${say(n.num)} ${w("over", "διά")} ${say(n.den)}"
+            is MathNode.Script -> say(n.base) + (n.sub?.let { " ${w("sub", "δείκτης")} ${say(it)}" } ?: "") + (n.sup?.let { sup ->
+                when ((sup as? MathNode.Text)?.text) { "2" -> " " + w("squared", "στο τετράγωνο"); "3" -> " " + w("cubed", "στον κύβο"); else -> " ${w("to the power of", "εις την")} ${say(sup)}" } } ?: "")
+            is MathNode.Radical -> if (n.degree == null) "${w("the square root of", "η τετραγωνική ρίζα του")} ${say(n.body)}" else "${w("the root", "η ρίζα τάξης")} ${say(n.degree)} ${w("of", "του")} ${say(n.body)}"
+            is MathNode.Nary -> (if (n.op in INTEGRALS) w("the integral", "το ολοκλήρωμα") else if (n.op == "∏") w("the product", "το γινόμενο") else w("the sum", "το άθροισμα")) +
+                (n.sub?.let { " ${w("from", "από")} ${say(it)}" } ?: "") + (n.sup?.let { " ${w("to", "έως")} ${say(it)}" } ?: "") + " ${w("of", "του")} ${say(n.body)}"
+            is MathNode.Delim -> n.items.joinToString(", ") { say(it) }
+            is MathNode.Func -> "${say(n.name)} ${say(n.body)}"
+            is MathNode.Accent -> say(n.body)
+            is MathNode.Bar -> say(n.body)
+            is MathNode.Limit -> "${say(n.base)} ${say(n.lim)}"
+            is MathNode.Matrix -> n.rows.joinToString("; ") { r -> r.joinToString(", ") { say(it) } }
+            is MathNode.Stack -> n.rows.joinToString("; ") { say(it) }
+        }
+        return say(n).replace(Regex("\\s+"), " ").trim()
+    }
+    private val SPOKEN = mapOf('=' to ("equals" to "ίσον"), '+' to ("plus" to "συν"), '-' to ("minus" to "πλην"), '−' to ("minus" to "πλην"),
+        '±' to ("plus or minus" to "συν πλην"), '×' to ("times" to "επί"), '⋅' to ("times" to "επί"), '÷' to ("divided by" to "διά"), '/' to ("over" to "διά"),
+        '<' to ("is less than" to "μικρότερο από"), '>' to ("is greater than" to "μεγαλύτερο από"), '≤' to ("is at most" to "μικρότερο ή ίσο του"),
+        '≥' to ("is at least" to "μεγαλύτερο ή ίσο του"), '≠' to ("is not equal to" to "διάφορο του"), '≈' to ("is about" to "περίπου ίσο με"),
+        '→' to ("tends to" to "τείνει στο"), '∞' to ("infinity" to "άπειρο"), '∈' to ("in" to "ανήκει στο"))
+
     // ---- tree → linear form (what Edit equation shows)
     private fun atom(n: MathNode) = n is MathNode.Text && (n.text.length == 1 || n.text.all { it.isDigit() || it == '.' } || n.text.all { it.isLetter() }) ||
         n is MathNode.Delim || n is MathNode.Radical || n is MathNode.Accent || n is MathNode.Matrix

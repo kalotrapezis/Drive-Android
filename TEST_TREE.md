@@ -22,6 +22,12 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] `Rtf_test.rtf`: heading, bold/red italic/big underlined, link, 2×2 table (Claude)
   - [ ] Open `protocol.doc` (Σπουδές › … › Μάθημα 4) from Files: looks as in LibreOffice (don't save over anything: Save makes protocol.docx)
 
+- **14. Phone extras**
+  - [x] Tap in the text: the keyboard comes with the bar B · I · U · highlighter · mic · ⋯ · hide; B then type → bold; ⋯ → the ribbon, ⋯ at its start → the bar again (Claude)
+  - [x] Mic → Google's voice typing → the words go in at the cursor (Claude)
+  - [x] Review › Read aloud → it speaks from the cursor, a bar with Stop; equations in words (you heard it)
+  - [ ] Hide keyboard on the bar → the keyboard goes, the ribbon island is back
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

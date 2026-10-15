@@ -189,7 +189,7 @@ one pass once the tabs' features are done.
 - [x] Word count (File › About this file); live in the top bar on the tablet and the phone, with the selection's (15 Oct)
 - [x] Comments: read, add, delete, reply, resolve / reopen (Word's commentsExtended; LibreOffice's loext:parent-name / resolved), edit a comment's words (14 Oct)
 - [x] Track changes in Word files (Review tab): shown as Word's All Markup (inserted underlined, deleted struck through, in the author's colour; a bar beside changed lines; ¶ for split/joined paragraphs), the change at the cursor named (what · who · when), Previous / Next, Accept / Reject (then on to the next), Accept all / Reject all (tables' row and formatting changes too); kept on saving — a corrected .docx is no longer copy-only ; **recording** (Review › Track changes, Word files: typing is your insertion, Backspace/Delete strike through and walk on past, Enter/joins are paragraph marks, under your name — asked once) — [ ] tracking remembered in the file (Word's trackRevisions), the typed insertion's colour before the next redraw (underlined at once), recording pasted/Writer-made changes, ODT's tracked changes (still copy-only), reject restoring a paragraph's style/list
-- [ ] Read aloud (Android text-to-speech)
+- [x] Read aloud (Review): Android's text-to-speech from the cursor, each paragraph in Greek or English, equations said in words; a bar with Stop (15 Oct, evening)
 
 ### View
 - [x] Zoom
@@ -199,8 +199,8 @@ one pass once the tabs' features are done.
 
 ### On the phone
 - [x] Ribbon at the bottom; a strip on the keyboard; the tools in pages with dots (asked 2026-09-27)
-- [ ] Keyboard strip like Word's phone bar: B · I · U · highlighter · ⋯ · hide keyboard
-- [ ] Dictation (Android voice typing into the page)
+- [x] Keyboard bar like Word's phone bar: B · I · U · highlighter · dictation · ⋯ (the whole ribbon, ⋯ again back) · hide keyboard (15 Oct, evening)
+- [x] Dictation (the keyboard bar's mic: Android's voice typing, put in at the cursor) (15 Oct, evening)
 
 ## Excel (Calc) — after Writer and PowerPoint; a viewer first (the user, 30 Sep)
 - [ ] **Viewer first**: an .xlsx / .ods read comfortably on the phone (sheets as tabs, cells, widths, number formats)

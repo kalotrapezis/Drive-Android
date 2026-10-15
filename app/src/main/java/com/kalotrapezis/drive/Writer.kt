@@ -1673,6 +1673,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Insert › Equation (Phase 2): Word's OMML, typed in its linear form; in an empty paragraph a display of its own,
     // centred (Word's), else in the line. Picture › Edit equation writes it again (the file's own look of it is not kept).
     var equationOpen by remember { mutableStateOf<Pair<String, MathNode?>?>(null) } // the equation's key ("" for a new one), what it shows
+    // Review › Read aloud (Android's text-to-speech) and the keyboard bar's dictation (Android's voice typing).
+    val reader = rememberReadAloud()
+    var readingParas by remember { mutableStateOf(emptyList<String>()) }
+    val dictate = rememberDictation { said -> change {
+        val at = state.selection.min
+        val before = state.annotatedString.text.getOrNull(at - 1)
+        val after = state.annotatedString.text.getOrNull(state.selection.max)
+        state.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else ""))
+        dirty = true
+    } }
     fun putEquation(key: String, math: MathNode) = change {
         val old = pictures[key]
         if (old != null) {
@@ -3338,6 +3348,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val physicalKeyboard = config.keyboard == android.content.res.Configuration.KEYBOARD_QWERTY &&
             config.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
         val island = !imeOpen || physicalKeyboard
+        // The phone with the screen's keyboard up: Word's bar on it (B I U, highlighter, dictation, ⋯, hide); ⋯ the ribbon.
+        var ribbonOverKeyboard by remember { mutableStateOf(false) }
+        LaunchedEffect(imeOpen) { if (!imeOpen) ribbonOverKeyboard = false }
+        val keyboardBar = !island && !ribbonOverKeyboard && LocalConfiguration.current.screenWidthDp < 700
         if (!viewing && !reading) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
@@ -3384,8 +3398,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("Open", color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
+            if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
+            if (keyboardBar) {
+                val keyboard = LocalSoftwareKeyboardController.current
+                val span = state.currentSpanStyle
+                KeyboardBar(w, boldHere(span), span.fontStyle == FontStyle.Italic, span.textDecoration?.contains(TextDecoration.Underline) == true,
+                    { toggleBold(span) }, { toggleItalic(span) }, { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) },
+                    { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c)) },
+                    { dictate?.invoke() ?: run { message = "This phone has no voice typing" } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
+            } else Column(Modifier.fillMaxWidth()) {
             val tabsScroll = rememberScrollState()
             Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, "Back to the keyboard bar", w, on = true) { ribbonOverKeyboard = false }
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
                 // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
                 (listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
@@ -3881,6 +3905,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         message = if (spelling) "Spelling on — Greek and English, the phone's own checker" else "Spelling off"
                     }
                     Tool(R.drawable.ic_chevron_right, "Next spelling mistake", w, enabled = loaded && spelling) { nextMisspelled() }
+                    // Word's Speech group: Read aloud from the cursor, a paragraph at a time (Greek or English each).
+                    RibbonButton(if (reader.speaking) "Stop reading" else "Read aloud", w, R.drawable.ic_volume_up, enabled = loaded, on = reader.speaking) {
+                        if (reader.speaking) reader.stop() else {
+                            val doc = current()
+                            // Equations said in words, in their paragraph's language (one of only maths: the document's).
+                            val greekDoc = doc.paras.count { languageOf(it.text).language == "el" } * 2 > doc.paras.count { it.text.isNotBlank() }
+                            readingParas = doc.paras.map { p -> if (p.table != null) p.countedText() else {
+                                val greek = if (p.runs.any { it.image == null && it.text.any(Char::isLetter) }) languageOf(p.text).language == "el" else greekDoc
+                                p.runs.joinToString("") { r -> r.image?.math?.let { " " + OfficeMath.spoken(it, greek) + " " } ?: r.text.replace(OBJECT_MARK.toString(), "") } } }
+                            val sel = state.selection.min
+                            val from = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).minOrNull() ?: 0
+                            if (!reader.read(readingParas, from)) message = "This phone cannot read aloud (no text-to-speech)"
+                        }
+                    }
                 }, {
                     // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
                     RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
@@ -3953,6 +3991,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 if (pages.size > 1) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.Center) {
                     repeat(pages.size) { i -> Box(Modifier.padding(horizontal = 3.dp).size(6.dp).clip(CircleShape).background(w.copy(alpha = if (i == pager.currentPage) 0.9f else 0.3f))) }
                 }
+            }
             }
         }
         message?.let { m ->

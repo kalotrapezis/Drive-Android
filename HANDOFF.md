@@ -74,6 +74,16 @@
 >   recruitment .doc looked as LibreOffice shows it (justified, bold/underlined, numbers 1–15), saved as .docx —
 >   LibreOffice the same. Not read: a .doc's pictures, headers/footers, footnotes, comments (said in the banner list).
 >
+> - **Phone extras** (item 4, `WriterPhoneBar.kt`): with the screen's keyboard up on a phone the ribbon gives way to
+>   Word's **keyboard bar** — B · I · U · highlighter (its colours) · mic · ⋯ · hide keyboard; ⋯ brings the whole
+>   ribbon back over the keyboard (⋯ at its tabs' start returns to the bar; closing the keyboard resets it). The tabs and
+>   pages are now inside their own Column lambda (keeps WriterScreen under the method limit). **Dictation**: the mic
+>   opens Android's voice typing (`RecognizerIntent`, the phone's language), what was said goes in at the cursor with a
+>   space either side as needed. **Read aloud** (Review): `TextToSpeech` from the cursor's paragraph on, each paragraph
+>   in Greek or English (`languageOf`), equations said in words in that language (`OfficeMath.spoken`: "x ίσον a συν b
+>   διά 2", "the sum from i equals 1 to n of x sub i"), a "Reading aloud" bar with Stop. `ReadAloudTest`; all three on
+>   the phone (the user heard it read, and asked for the equations — added).
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

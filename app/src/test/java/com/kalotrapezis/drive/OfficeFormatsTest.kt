@@ -763,16 +763,21 @@ class OfficeFormatsTest {
             HeaderFooter(header = "Running head", headerAlign = DocAlign.Start, footer = "Draft", footerAlign = DocAlign.Center,
                 number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "Page # of N"),
             HeaderFooter(number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, numberFormat = "#", firstDifferent = true),
+            // Several lines; even pages their own (a book: the title on even pages, the chapter on odd ones, numbers outside).
+            HeaderFooter(header = "Chapter 1\nIntroduction", headerAlign = DocAlign.End, footer = "Faculty of Education", footerAlign = DocAlign.Center,
+                number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.End, oddEven = true, evenHeader = "My thesis", evenFooter = "Faculty of Education"),
         )) {
             for (kind in OfficeKind.entries) {
                 val start = OfficeFormats.write(doc, kind)
                 val parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(OfficeFormats.unzip(start), hf, DocPage()) else HeaderFooterEdit.odt(OfficeFormats.unzip(start), hf, DocPage())
                 val bytes = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+                if (hf.oddEven) File("build/office-roundtrip").apply { mkdirs() }.resolve("odd-even.${kind.extension}") // for a look in LibreOffice
+                    .writeBytes(OfficeFormats.write(OfficeDoc(List(3) { i -> DocPara(listOf(DocRun("Page ${i + 1}")), keep = if (i > 0) OfficeFormats.withPageBreak(null, kind, true) else null) }), kind, bytes))
                 // Saved again with new text: the page setup and its header and footer stay.
                 val saved = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun("Changed"))))), kind, bytes)
                 for (b in listOf(bytes, saved)) {
-                    val section = DocStyles.of(kind, b).section
-                    assertEquals(kind.name, hf, HeaderFooter.of(section))
+                    val styles = DocStyles.of(kind, b)
+                    assertEquals(kind.name, hf, HeaderFooter.of(styles.section, styles.evenAndOdd))
                     OfficeFormats.unzip(b).filterKeys { it.endsWith(".xml") || it.endsWith(".rels") }.values.forEach { OfficeFormats.parse(it) } // well formed
                 }
                 assertEquals(listOf("Changed"), OfficeFormats.read(saved, kind).paras.map { it.text })

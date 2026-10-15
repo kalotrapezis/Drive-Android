@@ -315,12 +315,13 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
 }
 
 /**
- * Insert › Header & footer, Page numbers (asked 2026-09-27): a line of text at the top and at the bottom of every
+ * Insert › Header & footer, Page numbers (asked 2026-09-27): lines of text at the top and at the bottom of every
  * page, where each stands, and the page number — for APA, top right on every page.
  */
 @Composable
 internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () -> Unit, apply: (HeaderFooter) -> Unit) {
     var d by remember { mutableStateOf(now) }
+    // Several lines each (Enter): the first carries the page number.
     @Composable fun aligns(on: DocAlign, set: (DocAlign) -> Unit) =
         listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right").forEach { (a, l) -> Choice(l, on == a) { set(a) } }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -330,9 +331,9 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
                 if (rich) Text("This document's header or footer has more than a line of text (a logo, a table…). Setting it here puts this in its place.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    OutlinedTextField(d.header, { d = d.copy(header = it.replace("\n", " ")) }, label = { Text("Header") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(d.header, { d = d.copy(header = it) }, label = { Text(if (d.oddEven) "Header (odd pages)" else "Header") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
                     Section("Header stands") { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
-                    OutlinedTextField(d.footer, { d = d.copy(footer = it.replace("\n", " ")) }, label = { Text("Footer") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(d.footer, { d = d.copy(footer = it) }, label = { Text(if (d.oddEven) "Footer (odd pages)" else "Footer") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
                     Section("Footer stands") { aligns(d.footerAlign) { d = d.copy(footerAlign = it) } }
                     Section("Page number") {
                         Choice("None", d.number == null) { d = d.copy(number = null) }
@@ -344,6 +345,13 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
                         Section("Written as") { HeaderFooter.FORMATS.forEach { f -> Choice(f.replace("#", "1").replace("N", "3"), d.numberFormat == f) { d = d.copy(numberFormat = f) } } }
                     }
                     Toggle("A different first page (a title page without header, footer or number)", d.firstDifferent) { d = d.copy(firstDifferent = it) }
+                    // Word's "Different odd & even pages": even pages their own words, left and right the other way round.
+                    Toggle("Different odd and even pages", d.oddEven) { d = d.copy(oddEven = it, evenHeader = d.evenHeader.ifEmpty { d.header }, evenFooter = d.evenFooter.ifEmpty { d.footer }) }
+                    if (d.oddEven) {
+                        OutlinedTextField(d.evenHeader, { d = d.copy(evenHeader = it) }, label = { Text("Header (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.evenFooter, { d = d.copy(evenFooter = it) }, label = { Text("Footer (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        Text("On even pages what stands left stands right, and the number goes to the other side (a book's outer edge).", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }

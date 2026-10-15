@@ -105,6 +105,15 @@
 >   writer's zones); its title page leaves out course, instructor and due date. `ApaPaperTest` (both formats); on the
 >   phone "PARAGRAPH SPACING … 1" in the header; LibreOffice the same.
 >
+> - **Headers: several lines, odd and even pages** (item 5): Insert › Header & footer takes several lines each
+>   (Enter; the first carries the page number's zones) and *Different odd and even pages* — even pages get their own
+>   header and footer, left and right swapped (the number on the outer edge). Word: `headerReference/footerReference
+>   w:type="even"` + `<w:evenAndOddHeaders/>` in settings.xml (in the schema's place); LibreOffice: `style:header-left` /
+>   `footer-left` in the main page style (read back as "even"; `OdtStyles.evenAndOdd`). `HeaderFooter.of(section,
+>   evenAndOdd)` reads them back for the dialog; only pictures/tables in a header still count as "rich" (replaced).
+>   `OfficeFormatsTest` (both formats round-trip); on the **tablet** (971f6b37): two-line header right, even page's own
+>   left; LibreOffice shows the .docx and the .odt as meant. Not done: pictures in headers.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

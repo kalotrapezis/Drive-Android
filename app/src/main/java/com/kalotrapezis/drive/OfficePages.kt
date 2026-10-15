@@ -557,6 +557,7 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
 
 /** ODF: page from the master page's layout; looks from the default style, the named style chain and the paragraph's own. */
 private class OdtStyles(parts: Map<String, ByteArray>) : DocStyles() {
+    override val evenAndOdd get() = "even" in section.headers || "even" in section.footers
     override val hyphenate get() = listOfNotNull(named["Standard"], defaults).firstNotNullOfOrNull { it.kid(STYLE, "text-properties")?.attr(FO, "hyphenate") } == "true"
     private val named = HashMap<String, Element>() // paragraph style name → style
     private val tableStyles = HashMap<String, Element>() // "table-cell/A1" … → style

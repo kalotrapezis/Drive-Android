@@ -64,7 +64,7 @@ internal object ApaPaper {
         for ((n, c) in headings) edit(StyleEntry("Heading $n", null, n), c)
         parts[path] = xml.toByteArray()
         // The page number top right on every page; a professional paper's running head flush left, in capitals (APA 2.8).
-        val hf = HeaderFooter.of(styles.section).copy(header = runningHead?.let(::runningHead).orEmpty(), headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false)
+        val hf = HeaderFooter.of(styles.section).copy(header = runningHead?.let(::runningHead).orEmpty(), headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false, oddEven = false)
         parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(parts, hf, styles.page) else HeaderFooterEdit.odt(parts, hf, styles.page)
         val mid = DocStyles.of(kind, OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)).page
         val inch = mid.copy(top = INCH, bottom = INCH, left = INCH, right = INCH)

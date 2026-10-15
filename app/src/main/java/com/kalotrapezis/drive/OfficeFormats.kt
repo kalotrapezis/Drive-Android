@@ -2364,7 +2364,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         val master = root.kid(OFFICE, "master-styles")?.kids()?.let { ms -> ms.firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: ms.firstOrNull() }
             ?: return emptyMap<String, List<DocPara>>() to emptyMap()
         fun read(tag: String) = master.kid(STYLE, tag)?.takeIf { it.attr(STYLE, "display") != "false" }?.let { ArrayList<DocPara>().also { out -> block(it, out, null, -1) } }
-        fun both(kind: String) = listOfNotNull(read(kind)?.let { "default" to it }, read("$kind-first")?.let { "first" to it }).toMap()
+        // LibreOffice's left pages are Word's even ones.
+        fun both(kind: String) = listOfNotNull(read(kind)?.let { "default" to it }, read("$kind-first")?.let { "first" to it }, read("$kind-left")?.let { "even" to it }).toMap()
         return both("header") to both("footer")
     }
 

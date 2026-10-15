@@ -38,6 +38,10 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] Tick Professional paper, running head "Paragraph spacing" → Apply → the pages: PARAGRAPH SPACING top left, 1 top right; LibreOffice the same (Claude)
   - [ ] On a real paper of yours (a copy): with a title page — the head on the title page too; course/instructor/date fields hidden
 
+- **17. Headers** (Insert › Header & footer) — tablet
+  - [x] `Header_test.docx` (3 pages): header "Chapter 1⏎Introduction" right, footer, number at the bottom right, Different odd and even pages, even header "My thesis" → page 1 two lines right, page 2 "My thesis" left, number left; LibreOffice the same (Claude, tablet)
+  - [ ] The same on an .odt; reopen the dialog → both headers come back as set
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

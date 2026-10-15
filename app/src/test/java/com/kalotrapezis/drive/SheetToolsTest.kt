@@ -72,6 +72,12 @@ class SheetToolsTest {
         assertEquals(27.75, SheetStats.of(sheet, athens, SheetRange(3, 1, 4, 1)).sum, 1e-9)
     }
 
+    @Test fun `chosen cells copied as tab-separated text`() {
+        assertEquals("Name\tGrade\nΠαπαδόπουλος\t12,50\nΖαχαρίου\t9,00", sheetText(sheet, SheetLayout.of(sheet), SheetRange(2, 0, 4, 1)))
+        // as drawn: a filter's rows only
+        assertEquals("Παπαδόπουλος\nΑλεξίου", sheetText(sheet, SheetLayout.of(sheet, filters = mapOf(2 to setOf("Αθήνα"))), SheetRange(3, 0, 4, 0)))
+    }
+
     @Test fun `rows kept at the top`() {
         assertEquals(3, SheetLayout.of(sheet, freeze = 3).frozenRows)
         assertEquals(0, SheetLayout.of(sheet, freeze = 0).frozenRows)

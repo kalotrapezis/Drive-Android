@@ -101,6 +101,17 @@ internal class SheetLayout(
     }
 }
 
+/** The chosen cells as text to paste: a tab between cells, a new line between rows (Excel's and LibreOffice's own way). */
+internal fun sheetText(sheet: Sheet, layout: SheetLayout, range: SheetRange): String = buildString {
+    for (r in range.r1..min(range.r2, layout.rows.lastIndex)) {
+        if (r > range.r1) append('\n')
+        for (c in range.c1..min(range.c2, layout.cols.lastIndex)) {
+            if (c > range.c1) append('\t')
+            append(sheet[layout.rows[r], layout.cols[c]]?.text.orEmpty().replace('\n', ' ').replace('\t', ' '))
+        }
+    }
+}.trimEnd('\n', '\t')
+
 /** What Excel's status bar says of the chosen cells: how many have something, and of the numbers their sum, average, least and most. */
 internal data class SheetStats(val count: Int, val numbers: Int, val sum: Double, val min: Double, val max: Double) {
     val average get() = if (numbers == 0) 0.0 else sum / numbers

@@ -18,6 +18,7 @@ import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -131,6 +132,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var rowMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the row as drawn, and where its number was tapped
     var filtering by remember { mutableStateOf<Int?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var formulas by remember { mutableStateOf(false) } // ⋯ › Show formulas: the cells show their formulas
     var about by remember { mutableStateOf(false) }
     BackHandler { if (searching) { searching = false; query = "" } else back() }
 
@@ -146,6 +148,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }.onSuccess { b ->
             book = b
             index = if (b.tabs[b.active].hidden) b.tabs.indexOfFirst { !it.hidden }.coerceAtLeast(0) else b.active
+            // Where it was left, when it was opened before.
+            SheetPlaces.load(context, f)?.let { (i, v) -> if (i in b.tabs.indices && !b.tabs[i].hidden) { index = i; views[i] = v; WriterLog.i("Sheets: back where it was left") } }
         }.onFailure {
             WriterLog.e("Sheets: could not open", it)
             failed = if (it is OutOfMemoryError) "This spreadsheet is too big to open on this device." else "This spreadsheet could not be opened."
@@ -162,6 +166,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     val view = views.getOrPut(index) { SheetView() }
+    DisposableEffect(Unit) { onDispose { file?.let { f -> if (index >= 0) views[index]?.let { SheetPlaces.save(context, f, index, it) } } } }
 
     /** A cell's link: a web or mail address opens in its app; "#Sheet!B3" goes to that sheet's cell. */
     fun follow(link: String) {
@@ -196,6 +201,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val s = sheet; val l = layout
         if (!searching || s == null || l == null || query.isBlank()) { found = emptyList(); return@LaunchedEffect }
         delay(250)
+        // A cell's name ("B200") goes to that cell, as Excel's Go To.
+        if (Regex("""^[A-Za-z]{1,3}\d{1,7}$""").matches(query.trim())) Sheets.cellRef(query.trim())?.let { (r, c) ->
+            view.row = r; view.col = c; view.reveal++; WriterLog.i("Sheets: go to a cell")
+        }
         val start = System.nanoTime()
         found = withContext(Dispatchers.Default) {
             SheetSearch.find(s, query).filter { l.row(Sheet.row(it)) >= 0 && l.col(Sheet.col(it)) >= 0 }
@@ -229,12 +238,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) },
                                     onClick = { menu = false; WriterLog.i("Sheets: share"); shareDriveFile(context, f) })
                             }
+                            DropdownMenuItem(text = { Text("Show formulas") }, leadingIcon = { Icon(painterResource(R.drawable.ic_functions), null) },
+                                trailingIcon = { if (formulas) Icon(painterResource(R.drawable.ic_check), null) },
+                                onClick = { menu = false; formulas = !formulas; WriterLog.i("Sheets: formulas ${if (formulas) "shown" else "hidden"}") })
                             DropdownMenuItem(text = { Text("About this file") }, onClick = { menu = false; about = true })
                             DropdownMenuItem(text = { Text("Send log") }, onClick = { menu = false; WriterLog.export(context)?.let { shareDriveFile(context, it) } })
                         }
                     }
                 }
-                sheet?.let { CellBar(it, view, ::follow) }
+                sheet?.let { CellBar(it, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") } }
                 if (pins.isNotEmpty() || filters.isNotEmpty() || sort != null) ToolChips(view)
             }
         }
@@ -243,11 +255,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             when {
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L),
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas,
                         column = { col, x -> columnMenu = col to x }, row = { r, y -> rowMenu = r to y })
                     columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col }) }
                     rowMenu?.let { (r, y) -> RowMenu(r, y, view, l) { rowMenu = null } }
-                    view.range?.let { g -> RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter)) { view.range = null } }
+                    view.range?.let { g ->
+                        RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter), copy = {
+                            copy(context, "Cells", sheetText(s, l, g)); WriterLog.i("Sheets: ${(g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1)} cells copied")
+                        }) { view.range = null }
+                    }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
             }
@@ -297,6 +313,26 @@ internal class SheetView {
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
 }
 
+/** Copies [text] to Android's clipboard. */
+private fun copy(context: android.content.Context, label: String, text: String) {
+    context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+}
+
+/**
+ * Where a file was left (asked of Word too: a document opens where it was): the sheet, the place, the zoom, the cell.
+ * Kept by the file's path, in the app's own settings.
+ */
+private object SheetPlaces {
+    private fun prefs(context: android.content.Context) = context.getSharedPreferences("sheet-places", android.content.Context.MODE_PRIVATE)
+    fun save(context: android.content.Context, file: File, index: Int, v: SheetView) =
+        prefs(context).edit().putString(file.absolutePath, "$index,${v.x},${v.y},${v.zoom},${v.row},${v.col}").apply()
+    fun load(context: android.content.Context, file: File): Pair<Int, SheetView>? {
+        val p = prefs(context).getString(file.absolutePath, null)?.split(',') ?: return null
+        if (p.size < 6) return null
+        return runCatching { p[0].toInt() to SheetView().apply { x = p[1].toFloat(); y = p[2].toFloat(); zoom = p[3].toFloat(); row = p[4].toInt(); col = p[5].toInt() } }.getOrNull()
+    }
+}
+
 /** What search found, to be drawn: the cells, and the one shown now. */
 internal class SheetMarks(val found: Set<Long>, val current: Long)
 
@@ -312,7 +348,9 @@ private fun SearchBar(query: String, change: (String) -> Unit, count: Int, curre
                 cursorBrush = SolidColor(islandContentColor()), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { move(1) }), modifier = Modifier.fillMaxWidth().focusRequester(focus))
         }
-        if (query.isNotBlank()) Text(if (count == 0) "None" else "${current + 1} of $count", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
+        // A cell's name is a jump (Go To), not words to find: no "None" for it.
+        val goTo = Regex("""^[A-Za-z]{1,3}\d{1,7}$""").matches(query.trim())
+        if (query.isNotBlank() && !(goTo && count == 0)) Text(if (count == 0) "None" else "${current + 1} of $count", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
         IconButton(onClick = { move(-1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Previous") }
         IconButton(onClick = { move(1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Next", modifier = Modifier.rotate(180f)) }
     }
@@ -379,7 +417,7 @@ private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, di
 
 /** Excel's status bar for the chosen cells: Sum, Average and Count; a tap shows the least and the most too. */
 @Composable
-private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, close: () -> Unit) {
+private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, copy: () -> Unit, close: () -> Unit) {
     val stats = remember(sheet, layout, range) { SheetStats.of(sheet, layout, range) }
     val f = remember { DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) } }
     var more by remember { mutableStateOf(false) }
@@ -392,6 +430,7 @@ private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, mod
                 }, style = MaterialTheme.typography.labelLarge)
                 if (more && stats.numbers > 0) Text("Min ${f.general(stats.min)}   Max ${f.general(stats.max)}   Numbers ${stats.numbers}", style = MaterialTheme.typography.labelMedium)
             }
+            IconButton(onClick = copy) { Icon(painterResource(R.drawable.ic_copy), contentDescription = "Copy", modifier = Modifier.size(18.dp)) }
             IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear the choice", modifier = Modifier.size(18.dp)) }
         }
     }
@@ -452,12 +491,14 @@ private fun FilterDialog(sheet: Sheet, col: Int, view: SheetView, close: () -> U
 
 /** The chosen cell's name and what is in it: the formula when it has one, the words in full. */
 @Composable
-private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit, copy: (String) -> Unit) {
     val merge = sheet.merge(view.row, view.col)
     val r = merge?.r1 ?: view.row; val c = merge?.c1 ?: view.col
     val cell = sheet[r, c]
     val content = cell?.formula ?: cell?.text.orEmpty()
-    Row(Modifier.fillMaxWidth().clickable { view.opened = !view.opened }.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().combinedClickable(onLongClick = { if (content.isNotEmpty()) copy(cell?.text ?: content) }) { view.opened = !view.opened }
+        .padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
         Text(Sheets.colName(c) + (r + 1), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
         Text("fx", style = MaterialTheme.typography.labelLarge, color = islandContentColor().copy(alpha = 0.6f), fontFamily = FontFamily.Serif, modifier = Modifier.padding(end = 10.dp))
         Column(Modifier.weight(1f)) {
@@ -505,10 +546,10 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> U
 }
 
 @Composable
-private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, column: (Int, Float) -> Unit, row: (Int, Float) -> Unit) {
+private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, column: (Int, Float) -> Unit, row: (Int, Float) -> Unit) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
-    val painter = remember(sheet, layout) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort) }
+    val painter = remember(sheet, layout, formulas) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
     var fling by remember { mutableStateOf<Job?>(null) }
@@ -577,6 +618,8 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
 internal class SheetPainter(
     private val sheet: Sheet, private val styles: List<SheetStyle>, private val density: Float, private val layout: SheetLayout,
     private val pins: List<Int> = emptyList(), private val filtered: Set<Int> = emptySet(), private val sort: SheetSort? = null,
+    /** ⋯ › Show formulas: a cell with a formula shows it, from the left, as Excel's Show Formulas. */
+    private val formulas: Boolean = false,
 ) {
     private val rAt = layout.rows; private val cAt = layout.cols
     private val cols = cAt.size; private val rows = rAt.size
@@ -605,7 +648,7 @@ internal class SheetPainter(
     }
     private val pictures = HashMap<SheetDrawing, android.graphics.Bitmap?>()
     private val charts = HashMap<SheetDrawing, ChartDrawable>()
-    private fun at(r: Int, c: Int) = sheet[rAt[r], cAt[c]]
+    private fun at(r: Int, c: Int) = sheet[rAt[r], cAt[c]]?.let { cell -> if (formulas && cell.formula != null) cell.copy(text = cell.formula, kind = SheetKind.Text) else cell }
 
     private val headerH = 24 * density
     // Not in apply: TextPaint has a density of its own (1), which `density` there would mean.

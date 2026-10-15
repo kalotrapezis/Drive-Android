@@ -311,6 +311,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     val currentScreen by rememberUpdatedState(screen)
     var driveState by remember { mutableStateOf<DriveListState>(DriveListState.Idle) }
     var driveFolder by remember { mutableStateOf("") }
+    var driveDiskVersion by remember { mutableStateOf(0) } // counts changes under Tetra; search runs again on each
     var drivePane by remember { mutableStateOf(DrivePane.Home) }
     val currentDrivePane by rememberUpdatedState(drivePane)
     val driveRecents = remember(context) { DriveRecents(context) }
@@ -341,12 +342,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         scanSelected = 0
         scanRetake = null
     }
-    fun loadDrive(folder: String = driveFolder) {
+    fun loadDrive(folder: String = driveFolder, quiet: Boolean = false) {
         if (!hasAllFilesAccess()) {
             driveState = DriveListState.Error("All files access is required to use $DRIVE_PATH.")
             return
         }
-        driveState = DriveListState.Loading
+        if (!quiet) driveState = DriveListState.Loading
         Thread {
             val result = runCatching {
                 val root = driveRoot()
@@ -355,6 +356,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 if (folder == "Trash" && !File(root, folder).exists()) emptyList() else listDriveFolder(root, folder)
             }
             (context as MainActivity).runOnUiThread {
+                if (quiet && folder != driveFolder) return@runOnUiThread // moved on while it read; that folder loads itself
                 driveState = result.fold(
                     onSuccess = { DriveListState.Items(folder, it) },
                     onFailure = { DriveListState.Error("Cannot read $DRIVE_PATH: ${it.message ?: "storage unavailable"}") },
@@ -568,6 +570,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    // While Files is open, what changes on disk shows at once: the folder list reloads, and search, which reads
+    // the disk afresh, runs again with it. Quiet, so a file arriving does not flash the list.
+    androidx.compose.runtime.DisposableEffect(screen) {
+        val watcher = if (screen == Screen.Drive && hasAllFilesAccess()) DriveWatcher(driveRoot()) { driveDiskVersion++; loadDrive(quiet = true) } else null
+        onDispose { watcher?.stop() }
+    }
 
     // One palette, on every device (24 September). Dynamic colour read the wallpaper, so the same home screen
     // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
@@ -617,6 +625,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     },
                     recents = { driveRecents.read(driveRoot()) },
                     recentsVersion = recentsVersion,
+                    diskVersion = driveDiskVersion,
                     openFile = ::openDriveFile,
                 )
                 Screen.Photos -> PhotoTab({ screen = Screen.Home }, photosPane, { photosPane = it }, photoFilter, { photoFilter = it }, photoPermission(), photosState, photoMetadata, metadataVersion, {
@@ -1575,6 +1584,7 @@ private fun DriveTab(
     goParent: () -> Unit,
     recents: () -> List<DriveRecent>,
     recentsVersion: Int,
+    diskVersion: Int,
     openFile: (String, Boolean) -> String?,
 ) {
     val context = LocalContext.current
@@ -1594,7 +1604,7 @@ private fun DriveTab(
     val recentItems = remember(recentsVersion, hasAccess) { if (hasAccess) recents() else emptyList() }
     val favoriteItems = remember(metadataVersion, hasAccess) { if (hasAccess) metadata.favorites(root) else emptyList() }
     val filtering = searchQuery.isNotBlank() || selectedTag != null
-    val searchItems by produceState(emptyList<DriveItem>(), searchQuery, selectedTag, metadataVersion, state, hasAccess) {
+    val searchItems by produceState(emptyList<DriveItem>(), searchQuery, selectedTag, metadataVersion, state, hasAccess, diskVersion) {
         value = if (!hasAccess || !filtering) emptyList() else withContext(Dispatchers.IO) {
             runCatching {
                 DriveRules.allItems(root).filter { item ->

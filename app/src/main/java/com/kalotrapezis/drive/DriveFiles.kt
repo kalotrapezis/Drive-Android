@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.FileObserver
+import android.os.Handler
+import android.os.Looper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -235,6 +238,39 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
         .filterNot { relativePath.isEmpty() && it.name == TRASH_FOLDER }
         .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }
         .sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
+}
+
+/**
+ * Says when something under Tetra changed — a file pushed, synced, saved by another app, renamed or deleted — so
+ * Files and its search show it without a refresh. Android watches one folder at a time, so this watches every
+ * visible folder and looks again after each burst of changes, which also picks up a folder just made.
+ */
+internal class DriveWatcher(private val root: File, private val changed: () -> Unit) {
+    private val main = Handler(Looper.getMainLooper())
+    private var observer: FileObserver? = null
+    private var stopped = false
+    private val settle = Runnable { Thread(::watch).start(); changed() }
+
+    init { Thread(::watch).start() }
+
+    @Synchronized private fun watch() {
+        if (stopped) return
+        observer?.stopWatching()
+        val folders = root.walkTopDown().onEnter { it == root || !it.name.startsWith(".") }.filter { it.isDirectory }.toList()
+        observer = object : FileObserver(folders, CREATE or DELETE or MOVED_FROM or MOVED_TO or CLOSE_WRITE) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path == null || path.startsWith(".")) return // the apps' own dot files are not in the list
+                main.removeCallbacks(settle)
+                main.postDelayed(settle, 300) // a copy is many writes; answer once it settles
+            }
+        }.also { it.startWatching() }
+    }
+
+    @Synchronized fun stop() {
+        stopped = true
+        main.removeCallbacks(settle)
+        observer?.stopWatching()
+    }
 }
 
 object DriveRecentsRules {

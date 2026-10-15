@@ -269,9 +269,13 @@ class SheetsTest {
         assumeTrue(dir?.isDirectory == true)
         var compared = 0; var numbers = 0
         val wrong = ArrayList<String>()
-        dir!!.listFiles()!!.filter { it.isDirectory }.sortedBy { it.name }.forEach { d ->
+        // Each spreadsheet, and LibreOffice's .ods of it when the folder has one (the .ods reader on the same cells).
+        dir!!.listFiles()!!.filter { it.isDirectory }.sortedBy { it.name }.flatMap { d ->
             val source = File(File(d, "source.txt").readText().trim())
-            val book = Sheets.read(source, ',', '.')
+            listOf(d to source) + d.listFiles()!!.filter { it.extension == "ods" }.map { d to it }
+        }.forEach { (d, file) ->
+            val source = File(File(d, "source.txt").readText().trim())
+            val book = Sheets.read(file, ',', '.')
             d.listFiles()!!.filter { it.extension == "csv" }.forEach { csv ->
                 val name = csv.nameWithoutExtension.removePrefix(source.nameWithoutExtension + "-")
                 val i = book.tabs.indexOfFirst { it.name == name }.takeIf { it >= 0 } ?: if (book.tabs.size == 1) 0 else return@forEach
@@ -283,7 +287,7 @@ class SheetsTest {
                     if (text.isEmpty() && lo.isEmpty()) continue
                     compared++
                     if (mine?.kind == SheetKind.Number) numbers++
-                    if (text.trim() != lo.trim()) wrong += "${source.name.take(25)} › $name › ${Sheets.colName(c)}${r + 1}: mine \"$text\", LibreOffice \"$lo\"" +
+                    if (text.trim() != lo.trim()) wrong += "${file.name.take(25)} › $name › ${Sheets.colName(c)}${r + 1}: mine \"$text\", LibreOffice \"$lo\"" +
                         (mine?.style?.let { sheet.look(it, book.styles)?.format }?.let { " [$it]" } ?: "") + (mine?.value?.let { " value $it" } ?: "")
                 }
             }

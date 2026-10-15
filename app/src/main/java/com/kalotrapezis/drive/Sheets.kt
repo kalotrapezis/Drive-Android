@@ -236,7 +236,7 @@ internal object Sheets {
     /** Reads a spreadsheet; [decimal] and [group] are the separators numbers are shown with (the phone's). */
     fun read(bytes: ByteArray, name: String, decimal: Char = '.', group: Char = ','): Workbook =
         when (name.substringAfterLast('.', "").lowercase()) {
-            "ods" -> Ods(OfficeFormats.unzip(bytes)::get).read()
+            "ods" -> OfficeFormats.unzip(bytes).let { m -> Ods(m::get) { n -> m[n]?.let(::ByteArrayInputStream) }.read() }
             "csv", "tsv" -> csv(bytes)
             else -> Xlsx(OfficeFormats.unzip(bytes)::get, decimal, group).read()
         }
@@ -252,7 +252,14 @@ internal object Sheets {
         val part = { name: String ->
             if (name !in names) null else java.util.zip.ZipFile(file).use { z -> z.getEntry(name)?.let { e -> z.getInputStream(e).use { it.readBytes() } } }
         }
-        return if (ext == "ods") Ods(part).read() else Xlsx(part, decimal, group).read()
+        // A part to read as it streams (an .ods's content.xml holds every sheet: 360 MB for the user's 46 tables).
+        val stream = { name: String ->
+            if (name !in names) null else java.util.zip.ZipFile(file).let { z ->
+                z.getEntry(name)?.let { e -> object : java.io.FilterInputStream(java.io.BufferedInputStream(z.getInputStream(e), 1 shl 16)) { override fun close() { super.close(); z.close() } } }
+                    ?: run { z.close(); null }
+            }
+        }
+        return if (ext == "ods") Ods(part, stream).read() else Xlsx(part, decimal, group).read()
     }
 
     /** A HYPERLINK formula's address: =HYPERLINK("https://…", "words"). */
@@ -292,6 +299,17 @@ internal object Sheets {
                 if (nc < 0 || nr < 1) "#REF!" else cAbs + colName(nc) + rAbs + nr
             }
         }.joinToString("\"")
+    }
+
+    /** Thrown by a handler that has what it came for: the rest of the file is not read. */
+    private class Enough : RuntimeException() { override fun fillInStackTrace() = this }
+
+    internal fun sax(input: java.io.InputStream, handler: DefaultHandler) {
+        val f = SAXParserFactory.newInstance()
+        f.isNamespaceAware = true
+        runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+        // A parser may wrap the handler's Enough in its own exception: still the handler's stop.
+        try { input.use { f.newSAXParser().parse(it, handler) } } catch (e: Exception) { if (generateSequence<Throwable>(e) { it.cause }.none { it is Enough }) throw e }
     }
 
     internal fun sax(bytes: ByteArray, handler: DefaultHandler) {
@@ -893,7 +911,7 @@ internal object Sheets {
         return when (m.groupValues[2]) { "cm" -> n / 2.54f * 96; "mm" -> n / 25.4f * 96; "in" -> n * 96; "pc" -> n * 16; "px" -> n; else -> n * 4 / 3 }
     }
 
-    private class Ods(val parts: (String) -> ByteArray?) {
+    private class Ods(val parts: (String) -> ByteArray?, val stream: (String) -> java.io.InputStream?) {
         /** Every style:style by name: its family, parent, and the properties ("c.", "t.", "p.", "col.", "row.", "tab." + name). */
         class Raw(val family: String, val parent: String?, val props: HashMap<String, String> = HashMap())
         val raw = HashMap<String, Raw>()
@@ -997,31 +1015,68 @@ internal object Sheets {
         /** The looks and the sheets' names, in one pass that skips every row; [table] reads one sheet when it is opened. */
         fun read(): Workbook {
             parts("styles.xml")?.let { sax(it, styleHandler()) }
-            val content = parts("content.xml") ?: error("Not a spreadsheet.")
             settings = readSettings()
-            val tabs = ArrayList<SheetTab>()
-            sax(content, object : DefaultHandler() {
+            // The automatic styles, at the head of content.xml: read until the body begins.
+            sax(stream("content.xml") ?: error("Not a spreadsheet."), object : DefaultHandler() {
                 val autoStyles = styleHandler()
                 var inStyles = false
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                    if (local == "body") throw Enough()
                     if (local == "automatic-styles") inStyles = true
                     if (inStyles) autoStyles.startElement(uri, local, q, at)
-                    else if (local == "table") tabs += SheetTab(at.a("name") ?: "Sheet", props(at.a("style-name"))["tab.display"] == "false")
                 }
                 override fun endElement(uri: String?, local: String, q: String?) {
                     if (inStyles) { autoStyles.endElement(uri, local, q); if (local == "automatic-styles") inStyles = false }
                 }
             })
+            // The sheets' names: each <table:table …> found in the bytes, not parsed (a 360 MB body takes a second, not a minute).
+            // meta.xml says how many there are, so the scan stops at the last one's start.
+            // shortcut: a giant .ods (LibreOffice's copy of the user's 46 tables: 360 MB of content) takes ~9 s here on
+            // the phone, inflating; upgrade to tabs that arrive while the first sheet shows if such files are opened.
+            val count = parts("meta.xml")?.let { Regex("""table-count="(\d+)"""").find(String(it))?.groupValues?.get(1)?.toIntOrNull() }
+            val tabs = (stream("content.xml") ?: error("Not a spreadsheet.")).use { tables(it, count) }.map { (name, style) -> SheetTab(name, props(style)["tab.display"] == "false") }
             if (tabs.isEmpty()) error("No sheets.")
             // Every cell look made now, so the list does not grow while a sheet is drawn.
             style(null) // index 0: the default look
             raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
-            return Workbook(tabs, styles, active) { i -> table(parts("content.xml") ?: error("Not a spreadsheet."), i) }
+            return Workbook(tabs, styles, active) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
-        fun table(content: ByteArray, target: Int): Sheet {
+        /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */
+        fun tables(input: java.io.InputStream, count: Int? = null): List<Pair<String, String?>> {
+            val out = ArrayList<Pair<String, String?>>()
+            val buf = ByteArray(1 shl 16); val name = java.io.ByteArrayOutputStream(); val attrs = java.io.ByteArrayOutputStream()
+            var state = 0 // 0: words, 1: a tag's name, 2: a table's attributes
+            var depth = 0
+            fun unescape(v: String) = v.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+            fun start(a: String) {
+                if (depth == 0) out += unescape(Regex("""table:name="([^"]*)"""").find(a)?.groupValues?.get(1) ?: "Sheet") to
+                    Regex("""table:style-name="([^"]*)"""").find(a)?.groupValues?.get(1)?.let(::unescape)
+                if (!a.trimEnd().endsWith("/")) depth++
+            }
+            while (true) {
+                val n = input.read(buf); if (n < 0) break
+                for (i in 0 until n) {
+                    val b = buf[i].toInt()
+                    when (state) {
+                        0 -> if (b == '<'.code) { name.reset(); state = 1 }
+                        1 -> if (b == ' '.code || b == '\n'.code || b == '\r'.code || b == '\t'.code || b == '>'.code || (b == '/'.code && name.size() > 0)) {
+                            when (name.toString("UTF-8")) {
+                                "table:table" -> if (b == '>'.code) { start(""); state = 0 } else { attrs.reset(); if (b == '/'.code) attrs.write(b); state = 2 }
+                                "/table:table" -> { depth--; state = 0 }
+                                else -> state = 0
+                            }
+                        } else if (name.size() > 16) state = 0 else name.write(b)
+                        else -> if (b == '>'.code) { start(attrs.toString("UTF-8")); state = 0; if (out.size == count) return out } else attrs.write(b)
+                    }
+                }
+            }
+            return out
+        }
+
+        fun table(content: java.io.InputStream, target: Int): Sheet {
             var result: Sheet? = null
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
@@ -1256,6 +1311,7 @@ internal object Sheets {
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars,
                     )
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
+                    throw Enough() // the sheets after it are not read
                 }
             })
             return result ?: error("No sheet ${target + 1}.")

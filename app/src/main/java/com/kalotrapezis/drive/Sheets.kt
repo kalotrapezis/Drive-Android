@@ -238,7 +238,7 @@ internal object Sheets {
         when (name.substringAfterLast('.', "").lowercase()) {
             "ods" -> OfficeFormats.unzip(bytes).let { m -> Ods(m::get) { n -> m[n]?.let(::ByteArrayInputStream) }.read() }
             "csv", "tsv" -> csv(bytes)
-            else -> Xlsx(OfficeFormats.unzip(bytes)::get, decimal, group).read()
+            else -> OfficeFormats.unzip(bytes).let { m -> Xlsx(m::get, { n -> m[n]?.let(::ByteArrayInputStream) }, decimal, group).read() }
         }
 
     /**
@@ -259,7 +259,7 @@ internal object Sheets {
                     ?: run { z.close(); null }
             }
         }
-        return if (ext == "ods") Ods(part, stream).read() else Xlsx(part, decimal, group).read()
+        return if (ext == "ods") Ods(part, stream).read() else Xlsx(part, stream, decimal, group).read()
     }
 
     /** A HYPERLINK formula's address: =HYPERLINK("https://…", "words"). */
@@ -344,7 +344,7 @@ internal object Sheets {
 
     // --- .xlsx ---
 
-    private class Xlsx(val parts: (String) -> ByteArray?, decimal: Char, group: Char) {
+    private class Xlsx(val parts: (String) -> ByteArray?, val stream: (String) -> java.io.InputStream?, decimal: Char, group: Char) {
         val strings = ArrayList<String>()
         val styles = ArrayList<SheetStyle>()
         val dxfs = ArrayList<SheetDxf>()
@@ -385,7 +385,7 @@ internal object Sheets {
             date1904 = wb.kid("workbookPr")?.attr("date1904")?.let { it == "1" || it == "true" } ?: false
             format = SheetFormat(sep.first, sep.second, date1904)
             bookRels.values.firstOrNull { it.contains("theme/") }?.let(parts)?.let(::readTheme)
-            bookRels.values.firstOrNull { it.endsWith("sharedStrings.xml") }?.let(parts)?.let(::readStrings)
+            bookRels.values.firstOrNull { it.endsWith("sharedStrings.xml") }?.let(stream)?.let(::readStrings)
             bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let(parts)?.let(::readStyles)
             if (styles.isEmpty()) styles += SheetStyle()
             val active = wb.kid("bookViews")?.kid("workbookView")?.attr("activeTab")?.toIntOrNull() ?: 0
@@ -402,7 +402,7 @@ internal object Sheets {
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex)) { i ->
                 val (tab, path) = found[i]
-                runCatching { readSheet(tab.name, path, parts(path) ?: error("No such part."), tab.hidden) }.getOrElse {
+                runCatching { readSheet(tab.name, path, stream(path) ?: error("No such part."), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
                     Sheet(tab.name, CellMap(), 0, 0, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0, hidden = tab.hidden)
                 }
@@ -420,7 +420,7 @@ internal object Sheets {
             }.toIntArray()
         }
 
-        fun readStrings(bytes: ByteArray) = sax(bytes, object : DefaultHandler() {
+        fun readStrings(input: java.io.InputStream) = sax(input, object : DefaultHandler() {
             val sb = StringBuilder(); var inT = false; var phonetic = 0
             override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                 when (local) { "si" -> sb.setLength(0); "t" -> inT = phonetic == 0; "rPh" -> phonetic++ }
@@ -515,9 +515,10 @@ internal object Sheets {
         /** Excel's column width (characters of the default font's digit, 7 px in Calibri 11) in pixels. */
         fun colPx(w: Double) = floor(((256 * w + floor(128.0 / 7)) / 256) * 7).toFloat()
 
-        fun readSheet(name: String, path: String, bytes: ByteArray, hidden: Boolean): Sheet {
+        /** A sheet's part, streamed from the zip (a sheet's XML can be tens of MB). */
+        fun readSheet(name: String, path: String, input: java.io.InputStream, hidden: Boolean): Sheet {
             val rels = rels(path)
-            val cells = CellMap(bytes.size / 40)
+            val cells = CellMap(1 shl 12)
             val colWidths = HashMap<Int, Float>(); val rowHeights = HashMap<Int, Float>()
             val hiddenCols = HashSet<Int>(); val hiddenRows = HashSet<Int>()
             val colStyles = HashMap<Int, Int>(); val rowStyles = HashMap<Int, Int>()
@@ -533,7 +534,7 @@ internal object Sheets {
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
-            sax(bytes, object : DefaultHandler() {
+            sax(input, object : DefaultHandler() {
                 var row = -1; var col = -1
                 var r = 0; var c = 0; var s = 0; var t: String? = null
                 val v = StringBuilder(); val f = StringBuilder(); val inline = StringBuilder()

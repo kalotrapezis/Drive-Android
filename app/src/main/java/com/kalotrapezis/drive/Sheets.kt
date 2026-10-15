@@ -173,7 +173,15 @@ internal data class SheetTab(val name: String, val hidden: Boolean = false)
  * A workbook: its tabs, its looks, the sheet it was left on — and each sheet read only when it is opened ([sheet]),
  * the last two kept, so a workbook of a dozen big sheets never holds them all.
  */
-internal class Workbook(val tabs: List<SheetTab>, val styles: List<SheetStyle>, val active: Int = 0, private val load: (Int) -> Sheet) {
+/** A cell search found in a sheet not opened: where, its words, and its row's other words. */
+internal class SheetFind(val key: Long, val text: String, val context: String)
+
+internal class Workbook(
+    val tabs: List<SheetTab>, val styles: List<SheetStyle>, val active: Int = 0,
+    /** A quick search of one sheet without reading it whole (an .xlsx's bytes scanned); null: read it and search. */
+    val scan: ((Int, String) -> List<SheetFind>)? = null,
+    private val load: (Int) -> Sheet,
+) {
     private val kept = LinkedHashMap<Int, Sheet>()
     fun sheet(i: Int): Sheet = synchronized(kept) {
         kept.remove(i)?.let { kept[i] = it; return it }
@@ -406,7 +414,7 @@ internal object Sheets {
             }
             if (found.isEmpty()) error("No sheets.")
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
-            return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex)) { i ->
+            return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() }) { i ->
                 val (tab, path) = found[i]
                 runCatching { readSheet(tab.name, path, stream(path) ?: error("No such part."), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
@@ -520,6 +528,126 @@ internal object Sheets {
 
         /** Excel's column width (characters of the default font's digit, 7 px in Calibri 11) in pixels. */
         fun colPx(w: Double) = floor(((256 * w + floor(128.0 / 7)) / 256) * 7).toFloat()
+
+        /** Shared strings that match the last query: worked out once for every sheet's scan. */
+        private var matching: Pair<String, java.util.BitSet>? = null
+
+        /**
+         * Search's quick pass over a sheet (asked for the user's tables: a name in any of 46 sheets): its bytes scanned
+         * for <c> cells — a shared string matches if its words do (worked out once a search), a number by its digits
+         * or as it is shown, inline words by themselves — with no cells made; a row with a find gets its words for the
+         * list. The same finds as [SheetSearch.find] on the read sheet.
+         */
+        fun scan(input: java.io.InputStream, query: String): List<SheetFind> {
+            val words = SheetSearch.words(query)
+            if (words.isEmpty()) return emptyList()
+            val strings = matching?.takeIf { it.first == query }?.second ?: java.util.BitSet().also { set ->
+                this.strings.forEachIndexed { i, t -> if (SheetSearch.matches(SheetSearch.norm(t), words)) set.set(i) }
+                matching = query to set
+            }
+            val general = SheetFormat(format.decimalSeparator(), format.groupSeparator())
+            val out = ArrayList<SheetFind>()
+            // the row being read: each cell's column, its shown words (worked out for rows with a find), and the finds
+            class Cell(val col: Int, val type: String?, val style: Int, val raw: String)
+            val row = ArrayList<Cell>(); val finds = ArrayList<Cell>()
+            var rowNumber = -1
+            fun shown(c: Cell): String = when (c.type) {
+                "s" -> this.strings.getOrNull(c.raw.toIntOrNull() ?: -1).orEmpty()
+                "inlineStr", "str", "e" -> c.raw
+                "b" -> if (c.raw == "1") "TRUE" else "FALSE"
+                else -> c.raw.toDoubleOrNull()?.let { format.format(it, styles.getOrNull(c.style)?.format ?: "General").text } ?: c.raw
+            }
+            fun flush() {
+                for (f in finds) {
+                    val context = row.asSequence().filter { it !== f }.map { shown(it).trim().replace('\n', ' ') }.filter { it.isNotEmpty() }.take(4).joinToString(" · ")
+                    out += SheetFind(Sheet.key(rowNumber, f.col), shown(f), context)
+                }
+                row.clear(); finds.clear()
+            }
+            fun matches(c: Cell): Boolean = when (c.type) {
+                "s" -> c.raw.toIntOrNull()?.let { strings[it] } == true
+                "inlineStr", "str" -> SheetSearch.matches(SheetSearch.norm(c.raw), words)
+                "b", "e" -> false
+                // a number by its digits; as it is shown only when its look formats it (most are General: no work)
+                else -> c.raw.toDoubleOrNull()?.let { v ->
+                    SheetSearch.matches(c.raw + " " + general.general(v), words) ||
+                        (styles.getOrNull(c.style)?.format?.takeIf { !it.equals("General", true) } != null && SheetSearch.matches(SheetSearch.norm(shown(c)), words))
+                } == true
+            }
+            fun unescape(v: String) = if ('&' !in v) v else v.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+            // Plain byte arrays, not ByteArrayOutputStream (its writes are synchronized: most of the time on a phone).
+            val buf = ByteArray(1 shl 16)
+            val tag = ByteArray(4096); var tagLen = 0
+            var body = ByteArray(1024); var bodyLen = 0
+            var state = 0 // 0: between tags, 1: a tag, 2: a cell's body (until </c>)
+            var cellRow = -1; var cellCol = -1; var cellType: String? = null; var cellStyle = 0
+            /** Where [name]="…" starts in the tag (the value's first byte), or -1. */
+            fun attr(name: String): Int {
+                outer@ for (i in 1 until tagLen - name.length - 1) {
+                    if (tag[i - 1] != ' '.code.toByte()) continue
+                    for (k in name.indices) if (tag[i + k] != name[k].code.toByte()) continue@outer
+                    if (tag[i + name.length] == '='.code.toByte() && tag[i + name.length + 1] == '"'.code.toByte()) return i + name.length + 2
+                }
+                return -1
+            }
+            fun number(at: Int): Int { var i = at; var n = 0; while (i < tagLen && tag[i] >= '0'.code.toByte() && tag[i] <= '9'.code.toByte()) { n = n * 10 + (tag[i] - '0'.code.toByte()); i++ }; return n }
+            fun startCell() {
+                cellType = attr("t").takeIf { it >= 0 }?.let { i -> var j = i; while (j < tagLen && tag[j] != '"'.code.toByte()) j++; String(tag, i, j - i, Charsets.US_ASCII) }
+                cellStyle = attr("s").takeIf { it >= 0 }?.let(::number) ?: 0
+                val r = attr("r")
+                if (r >= 0) {
+                    var i = r; var col = 0
+                    while (i < tagLen && tag[i].toInt().toChar().let { it in 'A'..'Z' || it in 'a'..'z' }) { col = col * 26 + (tag[i].toInt().toChar().uppercaseChar() - 'A' + 1); i++ }
+                    cellCol = col - 1; cellRow = number(i) - 1
+                } else { cellCol = (row.lastOrNull()?.col ?: -1) + 1; cellRow = rowNumber }
+            }
+            fun endCell() {
+                val raw = if (cellType == "inlineStr") Regex("<t[^>]*>([^<]*)</t>").findAll(String(body, 0, bodyLen, Charsets.UTF_8)).joinToString("") { it.groupValues[1] }
+                else {
+                    // the value: between <v> and </v>
+                    var i = 0; var start = -1
+                    while (i + 2 < bodyLen) { if (body[i] == '<'.code.toByte() && body[i + 1] == 'v'.code.toByte() && body[i + 2] == '>'.code.toByte()) { start = i + 3; break }; i++ }
+                    if (start < 0) return
+                    var end = start; while (end < bodyLen && body[end] != '<'.code.toByte()) end++
+                    String(body, start, end - start, Charsets.UTF_8)
+                }
+                if (raw.isEmpty() && cellType != "inlineStr") return
+                if (cellRow != rowNumber) { flush(); rowNumber = cellRow }
+                val c = Cell(cellCol, cellType, cellStyle, unescape(raw))
+                row += c
+                if (matches(c)) finds += c
+            }
+            while (true) {
+                val n = input.read(buf); if (n < 0) break
+                var i = 0
+                while (i < n) {
+                    val b = buf[i]
+                    when (state) {
+                        0 -> if (b == '<'.code.toByte()) { tagLen = 0; state = 1 }
+                        1 -> if (b == '>'.code.toByte()) {
+                            state = 0
+                            if (tagLen >= 1 && tag[0] == 'c'.code.toByte() && (tagLen == 1 || tag[1] == ' '.code.toByte())) {
+                                if (tag[tagLen - 1] != '/'.code.toByte()) { startCell(); bodyLen = 0; state = 2 }
+                            } else if (tagLen >= 3 && tag[0] == 'r'.code.toByte() && tag[1] == 'o'.code.toByte() && tag[2] == 'w'.code.toByte() && (tagLen == 3 || tag[3] == ' '.code.toByte())) {
+                                flush(); rowNumber = attr("r").takeIf { it >= 0 }?.let { number(it) - 1 } ?: (rowNumber + 1)
+                            }
+                        } else if (tagLen < tag.size) tag[tagLen++] = b
+                        else -> {
+                            // the cell's end: "</c>"
+                            if (b == '>'.code.toByte() && bodyLen >= 3 && body[bodyLen - 3] == '<'.code.toByte() && body[bodyLen - 2] == '/'.code.toByte() && body[bodyLen - 1] == 'c'.code.toByte()) {
+                                bodyLen -= 3; endCell(); state = 0
+                            } else {
+                                if (bodyLen == body.size) body = body.copyOf(body.size * 2)
+                                body[bodyLen++] = b
+                            }
+                        }
+                    }
+                    i++
+                }
+            }
+            flush()
+            return out
+        }
 
         /** A sheet's part, streamed from the zip (a sheet's XML can be tens of MB). */
         fun readSheet(name: String, path: String, input: java.io.InputStream, hidden: Boolean): Sheet {

@@ -29,6 +29,35 @@ class SheetToolsTest {
         Sheet("T", cells, rows.size, 3, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
     }
 
+    /** Search every sheet of the user's 46 tables, timed (TETRA_SWEEP=1). */
+    @Test fun `search in all of a big workbook`() {
+        org.junit.Assume.assumeTrue(System.getenv("TETRA_SWEEP") == "1")
+        val file = java.io.File(System.getProperty("user.home"), "Tetra/Files").walkTopDown().firstOrNull { it.name.startsWith("Εκκαθαρισμένοι") && it.extension == "xlsx" } ?: return
+        val book = Sheets.read(file)
+        for (q in listOf("παπαδοπουλος", "17351", "Αγγελικη Παπα")) {
+            var read = 0L; var search = 0L; var n = 0
+            for (i in book.tabs.indices) {
+                val t0 = System.nanoTime(); val s = book.sheet(i); val t1 = System.nanoTime()
+                n += SheetSearch.find(s, q).size; val t2 = System.nanoTime()
+                read += t1 - t0; search += t2 - t1
+            }
+            println("All sheets, \"$q\": $n found; reading ${read / 1_000_000} ms, searching ${search / 1_000_000} ms")
+            // the quick scan finds the same cells
+            val t0 = System.nanoTime()
+            var same = 0; var scanned = 0
+            for (i in book.tabs.indices) {
+                val quick = book.scan!!.invoke(i, q).map { it.key }.toSet()
+                val full = SheetSearch.find(book.sheet(i), q).toSet()
+                assertEquals("$q, sheet ${i + 1}", full, quick)
+                scanned += quick.size; same++
+            }
+            println("  scanned the same in $same sheets, $scanned found")
+        }
+        val t0 = System.nanoTime()
+        for (i in book.tabs.indices) book.scan!!.invoke(i, "παπαδοπουλος")
+        println("All sheets scanned in ${(System.nanoTime() - t0) / 1_000_000} ms")
+    }
+
     @Test fun `the header is the full row under the title`() = assertEquals(2, SheetLayout.header(sheet))
 
     @Test fun `search forgives accents, case and a typo`() {
@@ -39,6 +68,9 @@ class SheetToolsTest {
         assertEquals(listOf("Ζαχαρίου"), found("Ζαχαριού"))
         assertEquals(listOf("Αθήνα", "Αθήνα"), found("αθηνα"))
         assertEquals(listOf("12,50"), found("12.5")) // a number by its digits
+        assertEquals(emptyList<String>(), found("12.4")) // and exactly: no typo forgiven in a number
+        assertEquals("ελενη αννα-μαρια", SheetSearch.norm("ΕΛΈΝΗ Άννα-Μαρία"))
+        assertEquals("cafe creme", SheetSearch.norm("Café Crème"))
         assertEquals(emptyList<String>(), found("Λονδίνο"))
         assertTrue(SheetSearch.matches(SheetSearch.norm("Smith"), SheetSearch.words("smiht"))) // swapped letters
         assertFalse(SheetSearch.matches(SheetSearch.norm("Ali"), SheetSearch.words("Ale"))) // short words must be exact

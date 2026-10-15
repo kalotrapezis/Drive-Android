@@ -212,7 +212,25 @@ internal object SheetSearch {
     private val MARKS = Regex("\\p{Mn}+")
     private val WORD = Regex("[\\p{L}\\p{N}]+")
 
-    fun norm(s: String): String = Normalizer.normalize(s.lowercase(Locale.ROOT), Normalizer.Form.NFD).replace(MARKS, "").replace('ς', 'σ')
+    private val PLAIN = HashMap<Char, Char>().apply {
+        "άα έε ήη ίι όο ύυ ώω ϊι ϋυ ΐι ΰυ ςσ".split(' ').forEach { put(it[0], it[1]) }
+    }
+
+    /**
+     * Letters as search compares them: small, without accents, ς as σ. Greek and plain Latin by a table (a sheet has
+     * millions of cells: Unicode's decomposition for each took most of a search); other letters by decomposition.
+     */
+    fun norm(s: String): String {
+        var plain = true
+        val out = CharArray(s.length)
+        for (i in s.indices) {
+            val ch = Character.toLowerCase(s[i])
+            out[i] = PLAIN[ch] ?: ch
+            if (out[i].code in 0xC0..0x24F || out[i].code in 0x1E00..0x1EFF) plain = false // Latin with accents
+        }
+        val t = String(out)
+        return if (plain) t else Normalizer.normalize(t, Normalizer.Form.NFD).replace(MARKS, "")
+    }
 
     fun words(query: String): List<String> = WORD.findAll(norm(query)).map { it.value }.toList()
 
@@ -222,11 +240,14 @@ internal object SheetSearch {
         var cellWords: List<String>? = null
         return words.all { w ->
             if (text.contains(w)) return@all true
-            val allowed = if (w.length >= 7) 2 else if (w.length >= 4) 1 else 0
+            // Numbers are exact: a typo forgiven in 17351 would find 17951.
+            val allowed = if (w.any { it.isDigit() }) 0 else if (w.length >= 7) 2 else if (w.length >= 4) 1 else 0
             if (allowed == 0) return@all false
             (cellWords ?: WORD.findAll(text).map { it.value }.toList().also { cellWords = it }).any { t ->
-                // the whole word, or its start (a word being typed: "παπαδοπ" finds "Παπαδόπουλος")
-                (abs(t.length - w.length) <= allowed && distance(w, t) <= allowed) || (t.length > w.length && distance(w, t.substring(0, w.length)) <= allowed)
+                // the whole word, or its start (a word being typed: "παπαδοπ" finds "Παπαδόπουλος") — after a quick
+                // count of shared letters, which turns most words away before the full comparison
+                t.length >= w.length - allowed && shared(w, t) >= w.length - allowed &&
+                    ((abs(t.length - w.length) <= allowed && distance(w, t) <= allowed) || (t.length > w.length && distance(w, t.substring(0, w.length)) <= allowed))
             }
         }
     }
@@ -245,6 +266,28 @@ internal object SheetSearch {
         }
         out.sort() // the key is the row, then the column
         return out
+    }
+
+    /** A found cell's row for a list of finds: the row's other written cells, left to right (a name's surname, rank…). */
+    fun context(sheet: Sheet, key: Long, most: Int = 4): String {
+        val r = Sheet.row(key); val col = Sheet.col(key)
+        val out = ArrayList<String>()
+        for (c in 0 until sheet.cols) {
+            if (c == col) continue
+            val t = sheet[r, c]?.text?.trim().orEmpty()
+            if (t.isNotEmpty()) out += t.replace('\n', ' ')
+            if (out.size >= most) break
+        }
+        return out.joinToString(" · ")
+    }
+
+    /** How many of [w]'s letters [t] has too (each counted as often as it is in both). */
+    private fun shared(w: String, t: String): Int {
+        val counts = IntArray(64)
+        for (ch in t) counts[ch.code and 63]++
+        var n = 0
+        for (ch in w) { val k = ch.code and 63; if (counts[k] > 0) { counts[k]--; n++ } }
+        return n
     }
 
     /** Letters to change, add, drop or swap to make [a] into [b] (optimal string alignment). */

@@ -25,6 +25,9 @@ internal class SheetFormat(
     /** Month and day names when the format names no language ("d-mmm" shows "27-Σεπ" on a Greek phone, as Excel there). */
     private val language: Locale = Locale.getDefault(),
 ) {
+    fun decimalSeparator() = decimal
+    fun groupSeparator() = group
+
     /** A formatted number, and the colour the format asks for ([Red]), if any. */
     data class Shown(val text: String, val color: Int? = null)
 

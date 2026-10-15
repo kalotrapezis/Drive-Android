@@ -125,6 +125,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     // Search: the words, the cells found (in the order drawn), the one shown.
     var searching by remember { mutableStateOf(false) }
+    // Search in every sheet (asked for the user's tables: a sheet for each specialty): the finds, how far it has got.
+    var everywhere by remember { mutableStateOf(false) }
+    var hits by remember { mutableStateOf<List<SheetHit>>(emptyList()) }
+    var searched by remember { mutableIntStateOf(0) }
+    var showHits by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<Long?>(null) } // a find chosen in the list: shown once its sheet is searched
     var query by remember { mutableStateOf("") }
     var found by remember { mutableStateOf<List<Long>>(emptyList()) }
     var current by remember { mutableIntStateOf(0) }
@@ -214,9 +220,31 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             SheetSearch.find(s, query).filter { l.row(Sheet.row(it)) >= 0 && l.col(Sheet.col(it)) >= 0 }
                 .sortedWith(compareBy({ l.row(Sheet.row(it)) }, { l.col(Sheet.col(it)) }))
         }
-        current = 0
+        current = pending?.let { p -> found.indexOf(p).takeIf { it >= 0 } } ?: 0
+        pending = null
         WriterLog.i("Sheets: search of ${query.length} letters, ${found.size} found in ${(System.nanoTime() - start) / 1_000_000} ms")
-        found.firstOrNull()?.let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ }
+        found.getOrNull(current)?.let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ }
+    }
+    LaunchedEffect(book, query, searching, everywhere) {
+        val b = book
+        hits = emptyList(); searched = 0
+        if (!searching || !everywhere || b == null || query.isBlank()) return@LaunchedEffect
+        delay(300)
+        val start = System.nanoTime()
+        val shown = b.tabs.indices.filter { !b.tabs[it].hidden }
+        for ((n, i) in shown.withIndex()) {
+            val more = withContext(Dispatchers.Default) {
+                runCatching {
+                    // an .xlsx's sheets are scanned, not read (the user's 46 tables: seconds, not most of a minute)
+                    b.scan?.invoke(i, query)?.take(300)?.map { SheetHit(i, it.key, it.text, it.context) } ?: b.sheet(i).let { s ->
+                        SheetSearch.find(s, query).take(300).map { k -> SheetHit(i, k, s[Sheet.row(k), Sheet.col(k)]?.text.orEmpty(), SheetSearch.context(s, k)) }
+                    }
+                }.onFailure { WriterLog.w("Sheets: sheet ${i + 1} could not be searched", it) }.getOrDefault(emptyList())
+            }
+            hits = hits + more; searched = n + 1
+            if (hits.size >= 1000) break
+        }
+        WriterLog.i("Sheets: search in ${searched} sheets, ${hits.size} found in ${(System.nanoTime() - start) / 1_000_000} ms")
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -224,6 +252,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
                 if (searching) SearchBar(query, { query = it }, found.size, current,
+                    everywhere = everywhere.takeIf { (book?.tabs?.count { !it.hidden } ?: 0) > 1 }, hits = hits.size,
+                    toggle = { if (!everywhere) { everywhere = true; showHits = true } else if (!showHits) showHits = true else { everywhere = false; showHits = false }; WriterLog.i("Sheets: search in all sheets $everywhere") },
                     move = { d -> if (found.isNotEmpty()) { current = (current + d).mod(found.size); found[current].let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ } } },
                     close = { searching = false; query = "" })
                 else Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -285,6 +315,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.White)) {
             val s = sheet; val b = book; val l = layout
             when {
+                searching && everywhere && showHits && b != null -> HitsList(b, hits, searched, b.tabs.count { !it.hidden }, query) { h ->
+                    WriterLog.i("Sheets: a find in sheet ${h.sheet + 1} chosen")
+                    views.getOrPut(h.sheet) { SheetView() }.let { v -> v.row = Sheet.row(h.key); v.col = Sheet.col(h.key); v.reveal++ }
+                    pending = h.key; showHits = false; failed = null; index = h.sheet
+                }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
                     SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas,
@@ -373,11 +408,42 @@ private object SheetPlaces {
     }
 }
 
+/** A find in any sheet: the sheet, the cell, its words, and its row's other words. */
+internal class SheetHit(val sheet: Int, val key: Long, val text: String, val context: String)
+
+/** Search's finds in every sheet, sheet by sheet as they come; a tap goes to the cell. */
+@Composable
+private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets: Int, query: String, pick: (SheetHit) -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            item {
+                Text(when {
+                    query.isBlank() -> "Type to search every sheet"
+                    searched < sheets -> "${hits.size} found · searching sheet ${searched + 1} of $sheets…"
+                    else -> "${hits.size} found in ${hits.map { it.sheet }.distinct().size} of $sheets sheets"
+                }, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(4.dp))
+            }
+            items(hits, key = { "${it.sheet}:${it.key}" }) { h ->
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { pick(h) }) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(book.tabs[h.sheet].name, style = MaterialTheme.typography.labelMedium, color = Color(0xFF6FCF97), maxLines = 1)
+                            Text(Sheets.colName(Sheet.col(h.key)) + (Sheet.row(h.key) + 1), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(h.text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (h.context.isNotEmpty()) Text(h.context, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** What search found, to be drawn: the cells, and the one shown now. */
 internal class SheetMarks(val found: Set<Long>, val current: Long)
 
 @Composable
-private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, move: (Int) -> Unit, close: () -> Unit) {
+private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, everywhere: Boolean?, hits: Int, toggle: () -> Unit, move: (Int) -> Unit, close: () -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -390,6 +456,11 @@ private fun SearchBar(query: String, change: (String) -> Unit, count: Int, curre
         }
         // A cell's name is a jump (Go To), not words to find: no "None" for it.
         val goTo = Regex("""^[A-Za-z]{1,3}\d{1,7}$""").matches(query.trim())
+        // In every sheet, or this one: a chip that turns it on, shows the list again, or turns it off.
+        if (everywhere != null) Surface(shape = RoundedCornerShape(50), color = if (everywhere) EXCEL_GREEN else Color.Transparent, contentColor = islandContentColor(),
+            modifier = Modifier.padding(end = 4.dp).clickable(onClick = toggle)) {
+            Text(if (everywhere) "All sheets · $hits" else "All sheets", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+        }
         if (query.isNotBlank() && !(goTo && count == 0)) Text(if (count == 0) "None" else "${current + 1} of $count", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
         IconButton(onClick = { move(-1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Previous") }
         IconButton(onClick = { move(1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Next", modifier = Modifier.rotate(180f)) }

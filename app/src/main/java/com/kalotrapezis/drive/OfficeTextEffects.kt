@@ -61,3 +61,57 @@ internal class EffectSpan(val effects: TextEffects, val fill: Int, val unit: Flo
         }
     }
 }
+
+/**
+ * WordArt's bends (Word's Text Effects › Transform; LibreOffice's Fontwork): the words laid along an arch, a circle, a
+ * wave or a slant. Word's a:prstTxWarp in the WordArt's bodyPr (with fromWordArt); LibreOffice's fontwork shape type,
+ * which it draws by its name.
+ */
+internal enum class TextWarp(val label: String, val word: String, val fontwork: String) {
+    ArchUp("Arch up", "textArchUp", "fontwork-arch-up-curve"), ArchDown("Arch down", "textArchDown", "fontwork-arch-down-curve"),
+    Circle("Circle", "textCircle", "fontwork-circle-curve"), Wave("Wave", "textWave1", "fontwork-wave"),
+    SlantUp("Slant up", "textSlantUp", "fontwork-slant-up"), SlantDown("Slant down", "textSlantDown", "fontwork-slant-down");
+
+    /** How tall the letters are in a [w] × [h] box (before they are fitted to the bend's length). */
+    fun letters(w: Float, h: Float) = when (this) { Circle -> minOf(w, h) * 0.2f; Wave -> h * 0.45f; SlantUp, SlantDown -> minOf(h * 0.4f, w * 0.15f); else -> h * 0.42f }
+
+    /**
+     * The line the words stand on in a [w] × [h] box (from 0,0), left to right as they are read, letters [m] tall —
+     * placed so the letters stay inside the box, as Word's do.
+     */
+    fun line(w: Float, h: Float, m: Float = letters(w, h)): List<Pair<Float, Float>> {
+        val n = 48
+        return (0..n).map { i -> val t = i / n.toFloat()
+            when (this) {
+                // An arch: the top of an ellipse from the bottom corners, its letters' tops at the box's top.
+                ArchUp -> { val a = Math.PI * (1 - t); (w / 2 + (w / 2 - m * 0.6f) * Math.cos(a)).toFloat() to (h - (h - m) * Math.sin(a)).toFloat() }
+                // A smile: the bottom of an ellipse, its ends a letter below the top, its middle at the bottom.
+                ArchDown -> { val a = Math.PI * (1 - t); (w / 2 + (w / 2 - m * 0.6f) * Math.cos(a)).toFloat() to (m + (h * 0.97f - m) * Math.sin(a)).toFloat() }
+                // Round the box's ellipse clockwise from its left, the letters outside it, inside the box.
+                Circle -> { val a = Math.PI + 2 * Math.PI * t; (w / 2 + (w / 2 - m) * Math.cos(a)).toFloat() to (h / 2 + (h / 2 - m) * Math.sin(a)).toFloat() }
+                Wave -> t * w to (h / 2 + m / 2 - (h - m) * 0.3f * Math.sin(2 * Math.PI * t)).toFloat()
+                SlantUp -> t * w to (h * 0.97f - (h * 0.97f - m) * t)
+                SlantDown -> t * w to (m + (h * 0.97f - m) * t)
+            }
+        }
+    }
+
+    companion object {
+        /** A drawing's bend, as Word or LibreOffice says it; null: straight. */
+        fun of(raw: String?): TextWarp? {
+            raw ?: return null
+            Regex("""<a:prstTxWarp prst="(\w+)"""").find(raw)?.groupValues?.get(1)?.let { p -> return entries.firstOrNull { it.word == p } }
+            if ("draw:text-path=\"true\"" in raw) Regex("""draw:type="(fontwork-[\w-]+)"""").find(raw)?.groupValues?.get(1)?.let { t -> return entries.firstOrNull { it.fontwork == t } }
+            return null
+        }
+        /** [xml] (a WordArt Writer made) bent as [warp]: Word's prstTxWarp in its bodyPr; LibreOffice's fontwork geometry. */
+        fun applied(xml: String, warp: TextWarp, odt: Boolean): String {
+            if (odt) return xml.replace(Regex("""<draw:enhanced-geometry\b[^>]*/>|<draw:enhanced-geometry\b[^>]*[^/]>[\s\S]*?</draw:enhanced-geometry>"""),
+                Regex.escapeReplacement("""<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:text-path="true" draw:text-path-mode="shape" draw:text-path-scale="shape" draw:type="${warp.fontwork}"/>"""))
+            val body = Regex("""<wps:bodyPr\b([^>]*?)(/>|>([\s\S]*?)</wps:bodyPr>)""").find(xml) ?: return xml
+            val attrs = body.groupValues[1].replace(Regex("""\sfromWordArt="[^"]*""""), "") + " fromWordArt=\"1\""
+            val inner = body.groupValues[3].replace(Regex("""<a:prstTxWarp\b[\s\S]*?</a:prstTxWarp>|<a:prstTxWarp\b[^>]*/>"""), "")
+            return xml.replaceRange(body.range, "<wps:bodyPr$attrs><a:prstTxWarp prst=\"${warp.word}\"><a:avLst/></a:prstTxWarp>$inner</wps:bodyPr>")
+        }
+    }
+}

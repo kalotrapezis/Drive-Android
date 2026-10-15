@@ -316,7 +316,9 @@ internal object PictureXml {
      * line), or in an .odt LibreOffice's rectangle with its words in it (its look in Writer's shape style) — in line with
      * the text as made; the caller floats it. Its words are written by [boxText].
      */
-    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects()): String {
+    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String =
+        newTextBox(file, widthPt, heightPt, lines, art, effects).let { x -> if (warp == null) x else TextWarp.applied(x, warp, file == OfficeKind.Odt) }
+    private fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int?, effects: TextEffects): String {
         // WordArt ([art]: its colour): no box round it, its words big and bold in that colour, on one line.
         val shape = if (art != null) newShape("rect", file, null, null, 0f, widthPt, heightPt) else newShape("rect", file, 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f, widthPt, heightPt)
         return if (file == OfficeKind.Odt) boxText(shape, file, lines, art, effects)
@@ -1846,7 +1848,21 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 }
                 DocPara(OfficeFormats.tidy(runs), align = when (algn) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start })
             }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
-            out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml, box = paras))
+            // Its words in their own rectangle (dsp:txXfrm: inside a chevron's body, not over its notch), the shape apart.
+            val tx = sp.kids().firstOrNull { it.localName == "txXfrm" }
+            val tw = num(tx, "ext", "cx"); val th = num(tx, "ext", "cy")
+            // Words wider than their rectangle made smaller to fit (Word shrinks SmartArt's text so; ~0.56 of a letter's size is its width).
+            fun fitted(ps: List<DocPara>, room: Float): List<DocPara> {
+                val need = ps.flatMap { p -> p.runs.flatMap { r -> r.text.split(' ').map { it.length * (r.sizePt ?: 11f) * 0.56f } } }.maxOrNull() ?: return ps
+                val k = (room / need).takeIf { it < 1f } ?: return ps
+                return ps.map { p -> p.copy(runs = p.runs.map { r -> r.copy(sizePt = ((r.sizePt ?: 11f) * k * 2).toInt() / 2f) }) }
+            }
+            if (paras != null && tx != null && tw > 0f && th > 0f) {
+                out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml))
+                val body = Regex("""<a:bodyPr\b[^>]*?/?>""").find(xml)?.value?.replace("<a:bodyPr", "<wps:bodyPr")?.let { if (it.endsWith("/>")) it else it.dropLast(1) + "/>" } ?: """<wps:bodyPr anchor="ctr"/>"""
+                val words = """<wps:wsp><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></wps:spPr>$body</wps:wsp>"""
+                out += GroupPart(num(tx, "off", "x"), num(tx, "off", "y"), tw, th, DocImage("f${imageCount++}", null, tw, th, words, box = fitted(paras, tw)))
+            } else out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml, box = paras))
         }
         return out.takeIf { it.isNotEmpty() }
     }

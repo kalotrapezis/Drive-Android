@@ -144,6 +144,17 @@
 >   theme colours inside spPr are read (were blank). None of the user's files has SmartArt: `smartart.docx` (made as Word
 >   saves one; LibreOffice opens it) — `SmartArtTest`; on the tablet the chevrons Plan → Write → Submit, white words on
 >   blue. Not done: editing SmartArt (Word's own data model); one without a saved drawing stays a grey box.
+>   **After the user's eye** ("isn't the S a bit outside?"): a SmartArt shape's words go in their own rectangle
+>   (`dsp:txXfrm`, inside a chevron's body — they ran over the next one's notch) as a piece of their own, shrunk to fit
+>   when a word is wider (Word's shrink-on-overflow); text boxes take their insets from `bodyPr lIns/tIns`.
+>
+> - **WordArt bends** (item 5): Insert › WordArt › Straight / Arch up / Arch down / Circle / Wave / Slant up / Slant down
+>   (`TextWarp`, OfficeTextEffects.kt): Word's `<a:prstTxWarp prst="textArchUp">` in the WordArt's bodyPr with
+>   `fromWordArt="1"`; LibreOffice's fontwork shape (`draw:type="fontwork-arch-up-curve"`, `draw:text-path`), which it
+>   draws by name (checked). Drawn along the bend (`drawTextOnPath` in `TextBoxDrawable`) with the letters sized to the
+>   bend and fitted to its length, **inside the box** (the first try ran out of it — the user: "the rectangle should
+>   contain the letters"), clipped to it. Edit text keeps the bend. `TextEffectsTest`; on the tablet an arch;
+>   LibreOffice draws the saved .docx as an arch.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone

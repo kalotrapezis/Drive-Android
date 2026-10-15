@@ -33,4 +33,21 @@ class TextEffectsTest {
         assertEquals(3, Regex("""xmlns:w14=""").findAll(xml).count())
         assertEquals(TextEffects(0xFF0000, true, 0x00B050), TextEffects.of(xml))
     }
+
+    @Test fun `WordArt bent along an arch, in both formats, through saving and Edit text`() {
+        for (kind in OfficeKind.entries) for (bend in TextWarp.entries) {
+            val raw = PictureXml.newTextBox(kind, 300f, 120f, listOf("Bent words"), art = 0xFF4472C4.toInt(), warp = bend)
+            assertEquals("$kind $bend", bend, TextWarp.of(raw))
+            if (kind == OfficeKind.Docx) assertTrue(raw, "fromWordArt=\"1\"" in raw && "<a:prstTxWarp prst=\"${bend.word}\">" in raw)
+            else assertTrue(raw, "draw:type=\"${bend.fontwork}\"" in raw && "draw:text-path=\"true\"" in raw)
+            val img = DocImage("w", null, 300f, 120f, raw, box = listOf(DocPara(listOf(DocRun("Bent words")))))
+            val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("x"), DocRun(OBJECT_MARK.toString(), image = img))))), kind), kind)
+            val again = back.paras[0].runs.mapNotNull { it.image }.single()
+            assertEquals("$kind $bend", bend, TextWarp.of(again.raw))
+            assertEquals("$kind $bend", bend, TextWarp.of(PictureXml.boxText(again.raw!!, kind, listOf("Other words")))) // Edit text keeps the bend
+        }
+        // An arch's middle stands higher than its ends; a smile's lower.
+        val up = TextWarp.ArchUp.line(200f, 100f); assertTrue(up[24].second < up[0].second)
+        val down = TextWarp.ArchDown.line(200f, 100f); assertTrue(down[24].second > down[0].second)
+    }
 }

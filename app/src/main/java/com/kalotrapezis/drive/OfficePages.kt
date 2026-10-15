@@ -979,10 +979,30 @@ private class InLineDrawable(val inner: android.graphics.drawable.Drawable, val 
     @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 }
 
-internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>, /** 't', 'c' or 'b': where its words stand */ val anchor: Char = 't') : android.graphics.drawable.Drawable() {
+internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>, /** 't', 'c' or 'b': where its words stand */ val anchor: Char = 't',
+    /** WordArt bent: its words and their look, laid along the bend instead of in lines. */ val warp: Triple<TextWarp, String, android.text.TextPaint>? = null) : android.graphics.drawable.Drawable() {
     override fun draw(canvas: Canvas) {
         val b = bounds
         (frame ?: ShapePicture("rect", 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f)).drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat())
+        warp?.let { (bend, words, look) ->
+            val bw = b.width().toFloat(); val bh = b.height().toFloat()
+            // Letters as tall as the bend allows, smaller when the words would not fit along it; the line placed for them.
+            val paint = android.text.TextPaint(look)
+            var m = bend.letters(bw, bh)
+            fun along(m: Float) = android.graphics.Path().apply { val pts = bend.line(bw, bh, m); moveTo(b.left + pts[0].first, b.top + pts[0].second); pts.drop(1).forEach { (x, y) -> lineTo(b.left + x, b.top + y) } }
+            var path = along(m)
+            repeat(3) {
+                paint.textSize = m / 0.72f // a letter's cap height is about 0.72 of its size
+                val length = android.graphics.PathMeasure(path, false).length
+                val needs = paint.measureText(words)
+                if (needs <= length * 0.96f) return@repeat
+                m *= length * 0.96f / needs; path = along(m)
+            }
+            canvas.save(); canvas.clipRect(b)
+            canvas.drawTextOnPath(words, path, ((android.graphics.PathMeasure(path, false).length - paint.measureText(words)) / 2).coerceAtLeast(0f), 0f, paint)
+            canvas.restore()
+            return
+        }
         canvas.save()
         canvas.clipRect(b)
         val room = (b.height() - 2 * inset.second - text.height).coerceAtLeast(0f)
@@ -1529,11 +1549,20 @@ internal object OfficePages {
     /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */
     fun textBox(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): TextBoxDrawable? {
         val paras = img.box ?: return null
-        val inset = 7.2f to 3.6f
+        // Its insets (bodyPr lIns/tIns, EMU; Word's 0.1" and 0.05" when not said).
+        fun ins(n: String, or: Float) = img.raw?.let { Regex("""<(?:wps|a):bodyPr\b[^>]*\b$n="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull()?.div(12700f) } ?: or
+        val inset = ins("lIns", 7.2f) to ins("tIns", 3.6f)
         val text = runCatching { stack(doc, paras, styles, DocPage(), (img.widthPt - 2 * inset.first).coerceAtLeast(8f), pictureBytes, null, 0f, 0f) }.getOrNull() ?: return null
         // Its words' place in it (Word's bodyPr anchor: SmartArt's and many text boxes' are centred).
         val anchor = img.raw?.let { Regex("""<(?:wps|a):bodyPr\b[^>]*\banchor="(\w+)"""").find(it)?.groupValues?.get(1) }.let { when (it) { "ctr" -> 'c'; "b" -> 'b'; else -> 't' } }
-        return TextBoxDrawable(ShapePicture.of(img), text, inset, anchor)
+        // WordArt bent (Word's prstTxWarp, LibreOffice's fontwork): its words along the bend, in its first letters' look.
+        val warp = TextWarp.of(img.raw)?.let { bend ->
+            val r = paras.flatMap { it.runs }.firstOrNull { it.image == null && it.text.isNotBlank() } ?: DocRun("")
+            val look = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = (0xFF000000.toInt() or (r.color ?: 0x4472C4)); typeface = OfficeFonts.styled(OfficeFonts.typeface(styles.fontName(r.font)), r.bold || r.sizePt == PictureXml.ART_PT, r.italic) }
+            Triple(bend, paras.joinToString(" ") { it.text.trim() }, look)
+        }
+        return TextBoxDrawable(ShapePicture.of(img), text, inset, anchor, warp)
     }
 
     /** A drop cap's letters as the pages draw them: in points, [x] from the margin, [baseline] from the paragraph's top. */

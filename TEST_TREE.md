@@ -53,6 +53,10 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] `SmartArt_test.docx`: three blue chevrons Plan, Write, Submit with white words, as Word shows (Claude)
   - [ ] A Word file with real SmartArt from Word (if you have one): shown as in Word; Save keeps it SmartArt in Word
 
+- **20. WordArt bends** (Insert › WordArt) — tablet
+  - [x] "Tetra Writer", Arch up → an arch inside its box; LibreOffice draws the saved .docx as an arch (Claude)
+  - [ ] Try Arch down, Circle, Wave, Slant up on a copy; open in Word on the PC: the same bends
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

@@ -4341,14 +4341,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         tab = WriterTab.Picture
     }
     /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
-    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects()) {
-        val (w, h) = if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
+    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null) {
+        val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
             else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f } // as big as its words
+                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
+            // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
+            .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
         val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
         val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
             font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
-        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx), box = box), PictureWrap.Square, kind)
+        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), PictureWrap.Square, kind)
         if (fx.any) WriterLog.i("WordArt effects: $fx")
         pictures[img.key] = img
         val at = placePicture(img)
@@ -4356,7 +4358,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         tab = WriterTab.Picture
     }
     boxing?.let { (key, words) ->
-        TextBoxDialog(words, { boxing = null }) { text, _, _ ->
+        TextBoxDialog(words, { boxing = null }) { text, _, _, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
@@ -4400,7 +4402,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             tab = WriterTab.Picture
         }
     }
-    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx -> wordArt = false; putTextBox(text.split('\n'), color, fx) }
+    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx, bend -> wordArt = false; putTextBox(text.split('\n'), color, fx, bend) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
@@ -4510,7 +4512,8 @@ private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 e
 
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects) -> Unit) {
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects, TextWarp?) -> Unit) {
+    var bend by remember { mutableStateOf<TextWarp?>(null) }
     var text by remember { mutableStateOf(initial) }
     var outlined by remember { mutableStateOf(false) }; var shadowed by remember { mutableStateOf(false) }; var glowing by remember { mutableStateOf(false) }
     // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
@@ -4535,8 +4538,13 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
                 Choice("Shadow", shadowed) { shadowed = !shadowed }
                 if (glowAllowed) Choice("Glow", glowing) { glowing = !glowing }
             }
+            // Word's Transform (LibreOffice's Fontwork): the words along a bend.
+            if (art) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Choice("Straight", bend == null) { bend = null }
+                TextWarp.entries.forEach { b -> Choice(b.label, bend == b) { bend = b } }
+            }
         } },
-        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null)) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 

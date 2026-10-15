@@ -48,7 +48,7 @@ internal object ApaPaper {
     val title = body(DocAlign.Center, true, false, 0f)
 
     /** The file's side: the styles, the page number in the header, margins of an inch (an ODT's header room allowed for). */
-    fun file(source: Map<String, ByteArray>, kind: OfficeKind, styles: DocStyles): LinkedHashMap<String, ByteArray> {
+    fun file(source: Map<String, ByteArray>, kind: OfficeKind, styles: DocStyles, runningHead: String? = null): LinkedHashMap<String, ByteArray> {
         var parts = LinkedHashMap(source)
         val path = stylesPath(parts, kind)
         var xml = String(parts.getValue(path), Charsets.UTF_8)
@@ -63,13 +63,16 @@ internal object ApaPaper {
         edit(entries[1], title)
         for ((n, c) in headings) edit(StyleEntry("Heading $n", null, n), c)
         parts[path] = xml.toByteArray()
-        // The page number top right on every page; no running head (APA's student paper).
-        val hf = HeaderFooter.of(styles.section).copy(header = "", number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false)
+        // The page number top right on every page; a professional paper's running head flush left, in capitals (APA 2.8).
+        val hf = HeaderFooter.of(styles.section).copy(header = runningHead?.let(::runningHead).orEmpty(), headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false)
         parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(parts, hf, styles.page) else HeaderFooterEdit.odt(parts, hf, styles.page)
         val mid = DocStyles.of(kind, OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)).page
         val inch = mid.copy(top = INCH, bottom = INCH, left = INCH, right = INCH)
         return if (kind == OfficeKind.Docx) PageSetup.docx(parts, inch) else PageSetup.odt(parts, inch, mid)
     }
+
+    /** A professional paper's running head: the short title in capitals, at most 50 characters (APA 7, 2.8). */
+    fun runningHead(shortTitle: String) = shortTitle.trim().uppercase().take(50).trim()
 
     /**
      * What was set by hand on single paragraphs and letters, taken off so the styles decide (the file's own spacing,
@@ -168,7 +171,9 @@ internal object ApaPaper {
 
 /** The APA 7 paper page: what it sets, whether to clear what was set by hand, and a title page to put first. */
 @Composable
-internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit, apply: (clean: Boolean, title: ApaTitle?, abstract: ApaAbstract?) -> Unit) {
+internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit, apply: (clean: Boolean, title: ApaTitle?, abstract: ApaAbstract?, runningHead: String?) -> Unit) {
+    var professional by remember { mutableStateOf(false) }
+    var head by remember { mutableStateOf("") }
     var clean by remember { mutableStateOf(hasText) }
     var withTitle by remember { mutableStateOf(!hasText) }
     var t by remember { mutableStateOf(ApaTitle(date = today)) }
@@ -181,21 +186,29 @@ internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit
     AlertDialog(
         onDismissRequest = dismiss,
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
-        title = { Text("APA 7 student paper") },
+        title = { Text(if (professional) "APA 7 professional paper" else "APA 7 student paper") },
         text = {
             Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Times New Roman 12 · margins of 1 inch · double spacing, no extra space between paragraphs · first lines indented 0.5 inch · " +
                     "the page number top right · APA's heading levels as Heading 1–5 (4 and 5 run into their paragraph, ending in a period) · references on a new page.", style = MaterialTheme.typography.bodyMedium)
                 check("Also clear fonts, sizes and spacing set by hand", clean) { clean = it }
+                // A professional paper (for publication): the running head on every page; its title page without course, instructor, date.
+                check("Professional paper (a running head on every page)", professional) { professional = it }
+                if (professional) {
+                    field("Running head (a short title, up to 50 letters)", head) { head = it.take(50) }
+                    Text(ApaPaper.runningHead(head.ifBlank { t.title }).ifBlank { "SHORT TITLE" } + " — top left, in capitals; the page number top right", style = MaterialTheme.typography.bodySmall)
+                }
                 check("Add a title page first", withTitle) { withTitle = it }
                 if (withTitle) {
                     field("Title of the paper", t.title) { t = t.copy(title = it) }
                     field("Your name", t.author) { t = t.copy(author = it) }
                     field("Department", t.department) { t = t.copy(department = it) }
                     field("University", t.university) { t = t.copy(university = it) }
-                    field("Course (number and name)", t.course) { t = t.copy(course = it) }
-                    field("Instructor", t.instructor) { t = t.copy(instructor = it) }
-                    field("Due date", t.date) { t = t.copy(date = it) }
+                    if (!professional) {
+                        field("Course (number and name)", t.course) { t = t.copy(course = it) }
+                        field("Instructor", t.instructor) { t = t.copy(instructor = it) }
+                        field("Due date", t.date) { t = t.copy(date = it) }
+                    }
                 }
                 check("Add an abstract page (after the title page)", withAbstract) { withAbstract = it }
                 if (withAbstract) {
@@ -205,7 +218,8 @@ internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { apply(clean, if (withTitle && t.title.isNotBlank()) t else null, if (withAbstract) ab else null) }) { Text("Apply") } },
+        confirmButton = { TextButton(onClick = { apply(clean, if (withTitle && t.title.isNotBlank()) (if (professional) t.copy(course = "", instructor = "", date = "") else t) else null, if (withAbstract) ab else null,
+            if (professional) head.ifBlank { t.title }.takeIf { it.isNotBlank() } ?: "Short title" else null) }) { Text("Apply") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }

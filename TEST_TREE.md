@@ -34,6 +34,10 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] → Chicago (author-date) → "(Walker 2018, 47)", "References", Chicago's entry; saved, LibreOffice the same (Claude)
   - [ ] Open that file in Word on the PC: References › Style shows Chicago; Update Citations and Bibliography keeps it
 
+- **16. APA professional paper** (Design › APA 7 paper)
+  - [x] Tick Professional paper, running head "Paragraph spacing" → Apply → the pages: PARAGRAPH SPACING top left, 1 top right; LibreOffice the same (Claude)
+  - [ ] On a real paper of yours (a copy): with a title page — the head on the title page too; course/instructor/date fields hidden
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

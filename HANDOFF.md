@@ -99,6 +99,12 @@
 >   `OfficeDoc.citeStyle`. Dialog previews still show APA's form (shortcut). `CitationStylesTest`; on the phone MLA then
 >   Chicago on a copy of Phase2_test, saved — LibreOffice the same.
 >
+> - **APA professional paper** (item 5): Design › APA 7 paper › *Professional paper (a running head on every page)* —
+>   a short title (≤ 50 letters; the title when left empty) written in capitals flush left in the header, the page
+>   number flush right, on every page including the title page (`ApaPaper.file(…, runningHead)`, the existing header
+>   writer's zones); its title page leaves out course, instructor and due date. `ApaPaperTest` (both formats); on the
+>   phone "PARAGRAPH SPACING … 1" in the header; LibreOffice the same.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

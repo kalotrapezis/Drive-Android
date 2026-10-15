@@ -2523,9 +2523,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** Design › APA 7 paper ([ApaPaper]): styles, page number, margins, and what the page asked for; one step to undo. */
     var apaPage by remember { mutableStateOf(false) }
-    fun applyApa(clean: Boolean, title: ApaTitle?, abstract: ApaAbstract? = null) = change {
+    fun applyApa(clean: Boolean, title: ApaTitle?, abstract: ApaAbstract? = null, runningHead: String? = null) = change {
         val entries = documentStyles.paragraphStyles()
-        val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles) }
+        val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles, runningHead) }
             .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
@@ -4083,8 +4083,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
     )
     if (apaPage) ApaPaperDialog(remember(meta) { current().paras.any { it.text.isNotBlank() } },
-        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title, abstract ->
-        apaPage = false; applyApa(clean, title, abstract)
+        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title, abstract, head ->
+        apaPage = false; applyApa(clean, title, abstract, head)
     }
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)

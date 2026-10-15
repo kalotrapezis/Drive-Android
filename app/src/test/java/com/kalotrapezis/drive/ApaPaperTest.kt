@@ -40,4 +40,19 @@ class ApaPaperTest {
         val back = OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Title")))) + page), OfficeKind.Docx), OfficeKind.Docx)
         assertTrue(back.paras[1].keep?.parts.orEmpty().any { it.first == "pageBreakBefore" })
     }
+
+    @Test fun `a professional paper has its running head left and the page number right on every page`() {
+        assertEquals("READING ON SCREENS AND PAPER: A REVIEW OF FORTY YE", ApaPaper.runningHead("Reading on screens and paper: a review of forty years of studies"))
+        for (kind in OfficeKind.entries) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Text."))))), kind)
+            val out = OfficeFormats.zip(ApaPaper.file(OfficeFormats.unzip(bytes), kind, DocStyles.of(kind, bytes), "Reading on Screens"), if (kind == OfficeKind.Odt) "mimetype" else null)
+            val section = DocStyles.of(kind, out).section
+            val hf = HeaderFooter.of(section)
+            assertEquals(kind.name, "READING ON SCREENS", hf.header)
+            assertEquals(kind.name, DocAlign.Start, hf.headerAlign)
+            assertEquals(kind.name, HeaderFooter.NumberPlace.Header, hf.number)
+            assertEquals(kind.name, DocAlign.End, hf.numberAlign)
+            assertEquals(kind.name, false, hf.firstDifferent)
+        }
+    }
 }

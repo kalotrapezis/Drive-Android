@@ -78,6 +78,27 @@ class SheetToolsTest {
         assertEquals("Παπαδόπουλος\nΑλεξίου", sheetText(sheet, SheetLayout.of(sheet, filters = mapOf(2 to setOf("Αθήνα"))), SheetRange(3, 0, 4, 0)))
     }
 
+    /** 200 rows × 12 columns of 64 px: Excel's cuts at 100 % portrait A4, fitted to one page wide, and a print area. */
+    @Test fun `pages as Excel prints them`() {
+        val cells = CellMap().apply { for (r in 0 until 200) for (c in 0 until 12) set(Sheet.key(r, c), SheetCell("x", SheetKind.Text)) }
+        val big = Sheet("P", cells, 200, 12, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
+        val l = SheetLayout.of(big)
+        // 100 %: a page is (595 − 2×0.7 in) = 494 pt wide = 658 px: 10 columns; (842 − 2×0.75 in) = 734 pt = 978 px: 48 rows.
+        val p = sheetPages(big, l)
+        assertEquals(0..9, p.pages[0].cols); assertEquals(0..47, p.pages[0].rows)
+        assertEquals(5 * 2, p.pages.size) // 5 bands of rows (200 / 48), 2 of columns
+        assertEquals(10..11, p.pages[5].cols) // down, then over
+        // fitted to 1 page wide: every column on each page
+        val fit = sheetPages(big, l, SheetPrint(fitWidth = 1, fitHeight = 0))
+        assertEquals(0..11, fit.pages[0].cols); assertEquals(494f / (12 * 64), fit.k, 0.01f)
+        // a print area and its title rows (rows 1–2 on every page)
+        val area = sheetPages(big, l, SheetPrint(area = SheetRange(0, 0, 99, 3), titles = 0..1))
+        assertTrue(area.pages.all { it.cols == 0..3 && it.titles == 0..1 })
+        assertEquals(2, area.pages[0].rows.first); assertEquals(99, area.pages.last().rows.last)
+        // landscape: wider pages
+        assertEquals(842f, sheetPages(big, l, SheetPrint(landscape = true)).width)
+    }
+
     @Test fun `rows kept at the top`() {
         assertEquals(3, SheetLayout.of(sheet, freeze = 3).frozenRows)
         assertEquals(0, SheetLayout.of(sheet, freeze = 0).frozenRows)

@@ -133,6 +133,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var filtering by remember { mutableStateOf<Int?>(null) }
     var menu by remember { mutableStateOf(false) }
     var formulas by remember { mutableStateOf(false) } // ⋯ › Show formulas: the cells show their formulas
+    var message by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current.density
     var about by remember { mutableStateOf(false) }
     BackHandler { if (searching) { searching = false; query = "" } else back() }
 
@@ -215,6 +219,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         found.firstOrNull()?.let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
@@ -237,6 +242,33 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     onClick = { menu = false; WriterLog.i("Sheets: open in another app"); openElsewhere(context, f) })
                                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) },
                                     onClick = { menu = false; WriterLog.i("Sheets: share"); shareDriveFile(context, f) })
+                            }
+                            if (f != null && sheet != null) {
+                                DropdownMenuItem(text = { Text("Export PDF") }, leadingIcon = { Icon(painterResource(R.drawable.ic_file), null) }, onClick = {
+                                    menu = false
+                                    val s = sheet ?: return@DropdownMenuItem; val b = book ?: return@DropdownMenuItem; val l = layout ?: return@DropdownMenuItem
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) { runCatching {
+                                            val stem = f.nameWithoutExtension + if (b.tabs.count { !it.hidden } > 1) " - ${s.name}" else ""
+                                            val target = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
+                                            val n = target.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) }
+                                            WriterLog.i("Sheets: PDF of $n pages, ${target.length() / 1024} KB")
+                                            target
+                                        } }
+                                        message = result.fold({ "Saved ${it.name} beside the spreadsheet" }, { WriterLog.e("Sheets: PDF", it); "Could not make the PDF." })
+                                    }
+                                })
+                                DropdownMenuItem(text = { Text("Print") }, onClick = {
+                                    menu = false
+                                    val s = sheet ?: return@DropdownMenuItem; val b = book ?: return@DropdownMenuItem; val l = layout ?: return@DropdownMenuItem
+                                    scope.launch {
+                                        val pdf = withContext(Dispatchers.IO) { runCatching {
+                                            File(context.cacheDir, "print.pdf").also { out -> out.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) } }
+                                        }.onFailure { WriterLog.e("Sheets: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+                                        context.getSystemService(android.print.PrintManager::class.java)?.print(f.nameWithoutExtension, PdfPrintAdapter(pdf, f.nameWithoutExtension), null)
+                                        WriterLog.i("Sheets: print ${pdf.length() / 1024} KB")
+                                    }
+                                })
                             }
                             DropdownMenuItem(text = { Text("Show formulas") }, leadingIcon = { Icon(painterResource(R.drawable.ic_functions), null) },
                                 trailingIcon = { if (formulas) Icon(painterResource(R.drawable.ic_check), null) },
@@ -269,6 +301,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             }
         }
         book?.let { b -> SheetTabs(b, index, sheet) { i -> WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; index = i } }
+    }
+    message?.let { m ->
+        Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
+                Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            }
+        }
+    }
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
@@ -781,6 +821,18 @@ internal class SheetPainter(
         frames++; if (ms > 32) slow++; worst = max(worst, ms)
     }
 
+    /** One printed page ([SheetPages]): its title rows, then its rows, at the pages' scale, from the margins. */
+    fun printPage(c: android.graphics.Canvas, pages: SheetPages, page: SheetPage, grid: Boolean) {
+        val k = pages.k
+        val x0 = colX[page.cols.first]; val w = (colX[page.cols.last + 1] - x0) * k
+        var y = pages.top
+        page.titles?.let { t ->
+            val h = (rowY[t.last + 1] - rowY[t.first]) * k
+            pane(c, pages.left, y, w, h, x0, rowY[t.first], k, null, NO_MARKS, false, printing = true, gridLines = grid); y += h
+        }
+        pane(c, pages.left, y, w, (rowY[page.rows.last + 1] - rowY[page.rows.first]) * k, x0, rowY[page.rows.first], k, null, NO_MARKS, false, printing = true, gridLines = grid)
+    }
+
     fun report() { if (frames > 1) WriterLog.i("Sheets: $frames frames drawn, $slow over 32 ms, the slowest $worst ms") }
 
     private fun headers(c: android.graphics.Canvas, w: Float, h: Float, x: Float, y: Float, s: Float, sel: SheetRange?) {
@@ -872,7 +924,8 @@ internal class SheetPainter(
     }
 
     /** One pane: the sheet from ([sx0], [sy0]) drawn at ([ox], [oy]) on the screen, [w]×[h] of it, [s] screen pixels a sheet pixel. */
-    private fun pane(c: android.graphics.Canvas, ox: Float, oy: Float, w: Float, h: Float, sx0: Float, sy0: Float, s: Float, sel: SheetRange?, marks: SheetMarks, ranged: Boolean) {
+    private fun pane(c: android.graphics.Canvas, ox: Float, oy: Float, w: Float, h: Float, sx0: Float, sy0: Float, s: Float, sel: SheetRange?, marks: SheetMarks, ranged: Boolean,
+                     printing: Boolean = false, gridLines: Boolean = sheet.grid) {
         if (w <= 0 || h <= 0) return
         c.save()
         c.clipRect(ox, oy, ox + w, oy + h)
@@ -950,7 +1003,7 @@ internal class SheetPainter(
         }
 
         // The grid: line by line, none inside a merged range, under long words, or between two filled cells.
-        if (sheet.grid) {
+        if (gridLines) {
             var n = 0
             fun add(x1: Float, y1: Float, x2: Float, y2: Float) {
                 if (n + 4 > lines.size) lines = lines.copyOf(lines.size * 2)
@@ -986,10 +1039,10 @@ internal class SheetPainter(
             st.top?.let { edge(c, it, l, t, rt, t, s) }; st.bottom?.let { edge(c, it, l, b, rt, b, s) }
         }
 
-        // A comment's red corner, as Excel marks one.
+        // A comment's red corner, as Excel marks one (not on paper).
         fill.color = 0xFFE81123.toInt()
         val u = 7 * density / s
-        for (r in r0..r1) for (k in c0..c1) {
+        if (!printing) for (r in r0..r1) for (k in c0..c1) {
             if (at(r, k)?.note == null) continue
             val g = merge(r, k) ?: SheetRange(r, k, r, k)
             val x = colX[g.c2 + 1]; val y = rowY[g.r1]
@@ -1122,5 +1175,22 @@ internal class SheetPainter(
         c.restore()
     }
 
-    companion object { val EXCEL_GREEN_ARGB = 0xFF107C41.toInt() }
+    companion object {
+        val EXCEL_GREEN_ARGB = 0xFF107C41.toInt()
+        private val NO_MARKS = SheetMarks(emptySet(), -1L)
+
+        /** The sheet as Excel prints it, one PDF page a page (Export PDF and Print). */
+        fun pdf(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, out: java.io.OutputStream, density: Float): Int {
+            val pages = sheetPages(sheet, layout)
+            val painter = SheetPainter(sheet, styles, density, layout)
+            val doc = android.graphics.pdf.PdfDocument()
+            pages.pages.forEachIndexed { i, p ->
+                val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pages.width.toInt(), pages.height.toInt(), i + 1).create())
+                painter.printPage(page.canvas, pages, p, sheet.print.grid)
+                doc.finishPage(page)
+            }
+            doc.writeTo(out); doc.close()
+            return pages.pages.size
+        }
+    }
 }

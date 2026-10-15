@@ -35,8 +35,8 @@ internal class SheetLayout(
         fun of(sheet: Sheet, pins: List<Int> = emptyList(), filters: Map<Int, Set<String>> = emptyMap(), sort: SheetSort? = null, freeze: Int? = null): SheetLayout {
             val frozenRows = freeze ?: sheet.frozenRows
             // As far as the cells and the drawings over them go.
-            val drawnCols = sheet.drawings.maxOfOrNull { max(it.col, it.toCol) + 1 + (it.width / sheet.defaultColWidth).toInt() } ?: 0
-            val drawnRows = sheet.drawings.maxOfOrNull { max(it.row, it.toRow) + 1 + (it.height / sheet.defaultRowHeight).toInt() } ?: 0
+            val drawnCols = sheet.drawings.maxOfOrNull { drawingEnd(sheet, it).second + 1 } ?: 0
+            val drawnRows = sheet.drawings.maxOfOrNull { drawingEnd(sheet, it).first + 1 } ?: 0
             val totalCols = maxOf(sheet.cols, sheet.frozenCols, drawnCols) + MORE_COLS
             val totalRows = maxOf(sheet.rows, sheet.frozenRows, drawnRows) + MORE_ROWS
             // Columns: the pinned ones in the order pinned, then the file's frozen ones, then the rest.
@@ -99,6 +99,78 @@ internal class SheetLayout(
             return counts.entries.sortedWith { a, b -> byRow.compare(first.getValue(a.key), first.getValue(b.key)) }.map { it.key to it.value }
         }
     }
+}
+
+/**
+ * How a sheet prints (Excel's Page Layout): portrait or landscape, a scale or "fit to N pages wide/tall", the margins in
+ * inches (left, right, top, bottom), gridlines or not (Excel prints none unless asked), the print area, the rows
+ * printed at the top of every page.
+ */
+internal data class SheetPrint(
+    val landscape: Boolean = false, val scale: Int = 100, val fitWidth: Int? = null, val fitHeight: Int? = null,
+    val grid: Boolean = false, val margins: List<Float> = listOf(0.7f, 0.7f, 0.75f, 0.75f),
+    val area: SheetRange? = null, val titles: IntRange? = null, val letter: Boolean = false,
+)
+
+/** The last row and column a drawing covers: its end cell, or as far as its size reaches through the rows' heights and columns' widths. */
+internal fun drawingEnd(sheet: Sheet, d: SheetDrawing): Pair<Int, Int> {
+    if (d.toRow >= 0) return d.toRow to d.toCol
+    var r = d.row; var h = d.dy + d.height
+    while (h > sheet.height(r) && r < d.row + 10_000) { h -= sheet.height(r); r++ }
+    var c = d.col; var w = d.dx + d.width
+    while (w > sheet.width(c) && c < 16383) { w -= sheet.width(c); c++ }
+    return r to c
+}
+
+/** A printed page: the rows and columns on it (as drawn), and the title rows above them. */
+internal data class SheetPage(val rows: IntRange, val cols: IntRange, val titles: IntRange?)
+
+/** The pages: their size and margins in points, how many points a sheet pixel takes, each page's cells. */
+internal class SheetPages(val width: Float, val height: Float, val left: Float, val top: Float, val k: Float, val pages: List<SheetPage>)
+
+/**
+ * A sheet cut into pages as Excel prints it: the print area (else every used cell, as drawn: a filter's hidden rows are
+ * not printed), at the file's scale or fitted to its pages, cut at whole columns and rows, down then over.
+ */
+internal fun sheetPages(sheet: Sheet, layout: SheetLayout, print: SheetPrint = sheet.print): SheetPages {
+    var w = if (print.letter) 612f else 595f; var h = if (print.letter) 792f else 842f
+    if (print.landscape) { val t = w; w = h; h = t }
+    val (ml, mr, mt, mb) = print.margins.map { it * 72 }
+    val pw = w - ml - mr; val ph = h - mt - mb
+    // The cells to print, as drawn.
+    val area = print.area
+    val usedRows = max(sheet.rows, sheet.drawings.maxOfOrNull { drawingEnd(sheet, it).first + 1 } ?: 0)
+    val usedCols = max(sheet.cols, sheet.drawings.maxOfOrNull { drawingEnd(sheet, it).second + 1 } ?: 0)
+    val rows = layout.rows.indices.filter { d -> val r = layout.rows[d]; if (area != null) r in area.r1..area.r2 else r < usedRows }
+    val cols = layout.cols.indices.filter { d -> val c = layout.cols[d]; if (area != null) c in area.c1..area.c2 else c < usedCols }
+    if (rows.isEmpty() || cols.isEmpty()) return SheetPages(w, h, ml, mt, 0.75f, emptyList())
+    val titles = print.titles?.let { t -> (t.first..t.last).map(layout::row).filter { it >= 0 } }?.takeIf { it.isNotEmpty() }?.let { it.min()..it.max() }
+    fun width(d: Int) = sheet.width(layout.cols[d])
+    fun height(d: Int) = sheet.height(layout.rows[d])
+    val body = rows.filter { titles == null || it !in titles }
+    val titleH = titles?.sumOf { height(it).toDouble() }?.toFloat() ?: 0f
+    // Points a sheet pixel takes: 3/4 at 100 %; fitted, as small as the pages asked for need (never under 10 %).
+    var k = 0.75f * print.scale / 100
+    if (print.fitWidth != null || print.fitHeight != null) {
+        k = 0.75f
+        print.fitWidth?.takeIf { it > 0 }?.let { n -> k = min(k, pw * n / cols.sumOf { width(it).toDouble() }.toFloat()) }
+        print.fitHeight?.takeIf { it > 0 }?.let { n -> k = min(k, ph * n / (body.sumOf { height(it).toDouble() }.toFloat() + titleH * n)) }
+        k = max(k, 0.075f)
+    }
+    /** Whole columns or rows to a page: as many as fit, at least one. */
+    fun bands(list: List<Int>, size: (Int) -> Float, room: Float): List<IntRange> {
+        val out = ArrayList<IntRange>(); var start = 0; var used = 0f
+        for (i in list.indices) {
+            val s = size(list[i]) * k
+            if (i > start && used + s > room + 0.01f) { out += list[start]..list[i - 1]; start = i; used = 0f }
+            used += s
+        }
+        if (start < list.size) out += list[start]..list.last()
+        return out
+    }
+    val colBands = bands(cols, ::width, pw)
+    val rowBands = bands(body, ::height, ph - titleH * k)
+    return SheetPages(w, h, ml, mt, k, colBands.flatMap { c -> rowBands.map { r -> SheetPage(r, c, titles) } })
 }
 
 /** The chosen cells as text to paste: a tab between cells, a new line between rows (Excel's and LibreOffice's own way). */

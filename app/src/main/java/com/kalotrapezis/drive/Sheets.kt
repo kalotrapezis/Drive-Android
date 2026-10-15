@@ -140,6 +140,8 @@ internal class Sheet(
     val drawings: List<SheetDrawing> = emptyList(),
     /** Conditional formatting's data bars, by cell. */
     val bars: Map<Long, SheetBar> = emptyMap(),
+    /** How the file prints it: page setup, print area, rows on every page. */
+    val print: SheetPrint = SheetPrint(),
 ) {
     /** A cell's look: the workbook's [styles], or this sheet's own [looks]. */
     fun look(i: Int, styles: List<SheetStyle>): SheetStyle? = if (i >= LOOKS) looks.getOrNull(i - LOOKS) else styles.getOrNull(i)
@@ -328,6 +330,7 @@ internal object Sheets {
         val strings = ArrayList<String>()
         val styles = ArrayList<SheetStyle>()
         val dxfs = ArrayList<SheetDxf>()
+        val printNames = HashMap<String, Pair<String?, String?>>()
         val tableStyles = HashMap<String, Map<String, SheetDxf>>()
         var theme = IntArray(0)
         var customIndexed: List<Int>? = null
@@ -368,9 +371,13 @@ internal object Sheets {
             bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let(parts)?.let(::readStyles)
             if (styles.isEmpty()) styles += SheetStyle()
             val active = wb.kid("bookViews")?.kid("workbookView")?.attr("activeTab")?.toIntOrNull() ?: 0
-            val found = wb.kid("sheets")?.kids("sheet").orEmpty().mapNotNull { s ->
+            // Print areas and rows printed on every page: workbook names kept for each sheet (localSheetId).
+            val names = wb.kid("definedNames")?.kids("definedName").orEmpty()
+            fun named(name: String, sheet: Int) = names.firstOrNull { it.attr("name") == name && it.attr("localSheetId")?.toIntOrNull() == sheet }?.textContent
+            val found = wb.kid("sheets")?.kids("sheet").orEmpty().mapIndexedNotNull { i, s ->
                 val rid = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id").ifEmpty { s.attr("r:id") ?: "" }
-                val path = bookRels[rid] ?: return@mapNotNull null
+                val path = bookRels[rid] ?: return@mapIndexedNotNull null
+                printNames[path] = named("_xlnm.Print_Area", i) to named("_xlnm.Print_Titles", i)
                 SheetTab(s.attr("name") ?: "Sheet", s.attr("state").let { it == "hidden" || it == "veryHidden" }) to path
             }
             if (found.isEmpty()) error("No sheets.")
@@ -501,6 +508,7 @@ internal object Sheets {
             val tableParts = ArrayList<String>()
             var drawingPart: String? = null
             val rules = ArrayList<SheetRule>()
+            val page = HashMap<String, String>() // pageSetup, pageSetUpPr, printOptions and pageMargins, as they are
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
@@ -526,6 +534,7 @@ internal object Sheets {
                     if (ext > 0) return // Excel 2010's copies of rules (and other extensions) are left out
                     when (local) {
                         "conditionalFormatting" -> cfRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef)
+                        "pageSetup", "pageSetUpPr", "printOptions", "pageMargins" -> for (i in 0 until at.length) page["$local.${at.getLocalName(i)}"] = at.getValue(i)
                         "cfRule" -> { rule = (0 until at.length).associate { at.getLocalName(it) to at.getValue(it) }; formulas.clear(); cfvos.clear(); colors.clear() }
                         "formula" -> if (rule != null) { formula.setLength(0); into = formula }
                         "cfvo" -> if (rule != null) cfvos += SheetCfvo(at.a("type") ?: "min", at.a("val"))
@@ -649,7 +658,25 @@ internal object Sheets {
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
-                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars)
+                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars,
+                printOf(page, printNames[path]))
+        }
+
+        /** Excel's page setup and the sheet's print names as a [SheetPrint]. */
+        fun printOf(page: Map<String, String>, names: Pair<String?, String?>?): SheetPrint {
+            fun on(k: String) = page[k].let { it == "1" || it == "true" }
+            val fit = on("pageSetUpPr.fitToPage")
+            val area = names?.first?.split(',')?.firstOrNull()?.substringAfterLast('!')?.replace("$", "")?.let(::rangeRef)
+            val titles = names?.second?.split(',')?.firstNotNullOfOrNull { Regex("""!\$?(\d+):\$?(\d+)$""").find(it) }?.let { it.groupValues[1].toInt() - 1..it.groupValues[2].toInt() - 1 }
+            return SheetPrint(
+                landscape = page["pageSetup.orientation"] == "landscape",
+                scale = page["pageSetup.scale"]?.toIntOrNull()?.coerceIn(10, 400) ?: 100,
+                fitWidth = if (fit) page["pageSetup.fitToWidth"]?.toIntOrNull() ?: 1 else null,
+                fitHeight = if (fit) page["pageSetup.fitToHeight"]?.toIntOrNull() ?: 1 else null,
+                grid = on("printOptions.gridLines"),
+                margins = listOf("left", "right", "top", "bottom").map { page["pageMargins.$it"]?.toFloatOrNull() ?: if (it == "left" || it == "right") 0.7f else 0.75f },
+                area = area, titles = titles, letter = page["pageSetup.paperSize"] == "1",
+            )
         }
 
         /** The sheet's drawing part: each anchor's picture, chart or text box, where it sits. */

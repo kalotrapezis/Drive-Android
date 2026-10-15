@@ -5051,7 +5051,7 @@ private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () 
 }
 
 /** File › Print: a PDF already made, handed to Android's printing as it is. */
-private class PdfPrintAdapter(val pdf: File, val title: String) : android.print.PrintDocumentAdapter() {
+internal class PdfPrintAdapter(val pdf: File, val title: String) : android.print.PrintDocumentAdapter() {
     override fun onLayout(old: android.print.PrintAttributes?, new: android.print.PrintAttributes, cancel: android.os.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
         if (cancel?.isCanceled == true) { callback.onLayoutCancelled(); return }
         callback.onLayoutFinished(android.print.PrintDocumentInfo.Builder("$title.pdf").setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), old != new)

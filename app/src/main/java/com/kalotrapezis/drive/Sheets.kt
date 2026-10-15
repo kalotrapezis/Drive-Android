@@ -102,6 +102,8 @@ internal class Sheet(
     val grid: Boolean = true,
     val colStyles: Map<Int, Int> = emptyMap(), val rowStyles: Map<Int, Int> = emptyMap(),
     val tab: Int? = null, val hidden: Boolean = false,
+    /** The file's AutoFilter: the table its header buttons filter. */
+    val autoFilter: SheetRange? = null,
 ) {
     operator fun get(r: Int, c: Int): SheetCell? = cells[key(r, c)]
     fun width(c: Int) = if (c in hiddenCols) 0f else colWidths[c] ?: defaultColWidth
@@ -432,7 +434,7 @@ internal object Sheets {
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
-            var tab: Int? = null
+            var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
             sax(bytes, object : DefaultHandler() {
@@ -485,6 +487,7 @@ internal object Sheets {
                         "rPh" -> phonetic++
                         "t" -> if (inIs && phonetic == 0) into = inline
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
+                        "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
                         "hyperlink" -> {
                             val range = at.a("ref")?.let(::rangeRef) ?: return
                             val target = at.a("id")?.let { rels[it] }?.removePrefix("ext:") ?: at.a("location")?.let { "#$it" } ?: return
@@ -538,7 +541,7 @@ internal object Sheets {
             maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
-                merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden)
+                merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter)
         }
     }
 

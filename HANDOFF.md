@@ -83,6 +83,11 @@
 >   in Greek or English (`languageOf`), equations said in words in that language (`OfficeMath.spoken`: "x ίσον a συν b
 >   διά 2", "the sum from i equals 1 to n of x sub i"), a "Reading aloud" bar with Stop. `ReadAloudTest`; all three on
 >   the phone (the user heard it read, and asked for the equations — added).
+>   **Read aloud speed** (asked 15 Oct): Settings › Office, 0.75× · 1× · 1.25× · 1.5× · 2×
+>   (`TextEditorStore.readAloudSpeed`, `setSpeechRate` at each start).
+> - OFFICE_FEATURES' leftover "[ ]" items that were done are ticked: view-only opening as pages, the pages showing what
+>   the file sets, tablet view, headers/page numbers/tables on the pages, built on the PDF layout, the Picture tab, line
+>   numbers and hyphenation, Tetra's own spelling dictionaries (Hunspell, Greek and English, in the app's assets).
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone

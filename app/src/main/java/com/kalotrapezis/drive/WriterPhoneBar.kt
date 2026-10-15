@@ -67,6 +67,9 @@ internal fun rememberDictation(said: (String) -> Unit): (() -> Unit)? {
 
 /** Read aloud (Review): Android's text-to-speech, a paragraph at a time, each in its own language (Greek or English). */
 internal class ReadAloud(context: android.content.Context) {
+    private val store = TextEditorStore(context)
+    /** Settings › Office › Read aloud speed. */
+    private val speed get() = store.readAloudSpeed
     var speaking by mutableStateOf(false); private set
     /** The paragraph being read (an index into what was given). */
     var at by mutableIntStateOf(-1); private set
@@ -87,6 +90,7 @@ internal class ReadAloud(context: android.content.Context) {
     fun read(paragraphs: List<String>, from: Int): Boolean {
         if (!ready) return false
         tts.stop()
+        tts.setSpeechRate(speed)
         last = paragraphs.indices.lastOrNull { it >= from && paragraphs[it].isNotBlank() } ?: return false
         var language: Locale? = null
         paragraphs.forEachIndexed { i, t ->

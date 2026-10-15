@@ -17,15 +17,15 @@ too; it just can never beat a big screen, so on the phone Claude decides how eac
 to Claude). A document opens **view only** (as LibreOffice does), with **Edit** at the top.
 
 ### FIRST — proper pages, viewing before editing (asked 2026-09-27)
-- [ ] A document opens **view only**, as pages (Print layout), like LibreOffice: the file's page size and margins, a
+- [x] A document opens **view only**, as pages (Print layout), like LibreOffice: the file's page size and margins, a
       gap between pages, scroll and pinch-zoom, "Page 3 of 12"; **Edit** at the top switches to the editor and back
-- [ ] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
+- [x] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
       fonts as close as the phone has them
-- [ ] **Tablet view** (asked 2026-09-27): the text must not stretch across the whole screen — a page of its real width,
+- [x] **Tablet view** (asked 2026-09-27): the text must not stretch across the whole screen — a page of its real width,
       centred, zoomable (landscape tablet: one page, or two side by side); the editor too keeps the page's width
 - [x] Tablet ribbon: a tab's tools in one line, close together and centred (no pages, which spread them apart)
-- [ ] Then: header and footer, page numbers, tables
-- [ ] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
+- [x] Then: header and footer, page numbers, tables
+- [x] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
       LibreOffice on the user's documents
 
 **Order (agreed 29 Sep 2026, from Word and OnlyOffice's ribbons the user sent):** finish Home and Insert first, then
@@ -100,7 +100,7 @@ one pass once the tabs' features are done.
 - [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
 - [x] Pictures shown on the page (Writer draws them over the text; charts, shapes and text boxes drawn as they are; a floating one in line in the typing view, in its place on the pages)
 - [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt
-- [ ] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
+- [x] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
       - **Resize** in a window: horizontal xx px · vertical xx px (not by hand), **Crop** in a window (Photos' crop), **Save picture as…** (take a picture out of a document
      someone sent, into the phone's photos/Files), **Delete**.
       - **Wrapping**: in line with text (standard) · square / around text · top and bottom (nothing at its sides) ·
@@ -174,7 +174,7 @@ one pass once the tabs' features are done.
 - [x] Margins (Normal = 1 in/APA, Narrow, Moderate, Wide, 2.5 cm, or custom in cm/in), orientation, size (A4, Letter, Legal, A5, A3) — Layout tab, one Page setup page; every section of a Word file (pgSz/pgMar, header distances kept), every page layout of an ODT (the header band allowed for); a tablet shows a page too wide smaller rather than reflowing
 - [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) ; column breaks, columns in part of a document through continuous section breaks (15 Oct); in .odt a section's own columns (LibreOffice's text:section), files' sections kept and shown, page styles changing mid-document start a page of their size (15 Oct, evening) — [ ] balancing a continuous section
 - [x] Page break, blank page (also on Layout); Layout › Breaks: column break, section break next page / continuous (15 Oct; .odt: LibreOffice's text:section, 15 Oct evening)
-- [ ] Line numbers, hyphenation
+- [x] Line numbers, hyphenation (Layout, 1 Oct — see Insert's entries)
 - [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
 - [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup (15 Oct; .odt too, 15 Oct evening) — [ ] a rotation handle
 
@@ -185,11 +185,11 @@ one pass once the tabs' features are done.
 - [x] Captions, cross-references (References › Caption, Cross-reference, Update fields — 14 Oct)
 
 ### Review
-- [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off — [ ] Tetra's own dictionaries (works without Gboard)
+- [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off ; Tetra's own dictionaries (LibreOffice's Greek and English Hunspell ones in the app: works without Gboard)
 - [x] Word count (File › About this file); live in the top bar on the tablet and the phone, with the selection's (15 Oct)
 - [x] Comments: read, add, delete, reply, resolve / reopen (Word's commentsExtended; LibreOffice's loext:parent-name / resolved), edit a comment's words (14 Oct)
 - [x] Track changes in Word files (Review tab): shown as Word's All Markup (inserted underlined, deleted struck through, in the author's colour; a bar beside changed lines; ¶ for split/joined paragraphs), the change at the cursor named (what · who · when), Previous / Next, Accept / Reject (then on to the next), Accept all / Reject all (tables' row and formatting changes too); kept on saving — a corrected .docx is no longer copy-only ; **recording** (Review › Track changes, Word files: typing is your insertion, Backspace/Delete strike through and walk on past, Enter/joins are paragraph marks, under your name — asked once) — [ ] tracking remembered in the file (Word's trackRevisions), the typed insertion's colour before the next redraw (underlined at once), recording pasted/Writer-made changes, ODT's tracked changes (still copy-only), reject restoring a paragraph's style/list
-- [x] Read aloud (Review): Android's text-to-speech from the cursor, each paragraph in Greek or English, equations said in words; a bar with Stop (15 Oct, evening)
+- [x] Read aloud (Review): Android's text-to-speech from the cursor, each paragraph in Greek or English, equations said in words; a bar with Stop (15 Oct, evening); its speed in Settings › Office (0.75×–2×)
 
 ### View
 - [x] Zoom

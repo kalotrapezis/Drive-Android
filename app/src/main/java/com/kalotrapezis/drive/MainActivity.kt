@@ -1521,6 +1521,10 @@ private fun SettingsTab(
                     }
                     Switch(checked = auto, onCheckedChange = { auto = it; office.autoSave = it })
                 }
+                var speed by remember { mutableStateOf(office.readAloudSpeed) }
+                Text("Read aloud speed", style = MaterialTheme.typography.titleSmall)
+                Text("How fast Review › Read aloud speaks (1× is normal).", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
             }
         }
         item {

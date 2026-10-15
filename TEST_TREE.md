@@ -27,6 +27,7 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] Mic → Google's voice typing → the words go in at the cursor (Claude)
   - [x] Review › Read aloud → it speaks from the cursor, a bar with Stop; equations in words (you heard it)
   - [ ] Hide keyboard on the bar → the keyboard goes, the ribbon island is back
+  - [ ] Settings › Office › Read aloud speed 1.5× → Read aloud is faster
 
 # Test tree — Writer's Word gaps (15 Oct 2026)
 

@@ -267,10 +267,14 @@ internal object Sheets {
 
     /** "B12" → (11, 1); null when it is not a cell's name. */
     fun cellRef(ref: String): Pair<Int, Int>? {
-        val m = Regex("""^\$?([A-Za-z]{1,3})\$?(\d+)$""").find(ref.trim()) ?: return null
-        val col = m.groupValues[1].uppercase().fold(0) { a, ch -> a * 26 + (ch - 'A' + 1) } - 1
-        val row = m.groupValues[2].toIntOrNull()?.minus(1) ?: return null
-        return if (row < 0 || col > 16383) null else row to col
+        // By hand: every cell of a sheet has one (a regular expression here took most of a big sheet's reading).
+        var i = 0; val s = ref.trim(); var col = 0; var row = 0; var letters = 0; var digits = 0
+        if (i < s.length && s[i] == '$') i++
+        while (i < s.length && s[i].isLetter()) { val ch = s[i].uppercaseChar(); if (ch !in 'A'..'Z') return null; col = col * 26 + (ch - 'A' + 1); letters++; i++ }
+        if (i < s.length && s[i] == '$') i++
+        while (i < s.length && s[i] in '0'..'9') { row = row * 10 + (s[i] - '0'); digits++; i++; if (digits > 7) return null }
+        if (i != s.length || letters !in 1..3 || digits == 0) return null
+        return if (row < 1 || col - 1 > 16383) null else row - 1 to col - 1
     }
 
     fun rangeRef(ref: String): SheetRange? {
@@ -525,6 +529,7 @@ internal object Sheets {
             val merges = ArrayList<SheetRange>()
             val links = HashMap<Long, String>()
             val tableParts = ArrayList<String>()
+            val empties = HashMap<Int, SheetCell>()
             var drawingPart: String? = null
             val rules = ArrayList<SheetRule>()
             val page = HashMap<String, String>() // pageSetup, pageSetUpPr, printOptions and pageMargins, as they are
@@ -657,7 +662,7 @@ internal object Sheets {
                         else -> raw.trim().toDoubleOrNull()?.let { n ->
                             val shown = runCatching { format.format(n, style.format) }.getOrElse { SheetFormat.Shown(format.general(n)) }
                             SheetCell(shown.text, SheetKind.Number, n, style = s, color = shown.color)
-                        } ?: SheetCell("", SheetKind.Empty, style = s)
+                        } ?: empties.getOrPut(s) { SheetCell("", SheetKind.Empty, style = s) } // one for every empty cell of a look
                     }.let { if (formula != null) it.copy(formula = "=$formula", link = hyperlink(formula!!)) else it }
                     if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
                     cells[Sheet.key(r, c)] = cell
@@ -897,10 +902,10 @@ internal object Sheets {
      * use to look at), so an empty bordered form still shows whole.
      */
     internal class Extent {
-        private val rowsAt = java.util.TreeSet<Int>(); private val colsAt = java.util.TreeSet<Int>()
-        fun add(r: Int, c: Int) { rowsAt += r; colsAt += c }
-        fun rows(written: Int) = max(written, rowsAt.floor(written + 100) ?: -1)
-        fun cols(written: Int) = max(written, colsAt.floor(written + 26) ?: -1)
+        private val rowsAt = java.util.BitSet(); private val colsAt = java.util.BitSet()
+        fun add(r: Int, c: Int) { rowsAt.set(r); colsAt.set(c) }
+        fun rows(written: Int) = max(written, rowsAt.previousSetBit(written + 100))
+        fun cols(written: Int) = max(written, colsAt.previousSetBit(written + 26))
     }
 
     // --- .ods ---

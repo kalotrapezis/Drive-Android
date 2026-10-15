@@ -176,6 +176,18 @@
 >   Word 2003, Centred, Casual, Minimalist. `DesignThemesTest`; LibreOffice draws the theme-shaded heading #3F762B;
 >   on the tablet Colours › Green turned the SmartArt green.
 >
+> - **Galleries in the ribbon's place, Standards** (asked 15 Oct, the user's direction: *a touch-first app changes its
+>   UI to the task — the iPhone's idea; nothing on top of the page; no ribbon when it is not needed*). Design › Style set,
+>   Colours and Fonts are no longer drop-down lists or windows: the gallery **replaces the ribbon** — a strip of picture
+>   cards (each style set as a small page in its own faces and colours, palettes as colour bars, font pairs written in
+>   themselves) scrolling sideways, Cancel and OK on it (`DesignGalleryStrip`, WriterDesignGallery.kt). A card tapped
+>   is **applied to the page at once** (a live preview: `openGallery` takes a snapshot; picking another first puts it
+>   back; OK keeps the last as one undo step; Cancel shows the snapshot again and drops the steps). Design's APA 7 paper,
+>   APA level 4 and 5 are gathered in **Design › Standards** (`StandardsDialog`: the APA paper's window, the run-in
+>   headings, the citation style APA/MLA/Chicago). While Standards, Shape options or the Shapes gallery are open the
+>   ribbon steps aside. Next (agreed): handles on a chosen object (resize, rotate), long-press-drag into Position,
+>   the same strips for WordArt, page numbers, lists, headers & footers.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

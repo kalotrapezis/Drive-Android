@@ -2457,11 +2457,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Arrange › Rotate, Group, Ungroup (Phase 2): any angle; two floating ones on a page made one (Word's group), and back.
     var rotating by remember { mutableStateOf<String?>(null) }
     var shapeOptions by remember { mutableStateOf<String?>(null) } // Picture › Shape options: the shape's key
+    var standards by remember { mutableStateOf(false) } // Design › Standards
     var designGallery by remember { mutableStateOf<DesignGallery?>(null) } // Design › Style set / Colours / Fonts
     var galleryChosen by remember { mutableStateOf<Any?>(null) } // the choice being previewed on the page
     var galleryStart by remember { mutableStateOf<WriterSnapshot?>(null) } // the document as it was when the gallery opened
     var galleryUndo by remember { mutableIntStateOf(0) }
     fun openGallery(g: DesignGallery) { galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g }
+    // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
+    fun galleryCancel() { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; WriterLog.i("gallery: cancelled") }
+    fun galleryOk() { while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex); designGallery = null; galleryChosen = null; WriterLog.i("gallery: kept") }
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
@@ -2717,6 +2721,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
         message = (colors?.label?.let { "Colours: $it" } ?: "") + (fonts?.label?.let { "Fonts: $it" } ?: "")
         WriterLog.i("theme: ${colors?.name} ${fonts?.name}")
+    }
+    /** References › Style (and Design › Standards): every citation and the list written again in [c]. */
+    fun setCiteStyle(c: CiteStyle) = change {
+        meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
+        message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
     }
     fun applyStyleSet(set: StyleSet) = change {
         val cur = current()
@@ -3393,7 +3402,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         var ribbonOverKeyboard by remember { mutableStateOf(false) }
         LaunchedEffect(imeOpen) { if (!imeOpen) ribbonOverKeyboard = false }
         val keyboardBar = !island && !ribbonOverKeyboard && LocalConfiguration.current.screenWidthDp < 700
-        if (!viewing && !reading) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+        // A Design gallery: in the ribbon's place, a strip of its choices (asked 15 Oct); the page above shows the one tapped.
+        if (!viewing && !reading) designGallery?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk,
+            pickSet = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyStyleSet(it) },
+            pickColors = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(it, null) },
+            pickFonts = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(null, it) }, modifier = Modifier.align(Alignment.BottomCenter)) }
+        // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
+        if (!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
@@ -3802,10 +3817,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
-                    RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
-                    // APA's run-in headings (levels 4 and 5): the chosen words, or the paragraph's first sentence, bold at its start.
-                    RibbonButton("APA level 4", w, enabled = loaded) { apaRunIn(4) }
-                    RibbonButton("APA level 5", w, enabled = loaded) { apaRunIn(5) }
+                    // A paper's standards in one window (asked 15 Oct): APA 7's paper and run-in headings, the citation style.
+                    RibbonButton("Standards", w, R.drawable.ic_school, enabled = loaded) { standards = true }
                     // Word's Document Formatting gallery, Colours and Fonts (its theme): windows of pictures of the choices.
                     RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.StyleSets) }
                     RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { openGallery(DesignGallery.Colours) }
@@ -3934,10 +3947,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         var styling by remember { mutableStateOf(false) }
                         RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { styling = true }
                         DropdownMenu(styling, { styling = false }) {
-                            CiteStyle.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; change {
-                                meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
-                                message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
-                            } }) }
+                            CiteStyle.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; setCiteStyle(c) }) }
                         }
                     }
                 }, {
@@ -4077,13 +4087,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }
-    // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
-    designGallery?.let { g -> DesignGalleryDialog(g, galleryChosen,
-        cancel = { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; WriterLog.i("gallery: cancelled") },
-        ok = { while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex); designGallery = null; galleryChosen = null; WriterLog.i("gallery: kept") },
-        pickSet = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyStyleSet(it) },
-        pickColors = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(it, null) },
-        pickFonts = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(null, it) }) }
+    if (standards) StandardsDialog(meta.citeStyle, { standards = false }, paper = { standards = false; apaPage = true },
+        runIn = { level -> standards = false; apaRunIn(level) }, citeStyle = { c -> standards = false; setCiteStyle(c) })
     shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
         ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
             shapeOptions = null

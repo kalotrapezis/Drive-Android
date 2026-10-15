@@ -140,6 +140,8 @@ internal class Sheet(
     val drawings: List<SheetDrawing> = emptyList(),
     /** Conditional formatting's data bars, by cell. */
     val bars: Map<Long, SheetBar> = emptyMap(),
+    /** Conditional formatting's icons, by cell. */
+    val icons: Map<Long, SheetIcon> = emptyMap(),
     /** How the file prints it: page setup, print area, rows on every page. */
     val print: SheetPrint = SheetPrint(),
 ) {
@@ -562,6 +564,7 @@ internal object Sheets {
                         "cfRule" -> { rule = (0 until at.length).associate { at.getLocalName(it) to at.getValue(it) }; formulas.clear(); cfvos.clear(); colors.clear() }
                         "formula" -> if (rule != null) { formula.setLength(0); into = formula }
                         "cfvo" -> if (rule != null) cfvos += SheetCfvo(at.a("type") ?: "min", at.a("val"))
+                        "iconSet" -> rule?.let { rule = it + mapOf("iconSet" to (at.a("iconSet") ?: "3TrafficLights1"), "showValue" to (at.a("showValue") ?: "1"), "reverse" to (at.a("reverse") ?: "0")) }
                         "color" -> if (rule != null) color(at)?.let { colors += it }
                         "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false }
                         "pane" -> if (views == 1 && at.a("state")?.startsWith("frozen") == true) {
@@ -627,7 +630,9 @@ internal object Sheets {
                                 a["dxfId"]?.toIntOrNull()?.let { dxfs.getOrNull(it) }, a["text"], a["rank"]?.toIntOrNull() ?: 10,
                                 flag("percent", false), flag("bottom", false), flag("aboveAverage", true), flag("equalAverage", false), flag("stopIfTrue", false),
                                 scale = if (type == "colorScale") cfvos.zip(colors) else emptyList(),
-                                bar = colors.firstOrNull().takeIf { type == "dataBar" }, barEnds = if (type == "dataBar") cfvos.toList() else emptyList())
+                                bar = colors.firstOrNull().takeIf { type == "dataBar" }, barEnds = if (type == "dataBar") cfvos.toList() else emptyList(),
+                                icons = a["iconSet"], iconAt = if (type == "iconSet") cfvos.toList() else emptyList(),
+                                showValue = a["showValue"] != "0" && a["showValue"] != "false", reverse = a["reverse"] == "1" || a["reverse"] == "true")
                             rule = null
                         }
                         "v", "f", "t" -> into = null
@@ -674,7 +679,8 @@ internal object Sheets {
                 .onFailure { WriterLog.w("Sheets: comments could not be read", it) }
             val looks = ArrayList<SheetStyle>()
             tableParts.forEach { p -> runCatching { parts(p)?.let { table(it, cells, looks) } }.onFailure { WriterLog.w("Sheets: a table could not be read", it) } }
-            val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks) }
+            val icons = HashMap<Long, SheetIcon>()
+            val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons) }
                 .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
             if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
@@ -682,7 +688,7 @@ internal object Sheets {
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
-                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars,
+                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
                 printOf(page, printNames[path]))
         }
 
@@ -1106,6 +1112,7 @@ internal object Sheets {
                 var drawings = ArrayList<SheetDrawing>()
                 // LibreOffice's conditional formats (calcext:), in the order they come: the first wins
                 var rules = ArrayList<SheetRule>(); var cfRanges = emptyList<SheetRange>(); val entries = ArrayList<Pair<SheetCfvo, Int?>>(); var barColor: Int? = null
+                var iconSet: String? = null; var iconShow = true
                 fun ranges(address: String?) = address.orEmpty().split(' ').mapNotNull { a -> rangeRef(a.split(':').joinToString(":") { it.substringAfterLast('.').replace("$", "") }) }
 
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
@@ -1163,8 +1170,14 @@ internal object Sheets {
                         "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
                         "conditional-format" -> cfRanges = ranges(at.a("target-range-address"))
                         "condition" -> odsRule(at.a("value").orEmpty(), at.a("apply-style-name"), rules.size)?.let { rules += it }
-                        "color-scale", "data-bar" -> { entries.clear(); barColor = if (local == "data-bar") hex(at.a("positive-color")) ?: 0xFF638EC6.toInt() else null }
-                        "color-scale-entry", "formatting-entry" -> entries += SheetCfvo(at.a("type") ?: "minimum", at.a("value")) to hex(at.a("color"))
+                        "color-scale", "data-bar", "icon-set" -> {
+                            entries.clear(); barColor = if (local == "data-bar") hex(at.a("positive-color")) ?: 0xFF638EC6.toInt() else null
+                            iconSet = if (local == "icon-set") at.a("icon-set-type") ?: "3TrafficLights1" else null; iconShow = at.a("show-value") != "false"
+                        }
+                        "color-scale-entry", "formatting-entry" -> {
+                            entries += SheetCfvo(at.a("type") ?: "minimum", at.a("value")) to hex(at.a("color"))
+                            if (at.a("show-value") == "false") iconShow = false // LibreOffice writes it on the first entry
+                        }
                         "p", "h" -> if (inNote) { if (note.isNotEmpty()) note.append('\n'); inNoteP = true } else if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
                         "s" -> if (inP) repeat(at.a("c")?.toIntOrNull() ?: 1) { text.append(' ') }
                         "tab" -> if (inP) text.append('\t')
@@ -1181,6 +1194,7 @@ internal object Sheets {
                     when (local) {
                         "color-scale" -> rules += SheetRule(cfRanges, rules.size, "colorScale", scale = entries.mapNotNull { (v, c) -> c?.let { v to it } })
                         "data-bar" -> rules += SheetRule(cfRanges, rules.size, "dataBar", bar = barColor, barEnds = entries.map { it.first })
+                        "icon-set" -> rules += SheetRule(cfRanges, rules.size, "iconSet", icons = iconSet, iconAt = entries.map { it.first }, showValue = iconShow)
                     }
                     when (local) {
                         "p", "h" -> { inP = false; inNoteP = false }
@@ -1294,7 +1308,8 @@ internal object Sheets {
 
                 fun endTable() {
                     val looks = ArrayList<SheetStyle>()
-                    val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks) }
+                    val icons = HashMap<Long, SheetIcon>()
+                    val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons) }
                         .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
                     if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
                     merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
@@ -1314,7 +1329,7 @@ internal object Sheets {
                         frozenCols = if (view["HorizontalSplitMode"] == "2") view["HorizontalSplitPosition"]?.toIntOrNull() ?: 0 else 0,
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
-                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars,
+                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
                     )
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read

@@ -1051,7 +1051,16 @@ internal class SheetPainter(
             c.drawPath(funnel, fill)
         }
 
-        for (wd in words) cellText(c, wd.cell, wd.st, wd.left, wd.top, wd.right, wd.bottom, wd.clipL, wd.clipR, wd.r, wd.c)
+        // Conditional formatting's icons, at the cell's left.
+        if (sheet.icons.isNotEmpty()) for (r in r0..r1) for (k in c0..c1) sheet.icons[Sheet.key(rAt[r], cAt[k])]?.let { icon(c, it, colX[k], rowY[r], rowY[r + 1]) }
+
+        for (wd in words) {
+            val ic = sheet.icons[Sheet.key(rAt[wd.r], cAt[wd.c])]
+            if (ic != null && !ic.showValue) continue
+            // Words aligned left move over for the icon.
+            val shift = if (ic != null && align(wd.st, wd.cell) != SheetAlign.Right) min(16f, wd.bottom - wd.top - 4f) + 4f else 0f
+            cellText(c, wd.cell, wd.st, wd.left + shift, wd.top, wd.right, wd.bottom, wd.clipL, wd.clipR, wd.r, wd.c)
+        }
         for (g in shown) {
             val cell = at(g.r1, g.c1) ?: continue
             if (cell.text.isEmpty()) continue
@@ -1078,6 +1087,93 @@ internal class SheetPainter(
             }
         }
         c.restore()
+    }
+
+    /** An icon set's icon (Excel's arrows, lights, symbols, flags, stars, triangles, ratings, quarters, boxes), drawn. */
+    private fun icon(c: android.graphics.Canvas, ic: SheetIcon, left: Float, top: Float, bottom: Float) {
+        val size = min(16f, bottom - top - 4f)
+        if (size <= 3f) return
+        val n = ic.set.firstOrNull()?.digitToIntOrNull() ?: 3
+        val t = if (n > 1) ic.index.toFloat() / (n - 1) else 1f // 0: the least, 1: the most
+        val cx = left + 3f + size / 2; val cy = (top + bottom) / 2; val r = size / 2
+        fun mix(a: Int, b: Int, f: Float): Int {
+            fun ch(x: Int, y: Int) = (x + (y - x) * f).toInt().coerceIn(0, 255)
+            return (0xFF shl 24) or (ch(a shr 16 and 255, b shr 16 and 255) shl 16) or (ch(a shr 8 and 255, b shr 8 and 255) shl 8) or ch(a and 255, b and 255)
+        }
+        val red = 0xFFE0393E.toInt(); val yellow = 0xFFFFC000.toInt(); val green = 0xFF00A651.toInt(); val gray = 0xFF8C8C8C.toInt(); val black = 0xFF262626.toInt()
+        val ryg = if (t < 0.5f) mix(red, yellow, t * 2) else mix(yellow, green, (t - 0.5f) * 2)
+        fill.color = ryg; fill.style = Paint.Style.FILL
+        val p = funnel; p.reset()
+        val set = ic.set
+        when {
+            "Arrows" in set -> {
+                // pointing down for the least, up for the most, through the diagonals
+                fill.color = if ("Gray" in set) gray else ryg
+                c.save(); c.rotate(90f - 180f * t, cx, cy)
+                p.moveTo(cx + r, cy); p.lineTo(cx, cy - r * 0.8f); p.lineTo(cx, cy - r * 0.3f); p.lineTo(cx - r, cy - r * 0.3f)
+                p.lineTo(cx - r, cy + r * 0.3f); p.lineTo(cx, cy + r * 0.3f); p.lineTo(cx, cy + r * 0.8f); p.close()
+                c.drawPath(p, fill); c.restore()
+            }
+            "Triangles" in set -> when (ic.index) {
+                0 -> { fill.color = red; p.moveTo(cx - r, cy - r * 0.5f); p.lineTo(cx + r, cy - r * 0.5f); p.lineTo(cx, cy + r * 0.6f); p.close(); c.drawPath(p, fill) }
+                n - 1 -> { fill.color = green; p.moveTo(cx - r, cy + r * 0.5f); p.lineTo(cx + r, cy + r * 0.5f); p.lineTo(cx, cy - r * 0.6f); p.close(); c.drawPath(p, fill) }
+                else -> { fill.color = yellow; c.drawRect(cx - r, cy - r * 0.2f, cx + r, cy + r * 0.2f, fill) }
+            }
+            "Stars" in set -> {
+                for (i in 0 until 10) { val a = Math.PI * (i / 5.0) - Math.PI / 2; val rr = if (i % 2 == 0) r else r * 0.45f
+                    val x = cx + (rr * kotlin.math.cos(a)).toFloat(); val y = cy + (rr * kotlin.math.sin(a)).toFloat(); if (i == 0) p.moveTo(x, y) else p.lineTo(x, y) }
+                p.close()
+                fill.color = 0xFFFFC000.toInt()
+                if (t >= 1f) c.drawPath(p, fill) else if (t > 0f) { c.save(); c.clipRect(cx - r, cy - r, cx, cy + r); c.drawPath(p, fill); c.restore() }
+                line.color = 0xFFD9A400.toInt(); line.strokeWidth = 1f; line.pathEffect = null; c.drawPath(p, line)
+            }
+            "Flags" in set -> {
+                fill.color = ryg
+                c.drawRect(cx - r * 0.7f, cy - r, cx - r * 0.5f, cy + r, fill.apply { color = black })
+                fill.color = ryg; p.moveTo(cx - r * 0.5f, cy - r); p.lineTo(cx + r, cy - r * 0.45f); p.lineTo(cx - r * 0.5f, cy + r * 0.1f); p.close(); c.drawPath(p, fill)
+            }
+            "Symbols" in set -> {
+                c.drawCircle(cx, cy, r, fill)
+                line.color = 0xFFFFFFFF.toInt(); line.strokeWidth = size / 8; line.pathEffect = null
+                when (ic.index) {
+                    0 -> { c.drawLine(cx - r * 0.4f, cy - r * 0.4f, cx + r * 0.4f, cy + r * 0.4f, line); c.drawLine(cx + r * 0.4f, cy - r * 0.4f, cx - r * 0.4f, cy + r * 0.4f, line) }
+                    n - 1 -> { p.moveTo(cx - r * 0.45f, cy); p.lineTo(cx - r * 0.1f, cy + r * 0.4f); p.lineTo(cx + r * 0.5f, cy - r * 0.4f); c.drawPath(p, line) }
+                    else -> { c.drawLine(cx, cy - r * 0.5f, cx, cy + r * 0.1f, line); c.drawCircle(cx, cy + r * 0.45f, size / 14, fill.apply { color = 0xFFFFFFFF.toInt() }) }
+                }
+            }
+            "Rating" in set -> {
+                val bars = n; val w = size / (bars * 1.5f)
+                for (i in 0 until bars) {
+                    fill.color = if (i <= ic.index) 0xFF2F5597.toInt() else 0xFFD0D7E5.toInt()
+                    val x = cx - r + i * w * 1.5f; val h = size * (i + 1) / bars
+                    c.drawRect(x, cy + r - h, x + w, cy + r, fill)
+                }
+            }
+            "Quarters" in set -> {
+                fill.color = 0xFF404040.toInt(); line.color = 0xFF404040.toInt(); line.strokeWidth = 1f; line.pathEffect = null
+                c.drawCircle(cx, cy, r, line)
+                c.drawArc(cx - r, cy - r, cx + r, cy + r, -90f, 360f * t, true, fill)
+            }
+            "Boxes" in set -> {
+                val h = r * 0.9f
+                for (i in 0 until 4) {
+                    fill.color = if (i < ic.index) 0xFF2F5597.toInt() else 0xFFD0D7E5.toInt()
+                    val x = cx - r + (i % 2) * (h + 1.5f); val y = cy - r + (i / 2) * (h + 1.5f)
+                    c.drawRect(x, y, x + h, y + h, fill)
+                }
+            }
+            else -> {
+                // lights and signs: red, yellow, green (four lights: black the least; red to black: shades)
+                fill.color = when {
+                    "RedToBlack" in set -> mix(black, red, t)
+                    n == 4 && ic.index == 0 -> black
+                    n == 4 -> listOf(red, yellow, green)[ic.index - 1]
+                    else -> ryg
+                }
+                c.drawCircle(cx, cy, r, fill)
+                line.color = 0x40000000; line.strokeWidth = 1f; line.pathEffect = null; c.drawCircle(cx, cy, r, line)
+            }
+        }
     }
 
     private fun drawing(c: android.graphics.Canvas, d: SheetDrawing, box: android.graphics.RectF, s: Float) {

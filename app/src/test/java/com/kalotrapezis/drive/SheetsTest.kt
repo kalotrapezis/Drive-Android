@@ -246,6 +246,21 @@ class SheetsTest {
         assertNull(SheetRules.formula("VLOOKUP(A1,X:Y,2,0)>1", 0, 0, at, cells))
     }
 
+    /** Icon sets (icons.py; LibreOffice's .ods of it): which icon each value gets, a set that hides its values. */
+    @Test fun icons() {
+        for (name in listOf("icons.xlsx", "icons.ods")) {
+            val s = Sheets.read(resource(name), name).sheet(0)
+            fun icon(r: Int, c: Int) = s.icons[Sheet.key(r, c)]
+            // 1…10, thresholds at 0, 33 and 67 %: 1–3, 4–7, 8–10
+            assertEquals(name, listOf(0, 0, 0, 1, 1, 1, 1, 2, 2, 2), (1..10).map { icon(it, 0)?.index })
+            assertEquals(name, "3Arrows", icon(1, 0)?.set)
+            assertEquals(name, "3TrafficLights1", icon(1, 1)?.set)
+            assertFalse(name, icon(1, 2)!!.showValue); assertTrue(name, icon(1, 0)!!.showValue)
+            assertEquals(name, listOf(0, 0, 0, 1, 1, 1, 1, 2, 2, 2), (1..10).map { icon(it, 3)?.index }) // flags: at 0, 4 and 8
+            assertEquals(name, listOf(0, 0, 0, 1, 1, 2, 2, 3, 3, 3), (1..10).map { icon(it, 4)?.index }) // four ratings
+        }
+    }
+
     @Test fun ods() = checkBook(Sheets.read(resource("sheet.ods"), "sheet.ods"), greek = true)
 
     /** LibreOffice's view settings (a headless conversion leaves them out): frozen rows and columns, the sheet left on. */

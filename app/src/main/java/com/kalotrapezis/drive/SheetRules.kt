@@ -21,7 +21,12 @@ internal class SheetRule(
     val scale: List<Pair<SheetCfvo, Int>> = emptyList(),
     /** A data bar's colour and its two ends. */
     val bar: Int? = null, val barEnds: List<SheetCfvo> = emptyList(),
+    /** An icon set's name ("3Arrows"), its thresholds (the first is its least), whether the value shows, reversed. */
+    val icons: String? = null, val iconAt: List<SheetCfvo> = emptyList(), val showValue: Boolean = true, val reverse: Boolean = false,
 )
+
+/** An icon set's icon in a cell: the set, which of its icons (0: the least), and whether the cell's value shows beside it. */
+internal data class SheetIcon(val set: String, val index: Int, val showValue: Boolean)
 
 /** A data bar in a cell: how much of the cell's width, in which colour. */
 internal data class SheetBar(val fraction: Float, val color: Int)
@@ -142,7 +147,7 @@ internal object SheetRules {
      * Lays [rules] on [cells]: each cell's new look goes in [looks] (numbered from [Sheet.LOOKS], as an Excel Table's);
      * the data bars are returned. A rule's look wins over the cell's own, a higher priority's over a lower's.
      */
-    fun apply(rules: List<SheetRule>, cells: CellMap, styleOf: (Int) -> SheetStyle, looks: ArrayList<SheetStyle>): Map<Long, SheetBar> {
+    fun apply(rules: List<SheetRule>, cells: CellMap, styleOf: (Int) -> SheetStyle, looks: ArrayList<SheetStyle>, icons: MutableMap<Long, SheetIcon> = HashMap()): Map<Long, SheetBar> {
         if (rules.isEmpty()) return emptyMap()
         class Hit(val priority: Int, val dxf: SheetDxf, val stop: Boolean)
         val hits = HashMap<Long, MutableList<Hit>>()
@@ -163,6 +168,18 @@ internal object SheetRules {
                         val i = points.indexOfLast { it.first <= v }.coerceIn(0, points.size - 2)
                         val (lo, a) = points[i]; val (hi, b) = points[i + 1]
                         hit(k, SheetDxf(fill = mix(a, b, if (hi > lo) ((v - lo) / (hi - lo)).coerceIn(0.0, 1.0) else 0.0)))
+                    }
+                }
+                "iconSet" -> {
+                    val set = rule.icons ?: "3TrafficLights1"
+                    val n = set.firstOrNull()?.digitToIntOrNull() ?: 3
+                    if (numbers.isEmpty()) continue
+                    // Excel's thresholds: an icon for each one passed (≥), from the least.
+                    val at = (rule.iconAt.takeIf { it.size == n } ?: (0 until n).map { SheetCfvo("percent", "${it * 100 / n}") }).map { at(it, numbers, numbers.first()) }
+                    for (k in keys) {
+                        val v = values[k] as? Double ?: continue
+                        val i = at.indices.last { it == 0 || v >= at[it] }
+                        icons.putIfAbsent(k, SheetIcon(set, if (rule.reverse) n - 1 - i else i, rule.showValue))
                     }
                 }
                 "dataBar" -> {

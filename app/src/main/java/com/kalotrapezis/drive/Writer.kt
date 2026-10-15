@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.kalotrapezis.drive
 
 import android.content.Context
@@ -25,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -3071,6 +3074,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     }
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
+                                var stretch by remember { mutableStateOf<Pair<Float, Float>?>(null) } // its size while a handle is pulled (pixels)
+                                var turning by remember { mutableStateOf<Float?>(null) } // its angle while the knob is turned
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
                                 // A form's fields: a light box behind each (Word shades them), deeper where the cursor is.
                                 if (controlsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -3206,7 +3211,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val y = if (float != null) (l.getLineTop(l.getLineForOffset(paraStarts.lastOrNull { it <= i } ?: i)) + with(density) { (float.y * scale).sp.toPx() }).toInt()
                                             else if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
                                             else with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
-                                        val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
+                                        val size = with(density) { stretch?.takeIf { selectedPicture?.first == i }?.let { (a, b) -> Modifier.size(a.toDp(), b.toDp()) } ?: Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         val shownWidth = with(density) { w.sp.toPx() }
                                         val shownHeight = with(density) { h.sp.toPx() }
                                         val selected = selectedPicture?.first == i
@@ -3264,12 +3269,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                         onDragCancel = { drag = Offset.Zero },
                                                     )
                                                 })
-                                            .clickable {
+                                            .combinedClickable(onLongClick = {
+                                                // Held (asked 15 Oct): straight to Position, where it follows the finger — for one that is not in line.
+                                                state.selection = androidx.compose.ui.text.TextRange(i, i + 1)
+                                                tab = WriterTab.Picture
+                                                if (PictureXml.wrapOf(img) != PictureWrap.InLine && PictureXml.editable(img)) { WriterLog.i("long press ${img.key}: position"); position(img.key) }
+                                            }) {
                                                 state.selection = androidx.compose.ui.text.TextRange(i, i + 1)
                                                 tab = WriterTab.Picture
                                             }
                                         Box(Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
-                                            .then(Arrange.rotationOf(img).takeIf { it != 0f && float != null }?.let { Modifier.rotate(it) } ?: Modifier) // turned (Arrange › Rotate)
+                                            .then((turning?.takeIf { selected } ?: Arrange.rotationOf(img)).takeIf { it != 0f && (float != null || PictureXml.wrapOf(img) != PictureWrap.InLine) }?.let { Modifier.rotate(it) } ?: Modifier) // turned (Arrange › Rotate)
                                             .then(if (selected) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
                                             .then(objectInput),
                                             contentAlignment = Alignment.Center) {
@@ -3368,6 +3378,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 )
                                             }
                                         }
+                                        // Handles on it: stretch from the corner or a side, turn from the knob above (asked 15 Oct).
+                                        if (selected && table == null && drag == Offset.Zero) ObjectHandles(left, y.toFloat(), stretch?.first ?: shownWidth, stretch?.second ?: shownHeight,
+                                            turning ?: if (PictureXml.wrapOf(img) != PictureWrap.InLine) Arrange.rotationOf(img) else 0f,
+                                            rotatable = PictureXml.wrapOf(img) != PictureWrap.InLine && img.raw?.startsWith("<draw:g") != true,
+                                            keepAspect = pictureBytes(img) != null, size = { a, b -> stretch = a to b }, sized = {
+                                                val k = with(density) { scale.sp.toPx() }
+                                                stretch?.let { (a, b) -> stretch = null; WriterLog.i("handles: ${img.key} ${img.widthPt}×${img.heightPt} → ${a / k}×${b / k} pt"); changePicture(img.key, PictureXml.resized(img, a / k, b / k)) }
+                                            }, turn = { turning = it }, turned = { turning?.let { turning = null; rotate(img.key, it) } })
                                     }
                                 }
                             }

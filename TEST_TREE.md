@@ -66,7 +66,14 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] Style set › Word 2010 and › Minimalist on a copy with headings
   - [x] Colours: the strip takes the ribbon's place; tapping Red turns the page red at once; Cancel → as it was (Claude, tablet)
   - [ ] Design › Standards: APA 7 paper opens its window; Heading level 4 at a cursor; MLA 9 → citations change
-  - [ ] On the phone: the strip scrolls sideways under the page
+  - [ ] On the phone: the strip is one thin row (✕ … cards … ✓), the keyboard goes away, it scrolls sideways under the page
+
+- **23. Handles on a chosen object** — tablet
+  - [x] `Warp_test.docx`: tap the WordArt → corner, side and bottom handles; pull the corner → it grows as the finger goes, the text moves over on lifting (Claude)
+  - [x] The knob above (not in line only) → it turns with the finger, the handles with it; Undo turns it back (Claude)
+  - [x] Hold the WordArt → Position opens; drag it there (Claude)
+  - [ ] A photo: the corner keeps its proportions; a side stretches it
+  - [ ] On the phone: the handles are big enough for a finger
 
 # Test tree — Writer's Word gaps (15 Oct 2026)
 

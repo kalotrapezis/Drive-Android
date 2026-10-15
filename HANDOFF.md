@@ -185,8 +185,18 @@
 >   back; OK keeps the last as one undo step; Cancel shows the snapshot again and drops the steps). Design's APA 7 paper,
 >   APA level 4 and 5 are gathered in **Design › Standards** (`StandardsDialog`: the APA paper's window, the run-in
 >   headings, the citation style APA/MLA/Chicago). While Standards, Shape options or the Shapes gallery are open the
->   ribbon steps aside. Next (agreed): handles on a chosen object (resize, rotate), long-press-drag into Position,
->   the same strips for WordArt, page numbers, lists, headers & footers.
+>   ribbon steps aside. **On the phone** (asked: the keyboard is in the way) the strip is one thin row — cards at 70%,
+>   ✕ and ✓ at its ends instead of the title row — and the keyboard goes away when a gallery opens.
+>
+> - **Handles on a chosen object** (asked 15 Oct: "no resize and rotate buttons on the box"): a picture, shape,
+>   text box or WordArt chosen in the editor has handles drawn beside it in the page's frame (`ObjectHandles`,
+>   WriterHandles.kt): the corner stretches it (a photo keeps its proportions), the right and bottom sides one way, and
+>   one that is not in line has a knob on a stem above that turns it (measured from its middle, snapping near each 45°).
+>   All follow the finger live (`stretch`/`turning` in the editor); on lifting, one step: `PictureXml.resized` or
+>   `rotate`. A non-in-line object is now shown turned in the editor too (only In front/Behind were). **Held** (long
+>   press), one that is not in line opens Position, where it follows the finger. `HandlesTest`; checked on the tablet
+>   (WordArt stretched 186×49 → 243×78 pt, turned 55°). Next (agreed): the same strips for WordArt, page numbers,
+>   lists, headers & footers.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone

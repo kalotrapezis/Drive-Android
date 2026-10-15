@@ -103,6 +103,8 @@ one pass once the tabs' features are done.
 - [x] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
       - **Resize** in a window: horizontal xx px · vertical xx px (not by hand), **Crop** in a window (Photos' crop), **Save picture as…** (take a picture out of a document
      someone sent, into the phone's photos/Files), **Delete**.
+      - **Handles** on the chosen object (15 Oct): corner (a photo keeps proportions), right and bottom sides stretch it live;
+        a knob above turns one not in line (snaps at 45°); held, it opens Position.
       - **Wrapping**: in line with text (standard) · square / around text · top and bottom (nothing at its sides) ·
      behind text · in front of text.
       - **Moving**: in line — drag it and it lands where it fits in the text (left, centre, right, between lines), not

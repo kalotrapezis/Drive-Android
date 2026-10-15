@@ -398,7 +398,6 @@ internal const val LINE_BREAK = '\u2028'
 internal const val FIELD_CITE = '\u0002'
 internal fun isField(cite: String?) = cite?.firstOrNull() == FIELD_CITE
 /** Fields whose letters are whole paragraphs: kept only inside a content control (sdtBlock), else a copy. */
-private val MULTI_PARAGRAPH_FIELDS = setOf("TOC", "INDEX", "BIBLIOGRAPHY", "TOA")
 
 /** A list item: bulleted or numbered, how deep (0 = top), and the number it starts at when that is not 1. */
 internal data class DocList(val ordered: Boolean, val level: Int, val start: Int? = null)
@@ -1328,11 +1327,39 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
 
     /** The body, a table cell or a content control: paragraphs, and what Writer cannot keep, named. */
     fun block(parent: Element, out: MutableList<DocPara>) {
-        for (e in parent.kids()) {
+        val kids = parent.kids()
+        // A field that runs on over paragraphs (a contents list or a list of references written as a bare field; Zotero's
+        // and Mendeley's bibliographies): from its first paragraph to its last, kept whole as the file has it — as a
+        // content control's paragraphs are ([sdtBlock]) — and written back so while their words are unchanged.
+        var fieldBlock: Triple<Int, Int, Set<String>>? = null // where it starts in [out] and in [kids]; the notes before it
+        for ((ki, e) in kids.withIndex()) {
             if (e.namespaceURI != W) { if (e.localName != "AlternateContent") notes += "other content" ; continue }
             when (e.localName) {
-                "p" -> paragraph(e, out)
-                "tbl" -> out += tablePara(table(e))
+                "p" -> {
+                    val open = fieldDepth > 0
+                    val start = out.size
+                    val notesBefore = notes.toSet()
+                    paragraph(e, out)
+                    if (sdtDepth == 0 && fieldBlock == null && !open && fieldDepth > 0) fieldBlock = Triple(start, ki, notesBefore)
+                    else if (fieldBlock != null && fieldDepth == 0) {
+                        val (from, fromKid, before) = fieldBlock
+                        fieldBlock = null
+                        val mine = out.subList(from, out.size)
+                        // Its field rode on its letters as one paragraph's would: off them (edited, they are written plain).
+                        val field = mine.firstNotNullOfOrNull { p -> p.runs.firstNotNullOfOrNull { r -> r.cite?.takeIf { isField(it) } } }
+                        for (i in mine.indices) mine[i] = mine[i].let { p -> p.copy(runs = p.runs.map { r -> if (r.cite == field) r.copy(cite = null) else r }) }
+                        var xml = kids.subList(fromKid, ki + 1).joinToString("") { OfficeFormats.xml(it) }
+                        if (mine.first().keep?.parts?.any { it.first == "pageBreakBefore" } == true && "<w:pageBreakBefore" !in xml.substringBefore("</w:p>"))
+                            Regex("""<w:p\b[^>]*>(<w:pPr>(<w:pStyle\b[^>]*/>)?)?""").find(xml)?.let { m ->
+                                xml = xml.replaceRange(m.range, if (m.groupValues[1].isEmpty()) m.value + "<w:pPr><w:pageBreakBefore/></w:pPr>" else m.value + "<w:pageBreakBefore/>") }
+                        val raw = "${OfficeFormats.blockText(mine)}|$xml"
+                        mine.forEachIndexed { i, p -> val k = p.keep ?: DocKeep(); mine[i] = p.copy(keep = k.copy(parts = k.parts.filter { it.first != SDT_BLOCK && it.first != SDT_PART } + (if (i == 0) SDT_BLOCK to raw else SDT_PART to ""))) }
+                        // What its paragraphs could not keep as paragraphs is kept in the XML: the copy-only notes they made go.
+                        notes.retainAll(before)
+                        citeNow = null
+                    }
+                }
+                "tbl" -> { fieldBlock = null; out += tablePara(table(e)) } // a field round a table: not kept whole (a copy, as before)
                 "sdt" -> if (e.kid(W, "sdtPr")?.kid(W, "docPartObj") != null) sdtBlock(e, out)
                     else { notes += "content controls"; e.kid(W, "sdtContent")?.let { block(it, out) } }
                 "customXml" -> { notes += "content controls"; block(e, out) }
@@ -1569,9 +1596,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         fieldState = 2
                         val instr = fieldInstr.toString().trim()
                         if (!fieldMarks && instr.startsWith("CITATION ")) citeNow = instr
-                        // Any other field of one paragraph: its letters kept, the field written back round them. One that
-                        // runs over paragraphs (contents, index, list of references) cannot be: a copy, as before.
-                        else if (!fieldMarks && instr.isNotEmpty() && instr.substringBefore(' ').uppercase() !in MULTI_PARAGRAPH_FIELDS) citeNow = FIELD_CITE + instr
+                        // Any other field: its letters kept, the field written back round them — a contents list or a list of
+                        // references too, when it is in one paragraph (lines broken inside it). One that runs on over
+                        // paragraphs is kept whole by [block] (its paragraphs' XML).
+                        else if (!fieldMarks && instr.isNotEmpty()) citeNow = FIELD_CITE + instr
                         else { notes += "fields (page numbers, dates, contents)"; if (fieldMarks) fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
                     }
                     e.attr(W, "fldCharType") == "end" -> {

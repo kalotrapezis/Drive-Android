@@ -5,6 +5,8 @@ checklist for Tetra's Office. Tetra is local — nothing that needs Microsoft's 
 Copilot). Each item: **done**, **next**, or later. Build them in order, one at a time; each one is tested on the
 emulator and on the phone, and a file saved with it opens right in Word / LibreOffice.
 
+**15 Oct: none of the user's 318 documents is copy-only any more** (fields over paragraphs kept, the last cause).
+
 Rule for every feature: a file part Writer can show *and* save is no longer "copy-only" — each item below that adds
 such a part also moves it out of `OfficeDoc.blocking`.
 

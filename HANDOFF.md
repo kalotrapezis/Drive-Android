@@ -17,6 +17,16 @@
 > "next page"; **Page setup and Columns changed only the last section** of a Word file with section breaks — Page setup
 > now sets every section, Columns the cursor's section (Word's "This section", `setColumns`).
 >
+> **Fields over paragraphs (15 Oct afternoon): no document is copy-only any more** (all 318 of the user's read and
+> write; 04_Academic_References was the last). A contents list or reference list written as a field in one paragraph
+> (lines broken inside it) is kept like any other field (the TOC/BIBLIOGRAPHY refusal is gone). A field that runs on
+> over paragraphs (a bare contents list with its PAGEREF fields and links; Zotero's and Mendeley's bibliographies) is
+> kept as its paragraphs' own XML from its first to its last paragraph and written back as it was while their words
+> are unchanged — the content-control mechanism (`SDT_BLOCK`/`SDT_PART`, built in `block`); edited, they are written as
+> plain paragraphs (the field goes, as with content controls). One that never ends, or runs round a table, still makes
+> a copy. `LongFieldsTest`; 04 saves with every field and the same text in LibreOffice; checked on the phone (no
+> banner).
+>
 > **Done 15 Oct:**
 > - **A citation tapped** (item 1): with the cursor inside a citation, a bar over the ribbon — *Edit Smith, 2020* for
 >   each of its sources (opens the source form; a tag with no source opens a new one) and *Change…* (the citation dialog

@@ -1176,7 +1176,7 @@ internal object OfficePages {
             // style that say so (contextual spacing).
             val same = look.contextual && prevLook?.contextual == true && style == prevStyle
             if (look.pageBreakBefore && pieces.isNotEmpty()) breakPage()
-            else if (look.columnBreakBefore && y > colTop + 0.5f) newPage() // the next column (or page, from the last one)
+            else if (look.columnBreakBefore && i > 0) newPage() // the next column (or page, from the last one) — even at a column's top, as Word and LibreOffice do
             // Space before: not at a page's top — except the document's first paragraph, as Word and LibreOffice keep it.
             if ((pieces.isNotEmpty() || i == 0) && !same) y += look.before
             fun limitNow() = page.height - page.bottom - (if (feet.isEmpty()) 0f else feetHeight)

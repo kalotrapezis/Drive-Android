@@ -5,9 +5,10 @@
 > its own composable (as `CitationBar`), not inline.
 >
 > **Phone walk, 15 Oct morning** (`TEST_TREE.md`, new documents Phase2_test / Group_test / Forms_test / Breaks_test in
-> Test-Words): items **1, 2, 3, 4, 5, 6, 7, 9 pass on the phone**; 10 (WordArt) not walked; 8 half walked (section break
-> and columns per section work; the column break and the pages' columns still to look at — the label fix below is
-> installed but not seen). Fixed on the way: an equation's brackets round a fraction's top showed; a leading minus was
+> Test-Words, plus Art_test): **all ten pass on the phone**. Item 8's pages match LibreOffice's for the same file (title
+> across, continuous break into two columns, column break, next-page section) once a column break at a column's top
+> is honoured too (Writer skipped it; Word and LibreOffice do not). WordArt's outline, shadow and glow draw in Edit and on
+> the pages and survive Edit text. Fixed on the way: an equation's brackets round a fraction's top showed; a leading minus was
 > spaced; the preview cut long equations; the field capitalised letters; Insert › Equation on an empty line went in the
 > line, not centred (the editor's empty line is not blank letters — judged by the document's paragraph now); ∑/∫ bigger;
 > a page border on some sides ran to the page's edges (Word keeps the 24 pt inset); the border and rotate dialogs' rows

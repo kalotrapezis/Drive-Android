@@ -3,7 +3,7 @@
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.
 Tick each leaf; a failing one: note what you saw beside it.
 
-**15 Oct morning (Claude over adb):** 1–7 and 9 pass; 8 half (section break + per-section columns pass; column break and the pages' look not yet); 10 not walked.
+**15 Oct (Claude over adb):** all ten pass on the phone. Left for you: opening the saved files in Word on the PC (citations, equations, groups, page borders, controls, sections, WordArt effects).
 
 **First install the build** (the phone was unplugged when it was made; it is not on the phone yet):
 

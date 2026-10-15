@@ -83,6 +83,9 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] The ribbon slides back after Cancel (Claude)
   - [x] Gallery_test, Edit: the numbered paragraph starting with the WordArt shows "1." at the text's size and "Page 1" whole (Claude)
   - [x] …and "text." stays on its line, the sun alone on the next (Claude)
+  - [x] On the phone: "1. [WordArt] Page 1 text. [sun]" — the sun fits on that line there (Claude)
+  - [ ] On the phone, Edit: the drop before "Page 2 text." is drawn over "Page 2" and "Page 3 text." (the two page
+        breaks' lines squeezed together) — was so before the picture line-break fix too
   - [ ] A thesis copy: i ii iii, open in Word → Format Page Numbers shows i, ii, iii
   - [ ] On the phone: each strip one thin row, the keyboard away
 

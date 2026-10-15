@@ -50,7 +50,8 @@ internal object WriterLog {
     }
 
     private fun write(level: Char, message: String, error: Throwable?) {
-        when (level) { 'E' -> Log.e(TAG, message, error); 'W' -> Log.w(TAG, message, error); else -> Log.i(TAG, message) }
+        // runCatching: in the JVM unit tests android.util.Log is a stub that throws.
+        runCatching { when (level) { 'E' -> Log.e(TAG, message, error); 'W' -> Log.w(TAG, message, error); else -> Log.i(TAG, message) } }
         val f = file ?: return
         val line = "${LocalDateTime.now().format(time)} $level $message\n" + (error?.let { Log.getStackTraceString(it) + "\n" } ?: "")
         synchronized(this) {

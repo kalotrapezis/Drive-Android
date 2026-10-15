@@ -1,0 +1,864 @@
+package com.kalotrapezis.drive
+
+import org.w3c.dom.Element
+import org.xml.sax.Attributes
+import org.xml.sax.helpers.DefaultHandler
+import java.io.ByteArrayInputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+import javax.xml.parsers.SAXParserFactory
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+
+/**
+ * Tetra's spreadsheets (the user, 15 Oct: "start with the viewer and let's complete it like we did with Word"): an
+ * .xlsx, .ods or .csv read into sheets of cells, each cell as the file shows it — its text already formatted (Excel's
+ * number formats, [SheetFormat]; an .ods carries the shown text itself), its looks, the columns' widths and rows'
+ * heights, merged cells, frozen panes. Sizes are in pixels at 100 % (Excel's own unit: a default column is 64, a row 20).
+ */
+internal enum class SheetAlign { General, Left, Center, Right, Justify }
+internal enum class SheetVAlign { Top, Center, Bottom }
+internal enum class SheetKind { Number, Text, Bool, Error, Empty }
+
+/** A cell's border edge: colour, width in pixels, double or dashed. */
+internal data class SheetLine(val color: Int, val width: Float, val double: Boolean = false, val dashed: Boolean = false)
+
+internal data class SheetStyle(
+    val font: String? = null, val size: Float = 11f, val bold: Boolean = false, val italic: Boolean = false,
+    val underline: Boolean = false, val strike: Boolean = false, val color: Int? = null, val fill: Int? = null,
+    val align: SheetAlign = SheetAlign.General, val valign: SheetVAlign = SheetVAlign.Bottom, val wrap: Boolean = false,
+    val indent: Int = 0, val rotation: Int = 0, val format: String = "General",
+    val left: SheetLine? = null, val top: SheetLine? = null, val right: SheetLine? = null, val bottom: SheetLine? = null,
+) {
+    val boxed get() = fill != null || left != null || top != null || right != null || bottom != null
+}
+
+/** A cell: the text shown, what it is, its number, its formula ("=SUM(A1:A3)"), its look ([style] in the workbook's list). */
+internal data class SheetCell(
+    val text: String, val kind: SheetKind, val value: Double? = null, val formula: String? = null, val style: Int = 0,
+    val color: Int? = null, val link: String? = null,
+)
+
+/** Rows and columns from 0, both ends in. */
+internal data class SheetRange(val r1: Int, val c1: Int, val r2: Int, val c2: Int) {
+    operator fun contains(rc: Pair<Int, Int>) = rc.first in r1..r2 && rc.second in c1..c2
+}
+
+/**
+ * A sheet's cells by [Sheet.key] — an open-addressed table of plain longs, as a sheet can hold hundreds of thousands
+ * (the user's "Εκκαθαρισμένοι" workbook: 1.8 million in 12 sheets; a HashMap's boxed keys and entries took ~150 bytes each).
+ */
+internal class CellMap(expected: Int = 64) {
+    private var keys = LongArray(capacity(expected)) { EMPTY }
+    private var values = arrayOfNulls<SheetCell>(keys.size)
+    var size = 0; private set
+
+    private fun capacity(n: Int): Int { var c = 16; while (c * 0.6 < n) c = c shl 1; return c }
+    private fun slot(k: Long, mask: Int): Int = ((k * -0x61c8864680b583ebL) ushr 33).toInt() and mask
+
+    operator fun get(k: Long): SheetCell? {
+        val mask = keys.size - 1
+        var i = slot(k, mask)
+        while (true) { val at = keys[i]; if (at == EMPTY) return null; if (at == k) return values[i]; i = (i + 1) and mask }
+    }
+
+    operator fun set(k: Long, v: SheetCell) {
+        if ((size + 1) > keys.size * 0.6) grow()
+        val mask = keys.size - 1
+        var i = slot(k, mask)
+        while (true) {
+            val at = keys[i]
+            if (at == EMPTY) { keys[i] = k; values[i] = v; size++; return }
+            if (at == k) { values[i] = v; return }
+            i = (i + 1) and mask
+        }
+    }
+
+    private fun grow() {
+        val oldK = keys; val oldV = values
+        keys = LongArray(oldK.size shl 1) { EMPTY }; values = arrayOfNulls(keys.size); size = 0
+        for (i in oldK.indices) if (oldK[i] != EMPTY) set(oldK[i], oldV[i]!!)
+    }
+
+    fun forEach(action: (Long, SheetCell) -> Unit) { for (i in keys.indices) if (keys[i] != EMPTY) action(keys[i], values[i]!!) }
+
+    companion object { private const val EMPTY = -1L }
+}
+
+internal class Sheet(
+    val name: String,
+    val cells: CellMap,
+    /** The used rows and columns: one past the last cell with anything in it. */
+    val rows: Int, val cols: Int,
+    val colWidths: Map<Int, Float>, val rowHeights: Map<Int, Float>,
+    val defaultColWidth: Float, val defaultRowHeight: Float,
+    val hiddenCols: Set<Int>, val hiddenRows: Set<Int>,
+    val merges: List<SheetRange>,
+    val frozenRows: Int, val frozenCols: Int,
+    val grid: Boolean = true,
+    val colStyles: Map<Int, Int> = emptyMap(), val rowStyles: Map<Int, Int> = emptyMap(),
+    val tab: Int? = null, val hidden: Boolean = false,
+) {
+    operator fun get(r: Int, c: Int): SheetCell? = cells[key(r, c)]
+    fun width(c: Int) = if (c in hiddenCols) 0f else colWidths[c] ?: defaultColWidth
+    fun height(r: Int) = if (r in hiddenRows) 0f else rowHeights[r] ?: defaultRowHeight
+    /** The merged range [r],[c] is in, if any. */
+    fun merge(r: Int, c: Int): SheetRange? = mergeAt[key(r, c)]
+    private val mergeAt: Map<Long, SheetRange> by lazy {
+        HashMap<Long, SheetRange>().also { m -> merges.forEach { g -> for (r in g.r1..g.r2) for (c in g.c1..g.c2) m[key(r, c)] = g } }
+    }
+
+    companion object {
+        fun key(r: Int, c: Int) = (r.toLong() shl 16) or c.toLong()
+        fun row(key: Long) = (key shr 16).toInt()
+        fun col(key: Long) = (key and 0xFFFF).toInt()
+    }
+}
+
+/** A sheet's tab: its name, and whether the file hides it. */
+internal data class SheetTab(val name: String, val hidden: Boolean = false)
+
+/**
+ * A workbook: its tabs, its looks, the sheet it was left on — and each sheet read only when it is opened ([sheet]),
+ * the last two kept, so a workbook of a dozen big sheets never holds them all.
+ */
+internal class Workbook(val tabs: List<SheetTab>, val styles: List<SheetStyle>, val active: Int = 0, private val load: (Int) -> Sheet) {
+    private val kept = LinkedHashMap<Int, Sheet>()
+    fun sheet(i: Int): Sheet = synchronized(kept) {
+        kept.remove(i)?.let { kept[i] = it; return it }
+        WriterLog.timed("Sheets: sheet ${i + 1} of ${tabs.size} read") { load(i) }.also { kept[i] = it; while (kept.size > 2) kept.remove(kept.keys.first()) }
+    }
+    /** For the tests: every sheet. */
+    val sheets: List<Sheet> get() = tabs.indices.map(::sheet)
+}
+
+/** Excel's 64 indexed colours, and its theme colours lightened or darkened by a tint. */
+internal object SheetColors {
+    private val INDEXED = intArrayOf(
+        0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
+        0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF,
+        0x800000, 0x008000, 0x000080, 0x808000, 0x800080, 0x008080, 0xC0C0C0, 0x808080,
+        0x9999FF, 0x993366, 0xFFFFCC, 0xCCFFFF, 0x660066, 0xFF8080, 0x0066CC, 0xCCCCFF,
+        0x000080, 0xFF00FF, 0xFFFF00, 0x00FFFF, 0x800080, 0x800000, 0x008080, 0x0000FF,
+        0x00CCFF, 0xCCFFFF, 0xCCFFCC, 0xFFFF99, 0x99CCFF, 0xFF99CC, 0xCC99FF, 0xFFCC99,
+        0x3366FF, 0x33CCCC, 0x99CC00, 0xFFCC00, 0xFF9900, 0xFF6600, 0x666699, 0x969696,
+        0x003366, 0x339966, 0x003300, 0x333300, 0x993300, 0x993366, 0x333399, 0x333333,
+    )
+
+    /** 64: the system's text colour (black), 65: its window (white). */
+    fun indexed(i: Int, custom: List<Int>? = null): Int? = when {
+        custom != null && i in custom.indices -> custom[i]
+        i in INDEXED.indices -> INDEXED[i] or 0xFF000000.toInt()
+        i == 64 -> 0xFF000000.toInt()
+        i == 65 -> 0xFFFFFFFF.toInt()
+        else -> null
+    }
+
+    /** Excel's tint: towards white (positive) or black (negative), on the colour's lightness. */
+    fun tint(argb: Int, tint: Double): Int {
+        if (tint == 0.0) return argb
+        val r = (argb shr 16 and 0xFF) / 255.0; val g = (argb shr 8 and 0xFF) / 255.0; val b = (argb and 0xFF) / 255.0
+        val mx = maxOf(r, g, b); val mn = minOf(r, g, b)
+        var l = (mx + mn) / 2
+        val d = mx - mn
+        val s = if (d == 0.0) 0.0 else d / (1 - kotlin.math.abs(2 * l - 1))
+        val h = when {
+            d == 0.0 -> 0.0
+            mx == r -> 60 * (((g - b) / d).mod(6.0))
+            mx == g -> 60 * ((b - r) / d + 2)
+            else -> 60 * ((r - g) / d + 4)
+        }
+        l = if (tint < 0) l * (1 + tint) else l * (1 - tint) + tint
+        val c = (1 - kotlin.math.abs(2 * l - 1)) * s
+        val x = c * (1 - kotlin.math.abs((h / 60).mod(2.0) - 1))
+        val m = l - c / 2
+        val (r1, g1, b1) = when ((h / 60).toInt()) {
+            0 -> Triple(c, x, 0.0); 1 -> Triple(x, c, 0.0); 2 -> Triple(0.0, c, x)
+            3 -> Triple(0.0, x, c); 4 -> Triple(x, 0.0, c); else -> Triple(c, 0.0, x)
+        }
+        fun ch(v: Double) = ((v + m) * 255).let { kotlin.math.round(it).toInt().coerceIn(0, 255) }
+        return (argb and 0xFF000000.toInt()) or (ch(r1) shl 16) or (ch(g1) shl 8) or ch(b1)
+    }
+}
+
+internal object Sheets {
+    fun isSheet(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("xlsx", "xlsm", "ods", "csv", "tsv")
+
+    /** Reads a spreadsheet; [decimal] and [group] are the separators numbers are shown with (the phone's). */
+    fun read(bytes: ByteArray, name: String, decimal: Char = '.', group: Char = ','): Workbook =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "ods" -> Ods(OfficeFormats.unzip(bytes)).read()
+            "csv", "tsv" -> csv(bytes)
+            else -> Xlsx(OfficeFormats.unzip(bytes), decimal, group).read()
+        }
+
+    /** "B12" → (11, 1); null when it is not a cell's name. */
+    fun cellRef(ref: String): Pair<Int, Int>? {
+        val m = Regex("""^\$?([A-Za-z]{1,3})\$?(\d+)$""").find(ref.trim()) ?: return null
+        val col = m.groupValues[1].uppercase().fold(0) { a, ch -> a * 26 + (ch - 'A' + 1) } - 1
+        val row = m.groupValues[2].toIntOrNull()?.minus(1) ?: return null
+        return if (row < 0 || col > 16383) null else row to col
+    }
+
+    fun rangeRef(ref: String): SheetRange? {
+        val parts = ref.split(':')
+        val a = cellRef(parts[0]) ?: return null
+        val b = parts.getOrNull(1)?.let(::cellRef) ?: a
+        return SheetRange(min(a.first, b.first), min(a.second, b.second), max(a.first, b.first), max(a.second, b.second))
+    }
+
+    fun colName(c: Int): String = ChartWriter.column(c)
+
+    /**
+     * A shared formula as it reads in another cell: its relative references moved by [dr] rows and [dc] columns, as
+     * Excel stores one formula for a block of cells and leaves the rest empty.
+     */
+    fun shift(formula: String, dr: Int, dc: Int): String {
+        if (dr == 0 && dc == 0) return formula
+        val ref = Regex("""(?<![A-Za-z0-9_.$])(\$?)([A-Z]{1,3})(\$?)([0-9]{1,7})(?![0-9A-Za-z_(])""")
+        return formula.split('"').mapIndexed { i, part ->
+            if (i % 2 == 1) part else ref.replace(part) { m ->
+                val (cAbs, col, rAbs, row) = m.destructured
+                val c = col.fold(0) { a, ch -> a * 26 + (ch - 'A' + 1) } - 1
+                if (c > 16383) return@replace m.value
+                val nc = if (cAbs.isEmpty()) c + dc else c
+                val nr = if (rAbs.isEmpty()) row.toInt() + dr else row.toInt()
+                if (nc < 0 || nr < 1) "#REF!" else cAbs + colName(nc) + rAbs + nr
+            }
+        }.joinToString("\"")
+    }
+
+    internal fun sax(bytes: ByteArray, handler: DefaultHandler) {
+        val f = SAXParserFactory.newInstance()
+        f.isNamespaceAware = true
+        runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+        f.newSAXParser().parse(ByteArrayInputStream(bytes), handler)
+    }
+
+    /** An attribute by its local name, whatever its prefix. */
+    internal fun Attributes.a(local: String): String? {
+        for (i in 0 until length) if (getLocalName(i) == local) return getValue(i)
+        return null
+    }
+
+    private fun Element.kids(name: String): List<Element> {
+        val out = ArrayList<Element>()
+        var n = firstChild
+        while (n != null) { if (n is Element && n.localName == name) out += n; n = n.nextSibling }
+        return out
+    }
+    private fun Element.kid(name: String): Element? = kids(name).firstOrNull()
+    private fun Element.attr(name: String): String? = getAttribute(name).takeIf { it.isNotEmpty() }
+    private fun Element.flag(name: String): Boolean = kid(name)?.let { it.attr("val")?.let { v -> v != "0" && v != "false" && v != "none" } ?: true } ?: false
+
+    // --- .xlsx ---
+
+    private class Xlsx(val parts: Map<String, ByteArray>, decimal: Char, group: Char) {
+        val strings = ArrayList<String>()
+        val styles = ArrayList<SheetStyle>()
+        var theme = IntArray(0)
+        var customIndexed: List<Int>? = null
+        var date1904 = false
+        lateinit var format: SheetFormat
+        val sep = decimal to group
+
+        fun rels(part: String): Map<String, String> {
+            val dir = part.substringBeforeLast('/', "")
+            val relsPath = (if (dir.isEmpty()) "" else "$dir/") + "_rels/" + part.substringAfterLast('/') + ".rels"
+            val bytes = parts[relsPath] ?: return emptyMap()
+            val out = HashMap<String, String>()
+            val doc = OfficeFormats.parse(bytes)
+            val list = doc.getElementsByTagNameNS("*", "Relationship")
+            for (i in 0 until list.length) {
+                val e = list.item(i) as Element
+                val target = e.getAttribute("Target")
+                out[e.getAttribute("Id")] = if (e.getAttribute("TargetMode") == "External") "ext:$target" else resolve(dir, target)
+            }
+            return out
+        }
+
+        fun resolve(dir: String, target: String): String {
+            if (target.startsWith("/")) return target.removePrefix("/")
+            val path = ArrayList(if (dir.isEmpty()) emptyList() else dir.split('/'))
+            target.split('/').forEach { if (it == "..") path.removeLastOrNull() else if (it != ".") path += it }
+            return path.joinToString("/")
+        }
+
+        fun read(): Workbook {
+            val book = rels("").values.firstOrNull { it.endsWith("workbook.xml") } ?: "xl/workbook.xml"
+            val bookRels = rels(book)
+            val wb = OfficeFormats.parse(parts[book] ?: error("Not a spreadsheet.")).documentElement
+            date1904 = wb.kid("workbookPr")?.attr("date1904")?.let { it == "1" || it == "true" } ?: false
+            format = SheetFormat(sep.first, sep.second, date1904)
+            bookRels.values.firstOrNull { it.contains("theme/") }?.let { parts[it] }?.let(::readTheme)
+            bookRels.values.firstOrNull { it.endsWith("sharedStrings.xml") }?.let { parts[it] }?.let(::readStrings)
+            bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { parts[it] }?.let(::readStyles)
+            if (styles.isEmpty()) styles += SheetStyle()
+            val active = wb.kid("bookViews")?.kid("workbookView")?.attr("activeTab")?.toIntOrNull() ?: 0
+            val found = wb.kid("sheets")?.kids("sheet").orEmpty().mapNotNull { s ->
+                val rid = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id").ifEmpty { s.attr("r:id") ?: "" }
+                val path = bookRels[rid]?.takeIf { it in parts } ?: return@mapNotNull null
+                SheetTab(s.attr("name") ?: "Sheet", s.attr("state").let { it == "hidden" || it == "veryHidden" }) to path
+            }
+            if (found.isEmpty()) error("No sheets.")
+            WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
+            return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex)) { i ->
+                val (tab, path) = found[i]
+                runCatching { readSheet(tab.name, path, parts.getValue(path), tab.hidden) }.getOrElse {
+                    WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
+                    Sheet(tab.name, CellMap(), 0, 0, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0, hidden = tab.hidden)
+                }
+            }
+        }
+
+        fun readTheme(bytes: ByteArray) {
+            val doc = OfficeFormats.parse(bytes)
+            val scheme = doc.getElementsByTagNameNS("*", "clrScheme").item(0) as? Element ?: return
+            val order = listOf("lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink")
+            theme = order.map { n ->
+                val e = scheme.kid(n)
+                val c = e?.kid("srgbClr")?.attr("val") ?: e?.kid("sysClr")?.attr("lastClr") ?: "000000"
+                (c.toLongOrNull(16)?.toInt() ?: 0) or 0xFF000000.toInt()
+            }.toIntArray()
+        }
+
+        fun readStrings(bytes: ByteArray) = sax(bytes, object : DefaultHandler() {
+            val sb = StringBuilder(); var inT = false; var phonetic = 0
+            override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                when (local) { "si" -> sb.setLength(0); "t" -> inT = phonetic == 0; "rPh" -> phonetic++ }
+            }
+            override fun endElement(uri: String?, local: String, q: String?) {
+                when (local) { "si" -> strings += sb.toString(); "t" -> inT = false; "rPh" -> phonetic-- }
+            }
+            override fun characters(ch: CharArray, start: Int, length: Int) { if (inT) sb.appendRange(ch, start, start + length) }
+        })
+
+        fun color(e: Element?): Int? {
+            e ?: return null
+            if (e.attr("auto") == "1") return null
+            val base = e.attr("rgb")?.let { (it.takeLast(6).toLongOrNull(16)?.toInt() ?: return null) or 0xFF000000.toInt() }
+                ?: e.attr("theme")?.toIntOrNull()?.let { theme.getOrNull(it) }
+                ?: e.attr("indexed")?.toIntOrNull()?.let { SheetColors.indexed(it, customIndexed) }
+                ?: return null
+            return SheetColors.tint(base, e.attr("tint")?.toDoubleOrNull() ?: 0.0)
+        }
+
+        fun line(e: Element?): SheetLine? {
+            val style = e?.attr("style") ?: return null
+            if (style == "none") return null
+            val c = color(e.kid("color")) ?: 0xFF000000.toInt()
+            return when (style) {
+                "medium", "mediumDashed", "mediumDashDot", "mediumDashDotDot", "slantDashDot" -> SheetLine(c, 2f, dashed = style != "medium")
+                "thick" -> SheetLine(c, 3f)
+                "double" -> SheetLine(c, 3f, double = true)
+                "hair" -> SheetLine(c, 1f, dashed = true)
+                "dashed", "dotted", "dashDot", "dashDotDot" -> SheetLine(c, 1f, dashed = true)
+                else -> SheetLine(c, 1f)
+            }
+        }
+
+        fun readStyles(bytes: ByteArray) {
+            val root = OfficeFormats.parse(bytes).documentElement
+            root.kid("colors")?.kid("indexedColors")?.kids("rgbColor")?.map { (it.attr("rgb")?.takeLast(6)?.toLongOrNull(16)?.toInt() ?: 0) or 0xFF000000.toInt() }
+                ?.takeIf { it.isNotEmpty() }?.let { customIndexed = it }
+            val formats = HashMap<Int, String>(SheetFormat.BUILT_IN)
+            root.kid("numFmts")?.kids("numFmt")?.forEach { f -> f.attr("numFmtId")?.toIntOrNull()?.let { formats[it] = f.getAttribute("formatCode") } }
+            val fonts = root.kid("fonts")?.kids("font").orEmpty()
+            val fills = root.kid("fills")?.kids("fill").orEmpty().map { f ->
+                f.kid("patternFill")?.let { p ->
+                    when (p.attr("patternType") ?: if (p.kid("fgColor") != null) "solid" else "none") {
+                        "none" -> null
+                        "gray125", "gray0625" -> color(p.kid("fgColor")) ?: 0xFFE0E0E0.toInt()
+                        else -> color(p.kid("fgColor")) ?: color(p.kid("bgColor"))
+                    }
+                } ?: f.kid("gradientFill")?.kids("stop")?.firstOrNull()?.let { color(it.kid("color")) }
+            }
+            val borders = root.kid("borders")?.kids("border").orEmpty()
+            root.kid("cellXfs")?.kids("xf")?.forEach { xf ->
+                val font = fonts.getOrNull(xf.attr("fontId")?.toIntOrNull() ?: 0)
+                val border = borders.getOrNull(xf.attr("borderId")?.toIntOrNull() ?: 0)
+                val al = xf.kid("alignment")
+                styles += SheetStyle(
+                    font = font?.kid("name")?.attr("val"),
+                    size = font?.kid("sz")?.attr("val")?.toFloatOrNull() ?: 11f,
+                    bold = font?.flag("b") == true, italic = font?.flag("i") == true,
+                    underline = font?.flag("u") == true, strike = font?.flag("strike") == true,
+                    color = color(font?.kid("color")),
+                    fill = fills.getOrNull(xf.attr("fillId")?.toIntOrNull() ?: 0),
+                    align = when (al?.attr("horizontal")) {
+                        "left" -> SheetAlign.Left; "center", "centerContinuous" -> SheetAlign.Center; "right" -> SheetAlign.Right
+                        "justify", "distributed" -> SheetAlign.Justify; else -> SheetAlign.General
+                    },
+                    valign = when (al?.attr("vertical")) { "top" -> SheetVAlign.Top; "center", "justify", "distributed" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
+                    wrap = al?.attr("wrapText")?.let { it == "1" || it == "true" } == true,
+                    indent = al?.attr("indent")?.toIntOrNull() ?: 0,
+                    rotation = al?.attr("textRotation")?.toIntOrNull() ?: 0,
+                    format = formats[xf.attr("numFmtId")?.toIntOrNull() ?: 0] ?: "General",
+                    left = line(border?.kid("left") ?: border?.kid("start")), right = line(border?.kid("right") ?: border?.kid("end")),
+                    top = line(border?.kid("top")), bottom = line(border?.kid("bottom")),
+                )
+            }
+        }
+
+        /** Excel's column width (characters of the default font's digit, 7 px in Calibri 11) in pixels. */
+        fun colPx(w: Double) = floor(((256 * w + floor(128.0 / 7)) / 256) * 7).toFloat()
+
+        fun readSheet(name: String, path: String, bytes: ByteArray, hidden: Boolean): Sheet {
+            val rels = rels(path)
+            val cells = CellMap(bytes.size / 40)
+            val colWidths = HashMap<Int, Float>(); val rowHeights = HashMap<Int, Float>()
+            val hiddenCols = HashSet<Int>(); val hiddenRows = HashSet<Int>()
+            val colStyles = HashMap<Int, Int>(); val rowStyles = HashMap<Int, Int>()
+            val merges = ArrayList<SheetRange>()
+            val links = HashMap<Long, String>()
+            val shared = HashMap<String, Triple<String, Int, Int>>()
+            var defaultCol = 64f; var defaultRow = 20f
+            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
+            var tab: Int? = null
+            var maxRow = -1; var maxCol = -1
+            sax(bytes, object : DefaultHandler() {
+                var row = -1; var col = -1
+                var r = 0; var c = 0; var s = 0; var t: String? = null
+                val v = StringBuilder(); val f = StringBuilder(); val inline = StringBuilder()
+                var into: StringBuilder? = null
+                var hasV = false; var fAttrs: Triple<String?, String?, String?>? = null; var inIs = false; var phonetic = 0
+                override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                    when (local) {
+                        "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false }
+                        "pane" -> if (views == 1 && at.a("state")?.startsWith("frozen") == true) {
+                            frozenCols = at.a("xSplit")?.toDoubleOrNull()?.toInt() ?: 0
+                            frozenRows = at.a("ySplit")?.toDoubleOrNull()?.toInt() ?: 0
+                        }
+                        "tabColor" -> tab = at.a("rgb")?.let { (it.takeLast(6).toLongOrNull(16)?.toInt() ?: 0) or 0xFF000000.toInt() }
+                            ?: at.a("theme")?.toIntOrNull()?.let { theme.getOrNull(it) }
+                        "sheetFormatPr" -> {
+                            at.a("defaultRowHeight")?.toFloatOrNull()?.let { defaultRow = it * 4 / 3 }
+                            defaultCol = at.a("defaultColWidth")?.toDoubleOrNull()?.let(::colPx)
+                                ?: at.a("baseColWidth")?.toIntOrNull()?.let { (kotlin.math.ceil((it * 7 + 5) / 8.0) * 8).toFloat() } ?: 64f
+                        }
+                        "col" -> {
+                            val a = (at.a("min")?.toIntOrNull() ?: return) - 1
+                            val b = min((at.a("max")?.toIntOrNull() ?: (a + 1)) - 1, 16383)
+                            val w = at.a("width")?.toDoubleOrNull()?.let(::colPx)
+                            val hide = at.a("hidden").let { it == "1" || it == "true" }
+                            val style = at.a("style")?.toIntOrNull()
+                            for (k in a..b) {
+                                if (w != null) colWidths[k] = w
+                                if (hide) hiddenCols += k
+                                if (style != null && style != 0 && b - a < 1024) colStyles[k] = style
+                            }
+                        }
+                        "row" -> {
+                            row = at.a("r")?.toIntOrNull()?.minus(1) ?: (row + 1); col = -1
+                            at.a("ht")?.toFloatOrNull()?.let { rowHeights[row] = it * 4 / 3 }
+                            if (at.a("hidden").let { it == "1" || it == "true" }) hiddenRows += row
+                            if (at.a("customFormat").let { it == "1" || it == "true" }) at.a("s")?.toIntOrNull()?.takeIf { it != 0 }?.let { rowStyles[row] = it }
+                        }
+                        "c" -> {
+                            val ref = at.a("r")?.let(::cellRef)
+                            r = ref?.first ?: max(row, 0); c = ref?.second ?: (col + 1); col = c
+                            s = at.a("s")?.toIntOrNull() ?: 0; t = at.a("t")
+                            v.setLength(0); f.setLength(0); inline.setLength(0); hasV = false; fAttrs = null
+                        }
+                        "v" -> { into = v; hasV = true }
+                        "f" -> { into = f; fAttrs = Triple(at.a("t"), at.a("si"), at.a("ref")) }
+                        "is" -> inIs = true
+                        "rPh" -> phonetic++
+                        "t" -> if (inIs && phonetic == 0) into = inline
+                        "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
+                        "hyperlink" -> {
+                            val range = at.a("ref")?.let(::rangeRef) ?: return
+                            val target = at.a("id")?.let { rels[it] }?.removePrefix("ext:") ?: at.a("location")?.let { "#$it" } ?: return
+                            for (rr in range.r1..min(range.r2, range.r1 + 1000)) for (cc in range.c1..min(range.c2, range.c1 + 100)) links[Sheet.key(rr, cc)] = target
+                        }
+                    }
+                }
+                override fun endElement(uri: String?, local: String, q: String?) {
+                    when (local) {
+                        "v", "f", "t" -> into = null
+                        "is" -> inIs = false
+                        "rPh" -> phonetic--
+                        "c" -> cell()
+                    }
+                }
+                override fun characters(ch: CharArray, start: Int, length: Int) { into?.appendRange(ch, start, start + length) }
+
+                fun cell() {
+                    var formula = f.toString().takeIf { it.isNotEmpty() }
+                    fAttrs?.let { (type, si, ref) ->
+                        if (type == "shared" && si != null) {
+                            if (formula != null && ref != null) shared[si] = Triple(formula, r, c)
+                            else shared[si]?.let { (base, br, bc) -> formula = shift(base, r - br, c - bc) }
+                        }
+                    }
+                    val style = styles.getOrNull(s) ?: styles.firstOrNull() ?: SheetStyle()
+                    val raw = v.toString()
+                    val cell = when (t) {
+                        "s" -> SheetCell(strings.getOrNull(raw.trim().toIntOrNull() ?: -1) ?: "", SheetKind.Text, style = s)
+                        "inlineStr" -> SheetCell(inline.toString(), SheetKind.Text, style = s)
+                        "str" -> SheetCell(raw, SheetKind.Text, style = s)
+                        "b" -> SheetCell(if (raw.trim() == "1") "TRUE" else "FALSE", SheetKind.Bool, if (raw.trim() == "1") 1.0 else 0.0, style = s)
+                        "e" -> SheetCell(raw, SheetKind.Error, style = s)
+                        "d" -> runCatching { LocalDateTime.parse(raw.trim().let { if ('T' in it) it else "${it}T00:00" }) }.getOrNull()?.let { dt ->
+                            val serial = ChronoUnit.SECONDS.between(LocalDate.of(1899, 12, 30).atStartOfDay(), dt) / 86_400.0
+                            val shown = format.format(serial, style.format.takeIf { format.isDate(it) } ?: "d/m/yyyy")
+                            SheetCell(shown.text, SheetKind.Number, serial, style = s, color = shown.color)
+                        } ?: SheetCell(raw, SheetKind.Text, style = s)
+                        else -> raw.trim().toDoubleOrNull()?.let { n ->
+                            val shown = runCatching { format.format(n, style.format) }.getOrElse { SheetFormat.Shown(format.general(n)) }
+                            SheetCell(shown.text, SheetKind.Number, n, style = s, color = shown.color)
+                        } ?: SheetCell("", SheetKind.Empty, style = s)
+                    }.let { if (formula != null) it.copy(formula = "=$formula") else it }
+                    if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
+                    cells[Sheet.key(r, c)] = cell
+                    if (cell.kind != SheetKind.Empty || style.boxed) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) }
+                }
+            })
+            links.forEach { (k, target) -> cells[k]?.let { cells[k] = it.copy(link = target) } }
+            merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
+            WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
+            return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
+                merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden)
+        }
+    }
+
+    // --- .ods ---
+
+    /** LibreOffice's length ("2.258cm", "0.1736in", "10pt") in pixels at 96 per inch. */
+    fun odfPx(length: String?): Float? {
+        val m = Regex("""^(-?[0-9.]+)\s*(cm|mm|in|pt|pc|px)?$""").find(length?.trim() ?: return null) ?: return null
+        val n = m.groupValues[1].toFloatOrNull() ?: return null
+        return when (m.groupValues[2]) { "cm" -> n / 2.54f * 96; "mm" -> n / 25.4f * 96; "in" -> n * 96; "pc" -> n * 16; "px" -> n; else -> n * 4 / 3 }
+    }
+
+    private class Ods(val parts: Map<String, ByteArray>) {
+        /** Every style:style by name: its family, parent, and the properties ("c.", "t.", "p.", "col.", "row.", "tab." + name). */
+        class Raw(val family: String, val parent: String?, val props: HashMap<String, String> = HashMap())
+        val raw = HashMap<String, Raw>()
+        var defaultCell: Raw? = null
+        val styles = ArrayList<SheetStyle>()
+        val styleIndex = HashMap<String, Int>()
+
+        /** A style's properties with its parents' under them ("Default" under every cell style, as LibreOffice). */
+        fun props(name: String?, seen: Int = 0): Map<String, String> {
+            val r = raw[name ?: "Default"] ?: return defaultCell?.props.orEmpty()
+            val parent = r.parent ?: if (r.family == "table-cell" && name != null && name != "Default") "Default" else null
+            val base = if (parent == null || seen > 20) defaultCell?.props.orEmpty() else props(parent, seen + 1)
+            return base + r.props
+        }
+
+        fun styleHandler() = object : DefaultHandler() {
+            var current: Raw? = null
+            override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                when (local) {
+                    "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s -> at.a("name")?.let { raw[it] = s } }
+                    "default-style" -> current = if (at.a("family") == "table-cell") Raw("table-cell", null).also { defaultCell = it } else null
+                    "table-cell-properties", "text-properties", "paragraph-properties", "table-column-properties", "table-row-properties", "table-properties" -> {
+                        val p = when (local) {
+                            "table-cell-properties" -> "c."; "text-properties" -> "t."; "paragraph-properties" -> "p."
+                            "table-column-properties" -> "col."; "table-row-properties" -> "row."; else -> "tab."
+                        }
+                        current?.let { s -> for (i in 0 until at.length) s.props[p + at.getLocalName(i)] = at.getValue(i) }
+                    }
+                }
+            }
+            override fun endElement(uri: String?, local: String, q: String?) { if (local == "style" || local == "default-style") current = null }
+        }
+
+        fun hex(s: String?): Int? = s?.takeIf { it.startsWith("#") && it.length == 7 }?.substring(1)?.toLongOrNull(16)?.toInt()?.or(0xFF000000.toInt())
+
+        fun border(s: String?): SheetLine? {
+            if (s == null || s == "none" || s.startsWith("0 ") || s.startsWith("0pt")) return null
+            val parts = s.split(' ')
+            val w = odfPx(parts.firstOrNull())?.let { if (it < 1.3f) 1f else if (it < 2.6f) 2f else 3f } ?: 1f
+            val color = parts.firstNotNullOfOrNull { hex(it) } ?: 0xFF000000.toInt()
+            return SheetLine(color, w, double = "double" in parts, dashed = parts.any { it in setOf("dashed", "dotted", "dash-dot", "dash-dot-dot", "fine-dashed") })
+        }
+
+        fun style(name: String?): Int = styleIndex.getOrPut(name ?: "") {
+            val p = props(name)
+            val fix = p["c.text-align-source"] != "value-type"
+            val all = p["c.border"]
+            styles += SheetStyle(
+                font = p["t.font-name"] ?: p["t.font-family"], size = odfPx(p["t.font-size"])?.let { it * 3 / 4 } ?: 10f,
+                bold = p["t.font-weight"].let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 },
+                italic = p["t.font-style"] == "italic" || p["t.font-style"] == "oblique",
+                underline = p["t.text-underline-style"].let { it != null && it != "none" },
+                strike = p["t.text-line-through-style"].let { it != null && it != "none" },
+                color = hex(p["t.color"]), fill = hex(p["c.background-color"]),
+                align = if (!fix) SheetAlign.General else when (p["p.text-align"]) {
+                    "start", "left" -> SheetAlign.Left; "center" -> SheetAlign.Center; "end", "right" -> SheetAlign.Right
+                    "justify" -> SheetAlign.Justify; else -> SheetAlign.General
+                },
+                valign = when (p["c.vertical-align"]) { "top" -> SheetVAlign.Top; "middle" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
+                wrap = p["c.wrap-option"] == "wrap",
+                rotation = p["c.rotation-angle"]?.toIntOrNull()?.let { if (it > 180) it - 360 else it } ?: 0,
+                left = border(p["c.border-left"] ?: all), right = border(p["c.border-right"] ?: all),
+                top = border(p["c.border-top"] ?: all), bottom = border(p["c.border-bottom"] ?: all),
+            )
+            styles.lastIndex
+        }
+
+        lateinit var settings: Settings
+
+        /** The looks and the sheets' names, in one pass that skips every row; [table] reads one sheet when it is opened. */
+        fun read(): Workbook {
+            parts["styles.xml"]?.let { sax(it, styleHandler()) }
+            val content = parts["content.xml"] ?: error("Not a spreadsheet.")
+            settings = readSettings()
+            val tabs = ArrayList<SheetTab>()
+            sax(content, object : DefaultHandler() {
+                val autoStyles = styleHandler()
+                var inStyles = false
+                override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                    if (local == "automatic-styles") inStyles = true
+                    if (inStyles) autoStyles.startElement(uri, local, q, at)
+                    else if (local == "table") tabs += SheetTab(at.a("name") ?: "Sheet", props(at.a("style-name"))["tab.display"] == "false")
+                }
+                override fun endElement(uri: String?, local: String, q: String?) {
+                    if (inStyles) { autoStyles.endElement(uri, local, q); if (local == "automatic-styles") inStyles = false }
+                }
+            })
+            if (tabs.isEmpty()) error("No sheets.")
+            // Every cell look made now, so the list does not grow while a sheet is drawn.
+            style(null) // index 0: the default look
+            raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
+            WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
+            val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
+            return Workbook(tabs, styles, active) { i -> table(content, i) }
+        }
+
+        fun table(content: ByteArray, target: Int): Sheet {
+            var result: Sheet? = null
+            var tableIndex = -1
+            sax(content, object : DefaultHandler() {
+                var inStyles = false
+                var name = ""; var tableStyle: String? = null
+                var cells = CellMap()
+                var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
+                var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
+                var merges = ArrayList<SheetRange>()
+                var col = 0; var row = 0; var rowRepeat = 1; var rowDefault: String? = null
+                var maxRow = -1; var maxCol = -1
+                var rowCells = ArrayList<Pair<Int, SheetCell>>()
+                // the cell being read
+                var inCell = false; var cellRepeat = 1; var cellAttrs: Map<String, String> = emptyMap()
+                val text = StringBuilder(); var paras = 0; var skip = 0; var inP = false; var link: String? = null
+
+                override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                    if (local == "automatic-styles") inStyles = true
+                    if (inStyles) return
+                    if (skip > 0) { skip++; return }
+                    when (local) {
+                        "table" -> {
+                            tableIndex++
+                            if (tableIndex != target) { skip = 1; return }
+                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name")
+                            cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
+                            rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
+                            col = 0; row = 0; maxRow = -1; maxCol = -1
+                        }
+                        "table-column" -> {
+                            val n = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
+                            val w = odfPx(props(at.a("style-name"))["col.column-width"])
+                            val hide = at.a("visibility").let { it == "collapse" || it == "filter" }
+                            val def = at.a("default-cell-style-name")?.takeIf { it != "Default" }
+                            for (k in col until min(col + n, 16384)) {
+                                if (k > col + 1024) break
+                                if (w != null) colWidths[k] = w
+                                if (hide) hiddenCols += k
+                                if (def != null) colDefaults[k] = def
+                            }
+                            col += n
+                        }
+                        "table-row" -> {
+                            rowRepeat = at.a("number-rows-repeated")?.toIntOrNull() ?: 1
+                            rowDefault = at.a("default-cell-style-name")
+                            odfPx(props(at.a("style-name"))["row.row-height"])?.let { rowRuns += Triple(row, rowRepeat, it) }
+                            if (at.a("visibility").let { it == "collapse" || it == "filter" }) hiddenRuns += row to rowRepeat
+                            col = 0; rowCells = ArrayList()
+                        }
+                        "table-cell", "covered-table-cell" -> {
+                            cellRepeat = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
+                            if (local == "covered-table-cell") { col += cellRepeat; skip = 1; return }
+                            inCell = true; text.setLength(0); paras = 0; link = null
+                            cellAttrs = HashMap<String, String>().also { m -> for (i in 0 until at.length) m[at.getLocalName(i)] = at.getValue(i) }
+                        }
+                        "annotation", "frame", "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
+                        "p", "h" -> if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
+                        "s" -> if (inP) repeat(at.a("c")?.toIntOrNull() ?: 1) { text.append(' ') }
+                        "tab" -> if (inP) text.append('\t')
+                        "line-break" -> if (inP) text.append('\n')
+                        "a" -> if (inCell) link = at.a("href")
+                    }
+                }
+
+                override fun endElement(uri: String?, local: String, q: String?) {
+                    if (inStyles) { if (local == "automatic-styles") inStyles = false; return }
+                    if (skip > 0) { skip--; return }
+                    when (local) {
+                        "p", "h" -> inP = false
+                        "table-cell" -> { endCell(); inCell = false }
+                        "table-row" -> endRow()
+                        "table" -> endTable()
+                    }
+                }
+
+                override fun characters(ch: CharArray, start: Int, length: Int) { if (inP && skip == 0) text.appendRange(ch, start, start + length) }
+
+                fun endCell() {
+                    val a = cellAttrs
+                    val styleName = a["style-name"] ?: rowDefault?.takeIf { it != "Default" } ?: colDefaults[col]
+                    val s = style(styleName)
+                    val type = a["value-type"]
+                    val shown = text.toString()
+                    val value = when (type) {
+                        "float", "percentage", "currency" -> a["value"]?.toDoubleOrNull()
+                        "date" -> a["date-value"]?.let { d ->
+                            runCatching { LocalDateTime.parse(if ('T' in d) d else "${d}T00:00") }.getOrNull()
+                                ?.let { ChronoUnit.SECONDS.between(LocalDate.of(1899, 12, 30).atStartOfDay(), it) / 86_400.0 }
+                        }
+                        "time" -> a["time-value"]?.let { t ->
+                            Regex("""PT(\d+)H(\d+)M([0-9.]+)S""").find(t)?.destructured?.let { (h, m, sec) -> (h.toDouble() * 3600 + m.toDouble() * 60 + sec.toDouble()) / 86_400 }
+                        }
+                        "boolean" -> if (a["boolean-value"] == "true") 1.0 else 0.0
+                        else -> null
+                    }
+                    val kind = when {
+                        a["value-type"] == "error" -> SheetKind.Error
+                        type == "boolean" -> SheetKind.Bool
+                        value != null -> SheetKind.Number
+                        shown.isNotEmpty() -> SheetKind.Text
+                        else -> SheetKind.Empty
+                    }
+                    val formula = a["formula"]?.let(::odfFormula)
+                    val cell = SheetCell(shown, kind, value, formula, s, link = link)
+                    val boxed = styles[s].boxed
+                    val n = min(cellRepeat, 16384 - col)
+                    if (kind != SheetKind.Empty || formula != null || (boxed && n <= 256)) {
+                        for (k in 0 until n) rowCells += (col + k) to cell
+                    }
+                    val rs = a["number-rows-spanned"]?.toIntOrNull() ?: 1; val cs = a["number-columns-spanned"]?.toIntOrNull() ?: 1
+                    if (rs > 1 || cs > 1) merges += SheetRange(row, col, row + rs - 1, col + cs - 1)
+                    col += cellRepeat
+                }
+
+                fun endRow() {
+                    // A long run of repeated rows is LibreOffice's way to the sheet's end: only what is written in it counts.
+                    if (rowRepeat > 100) rowCells.removeAll { it.second.kind == SheetKind.Empty && it.second.formula == null }
+                    if (rowCells.isNotEmpty()) {
+                        for (k in 0 until min(rowRepeat, 1000)) for ((c, cell) in rowCells) {
+                            cells[Sheet.key(row + k, c)] = cell
+                            if (cell.kind != SheetKind.Empty || styles[cell.style].boxed) { maxRow = max(maxRow, row + k); maxCol = max(maxCol, c) }
+                        }
+                    }
+                    row += rowRepeat
+                }
+
+                fun endTable() {
+                    merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
+                    val rowHeights = HashMap<Int, Float>(); val hiddenRows = HashSet<Int>()
+                    val limit = maxRow + 200
+                    rowRuns.forEach { (start, n, h) -> for (r in start until min(start + n, limit)) rowHeights[r] = h }
+                    hiddenRuns.forEach { (start, n) -> for (r in start until min(start + n, limit)) hiddenRows += r }
+                    // LibreOffice's default row (0.452 cm) and column (2.258 cm).
+                    val defaultRow = rowHeights.values.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 17f
+                    val defaultCol = colWidths.values.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 85f
+                    val view = settings.tables[name].orEmpty()
+                    val tabProps = props(tableStyle)
+                    result = Sheet(
+                        name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows, merges,
+                        frozenRows = if (view["VerticalSplitMode"] == "2") view["VerticalSplitPosition"]?.toIntOrNull() ?: 0 else 0,
+                        frozenCols = if (view["HorizontalSplitMode"] == "2") view["HorizontalSplitPosition"]?.toIntOrNull() ?: 0 else 0,
+                        grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
+                        colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
+                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false",
+                    )
+                    WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
+                }
+            })
+            return result ?: error("No sheet ${target + 1}.")
+        }
+
+        class Settings(val tables: Map<String, Map<String, String>>, val active: String?, val showGrid: String?)
+
+        /** LibreOffice's view settings: each sheet's frozen rows and columns, the grid, the sheet it was left on. */
+        fun readSettings(): Settings {
+            val bytes = parts["settings.xml"] ?: return Settings(emptyMap(), null, null)
+            return runCatching {
+                val doc = OfficeFormats.parse(bytes)
+                val tables = HashMap<String, Map<String, String>>()
+                var active: String? = null; var grid: String? = null
+                val named = doc.getElementsByTagNameNS("*", "config-item-map-named")
+                for (i in 0 until named.length) {
+                    val m = named.item(i) as Element
+                    if (m.getAttributeNS("*", "name").ifEmpty { m.getAttribute("config:name") } != "Tables") continue
+                    for (entry in m.kids("config-item-map-entry")) {
+                        val items = entry.kids("config-item").associate { (it.getAttribute("config:name")) to it.textContent }
+                        tables[entry.getAttribute("config:name")] = items
+                    }
+                    // The view these tables belong to: its active table and grid.
+                    (m.parentNode as? Element)?.kids("config-item")?.forEach {
+                        when (it.getAttribute("config:name")) { "ActiveTable" -> active = it.textContent; "ShowGrid" -> grid = it.textContent }
+                    }
+                }
+                Settings(tables, active, grid)
+            }.getOrElse { Settings(emptyMap(), null, null) }
+        }
+    }
+
+    /** LibreOffice's "of:=SUM([.A1:.B2])" as Excel writes it: "=SUM(A1:B2)". */
+    fun odfFormula(f: String): String {
+        val body = f.substringAfter(':', f).let { if (f.startsWith("of:") || f.startsWith("oooc:") || f.startsWith("msoxl:")) it else f }
+        return body.replace(Regex("""\[([^\]]*)]""")) { m ->
+            m.groupValues[1].split(':').joinToString(":") { part ->
+                val sheet = part.substringBefore('.', "").removePrefix("$").trim('\'')
+                val cell = part.substringAfter('.')
+                if (sheet.isEmpty()) cell else "$sheet!$cell"
+            }
+        }.let { if (it.startsWith("=")) it else "=$it" }
+    }
+
+    // --- .csv ---
+
+    /** A text table: UTF-8 (or Windows Greek, as Excel saves a CSV here), the separator the first lines use most. */
+    fun csv(bytes: ByteArray): Workbook {
+        val text = runCatching {
+            Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+        }.getOrElse { String(bytes, charset("windows-1253")) }.removePrefix("﻿")
+        val head = text.lineSequence().take(5).joinToString("\n")
+        val sep = listOf(',', ';', '\t', '|').maxByOrNull { s -> head.count { it == s } } ?: ','
+        val cells = CellMap()
+        var r = 0; var c = 0; var maxCol = -1
+        val field = StringBuilder(); var quoted = false; var i = 0
+        fun put() {
+            val s = field.toString()
+            if (s.isNotEmpty()) {
+                val n = s.trim().takeIf { Regex("""-?\d+([.,]\d+)?""").matches(it) }?.replace(',', '.')?.toDoubleOrNull()
+                cells[Sheet.key(r, c)] = SheetCell(s, if (n != null) SheetKind.Number else SheetKind.Text, n)
+                maxCol = max(maxCol, c)
+            }
+            field.setLength(0); c++
+        }
+        while (i < text.length) {
+            val ch = text[i]
+            when {
+                quoted && ch == '"' && text.getOrNull(i + 1) == '"' -> { field.append('"'); i++ }
+                ch == '"' && (quoted || field.isEmpty()) -> quoted = !quoted
+                !quoted && ch == sep -> put()
+                !quoted && (ch == '\n' || ch == '\r') -> { put(); if (ch == '\r' && text.getOrNull(i + 1) == '\n') i++; r++; c = 0 }
+                else -> field.append(ch)
+            }
+            i++
+        }
+        if (field.isNotEmpty() || c > 0) put()
+        var rows = 0
+        cells.forEach { k, _ -> rows = max(rows, Sheet.row(k) + 1) }
+        val sheet = Sheet("Sheet1", cells, rows, maxCol + 1, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
+        return Workbook(listOf(SheetTab("Sheet1")), listOf(SheetStyle())) { sheet }
+    }
+}

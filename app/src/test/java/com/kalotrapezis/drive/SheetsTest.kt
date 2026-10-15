@@ -1,0 +1,176 @@
+package com.kalotrapezis.drive
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+import java.io.File
+
+/** Excel's number formats, each against what Excel itself shows; and the readers on LibreOffice's own files. */
+class SheetsTest {
+    private val f = SheetFormat()
+    private fun show(v: Double, code: String) = f.format(v, code).text
+
+    @Test fun general() {
+        assertEquals("1234.5", show(1234.5, "General"))
+        assertEquals("0.3", show(0.1 + 0.2, "General"))
+        assertEquals("0.333333333", show(1 / 3.0, "General"))
+        assertEquals("-1.5", show(-1.5, "General"))
+        assertEquals("1.23457E+11", show(123456789012.0, "General"))
+        assertEquals("1E-10", show(1e-10, "General"))
+        assertEquals("42", show(42.0, "General"))
+        assertEquals("0", show(0.0, "General"))
+        assertEquals("12345678901", show(12345678901.0, "General"))
+    }
+
+    @Test fun numbers() {
+        assertEquals("3.14", show(3.14159, "0.00"))
+        assertEquals("1,234,568", show(1234567.8, "#,##0"))
+        assertEquals("-1,234.50", show(-1234.5, "#,##0.00"))
+        assertEquals("26%", show(0.256, "0%"))
+        assertEquals("25.6%", show(0.256, "0.0%"))
+        assertEquals("1,235", show(1234567.0, "#,##0,"))
+        assertEquals("007", show(7.0, "000"))
+        assertEquals(".5", show(0.5, "#.##"))
+        assertEquals("0.5", show(0.5, "0.0#"))
+        assertEquals("1,234.50 €", show(1234.5, "#,##0.00\\ \"€\""))
+        assertEquals("€1,234.50", show(1234.5, "[$€-408]#,##0.00"))
+        assertEquals("zero", show(0.0, "0;-0;\"zero\""))
+        assertEquals("(5)", show(-5.0, "#,##0 ;(#,##0)"))
+        assertEquals("5 ", show(5.0, "#,##0_);(#,##0)"))
+        assertEquals("", show(5.0, ";;;"))
+        assertEquals("-0.5", show(-0.5, "0.0"))
+        assertEquals("0.0", show(-0.01, "0.0"))
+    }
+
+    @Test fun `sections and colours`() {
+        val red = f.format(-5.0, "#,##0;[Red]-#,##0")
+        assertEquals("-5", red.text); assertEquals(0xFFFF0000.toInt(), red.color)
+        assertEquals("-42.00", show(-42.0, "#,##0.00;[RED]\\-#,##0.00"))
+        assertNull(f.format(5.0, "#,##0;[Red]-#,##0").color)
+        assertEquals("big", show(150.0, "[>100]\"big\";[<=100]\"small\""))
+        assertEquals("small", show(50.0, "[>100]\"big\";[<=100]\"small\""))
+    }
+
+    @Test fun scientific() {
+        assertEquals("1.23E+04", show(12345.0, "0.00E+00"))
+        assertEquals("1.23E-03", show(0.00123, "0.00E+00"))
+        assertEquals("12.3E+3", show(12345.0, "##0.0E+0"))
+    }
+
+    @Test fun fractions() {
+        assertEquals("1 1/2", show(1.5, "# ?/?"))
+        assertEquals("1/3", show(1 / 3.0, "# ??/??"))
+        assertEquals("3/4", show(0.75, "?/4"))
+        assertEquals("2", show(2.0, "# ?/?"))
+    }
+
+    @Test fun dates() {
+        assertEquals("15/3/2023", show(45000.0, "d/m/yyyy"))
+        assertEquals("15/03/2023", show(45000.0, "dd/mm/yyyy"))
+        assertEquals("Mar-23", show(45000.0, "mmm-yy"))
+        assertEquals("Wednesday 15 March 2023", show(45000.0, "dddd d mmmm yyyy"))
+        assertEquals("2023-03-15 06:00", show(45000.25, "yyyy-mm-dd hh:mm"))
+        assertEquals("12:00", show(0.5, "h:mm"))
+        assertEquals("6:00 PM", show(0.75, "h:mm AM/PM"))
+        assertEquals("36:00:00", show(1.5, "[h]:mm:ss"))
+        assertEquals("01:30", show(90 / 86400.0, "mm:ss"))
+        assertEquals("1/1/1900", show(1.0, "d/m/yyyy"))
+        assertEquals("15/10/2026", show(46310.0, "d/m/yyyy"))
+        assertEquals("15 Μαρτίου 2023", show(45000.0, "[$-408]dd mmmm yyyy"))
+        assertEquals("12:00:00.5", show(0.5 + 0.5 / 86400, "hh:mm:ss.0"))
+        assertTrue(f.isDate("dd/mm/yyyy")); assertTrue(f.isDate("[h]:mm")); assertFalse(f.isDate("#,##0.00 \"days\"")); assertFalse(f.isDate("0.00E+00"))
+    }
+
+    @Test fun `the phone's separators`() {
+        val gr = SheetFormat(',', '.')
+        assertEquals("1.234,50", gr.format(1234.5, "#,##0.00").text)
+        assertEquals("0,3", gr.format(0.3, "General").text)
+    }
+
+    @Test fun `shared formulas move`() {
+        assertEquals("SUM(B3:B4)+\$A\$1", Sheets.shift("SUM(B2:B3)+\$A\$1", 1, 0))
+        assertEquals("C2*2", Sheets.shift("B2*2", 0, 1))
+        assertEquals("LOG10(C2)&\"A1\"", Sheets.shift("LOG10(B2)&\"A1\"", 0, 1))
+        assertEquals("=SUM(B2:B3)", Sheets.odfFormula("of:=SUM([.B2:.B3])"))
+        assertEquals("=Sheet2!A1+1", Sheets.odfFormula("of:=[\$Sheet2.A1]+1"))
+    }
+
+    private fun resource(name: String) = javaClass.classLoader!!.getResource(name).readBytes()
+
+    /** sheet.fods (a hand-written LibreOffice file) as LibreOffice 26.2 saved it in both formats: the same sheets. */
+    /** [greek]: an .ods carries its numbers as shown, and LibreOffice here saved them with Greek separators. */
+    private fun checkBook(book: Workbook, greek: Boolean = false) {
+        fun n(s: String) = if (greek) s.replace(',', '#').replace('.', ',').replace('#', '.') else s
+        assertEquals(listOf("Numbers", "Second", "Hidden"), book.tabs.map { it.name })
+        assertEquals(listOf(false, false, true), book.tabs.map { it.hidden })
+        val s = book.sheet(0)
+        assertEquals(5, s.rows); assertEquals(4, s.cols)
+        assertEquals("Name", s[0, 0]?.text)
+        val head = book.styles[s[0, 0]!!.style]
+        assertTrue(head.bold); assertEquals(0xFFFFFF00.toInt(), head.fill); assertEquals(0xFF1F3864.toInt(), head.color)
+        assertEquals(n("1,234.50"), s[1, 1]?.text); assertEquals(1234.5, s[1, 1]?.value)
+        assertEquals(n("-42.00"), s[2, 1]?.text)
+        assertEquals("15/03/2023", s[1, 2]?.text); assertEquals(45000.0, s[1, 2]?.value)
+        assertEquals(n("25.6%"), s[1, 3]?.text)
+        assertEquals("Βήτα", s[2, 0]?.text)
+        assertEquals(listOf(SheetRange(3, 0, 3, 1)), s.merges)
+        assertEquals(SheetRange(3, 0, 3, 1), s.merge(3, 1))
+        val mid = book.styles[s[3, 0]!!.style]
+        assertEquals(SheetAlign.Center, mid.align); assertTrue(mid.italic); assertTrue(mid.wrap)
+        assertEquals("=SUM(B2:B3)", s[4, 1]?.formula); assertEquals(n("1,192.50"), s[4, 1]?.text)
+        assertTrue(book.styles[s[1, 1]!!.style].left != null)
+        assertEquals(147f, s.width(0), 5f) // 4 cm (Excel reads LibreOffice's 20.43 characters as 143 px)
+        assertEquals(37.8f, s.height(0), 1f) // 1 cm
+        assertEquals("Hello", book.sheets[1][2, 2]?.text)
+        assertEquals(3, book.sheets[1].rows)
+    }
+
+    @Test fun xlsx() {
+        val book = Sheets.read(resource("sheet.xlsx"), "sheet.xlsx")
+        checkBook(book)
+        assertEquals(1, book.sheet(0).frozenRows); assertEquals(1, book.sheet(0).frozenCols)
+    }
+
+    @Test fun ods() = checkBook(Sheets.read(resource("sheet.ods"), "sheet.ods"), greek = true)
+
+    /** LibreOffice's view settings (a headless conversion leaves them out): frozen rows and columns, the sheet left on. */
+    @Test fun `ods view settings`() {
+        val parts = OfficeFormats.unzip(resource("sheet.ods"))
+        val fods = String(resource("sheet.fods"))
+        parts["settings.xml"] = ("""<?xml version="1.0" encoding="UTF-8"?><office:document-settings xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" office:version="1.3">""" +
+            "<office:settings>" + fods.substringAfter("<office:settings>").substringBefore("</office:settings>") + "</office:settings></office:document-settings>").toByteArray()
+        val book = Sheets.read(OfficeFormats.zip(parts, "mimetype"), "s.ods")
+        assertEquals(1, book.sheet(0).frozenRows); assertEquals(1, book.sheet(0).frozenCols)
+        assertEquals(0, book.sheet(1).frozenRows)
+    }
+
+    @Test fun csv() {
+        val book = Sheets.read("Name;Amount\n\"Smith; J\";12,5\r\n\"say \"\"hi\"\"\";3\n".toByteArray(), "a.csv")
+        val s = book.sheets[0]
+        assertEquals("Smith; J", s[1, 0]?.text); assertEquals(12.5, s[1, 1]?.value)
+        assertEquals("say \"hi\"", s[2, 0]?.text); assertEquals(3, s.rows); assertEquals(2, s.cols)
+        // A CSV Excel saved here: Windows Greek, not UTF-8.
+        assertEquals("Όνομα", Sheets.read("Όνομα,1".toByteArray(charset("windows-1253")), "g.csv").sheets[0][0, 0]?.text)
+    }
+
+    /** Every one of the user's spreadsheets (~/Tetra/Files, not Κλειδιά) reads. Only with TETRA_SWEEP=1. */
+    @Test fun `the user's spreadsheets read`() {
+        assumeTrue(System.getenv("TETRA_SWEEP") == "1")
+        val root = File(System.getProperty("user.home"), "Tetra/Files")
+        val files = root.walkTopDown().onEnter { !it.name.startsWith("Κλειδιά") }.filter { it.isFile && Sheets.isSheet(it.name) }.toList()
+        val failed = ArrayList<String>()
+        files.forEach { file ->
+            runCatching {
+                val start = System.nanoTime()
+                val book = Sheets.read(file.readBytes(), file.name)
+                val cells = book.tabs.indices.sumOf { book.sheet(it).cells.size }
+                println("${file.name}: ${book.tabs.size} sheets, $cells cells, ${(System.nanoTime() - start) / 1_000_000} ms")
+            }.onFailure { failed += "${file.relativeTo(root)}: $it" }
+        }
+        println("Sheets sweep: ${files.size} files, ${failed.size} failed"); failed.forEach(::println)
+        assertTrue(failed.joinToString("\n"), failed.isEmpty())
+    }
+}

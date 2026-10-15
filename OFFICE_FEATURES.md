@@ -138,7 +138,7 @@ one pass once the tabs' features are done.
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
       editor ; editing a file's text box keeps every run's look and each paragraph's (15 Oct)
 - [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame; outline, shadow,
-      glow (15 Oct; glow in Word files) — [ ] warp, changing effects after
+      glow (15 Oct; glow in Word files — LibreOffice has no glow for letters in a text document) — [ ] warp, changing effects after
 - [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
       no per-section); drawn on the pages
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages

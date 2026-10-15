@@ -54,6 +54,11 @@
 >   is left in the package unused. `MathMLTest` (LibreOffice's own conversion, `test/resources/equations.odt`; tree →
 >   MathML → tree); on the phone both of LibreOffice's drawn and a quadratic formula inserted — LibreOffice draws it.
 >
+> - **WordArt glow in .odt: not possible** (item 2's condition). LibreOffice 26.2 has a shape glow
+>   (`loext:glow-radius/-color/-transparency`, kept on a round trip) but it glows the shape's fill and line — a WordArt
+>   has neither, so nothing shows; its "text glow" tokens (`loext:glow-text-*`) are dropped when a Writer document is
+>   read, and Word's `w14:glow` is dropped when LibreOffice opens a .docx. So Glow stays offered in Word files only.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

@@ -57,6 +57,8 @@ internal data class SheetStyle(
 internal data class SheetCell(
     val text: String, val kind: SheetKind, val value: Double? = null, val formula: String? = null, val style: Int = 0,
     val color: Int? = null, val link: String? = null,
+    /** Its comment (Excel's note, a threaded comment, LibreOffice's annotation): "Author: words". */
+    val note: String? = null,
 )
 
 /** Rows and columns from 0, both ends in. */
@@ -229,6 +231,9 @@ internal object Sheets {
         }
         return if (ext == "ods") Ods(part).read() else Xlsx(part, decimal, group).read()
     }
+
+    /** A HYPERLINK formula's address: =HYPERLINK("https://…", "words"). */
+    fun hyperlink(formula: String): String? = Regex("""^=?\s*HYPERLINK\(\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(formula)?.groupValues?.get(1)
 
     /** "B12" → (11, 1); null when it is not a cell's name. */
     fun cellRef(ref: String): Pair<Int, Int>? {
@@ -566,13 +571,15 @@ internal object Sheets {
                             val shown = runCatching { format.format(n, style.format) }.getOrElse { SheetFormat.Shown(format.general(n)) }
                             SheetCell(shown.text, SheetKind.Number, n, style = s, color = shown.color)
                         } ?: SheetCell("", SheetKind.Empty, style = s)
-                    }.let { if (formula != null) it.copy(formula = "=$formula") else it }
+                    }.let { if (formula != null) it.copy(formula = "=$formula", link = hyperlink(formula!!)) else it }
                     if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
                     cells[Sheet.key(r, c)] = cell
                     if (cell.kind != SheetKind.Empty) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) } else boxed.add(r, c)
                 }
             })
             links.forEach { (k, target) -> cells[k]?.let { cells[k] = it.copy(link = target) } }
+            runCatching { notes(rels).forEach { (k, note) -> cells[k] = (cells[k] ?: SheetCell("", SheetKind.Empty)).copy(note = note) } }
+                .onFailure { WriterLog.w("Sheets: comments could not be read", it) }
             val looks = ArrayList<SheetStyle>()
             tableParts.forEach { p -> runCatching { parts(p)?.let { table(it, cells, looks) } }.onFailure { WriterLog.w("Sheets: a table could not be read", it) } }
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
@@ -580,6 +587,44 @@ internal object Sheets {
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks)
+        }
+
+        /**
+         * A sheet's comments: Excel's notes (comments1.xml, "Author:" as Excel writes it), and its threaded comments with
+         * their replies, which take the place of the note Excel keeps for older versions.
+         */
+        fun notes(rels: Map<String, String>): Map<Long, String> {
+            val out = HashMap<Long, String>()
+            rels.values.firstOrNull { it.substringAfterLast('/').startsWith("comments") }?.let(parts)?.let { bytes ->
+                val root = OfficeFormats.parse(bytes).documentElement
+                val authors = root.kid("authors")?.kids("author")?.map { it.textContent }.orEmpty()
+                root.kid("commentList")?.kids("comment")?.forEach { c ->
+                    val at = c.attr("ref")?.let(::rangeRef) ?: return@forEach
+                    val text = c.getElementsByTagNameNS("*", "t").let { l -> (0 until l.length).joinToString("") { l.item(it).textContent } }.trim()
+                    val author = authors.getOrNull(c.attr("authorId")?.toIntOrNull() ?: -1)?.takeIf { it.isNotBlank() && !text.startsWith("$it:") }
+                    out[Sheet.key(at.r1, at.c1)] = (author?.let { "$it: " } ?: "") + text
+                }
+            }
+            rels.values.firstOrNull { it.substringAfterLast('/').startsWith("threadedComment") }?.let(parts)?.let { bytes ->
+                val people = rels.values.firstOrNull { it.contains("person") }?.let(parts)?.let { p ->
+                    val l = OfficeFormats.parse(p).getElementsByTagNameNS("*", "person")
+                    (0 until l.length).associate { i -> (l.item(i) as Element).let { it.getAttribute("id") to it.getAttribute("displayName") } }
+                } ?: parts("xl/persons/person.xml")?.let { p ->
+                    val l = OfficeFormats.parse(p).getElementsByTagNameNS("*", "person")
+                    (0 until l.length).associate { i -> (l.item(i) as Element).let { it.getAttribute("id") to it.getAttribute("displayName") } }
+                }.orEmpty()
+                val thread = LinkedHashMap<Long, MutableList<String>>()
+                val l = OfficeFormats.parse(bytes).getElementsByTagNameNS("*", "threadedComment")
+                for (i in 0 until l.length) {
+                    val c = l.item(i) as Element
+                    val at = c.attr("ref")?.let(::rangeRef) ?: continue
+                    val who = people[c.getAttribute("personId")]?.takeIf { it.isNotBlank() }
+                    val text = c.getElementsByTagNameNS("*", "text").item(0)?.textContent?.trim().orEmpty()
+                    thread.getOrPut(Sheet.key(at.r1, at.c1)) { ArrayList() } += (who?.let { "$it: " } ?: "") + text
+                }
+                thread.forEach { (k, list) -> out[k] = list.joinToString("\n") }
+            }
+            return out
         }
 
         /**
@@ -709,22 +754,51 @@ internal object Sheets {
             return base + r.props
         }
 
+        /** A number style's colour ([Red] in LibreOffice) and its maps: "value()>=0" → the style used then. */
+        class DataStyle(var color: Int? = null, val maps: ArrayList<Pair<String, String>> = ArrayList())
+        val dataStyles = HashMap<String, DataStyle>()
+        private val dataStyleOf = HashMap<String?, String?>()
+
+        /** The colour a number's data style gives it ([value] picks the map), if any. */
+        fun numberColor(styleName: String?, value: Double): Int? {
+            val name = dataStyleOf.getOrPut(styleName) { props(styleName)["data-style"] } ?: return null
+            var d = dataStyles[name] ?: return null
+            for ((condition, apply) in d.maps) {
+                val m = Regex("""value\(\)\s*(<=|>=|!=|<|>|=)\s*(-?[0-9.]+)""").find(condition) ?: continue
+                val n = m.groupValues[2].toDoubleOrNull() ?: continue
+                val yes = when (m.groupValues[1]) { "<" -> value < n; ">" -> value > n; "<=" -> value <= n; ">=" -> value >= n; "=" -> value == n; else -> value != n }
+                if (yes) { d = dataStyles[apply] ?: d; break }
+            }
+            return d.color
+        }
+
         fun styleHandler() = object : DefaultHandler() {
             var current: Raw? = null
+            var data: DataStyle? = null
             override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                 when (local) {
-                    "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s -> at.a("name")?.let { raw[it] = s } }
+                    "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s ->
+                        at.a("name")?.let { raw[it] = s }
+                        at.a("data-style-name")?.let { s.props["data-style"] = it }
+                    }
+                    "number-style", "currency-style", "percentage-style", "date-style", "time-style", "boolean-style", "text-style" ->
+                        data = DataStyle().also { d -> at.a("name")?.let { dataStyles[it] = d } }
+                    "map" -> data?.let { d -> val c = at.a("condition"); val a = at.a("apply-style-name"); if (c != null && a != null) d.maps += c to a }
                     "default-style" -> current = if (at.a("family") == "table-cell") Raw("table-cell", null).also { defaultCell = it } else null
                     "table-cell-properties", "text-properties", "paragraph-properties", "table-column-properties", "table-row-properties", "table-properties" -> {
                         val p = when (local) {
                             "table-cell-properties" -> "c."; "text-properties" -> "t."; "paragraph-properties" -> "p."
                             "table-column-properties" -> "col."; "table-row-properties" -> "row."; else -> "tab."
                         }
+                        if (local == "text-properties") data?.let { d -> d.color = hex(at.a("color")) }
                         current?.let { s -> for (i in 0 until at.length) s.props[p + at.getLocalName(i)] = at.getValue(i) }
                     }
                 }
             }
-            override fun endElement(uri: String?, local: String, q: String?) { if (local == "style" || local == "default-style") current = null }
+            override fun endElement(uri: String?, local: String, q: String?) {
+                if (local == "style" || local == "default-style") current = null
+                if (local.endsWith("-style") && local != "default-style") data = null
+            }
         }
 
         fun hex(s: String?): Int? = s?.takeIf { it.startsWith("#") && it.length == 7 }?.substring(1)?.toLongOrNull(16)?.toInt()?.or(0xFF000000.toInt())
@@ -807,6 +881,8 @@ internal object Sheets {
                 // the cell being read
                 var inCell = false; var cellRepeat = 1; var cellAttrs: Map<String, String> = emptyMap()
                 val text = StringBuilder(); var paras = 0; var skip = 0; var inP = false; var link: String? = null
+                // a cell's annotation: its author and words
+                var inNote = false; var inNoteP = false; var inCreator = false; val note = StringBuilder(); val author = StringBuilder()
 
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                     if (local == "automatic-styles") inStyles = true
@@ -844,15 +920,18 @@ internal object Sheets {
                         "table-cell", "covered-table-cell" -> {
                             cellRepeat = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
                             if (local == "covered-table-cell") { col += cellRepeat; skip = 1; return }
-                            inCell = true; text.setLength(0); paras = 0; link = null
+                            inCell = true; text.setLength(0); paras = 0; link = null; note.setLength(0); author.setLength(0)
                             cellAttrs = HashMap<String, String>().also { m -> for (i in 0 until at.length) m[at.getLocalName(i)] = at.getValue(i) }
                         }
-                        "annotation", "frame", "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
-                        "p", "h" -> if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
+                        "annotation" -> if (inCell) inNote = true else skip = 1
+                        "creator" -> if (inNote) inCreator = true
+                        "frame", "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
+                        "p", "h" -> if (inNote) { if (note.isNotEmpty()) note.append('\n'); inNoteP = true } else if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
                         "s" -> if (inP) repeat(at.a("c")?.toIntOrNull() ?: 1) { text.append(' ') }
                         "tab" -> if (inP) text.append('\t')
                         "line-break" -> if (inP) text.append('\n')
-                        "a" -> if (inCell) link = at.a("href")
+                        // LibreOffice's link to a cell is "#Sheet.B5": as Excel's, "#Sheet!B5".
+                        "a" -> if (inCell) link = at.a("href")?.let { if (it.startsWith("#") && '!' !in it && '.' in it) "#" + it.drop(1).substringBeforeLast('.') + "!" + it.substringAfterLast('.') else it }
                     }
                 }
 
@@ -860,14 +939,19 @@ internal object Sheets {
                     if (inStyles) { if (local == "automatic-styles") inStyles = false; return }
                     if (skip > 0) { skip--; return }
                     when (local) {
-                        "p", "h" -> inP = false
+                        "p", "h" -> { inP = false; inNoteP = false }
+                        "annotation" -> inNote = false
+                        "creator" -> inCreator = false
                         "table-cell" -> { endCell(); inCell = false }
                         "table-row" -> endRow()
                         "table" -> endTable()
                     }
                 }
 
-                override fun characters(ch: CharArray, start: Int, length: Int) { if (inP && skip == 0) text.appendRange(ch, start, start + length) }
+                override fun characters(ch: CharArray, start: Int, length: Int) {
+                    if (skip > 0) return
+                    when { inCreator -> author.appendRange(ch, start, start + length); inNoteP -> note.appendRange(ch, start, start + length); inP -> text.appendRange(ch, start, start + length) }
+                }
 
                 fun endCell() {
                     val a = cellAttrs
@@ -895,10 +979,11 @@ internal object Sheets {
                         else -> SheetKind.Empty
                     }
                     val formula = a["formula"]?.let(::odfFormula)
-                    val cell = SheetCell(shown, kind, value, formula, s, link = link)
+                    val cell = SheetCell(shown, kind, value, formula, s, link = link, color = value?.let { numberColor(styleName, it) },
+                        note = note.toString().trim().takeIf { it.isNotEmpty() }?.let { n -> author.toString().trim().takeIf { it.isNotEmpty() }?.let { "$it: $n" } ?: n })
                     val boxed = styles[s].boxed
                     val n = min(cellRepeat, 16384 - col)
-                    if (kind != SheetKind.Empty || formula != null || (boxed && n <= 256)) {
+                    if (kind != SheetKind.Empty || formula != null || cell.note != null || (boxed && n <= 256)) {
                         for (k in 0 until n) rowCells += (col + k) to cell
                     }
                     val rs = a["number-rows-spanned"]?.toIntOrNull() ?: 1; val cs = a["number-columns-spanned"]?.toIntOrNull() ?: 1

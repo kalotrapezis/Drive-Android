@@ -90,6 +90,12 @@ class SheetsTest {
         assertEquals("0,3", gr.format(0.3, "General").text)
     }
 
+    @Test fun `a HYPERLINK formula's address`() {
+        assertEquals("https://a.gr/x", Sheets.hyperlink("HYPERLINK(\"https://a.gr/x\", \"words\")"))
+        assertEquals("#Sheet2!A1", Sheets.hyperlink("=hyperlink(\"#Sheet2!A1\")"))
+        assertNull(Sheets.hyperlink("SUM(A1:A2)"))
+    }
+
     @Test fun `shared formulas move`() {
         assertEquals("SUM(B3:B4)+\$A\$1", Sheets.shift("SUM(B2:B3)+\$A\$1", 1, 0))
         assertEquals("C2*2", Sheets.shift("B2*2", 0, 1))
@@ -113,6 +119,8 @@ class SheetsTest {
         assertTrue(head.bold); assertEquals(0xFFFFFF00.toInt(), head.fill); assertEquals(0xFF1F3864.toInt(), head.color)
         assertEquals(n("1,234.50"), s[1, 1]?.text); assertEquals(1234.5, s[1, 1]?.value)
         assertEquals(n("-42.00"), s[2, 1]?.text)
+        assertEquals(0xFFFF0000.toInt(), s[2, 1]?.color) // [RED] in Excel's format, LibreOffice's number style's colour
+        assertNull(s[1, 1]?.color)
         assertEquals("15/03/2023", s[1, 2]?.text); assertEquals(45000.0, s[1, 2]?.value)
         assertEquals(n("25.6%"), s[1, 3]?.text)
         assertEquals("Βήτα", s[2, 0]?.text)
@@ -125,7 +133,11 @@ class SheetsTest {
         assertEquals(147f, s.width(0), 5f) // 4 cm (Excel reads LibreOffice's 20.43 characters as 143 px)
         assertEquals(37.8f, s.height(0), 1f) // 1 cm
         assertEquals("Hello", book.sheets[1][2, 2]?.text)
-        assertEquals(3, book.sheets[1].rows)
+        assertEquals(4, book.sheets[1].rows)
+        // A comment, a link out and a link to a cell (LibreOffice's "#Numbers.B5" read as Excel's).
+        assertEquals("Teo: Check this", s[1, 0]?.note)
+        assertEquals("https://example.org/", book.sheets[1][3, 0]?.link)
+        assertEquals("#Numbers!B5", book.sheets[1][3, 1]?.link)
     }
 
     @Test fun xlsx() {

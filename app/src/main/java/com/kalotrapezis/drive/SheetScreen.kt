@@ -4,7 +4,10 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
+import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -124,6 +127,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var current by remember { mutableIntStateOf(0) }
     var columnMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the sheet column, and where its letter was tapped
     var filtering by remember { mutableStateOf<Int?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    var about by remember { mutableStateOf(false) }
     BackHandler { if (searching) { searching = false; query = "" } else back() }
 
     LaunchedEffect(open) {
@@ -154,12 +159,34 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     val view = views.getOrPut(index) { SheetView() }
+
+    /** A cell's link: a web or mail address opens in its app; "#Sheet!B3" goes to that sheet's cell. */
+    fun follow(link: String) {
+        val b = book ?: return
+        if (link.startsWith("#")) {
+            val target = link.removePrefix("#")
+            val name = target.substringBeforeLast('!', "").trim('\'')
+            val i = if (name.isEmpty()) index else b.tabs.indexOfFirst { it.name.equals(name, ignoreCase = true) }
+            WriterLog.i("Sheets: link inside the workbook, ${if (i < 0) "no such sheet" else "sheet ${i + 1}"}")
+            if (i < 0) return
+            val v = views.getOrPut(i) { SheetView() }
+            Sheets.cellRef(target.substringAfterLast('!').substringBefore(':'))?.let { (r, c) -> v.row = r; v.col = c; v.reveal++ }
+            index = i
+        } else {
+            WriterLog.i("Sheets: link out")
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .onFailure { WriterLog.w("Sheets: no app for the link", it) }
+        }
+    }
+
     // The order rows and columns are drawn in: worked out away from the screen (a sort of 300,000 rows takes a moment).
-    var layout by remember { mutableStateOf<SheetLayout?>(null) }
+    // Kept with the sheet it was made for, so a new sheet is never drawn in the last one's order.
+    var laid by remember { mutableStateOf<Pair<Sheet, SheetLayout>?>(null) }
+    val layout = laid?.takeIf { it.first === sheet }?.second
     val pins = view.pins.toList(); val filters = view.filters.toMap(); val sort = view.sort
     LaunchedEffect(sheet, pins, filters, sort) {
-        val s = sheet ?: run { layout = null; return@LaunchedEffect }
-        layout = withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null})") { SheetLayout.of(s, pins, filters, sort) } }
+        val s = sheet ?: return@LaunchedEffect
+        laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null})") { SheetLayout.of(s, pins, filters, sort) } }
     }
     LaunchedEffect(sheet, query, searching, layout) {
         val s = sheet; val l = layout
@@ -188,8 +215,22 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         Text("View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
                     }
                     if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            val f = file
+                            if (f != null) {
+                                DropdownMenuItem(text = { Text("Open in another app") }, leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), null) },
+                                    onClick = { menu = false; WriterLog.i("Sheets: open in another app"); openElsewhere(context, f) })
+                                DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(painterResource(R.drawable.ic_share), null) },
+                                    onClick = { menu = false; WriterLog.i("Sheets: share"); shareDriveFile(context, f) })
+                            }
+                            DropdownMenuItem(text = { Text("About this file") }, onClick = { menu = false; about = true })
+                            DropdownMenuItem(text = { Text("Send log") }, onClick = { menu = false; WriterLog.export(context)?.let { shareDriveFile(context, it) } })
+                        }
+                    }
                 }
-                sheet?.let { CellBar(it, view) }
+                sheet?.let { CellBar(it, view, ::follow) }
                 if (pins.isNotEmpty() || filters.isNotEmpty() || sort != null) ToolChips(view)
             }
         }
@@ -208,6 +249,29 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
+    if (about) {
+        val b = book
+        AlertDialog(onDismissRequest = { about = false }, confirmButton = { TextButton(onClick = { about = false }) { Text("Close") } },
+            title = { Text(file?.name ?: "Spreadsheet") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    file?.let { Text("${"%.1f".format(it.length() / 1024.0 / 1024.0)} MB · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it.lastModified()))) }
+                    b?.let { Text("${it.tabs.size} sheet${if (it.tabs.size == 1) "" else "s"}" + it.tabs.count { t -> t.hidden }.let { h -> if (h > 0) ", $h hidden" else "" }) }
+                    s?.let { Text("This sheet: ${it.rows} rows × ${it.cols} columns, ${it.cells.size} cells" + if (it.merges.isNotEmpty()) ", ${it.merges.size} merged ranges" else "") }
+                    Text("View only: open it in another app to change it.", style = MaterialTheme.typography.bodySmall)
+                }
+            })
+    }
+}
+
+/** The file in an app that can open (and change) it: Android's chooser, the file given to read and write. */
+private fun openElsewhere(context: android.content.Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+    runCatching {
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION), "Open with"))
+    }.onFailure { WriterLog.w("Sheets: could not open elsewhere", it) }
 }
 
 /** Where one sheet is looked at: scrolled (in the sheet's pixels, past the frozen panes), zoomed, the cell chosen. */
@@ -339,7 +403,7 @@ private fun FilterDialog(sheet: Sheet, col: Int, view: SheetView, close: () -> U
 
 /** The chosen cell's name and what is in it: the formula when it has one, the words in full. */
 @Composable
-private fun CellBar(sheet: Sheet, view: SheetView) {
+private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit) {
     val merge = sheet.merge(view.row, view.col)
     val r = merge?.r1 ?: view.row; val c = merge?.c1 ?: view.col
     val cell = sheet[r, c]
@@ -347,9 +411,22 @@ private fun CellBar(sheet: Sheet, view: SheetView) {
     Row(Modifier.fillMaxWidth().clickable { view.opened = !view.opened }.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
         Text(Sheets.colName(c) + (r + 1), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
         Text("fx", style = MaterialTheme.typography.labelLarge, color = islandContentColor().copy(alpha = 0.6f), fontFamily = FontFamily.Serif, modifier = Modifier.padding(end = 10.dp))
-        val text = content + (cell?.link?.let { "\n→ $it" } ?: "")
-        if (view.opened) Box(Modifier.weight(1f).heightIn(max = 220.dp).verticalScroll(rememberScrollState())) { Text(text, style = MaterialTheme.typography.bodyMedium) }
-        else Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            if (view.opened) Box(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) { Text(content, style = MaterialTheme.typography.bodyMedium) }
+            else Text(content, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The cell's comment, in Excel's note yellow.
+            cell?.note?.let { n ->
+                Text(n, style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFE97A), maxLines = if (view.opened) 12 else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        cell?.link?.let { link ->
+            Surface(shape = RoundedCornerShape(50), color = EXCEL_GREEN, contentColor = Color.White, modifier = Modifier.padding(start = 8.dp).clickable { follow(link) }) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(painterResource(if (link.startsWith("#")) R.drawable.ic_link else R.drawable.ic_open_in_browser), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(if (link.startsWith("#")) "Go" else "Open", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
     }
 }
 
@@ -754,6 +831,17 @@ internal class SheetPainter(
             val l = colX[k]; val t = rowY[r]; val rt = colX[k + 1]; val b = rowY[r + 1]
             st.left?.let { edge(c, it, l, t, l, b, s) }; st.right?.let { edge(c, it, rt, t, rt, b, s) }
             st.top?.let { edge(c, it, l, t, rt, t, s) }; st.bottom?.let { edge(c, it, l, b, rt, b, s) }
+        }
+
+        // A comment's red corner, as Excel marks one.
+        fill.color = 0xFFE81123.toInt()
+        val u = 7 * density / s
+        for (r in r0..r1) for (k in c0..c1) {
+            if (at(r, k)?.note == null) continue
+            val g = merge(r, k) ?: SheetRange(r, k, r, k)
+            val x = colX[g.c2 + 1]; val y = rowY[g.r1]
+            funnel.reset(); funnel.moveTo(x - u, y); funnel.lineTo(x, y); funnel.lineTo(x, y + u); funnel.close()
+            c.drawPath(funnel, fill)
         }
 
         for (wd in words) cellText(c, wd.cell, wd.st, wd.left, wd.top, wd.right, wd.bottom, wd.clipL, wd.clipR, wd.r, wd.c)

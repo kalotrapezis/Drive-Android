@@ -314,7 +314,9 @@ private class DocxStyles(parts: Map<String, ByteArray>) : DocStyles() {
             // Page borders: the top one's line for the box; from the page's edge, or (Word's default) from the text.
             val borders = sect?.kid(W, "pgBorders")
             val line = borders?.kids()?.firstNotNullOfOrNull { wordBorder(it) }
-            fun space(side: String) = borders?.kid(W, side)?.attr(W, "space")?.toFloatOrNull() ?: 0f
+            // A side with no border: as far in as the sides that have one (a top line alone still stops 24 pt from the edges).
+            val anySpace = listOf("top", "left", "bottom", "right").firstNotNullOfOrNull { borders?.kid(W, it)?.attr(W, "space")?.toFloatOrNull() } ?: 0f
+            fun space(side: String) = borders?.kid(W, side)?.attr(W, "space")?.toFloatOrNull() ?: anySpace
             val sides = listOf("top" to 't', "left" to 'l', "bottom" to 'b', "right" to 'r').filter { (n, _) -> borders?.kid(W, n)?.let { wordBorder(it) } != null }.map { it.second }.joinToString("")
             val box = line?.let { l -> if (borders.attr(W, "offsetFrom") == "page") PageBorder(l, space("left"), space("top"), space("right"), space("bottom"), sides)
                 else PageBorder(l, pg.left - space("left"), pg.top - space("top"), pg.right - space("right"), pg.bottom - space("bottom"), sides) }

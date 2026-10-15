@@ -53,6 +53,15 @@ internal object PageSetup {
         val parts = LinkedHashMap(source)
         val docPath = documentPath(parts)
         var xml = String(parts.getValue(docPath), Charsets.UTF_8)
+        val sections = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""")
+        if (!sections.containsMatchIn(xml)) xml = xml.replace("</w:body>", "<w:sectPr/></w:body>")
+        xml = sections.replace(xml) { docxSection(it.value, page) }
+        parts[docPath] = xml.toByteArray()
+        return parts
+    }
+
+    /** One Word section (its sectPr) set to [page]'s size, margins and columns (header/footer distances and gutter kept). */
+    fun docxSection(sect: String, page: DocPage): String {
         val size = """<w:pgSz w:w="${tw(page.width)}" w:h="${tw(page.height)}"${if (landscape(page)) " w:orient=\"landscape\"" else ""}/>"""
         fun margins(old: String?): String {
             val keep = old?.let { o -> Regex("""\s(w:(?:header|footer|gutter))="([^"]*)"""").findAll(o).associate { it.groupValues[1] to it.groupValues[2] } }.orEmpty()
@@ -74,11 +83,7 @@ internal object PageSetup {
             val beforeCols = Regex("""<w:(formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
             return open + inner.substring(0, beforeCols) + cols + inner.substring(beforeCols) + "</w:sectPr>"
         }
-        val sections = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""")
-        if (!sections.containsMatchIn(xml)) xml = xml.replace("</w:body>", "<w:sectPr/></w:body>")
-        xml = sections.replace(xml) { section(it.value) }
-        parts[docPath] = xml.toByteArray()
-        return parts
+        return section(sect)
     }
 
     /**

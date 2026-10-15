@@ -177,6 +177,7 @@ internal object OfficeMath {
     private val NARY = setOf("∑", "∏", "∐", "⋃", "⋂") + INTEGRALS
     private val FUNCS = setOf("sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "arcsin", "arccos", "arctan", "log", "ln", "exp", "lim", "max", "min", "det", "sup", "inf", "gcd", "arg", "deg", "dim", "lg")
     private val OPENS = mapOf('(' to ')', '[' to ']', '{' to '}')
+    private val SIGNS = setOf('+', '-', '−', '=', '<', '>', '≤', '≥', '≠', '±', '∓', '×', '⋅', '÷', '→', '≈', ',', '(')
     private val ENDS = setOf('+', '-', '=', '<', '>', ',', '≤', '≥', '≠', '±', '→', '≈', '−', '∓', '×', '⋅', '÷')
 
     /** Word's linear form, a useful part of it: x^2, x_i, a/b, sqrt(x), root(n,x), ∑_(i=1)^n, \alpha, sin x, lim_(x→0), hat(x), matrix(a&b@c&d). */
@@ -221,7 +222,7 @@ internal object OfficeMath {
                             else -> MathNode.Script(base, if (c == '^') arg else null, if (c == '_') arg else null)
                         }
                     }
-                    c == '/' -> { i++; base = MathNode.Frac(base, ungroup(term() ?: EMPTY)) }
+                    c == '/' -> { i++; base = MathNode.Frac(ungroup(base), ungroup(term() ?: EMPTY)) } // (a+b)/(c+d): the brackets only group
                     else -> break
                 }
             }
@@ -302,7 +303,11 @@ internal object OfficeMath {
         /** Neighbouring letters and numbers joined into one run, as Word keeps them. */
         fun merge(items: List<MathNode>): MathNode {
             val out = ArrayList<MathNode>()
-            for (n in items) {
+            for ((k, n0) in items.withIndex()) {
+                // A minus or plus that starts a term (−b, after =, after another sign) is the number's sign: written with it, not spaced.
+                val prev = out.lastOrNull()
+                val n = if (n0 is MathNode.Text && n0.plain && n0.text in setOf("−", "+", "±") && items.getOrNull(k + 1).let { it is MathNode.Text && !it.plain } &&
+                    (prev == null || prev is MathNode.Text && prev.text.last() in SIGNS)) MathNode.Text(n0.text) else n0
                 val last = out.lastOrNull()
                 if (n is MathNode.Text && last is MathNode.Text && n.plain == last.plain && !(n.plain && (n.text in FUNCS || last.text in FUNCS))) out[out.lastIndex] = MathNode.Text(last.text + n.text, n.plain)
                 else out += n
@@ -384,7 +389,7 @@ internal class MathBox(val width: Float, val ascent: Float, val descent: Float, 
                 MathBox(x0 + tick + body.width + s * 0.15f, maxOf(top + line(s), (deg?.let { top * 0.5f + it.ascent }) ?: 0f), bottom, ops)
             }
             is MathNode.Nary -> {
-                val big = s * if (n.under) 1.5f else 1.7f
+                val big = s * if (n.under) 1.9f else 2.1f // the phone's ∑ and ∫ are small letters next to Cambria Math's big operators
                 val op = text(MathNode.Text(n.op, true), big)
                 val k = s * 0.7f
                 val sub = n.sub?.let { box(it, k) }; val sup = n.sup?.let { box(it, k) }
@@ -486,8 +491,9 @@ internal class MathBox(val width: Float, val ascent: Float, val descent: Float, 
             val ops = ArrayList<MathBox.Op>()
             var x = 0f
             val pieces = if (n.plain) listOf(n.text to false) else Regex("""\p{L}+|[^\p{L}]+""").findAll(n.text).map { it.value to (it.value[0].isLetter() && !it.value[0].isUpperCase() || it.value[0] in 'A'..'Z') }.toList()
-            for ((t, italic) in pieces) {
-                val operator = t.length == 1 && t[0] in OPERATORS
+            for ((j, piece) in pieces.withIndex()) {
+                val (t, italic) = piece
+                val operator = t.length == 1 && t[0] in OPERATORS && !(j == 0 && pieces.size > 1) // a leading sign (−b) is not spaced
                 val pad = if (operator) s * 0.22f else 0f
                 ops += MathBox.Op.Letters(t, x + pad, 0f, s, italic)
                 x += m.width(t, s, italic) + 2 * pad + if (italic) s * 0.03f else 0f

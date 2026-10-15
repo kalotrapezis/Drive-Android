@@ -4,6 +4,18 @@
 > (208c8192, Print layout, Mobile view off). `WriterScreen` is at the JVM's 64 KB method limit ("Method too large"): put new UI in
 > its own composable (as `CitationBar`), not inline.
 >
+> **Phone walk, 15 Oct morning** (`TEST_TREE.md`, new documents Phase2_test / Group_test / Forms_test / Breaks_test in
+> Test-Words): items **1, 2, 3, 4, 5, 6, 7, 9 pass on the phone**; 10 (WordArt) not walked; 8 half walked (section break
+> and columns per section work; the column break and the pages' columns still to look at — the label fix below is
+> installed but not seen). Fixed on the way: an equation's brackets round a fraction's top showed; a leading minus was
+> spaced; the preview cut long equations; the field capitalised letters; Insert › Equation on an empty line went in the
+> line, not centred (the editor's empty line is not blank letters — judged by the document's paragraph now); ∑/∫ bigger;
+> a page border on some sides ran to the page's edges (Word keeps the 24 pt inset); the border and rotate dialogs' rows
+> overflowed the phone (wrap now); **Group/Ungroup scrambled the editor** (pictures taken out of the map before the
+> document was read back); a new content control left the cursor inside it; Edit named a continuous section break
+> "next page"; **Page setup and Columns changed only the last section** of a Word file with section breaks — Page setup
+> now sets every section, Columns the cursor's section (Word's "This section", `setColumns`).
+>
 > **Done 15 Oct:**
 > - **A citation tapped** (item 1): with the cursor inside a citation, a bar over the ribbon — *Edit Smith, 2020* for
 >   each of its sources (opens the source form; a tag with no source opens a new one) and *Change…* (the citation dialog

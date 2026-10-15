@@ -51,15 +51,18 @@ internal fun EquationDialog(start: MathNode?, dismiss: () -> Unit, done: (MathNo
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // The equation as it will be drawn.
                 val drawn = remember(math) { math?.let { MathDrawable(it, 16f) } }
-                Box(Modifier.fillMaxWidth().height(96.dp).background(Color.White).horizontalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().height(96.dp).background(Color.White), contentAlignment = Alignment.Center) {
                     if (drawn != null && drawn.widthPt > 1f) {
-                        val k = minOf(1.6f, 80f / drawn.heightPt.coerceAtLeast(1f))
+                        // As big as fits: the box's height, and its width (a long equation is shown smaller, whole).
+                        val k = minOf(1.6f, 80f / drawn.heightPt.coerceAtLeast(1f), (maxWidth.value - 24f) / drawn.widthPt)
                         Canvas(Modifier.padding(horizontal = 12.dp).size((drawn.widthPt * k).dp, (drawn.heightPt * k).dp)) {
                             drawIntoCanvas { c -> drawn.setBounds(0, 0, size.width.toInt(), size.height.toInt()); drawn.draw(c.nativeCanvas) }
                         }
                     } else Text("Type below, e.g. x^2 + y^2 = r^2", color = Color(0xFF5F6368))
                 }
-                OutlinedTextField(typed, { typed = it }, label = { Text("Equation (linear: x^2, a/b, sqrt(x), \\alpha)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(typed, { typed = it }, label = { Text("Equation (linear: x^2, a/b, sqrt(x), \\alpha)") }, modifier = Modifier.fillMaxWidth(),
+                    // Letters as typed: a keyboard's capitals and corrections turn i into I.
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None, autoCorrectEnabled = false))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     pieces.forEach { (label, piece) ->
                         Choice(label, false) {

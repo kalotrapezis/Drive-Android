@@ -20,6 +20,15 @@ internal object SectionBreaks {
         val at = AFTER_TYPE.find(inner)?.range?.first ?: inner.length
         return open + inner.substring(0, at) + """<w:type w:val="$type"/>""" + inner.substring(at) + "</w:sectPr>"
     }
+    /** [sect] with [n] columns [gapPt] apart (Word's w:cols, in its place: after the page numbering, before the rest). */
+    fun withColumns(sect: String, n: Int, gapPt: Float): String {
+        val self = sect.trimEnd().endsWith("/>") && "</w:sectPr>" !in sect
+        val open = if (self) sect.trimEnd().dropLast(2) + ">" else sect.substring(0, sect.indexOf('>') + 1)
+        var inner = if (self) "" else sect.substring(sect.indexOf('>') + 1, sect.lastIndexOf("</w:sectPr>"))
+        inner = inner.replace(Regex("""<w:cols\b[^>]*?(?:/>|>[\s\S]*?</w:cols>)"""), "")
+        val at = Regex("""<w:(formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings|sectPrChange)\b""").find(inner)?.range?.first ?: inner.length
+        return open + inner.substring(0, at) + """<w:cols w:num="$n" w:space="${Math.round(gapPt * 20)}"/>""" + inner.substring(at) + "</w:sectPr>"
+    }
     fun typeOf(sect: String) = Regex("""<w:type\b[^>]*w:val="(\w+)"""").find(sect)?.groupValues?.get(1) ?: "nextPage"
 
     /** The body's own sectPr (the last section's) in a document.xml. */

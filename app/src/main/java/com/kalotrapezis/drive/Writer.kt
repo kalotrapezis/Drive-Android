@@ -1678,11 +1678,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             return@change
         }
         if (kind != OfficeKind.Docx) { message = "Equations go in Word documents (.docx) — Save as .docx first"; return@change }
-        val text = state.annotatedString.text
+        // An empty paragraph (as the document has it: the editor's own empty line is not blank letters) gets a display equation.
         val sel = state.selection.min
-        val lineStart = text.lastIndexOf('\n', sel - 1) + 1
-        val lineEnd = text.indexOf('\n', sel).let { if (it < 0) text.length else it }
-        val display = text.substring(lineStart, lineEnd).isBlank()
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull()?.let { current().paras.getOrNull(it) }
+        val display = here != null && here.table == null && here.runs.none { it.image != null } && here.text.isBlank()
         val img = OfficeMath.image("n" + java.util.UUID.randomUUID(), math, OfficeMath.equation(math, display), meta.basePt)
         pictures[img.key] = img
         val at = placePicture(img)
@@ -2195,7 +2194,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + shown.length)
         meta = WriterBridge.restyled(current(), spans) { it.copy(control = pr, color = if (newKind == Forms.New.CheckBox) it.color else 0x808080) }
         dirty = true; reshow()
-        state.selection = androidx.compose.ui.text.TextRange(start + 1)
+        state.selection = androidx.compose.ui.text.TextRange(start + shown.length + 1) // after it and its space
         WriterLog.i("content control: ${newKind.label} \"$title\" (${items.size} items)")
     }
     fun fillControl(old: String, pr: String, text: String) = change {
@@ -2442,7 +2441,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun swapPictures(swap: (DocRun) -> List<DocRun>?) = change {
         val cur = current()
         meta = cur.copy(paras = cur.paras.map { p -> p.copy(runs = p.runs.flatMap { r -> if (r.image == null) listOf(r) else swap(r) ?: listOf(r) }) })
-        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
+        val sel = state.selection
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
         dirty = true; styleEdits++
     }
     fun groupWith(first: String, second: String) = scope.launch {
@@ -2456,8 +2456,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
         val g = Arrange.group(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
             ?: run { message = "Writer cannot group these (an older kind of drawing?)"; return@launch }
-        pictures.remove(first); pictures.remove(second); pictures[g.key] = g
+        // The document read from the editor first (it finds its pictures by their keys), then the map changed.
         swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
+        pictures.remove(first); pictures.remove(second); pictures[g.key] = g
         message = "Grouped — moved, wrapped and arranged as one"
         WriterLog.i("group $first + $second -> ${g.key}")
     }
@@ -2466,8 +2467,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (laid, _) = laidOut(current()) ?: return@launch
         val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
         val pieces = Arrange.ungroup(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
-        pictures.remove(key); pieces.forEach { pictures[it.key] = it }
         swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
+        pictures.remove(key); pieces.forEach { pictures[it.key] = it }
         message = "Ungrouped into ${pieces.size}"
         WriterLog.i("ungroup $key -> ${pieces.size}")
     }
@@ -2579,9 +2580,34 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageSetup.docx(it, page) else PageSetup.odt(it, page, documentStyles.page) } }
             .onFailure { WriterLog.e("page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
+        // The sections a section break ends (their sectPr rides on their last paragraph) take it too.
+        if (kind == OfficeKind.Docx) current().let { cur -> if (cur.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true })
+            meta = cur.copy(paras = cur.paras.map { p -> p.keep?.takeIf { k -> k.parts.any { it.first == "sectPr" } }?.let { k ->
+                p.copy(keep = k.copy(parts = k.parts.map { if (it.first == "sectPr") it.first to PageSetup.docxSection(it.second, page) else it })) } ?: p }) }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
+    }
+    /** A Word document with section breaks: some of its sections end at a paragraph. */
+    fun sectioned() = kind == OfficeKind.Docx && meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }
+    /** Layout › Columns: the whole document's — or, once it has section breaks, the cursor's section's (Word's "This section"). */
+    fun setColumns(n: Int) = change {
+        if (!sectioned()) { setPage(sheet.copy(columns = n)); return@change }
+        val cur = current()
+        val sel = state.selection.min
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull() ?: 0
+        val end = (here until cur.paras.size).firstOrNull { j -> cur.paras[j].keep?.parts?.any { it.first == "sectPr" } == true }
+        if (end != null) meta = cur.copy(paras = cur.paras.mapIndexed { j, p -> if (j != end) p else p.copy(keep = p.keep!!.copy(parts = p.keep.parts.map {
+            if (it.first == "sectPr") it.first to SectionBreaks.withColumns(it.second, n, sheet.columnGap) else it })) })
+        else {
+            val base = original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)
+            val parts = OfficeFormats.unzip(base)
+            val body = SectionBreaks.bodySect(String(parts.getValue(documentPath(parts)), Charsets.UTF_8)) ?: "<w:sectPr/>"
+            original = OfficeFormats.zip(SectionBreaks.withBodySect(parts, SectionBreaks.withColumns(body, n, sheet.columnGap)), null)
+            documentStyles = DocStyles.of(kind, original!!)
+        }
+        dirty = true; styleEdits++
+        WriterLog.i("columns $n in the section ending at ${end ?: "the document's end"}")
     }
     /** Layout › Hyphenation: automatic or none, into the file as it will be written; the pages break words by it. */
     fun setHyphenation(on: Boolean) = change {
@@ -3033,14 +3059,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 // …and a paragraph's borders, as a light outline (the pages draw them as they print).
                                 val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
                                 // Page breaks, column breaks and section ends: a dashed line at the paragraph that starts after them, named.
-                                val breakNames = remember(looks, meta.paras) { looks.indices.mapNotNull { i -> when {
-                                    i == 0 -> null
-                                    looks[i]?.pageBreakBefore == true -> i to "Page break"
-                                    meta.paras[i - 1].keep?.parts?.firstOrNull { it.first == "sectPr" }?.second?.let { SectionBreaks.typeOf(it) } == "continuous" -> i to "Section break (continuous)"
-                                    meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true -> i to "Section break (next page)"
-                                    looks[i]?.columnBreakBefore == true -> i to "Column break"
-                                    else -> null
-                                } }.toMap() }
+                                val breakNames = remember(looks, meta.paras, documentStyles) {
+                                    // How the section after a break starts is said by that section's own sectPr (the next one's).
+                                    val sections = if (meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }) documentStyles.sections(meta.paras) else emptyList()
+                                    looks.indices.mapNotNull { i -> if (i == 0) null else listOfNotNull(
+                                        "Page break".takeIf { looks[i]?.pageBreakBefore == true },
+                                        (if (sections.getOrNull(i)?.continuous == true) "Section break (continuous)" else "Section break (next page)")
+                                            .takeIf { meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true },
+                                        "Column break".takeIf { looks[i]?.columnBreakBefore == true },
+                                    ).takeIf { it.isNotEmpty() }?.let { i to it.joinToString(" · ") } }.toMap()
+                                }
                                 val breaks = breakNames.keys.toList()
                                 val boxed = remember(looks) { looks.indices.filter { looks[it]?.box != null } }
                                 val starts = remember(text, breaks, boxed) { if (breaks.isEmpty() && boxed.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
@@ -3764,7 +3792,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         DropdownMenu(columning, { columning = false }) {
                             listOf(1 to "One", 2 to "Two", 3 to "Three").forEach { (n, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { columning = false
-                                    if (n != sheet.columns) { setPage(sheet.copy(columns = n)); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
+                                    if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
                             }
                         }
                     }

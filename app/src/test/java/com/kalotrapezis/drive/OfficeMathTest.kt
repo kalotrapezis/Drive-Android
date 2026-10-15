@@ -50,6 +50,17 @@ class OfficeMathTest {
         }
     }
 
+    @Test fun `brackets round a fraction's parts only group them, and a leading minus is the sign`() {
+        val f = OfficeMath.fromLinear("(a+b)/(c+d)") as MathNode.Frac
+        assertTrue(f.num !is MathNode.Delim && f.den !is MathNode.Delim)
+        val q = OfficeMath.fromLinear("x=(-b+-sqrt(b^2-4ac))/(2a)") as MathNode.Row
+        val num = q.items.filterIsInstance<MathNode.Frac>().single().num as MathNode.Row
+        assertEquals(MathNode.Text("−b"), num.items[0]) // its sign with it
+        assertEquals(MathNode.Text("±", plain = true), num.items[1])
+        // Laid out: the leading sign unspaced, so "−b" is narrower than "− b" as signs between terms are spaced.
+        assertTrue(MathBox.of(MathNode.Text("−b"), 11f).width < MathBox.of(MathNode.Row(listOf(MathNode.Text("−", true), MathNode.Text("b"))), 11f).width)
+    }
+
     @Test fun `a fraction stands taller than its line, a script beside its base`() {
         val x = MathBox.of(MathNode.Text("x"), 11f)
         val frac = MathBox.of(OfficeMath.fromLinear("a/b"), 11f)

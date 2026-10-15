@@ -58,4 +58,13 @@ class BreaksTest {
         // w:type in its place: before the page's size.
         assertTrue(Regex("""<w:type w:val="nextPage"/><w:pgSz""").containsMatchIn(xmlOf(saved)))
     }
+
+    @Test fun `a section's columns and page set on its own sectPr, in Word's order`() {
+        val sect = """<w:sectPr><w:headerReference w:type="default" r:id="rId8"/><w:type w:val="continuous"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/><w:docGrid w:linePitch="360"/></w:sectPr>"""
+        val two = SectionBreaks.withColumns(sect, 2, 36f)
+        assertTrue(two, two.contains("""<w:cols w:num="2" w:space="720"/><w:docGrid"""))
+        assertEquals(two, SectionBreaks.withColumns(SectionBreaks.withColumns(sect, 3, 36f), 2, 36f)) // one w:cols, replaced
+        val wide = PageSetup.docxSection(two, DocPage(width = 842f, height = 595f, left = 36f, right = 36f, columns = 2))
+        assertTrue(wide, "w:orient=\"landscape\"" in wide && "<w:type w:val=\"continuous\"/>" in wide && "rId8" in wide && "w:header=\"708\"" in wide)
+    }
 }

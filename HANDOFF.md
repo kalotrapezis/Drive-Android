@@ -44,6 +44,16 @@
 >   phone: LibreOffice's group drawn, two shapes grouped (one frame) and ungrouped in place; LibreOffice places them
 >   the same.
 >
+> - **.odt equations** (item 2): LibreOffice Math's objects (`draw:frame` › `draw:object` › `Object N/content.xml`,
+>   MathML) are read into Writer's equation tree (`OfficeMath.fromMathML`: mrow, mi/mn/mo/mtext, mfrac, msup/msub/
+>   msubsup, munder/mover/munderover — ∑ ∫ ∏ with limits take what follows as their body —, msqrt/mroot, fenced rows,
+>   mfenced, mtable, mmultiscripts, accents, bars, function application) and drawn as Word's are (`MathDrawable`); the
+>   file's objects are kept as they were. **Insert › Equation and Edit equation work in .odt**: a new or rewritten
+>   equation is written as a new LibreOffice Math object (`OfficeMath.mathml`, display "block" as LibreOffice's own,
+>   in the line, `Tetra_20_formula` style: centred on the text) and listed in the manifest; an edited one's old object
+>   is left in the package unused. `MathMLTest` (LibreOffice's own conversion, `test/resources/equations.odt`; tree →
+>   MathML → tree); on the phone both of LibreOffice's drawn and a quadratic formula inserted — LibreOffice draws it.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

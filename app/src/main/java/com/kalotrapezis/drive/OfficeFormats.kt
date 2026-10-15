@@ -2588,7 +2588,10 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         // rectangles with words) — a shape only when it has some.
         val box = (e.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "text-box").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }
             ?: e.takeIf { it.localName == "custom-shape" }?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
-        val chart = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }?.let { OfficeCharts.readOdf(it) }
+        val objectXml = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }
+        val chart = objectXml?.let { OfficeCharts.readOdf(it) }
+        // A formula (LibreOffice Math's object, MathML): drawn as Word's equations are; the file's object kept as it is.
+        if (chart == null && e.localName == "frame") objectXml?.let { OfficeMath.fromMathML(it) }?.let { m -> return OfficeMath.image("f${imageCount++}", m, OfficeFormats.xml(e), basePt) }
         // Its graphic style, parents first so the frame's own settings win: as attributes, for where it goes and how it looks.
         val look = generateSequence(e.getAttributeNS(DRAW, "style-name").takeIf { it.isNotEmpty() }?.let { styles["graphic/$it"] }) { s -> s.parent?.let { styles["graphic/$it"] } }
             .take(10).toList().asReversed().mapNotNull { it.graphic }.joinToString("") { g -> (0 until g.attributes.length).joinToString("") { i -> g.attributes.item(i).let { a -> " ${a.nodeName}=\"${a.nodeValue}\"" } } }
@@ -2828,6 +2831,14 @@ private object OdtWriter {
             manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.chart"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
             val n = ++frames
             """<draw:frame draw:name="Tetra chart $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+        } ?: img.math?.let { m ->
+            // A new or rewritten equation: LibreOffice Math's object (MathML), in the line ("as-char"), sized as drawn.
+            val name = generateSequence(1) { it + 1 }.map { "Object tetra-math-$it" }.first { "$it/content.xml" !in parts }
+            parts["$name/content.xml"] = OfficeMath.mathml(m, true).toByteArray() // LibreOffice's own formulas are "block" in a line too
+            if ("Tetra_20_formula" !in usedNames && shapeStyles.add("Tetra_20_formula")) auto.append("""<style:style style:name="Tetra_20_formula" style:family="graphic"><style:graphic-properties fo:margin-left="0cm" fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm" style:vertical-pos="middle" style:vertical-rel="text"/></style:style>""")
+            manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.formula"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
+            val n = ++frames
+            """<draw:frame draw:style-name="Tetra_20_formula" draw:name="Tetra equation $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         } ?: run {
             val bytes = img.bytes ?: return@run ""
             val name = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.${img.extension}" }.first { it !in parts }

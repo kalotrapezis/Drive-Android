@@ -1673,16 +1673,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val old = pictures[key]
         if (old != null) {
             val display = old.raw?.trimStart()?.startsWith("<m:oMathPara") == true
-            changePicture(key, OfficeMath.image(key, math, OfficeMath.equation(math, display), meta.basePt))
+            // An .odt's: written as a new LibreOffice Math object on saving (raw null), the old one left unused.
+            changePicture(key, OfficeMath.image(key, math, OfficeMath.equation(math, display), meta.basePt).let { if (kind == OfficeKind.Odt) it.with(raw = null) else it })
             WriterLog.i("equation $key edited: ${OfficeMath.linear(math)}")
             return@change
         }
-        if (kind != OfficeKind.Docx) { message = "Equations go in Word documents (.docx) — Save as .docx first"; return@change }
         // An empty paragraph (as the document has it: the editor's own empty line is not blank letters) gets a display equation.
         val sel = state.selection.min
         val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull()?.let { current().paras.getOrNull(it) }
         val display = here != null && here.table == null && here.runs.none { it.image != null } && here.text.isBlank()
-        val img = OfficeMath.image("n" + java.util.UUID.randomUUID(), math, OfficeMath.equation(math, display), meta.basePt)
+        val img = OfficeMath.image("n" + java.util.UUID.randomUUID(), math, OfficeMath.equation(math, display), meta.basePt).let { if (kind == OfficeKind.Odt) it.with(raw = null) else it }
         pictures[img.key] = img
         val at = placePicture(img)
         if (display) {

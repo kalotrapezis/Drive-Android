@@ -14,6 +14,8 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] An .odt: Breaks › Section break · next page at the end → a new page; Backspace at its line
   - [x] `Group_lo.odt` (LibreOffice's group): red and blue drawn where LibreOffice draws them (Claude)
   - [x] `Shapes_test.odt`: tap red → Picture › Group → tap blue → one frame; Ungroup → two, where they were; LibreOffice the same (Claude)
+  - [x] `Eq_lo.odt` (LibreOffice's formulas): a²+√b in the line and the ∑ display drawn as maths; Insert › Equation x=(-b+-sqrt(b^2-4ac))/(2a) → drawn; saved → LibreOffice shows a real formula (Claude)
+  - [ ] Open the saved `Eq_lo.odt` in LibreOffice on the PC and double-click the new equation: LibreOffice's formula editor opens it
 
 # Test tree — Writer's Word gaps (15 Oct 2026)
 

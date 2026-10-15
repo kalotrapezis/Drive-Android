@@ -105,6 +105,7 @@ internal object OfficeMath {
     }.getOrNull()
 
     val INTEGRALS = setOf("∫", "∬", "∭", "∮", "∯", "∰")
+    val NARY_OPS = setOf("∑", "∏", "∐", "⋃", "⋂", "⋀", "⋁") + INTEGRALS
 
     // ---- tree → OMML
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -139,6 +140,132 @@ internal object OfficeMath {
     fun equation(n: MathNode, display: Boolean): String {
         val math = "<m:oMath>${omml(n)}</m:oMath>"
         return if (display) """<m:oMathPara xmlns:m="$M" xmlns:w="$W">$math</m:oMathPara>""" else math.replaceFirst("<m:oMath>", """<m:oMath xmlns:m="$M" xmlns:w="$W">""")
+    }
+
+    // ---- LibreOffice's formulas (an object holding MathML) ↔ tree
+
+    /** A formula object's content.xml (MathML) as the tree; null when it is not MathML. */
+    fun fromMathML(xml: ByteArray): MathNode? = runCatching {
+        val f = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val root = f.newDocumentBuilder().parse(java.io.ByteArrayInputStream(xml)).documentElement
+        if (root.localName != "math") null else mml(root)
+    }.getOrNull()
+
+    private val LARGE = NARY_OPS
+    private fun mml(e: Element): MathNode {
+        fun kids() = e.kids().filter { it.localName != "annotation" && it.localName != "annotation-xml" }.map(::mml)
+        fun k(i: Int) = e.kids().getOrNull(i)?.let(::mml) ?: MathNode.Row(emptyList())
+        fun text() = e.textContent.trim().replace("\u2061", "").replace("\u2062", "").replace("\u2063", "")
+        fun op(n: MathNode) = (n as? MathNode.Text)?.text?.takeIf { it in LARGE }
+        return when (e.localName) {
+            "math", "semantics", "mstyle", "mpadded", "mphantom", "menclose", "mrow", "merror" -> {
+                val items = kids()
+                // A large operator with its limits takes what follows it as its body; a fenced row is brackets.
+                val out = ArrayList<MathNode>()
+                var i = 0
+                while (i < items.size) {
+                    val it = items[i]
+                    if (it is MathNode.Nary && it.body == MathNode.Row(emptyList()) && i + 1 < items.size) { out += it.copy(body = items[i + 1]); i += 2; continue }
+                    if (items.getOrNull(i + 1) == MathNode.Text("\u2061", true) && i + 2 < items.size) { out += MathNode.Func(it, items[i + 2]); i += 3; continue }
+                    if (it == MathNode.Text("\u2061", true)) { i++; continue }
+                    if (it is MathNode.Text && it.plain && it.text in LARGE && i + 1 < items.size) { out += MathNode.Nary(it.text, null, null, items[i + 1], it.text !in INTEGRALS); i += 2; continue }
+                    // Letters MathML gives one each (italic) run together again, as Word holds them.
+                    val last = out.lastOrNull()
+                    if (it is MathNode.Text && !it.plain && last is MathNode.Text && !last.plain) out[out.size - 1] = MathNode.Text(last.text + it.text) else out += it
+                    i++
+                }
+                val first = e.kids().firstOrNull(); val last = e.kids().lastOrNull()
+                if (e.localName == "mrow" && out.size >= 2 && first?.localName == "mo" && last?.localName == "mo" && first.getAttribute("fence") == "true" && last.getAttribute("fence") == "true")
+                    MathNode.Delim(first.textContent.trim(), last.textContent.trim(), listOf(row(out.subList(1, out.size - 1))))
+                else row(out)
+            }
+            "mi" -> MathNode.Text(text(), plain = e.getAttribute("mathvariant") == "normal" || text().length > 1)
+            "mn" -> MathNode.Text(text())
+            "mo" -> if (e.textContent.trim() == "\u2061") MathNode.Text("\u2061", plain = true) // function application: joined below
+                else text().takeIf { it.isNotEmpty() }?.let { MathNode.Text(it, plain = true) } ?: MathNode.Row(emptyList())
+            "mtext", "ms" -> MathNode.Text(e.textContent, plain = true)
+            "mspace" -> MathNode.Text(" ", plain = true)
+            "mfrac" -> MathNode.Frac(k(0), k(1), linear = e.getAttribute("bevelled") == "true")
+            "msup" -> op(k(0))?.let { MathNode.Nary(it, null, k(1), MathNode.Row(emptyList()), false) } ?: MathNode.Script(k(0), k(1), null)
+            "msub" -> op(k(0))?.let { MathNode.Nary(it, k(1), null, MathNode.Row(emptyList()), false) } ?: MathNode.Script(k(0), null, k(1))
+            "msubsup" -> op(k(0))?.let { MathNode.Nary(it, k(1), k(2), MathNode.Row(emptyList()), false) } ?: MathNode.Script(k(0), k(2), k(1))
+            "munderover" -> op(k(0))?.let { MathNode.Nary(it, k(1), k(2), MathNode.Row(emptyList()), true) } ?: MathNode.Limit(MathNode.Limit(k(0), k(1), true), k(2), false)
+            "munder" -> op(k(0))?.let { MathNode.Nary(it, k(1), null, MathNode.Row(emptyList()), true) }
+                ?: if ((k(1) as? MathNode.Text)?.text.let { it == "_" || it == "\u0332" || it == "‾" }) MathNode.Bar(k(0), false) else MathNode.Limit(k(0), k(1), true)
+            "mover" -> op(k(0))?.let { MathNode.Nary(it, null, k(1), MathNode.Row(emptyList()), true) } ?: run {
+                val mark = (k(1) as? MathNode.Text)?.text
+                when {
+                    mark == "¯" || mark == "‾" || mark == "\u0305" -> MathNode.Bar(k(0), true)
+                    e.getAttribute("accent") == "true" || mark != null && mark.length == 1 && mark in ACCENT_MARKS -> MathNode.Accent(ACCENT_MARKS[mark] ?: mark ?: "\u0302", k(0))
+                    else -> MathNode.Limit(k(0), k(1), false)
+                }
+            }
+            "msqrt" -> MathNode.Radical(row(kids()), null)
+            "mroot" -> MathNode.Radical(k(0), k(1))
+            "mfenced" -> MathNode.Delim(e.getAttribute("open").ifEmpty { "(" }, e.getAttribute("close").ifEmpty { ")" }, kids(), e.getAttribute("separators").trim().take(1).ifEmpty { "," })
+            "mtable" -> e.kids().filter { it.localName == "mtr" || it.localName == "mlabeledtr" }.map { r -> r.kids().filter { it.localName == "mtd" }.map(::mml) }.let { rows ->
+                if (rows.all { it.size == 1 }) MathNode.Stack(rows.map { it[0] }) else MathNode.Matrix(rows) }
+            "mtd", "mtr" -> row(kids())
+            "mmultiscripts" -> {
+                val all = e.kids(); val pre = all.indexOfFirst { it.localName == "mprescripts" }
+                if (pre >= 0) MathNode.Script(mml(all[0]), all.getOrNull(pre + 2)?.let(::mml), all.getOrNull(pre + 1)?.let(::mml), pre = true)
+                else MathNode.Script(mml(all[0]), all.getOrNull(2)?.let(::mml), all.getOrNull(1)?.let(::mml))
+            }
+            else -> row(kids())
+        }
+    }
+    /** Spacing marks MathML puts over a letter, as Word's combining accents. */
+    private val ACCENT_MARKS = mapOf("^" to "\u0302", "ˆ" to "\u0302", "~" to "\u0303", "˜" to "\u0303", "˙" to "\u0307", "¨" to "\u0308", "→" to "\u20D7", "⃗" to "\u20D7",
+        "´" to "\u0301", "`" to "\u0300", "ˇ" to "\u030C", "˘" to "\u0306", "\u0302" to "\u0302", "\u0303" to "\u0303", "\u0307" to "\u0307", "\u0308" to "\u0308")
+
+    /** The tree as a formula object's content.xml (MathML, as LibreOffice reads it); [display]: a block of its own. */
+    fun mathml(n: MathNode, display: Boolean): String =
+        """<?xml version="1.0" encoding="UTF-8"?><math xmlns="http://www.w3.org/1998/Math/MathML" display="${if (display) "block" else "inline"}"><semantics>${mrow(n)}</semantics></math>"""
+
+    private fun mrow(n: MathNode): String = "<mrow>${ml(n)}</mrow>"
+    private fun ml(n: MathNode): String = when (n) {
+        is MathNode.Row -> n.items.joinToString("") { ml(it) }
+        is MathNode.Text -> tokens(n)
+        is MathNode.Frac -> if (n.linear) ml(n.num) + "<mo>/</mo>" + ml(n.den) else "<mfrac>${mrow(n.num)}${mrow(n.den)}</mfrac>"
+        is MathNode.Script -> when {
+            n.pre -> "<mmultiscripts>${mrow(n.base)}<mprescripts/>${n.sub?.let(::mrow) ?: "<none/>"}${n.sup?.let(::mrow) ?: "<none/>"}</mmultiscripts>"
+            n.sup != null && n.sub != null -> "<msubsup>${mrow(n.base)}${mrow(n.sub)}${mrow(n.sup)}</msubsup>"
+            n.sup != null -> "<msup>${mrow(n.base)}${mrow(n.sup)}</msup>"
+            else -> "<msub>${mrow(n.base)}${n.sub?.let(::mrow) ?: "<mrow/>"}</msub>"
+        }
+        is MathNode.Radical -> if (n.degree == null) "<msqrt>${ml(n.body)}</msqrt>" else "<mroot>${mrow(n.body)}${mrow(n.degree)}</mroot>"
+        is MathNode.Nary -> {
+            val op = "<mo stretchy=\"false\">${esc(n.op)}</mo>"
+            val limits = when {
+                n.sub != null && n.sup != null -> (if (n.under) "munderover" else "msubsup").let { "<$it>$op${mrow(n.sub)}${mrow(n.sup)}</$it>" }
+                n.sub != null -> (if (n.under) "munder" else "msub").let { "<$it>$op${mrow(n.sub)}</$it>" }
+                n.sup != null -> (if (n.under) "mover" else "msup").let { "<$it>$op${mrow(n.sup)}</$it>" }
+                else -> op
+            }
+            "<mrow>$limits${mrow(n.body)}</mrow>"
+        }
+        is MathNode.Delim -> "<mrow><mo fence=\"true\" form=\"prefix\" stretchy=\"true\">${esc(n.open)}</mo>" + n.items.joinToString("<mo separator=\"true\">${esc(n.sep)}</mo>") { mrow(it) } +
+            "<mo fence=\"true\" form=\"postfix\" stretchy=\"true\">${esc(n.close)}</mo></mrow>"
+        is MathNode.Func -> "<mrow>${ml(plainText(n.name))}<mo>\u2061</mo>${mrow(n.body)}</mrow>"
+        is MathNode.Accent -> "<mover accent=\"true\">${mrow(n.body)}<mo>${esc(ACCENT_MARKS.entries.firstOrNull { it.value == n.char && it.key.length == 1 && it.key[0].code < 0x300 }?.key ?: n.char)}</mo></mover>"
+        is MathNode.Bar -> if (n.top) "<mover accent=\"true\">${mrow(n.body)}<mo>¯</mo></mover>" else "<munder accentunder=\"true\">${mrow(n.body)}<mo>_</mo></munder>"
+        is MathNode.Limit -> (if (n.low) "munder" else "mover").let { "<$it>${mrow(n.base)}${mrow(n.lim)}</$it>" }
+        is MathNode.Matrix -> "<mtable>" + n.rows.joinToString("") { r -> "<mtr>" + r.joinToString("") { "<mtd>${mrow(it)}</mtd>" } + "</mtr>" } + "</mtable>"
+        is MathNode.Stack -> "<mtable>" + n.rows.joinToString("") { "<mtr><mtd>${mrow(it)}</mtd></mtr>" } + "</mtable>"
+    }
+    /** Letters, numbers and signs as MathML's tokens: a word upright ([MathNode.Text.plain]) one mi; else a letter each. */
+    private fun tokens(t: MathNode.Text): String {
+        val out = StringBuilder()
+        Regex("""\d+(?:\.\d+)?|\p{L}+|\s+|.""").findAll(t.text).forEach { m ->
+            val v = m.value
+            when {
+                v.isBlank() -> out.append("<mspace width=\"0.25em\"/>")
+                v[0].isDigit() -> out.append("<mn>${esc(v)}</mn>")
+                v[0].isLetter() -> if (t.plain) out.append("<mi mathvariant=\"normal\">${esc(v)}</mi>") else v.forEach { out.append("<mi>${esc(it.toString())}</mi>") }
+                else -> out.append("<mo>${esc(v)}</mo>")
+            }
+        }
+        return out.toString()
     }
 
     // ---- tree → linear form (what Edit equation shows)

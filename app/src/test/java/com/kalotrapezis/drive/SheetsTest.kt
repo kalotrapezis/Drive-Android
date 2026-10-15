@@ -134,6 +134,36 @@ class SheetsTest {
         assertEquals(1, book.sheet(0).frozenRows); assertEquals(1, book.sheet(0).frozenCols)
     }
 
+    /**
+     * Excel Tables: Google Sheets' alternating colours (a table style of the file's own: header, two stripes) and
+     * Excel's default TableStyleMedium2 (the theme's first accent), laid under the cells' own looks.
+     */
+    @Test fun tables() {
+        val parts = OfficeFormats.unzip(resource("sheet.xlsx"))
+        fun edit(name: String, f: (String) -> String) { parts[name] = f(String(parts.getValue(name))).toByteArray() }
+        edit("xl/styles.xml") { it.replace("</styleSheet>", "") + """<dxfs count="3"><dxf><font/><fill><patternFill patternType="solid"><fgColor rgb="FF4472C4"/><bgColor rgb="FF4472C4"/></patternFill></fill><border/></dxf><dxf><fill><patternFill patternType="solid"><bgColor rgb="FFD9E2F3"/></patternFill></fill></dxf><dxf><fill><patternFill patternType="solid"><bgColor rgb="FFB4C6E7"/></patternFill></fill></dxf></dxfs><tableStyles count="1"><tableStyle count="3" pivot="0" name="Φύλλο1-style"><tableStyleElement dxfId="0" type="headerRow"/><tableStyleElement dxfId="1" type="firstRowStripe"/><tableStyleElement dxfId="2" type="secondRowStripe"/></tableStyle></tableStyles></styleSheet>""" }
+        edit("xl/worksheets/sheet1.xml") { it.replace("</worksheet>", """<tableParts count="1"><tablePart r:id="rIdT"/></tableParts></worksheet>""") }
+        parts["xl/worksheets/_rels/sheet1.xml.rels"] = """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/></Relationships>""".toByteArray()
+        fun table(style: String) { parts["xl/tables/table1.xml"] = """<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ref="A6:B9" name="T" id="1"><tableStyleInfo name="$style" showRowStripes="1" showFirstColumn="0" showLastColumn="0" showColumnStripes="0"/></table>""".toByteArray() }
+        fun fill(book: Workbook, r: Int, c: Int): Int? = book.sheet(0).let { s -> s[r, c]?.style?.let { book.styles.getOrNull(it) ?: s.looks[it - book.styles.size] }?.fill }
+
+        table("Φύλλο1-style")
+        var book = Sheets.read(OfficeFormats.zip(parts), "t.xlsx")
+        assertEquals(0xFF4472C4.toInt(), fill(book, 5, 0)) // the header row
+        assertEquals(0xFFD9E2F3.toInt(), fill(book, 6, 1)) // first stripe, an empty cell too
+        assertEquals(0xFFB4C6E7.toInt(), fill(book, 7, 0))
+        assertEquals(0xFFD9E2F3.toInt(), fill(book, 8, 0))
+        assertEquals(0xFFFFFF00.toInt(), fill(book, 0, 0)) // outside the table: its own
+
+        table("TableStyleMedium2")
+        book = Sheets.read(OfficeFormats.zip(parts), "t.xlsx")
+        val accent = fill(book, 5, 0)!!
+        assertEquals(accent, SheetColors.tint(accent, 0.0))
+        assertTrue(book.styles.getOrNull(book.sheet(0)[5, 0]!!.style)?.bold ?: book.sheet(0).looks.any { it.bold })
+        assertEquals(SheetColors.tint(accent, 0.8), fill(book, 6, 0))
+        assertNull(fill(book, 7, 0))
+    }
+
     @Test fun ods() = checkBook(Sheets.read(resource("sheet.ods"), "sheet.ods"), greek = true)
 
     /** LibreOffice's view settings (a headless conversion leaves them out): frozen rows and columns, the sheet left on. */

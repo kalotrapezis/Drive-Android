@@ -630,7 +630,10 @@ internal class SheetPainter(
     }
 
     private fun styleOf(r: Int, c: Int, cell: SheetCell?): SheetStyle =
-        styles.getOrNull(cell?.style ?: sheet.rowStyles[rAt[r]] ?: sheet.colStyles[cAt[c]] ?: 0) ?: SheetStyle()
+        look(cell?.style ?: sheet.rowStyles[rAt[r]] ?: sheet.colStyles[cAt[c]] ?: 0) ?: SheetStyle()
+
+    /** A style by its index: the workbook's, then the sheet's own (an Excel Table's). */
+    private fun look(i: Int): SheetStyle? = styles.getOrNull(i) ?: sheet.looks.getOrNull(i - styles.size)
 
     private fun face(st: SheetStyle): Typeface {
         val key = "${st.font}|${st.bold}|${st.italic}"
@@ -746,7 +749,7 @@ internal class SheetPainter(
         // Borders: each cell's four edges (a merged range's cells carry its outline).
         for (r in r0..r1) for (k in c0..c1) {
             val cell = at(r, k) ?: continue
-            val st = styles.getOrNull(cell.style) ?: continue
+            val st = look(cell.style) ?: continue
             if (st.left == null && st.top == null && st.right == null && st.bottom == null) continue
             val l = colX[k]; val t = rowY[r]; val rt = colX[k + 1]; val b = rowY[r + 1]
             st.left?.let { edge(c, it, l, t, l, b, s) }; st.right?.let { edge(c, it, rt, t, rt, b, s) }

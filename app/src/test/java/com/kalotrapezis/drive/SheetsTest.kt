@@ -165,7 +165,7 @@ class SheetsTest {
         files.forEach { file ->
             runCatching {
                 val start = System.nanoTime()
-                val book = Sheets.read(file.readBytes(), file.name)
+                val book = Sheets.read(file)
                 val cells = book.tabs.indices.sumOf { book.sheet(it).cells.size }
                 println("${file.name}: ${book.tabs.size} sheets, $cells cells, ${(System.nanoTime() - start) / 1_000_000} ms")
             }.onFailure { failed += "${file.relativeTo(root)}: $it" }

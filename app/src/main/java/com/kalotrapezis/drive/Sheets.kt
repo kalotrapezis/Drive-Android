@@ -25,7 +25,7 @@ internal enum class SheetVAlign { Top, Center, Bottom }
 internal enum class SheetKind { Number, Text, Bool, Error, Empty }
 
 /** A cell's border edge: colour, width in pixels, double or dashed. */
-internal data class SheetLine(val color: Int, val width: Float, val double: Boolean = false, val dashed: Boolean = false)
+internal data class SheetLine(val color: Int, val width: Float, val double: Boolean = false, val dashed: Boolean = false, val dots: Boolean = false)
 
 internal data class SheetStyle(
     val font: String? = null, val size: Float = 11f, val bold: Boolean = false, val italic: Boolean = false,
@@ -191,10 +191,24 @@ internal object Sheets {
     /** Reads a spreadsheet; [decimal] and [group] are the separators numbers are shown with (the phone's). */
     fun read(bytes: ByteArray, name: String, decimal: Char = '.', group: Char = ','): Workbook =
         when (name.substringAfterLast('.', "").lowercase()) {
-            "ods" -> Ods(OfficeFormats.unzip(bytes)).read()
+            "ods" -> Ods(OfficeFormats.unzip(bytes)::get).read()
             "csv", "tsv" -> csv(bytes)
-            else -> Xlsx(OfficeFormats.unzip(bytes), decimal, group).read()
+            else -> Xlsx(OfficeFormats.unzip(bytes)::get, decimal, group).read()
         }
+
+    /**
+     * A spreadsheet file, each part taken from the zip on disk when it is needed (the user's 20 MB workbook is 178 MB
+     * unzipped: holding it all took the phone's heap to 271 MB).
+     */
+    fun read(file: java.io.File, decimal: Char = '.', group: Char = ','): Workbook {
+        val ext = file.extension.lowercase()
+        if (ext == "csv" || ext == "tsv") return csv(file.readBytes())
+        val names = java.util.zip.ZipFile(file).use { z -> z.entries().asSequence().map { it.name }.toHashSet() }
+        val part = { name: String ->
+            if (name !in names) null else java.util.zip.ZipFile(file).use { z -> z.getEntry(name)?.let { e -> z.getInputStream(e).use { it.readBytes() } } }
+        }
+        return if (ext == "ods") Ods(part).read() else Xlsx(part, decimal, group).read()
+    }
 
     /** "B12" → (11, 1); null when it is not a cell's name. */
     fun cellRef(ref: String): Pair<Int, Int>? {
@@ -257,7 +271,7 @@ internal object Sheets {
 
     // --- .xlsx ---
 
-    private class Xlsx(val parts: Map<String, ByteArray>, decimal: Char, group: Char) {
+    private class Xlsx(val parts: (String) -> ByteArray?, decimal: Char, group: Char) {
         val strings = ArrayList<String>()
         val styles = ArrayList<SheetStyle>()
         var theme = IntArray(0)
@@ -269,7 +283,7 @@ internal object Sheets {
         fun rels(part: String): Map<String, String> {
             val dir = part.substringBeforeLast('/', "")
             val relsPath = (if (dir.isEmpty()) "" else "$dir/") + "_rels/" + part.substringAfterLast('/') + ".rels"
-            val bytes = parts[relsPath] ?: return emptyMap()
+            val bytes = parts(relsPath) ?: return emptyMap()
             val out = HashMap<String, String>()
             val doc = OfficeFormats.parse(bytes)
             val list = doc.getElementsByTagNameNS("*", "Relationship")
@@ -291,24 +305,24 @@ internal object Sheets {
         fun read(): Workbook {
             val book = rels("").values.firstOrNull { it.endsWith("workbook.xml") } ?: "xl/workbook.xml"
             val bookRels = rels(book)
-            val wb = OfficeFormats.parse(parts[book] ?: error("Not a spreadsheet.")).documentElement
+            val wb = OfficeFormats.parse(parts(book) ?: error("Not a spreadsheet.")).documentElement
             date1904 = wb.kid("workbookPr")?.attr("date1904")?.let { it == "1" || it == "true" } ?: false
             format = SheetFormat(sep.first, sep.second, date1904)
-            bookRels.values.firstOrNull { it.contains("theme/") }?.let { parts[it] }?.let(::readTheme)
-            bookRels.values.firstOrNull { it.endsWith("sharedStrings.xml") }?.let { parts[it] }?.let(::readStrings)
-            bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { parts[it] }?.let(::readStyles)
+            bookRels.values.firstOrNull { it.contains("theme/") }?.let(parts)?.let(::readTheme)
+            bookRels.values.firstOrNull { it.endsWith("sharedStrings.xml") }?.let(parts)?.let(::readStrings)
+            bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let(parts)?.let(::readStyles)
             if (styles.isEmpty()) styles += SheetStyle()
             val active = wb.kid("bookViews")?.kid("workbookView")?.attr("activeTab")?.toIntOrNull() ?: 0
             val found = wb.kid("sheets")?.kids("sheet").orEmpty().mapNotNull { s ->
                 val rid = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id").ifEmpty { s.attr("r:id") ?: "" }
-                val path = bookRels[rid]?.takeIf { it in parts } ?: return@mapNotNull null
+                val path = bookRels[rid] ?: return@mapNotNull null
                 SheetTab(s.attr("name") ?: "Sheet", s.attr("state").let { it == "hidden" || it == "veryHidden" }) to path
             }
             if (found.isEmpty()) error("No sheets.")
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex)) { i ->
                 val (tab, path) = found[i]
-                runCatching { readSheet(tab.name, path, parts.getValue(path), tab.hidden) }.getOrElse {
+                runCatching { readSheet(tab.name, path, parts(path) ?: error("No such part."), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
                     Sheet(tab.name, CellMap(), 0, 0, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0, hidden = tab.hidden)
                 }
@@ -355,8 +369,8 @@ internal object Sheets {
                 "medium", "mediumDashed", "mediumDashDot", "mediumDashDotDot", "slantDashDot" -> SheetLine(c, 2f, dashed = style != "medium")
                 "thick" -> SheetLine(c, 3f)
                 "double" -> SheetLine(c, 3f, double = true)
-                "hair" -> SheetLine(c, 1f, dashed = true)
-                "dashed", "dotted", "dashDot", "dashDotDot" -> SheetLine(c, 1f, dashed = true)
+                "hair", "dotted" -> SheetLine(c, 1f, dots = true)
+                "dashed", "dashDot", "dashDotDot" -> SheetLine(c, 1f, dashed = true)
                 else -> SheetLine(c, 1f)
             }
         }
@@ -420,6 +434,7 @@ internal object Sheets {
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
             var tab: Int? = null
             var maxRow = -1; var maxCol = -1
+            val boxed = Extent()
             sax(bytes, object : DefaultHandler() {
                 var row = -1; var col = -1
                 var r = 0; var c = 0; var s = 0; var t: String? = null
@@ -515,15 +530,28 @@ internal object Sheets {
                     }.let { if (formula != null) it.copy(formula = "=$formula") else it }
                     if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
                     cells[Sheet.key(r, c)] = cell
-                    if (cell.kind != SheetKind.Empty || style.boxed) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) }
+                    if (cell.kind != SheetKind.Empty) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) } else boxed.add(r, c)
                 }
             })
             links.forEach { (k, target) -> cells[k]?.let { cells[k] = it.copy(link = target) } }
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
+            maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden)
         }
+    }
+
+    /**
+     * Cells with only a fill or a border: they widen the used range only near the written ones (the user's school
+     * timetable formats 1,024 columns × 65,536 rows of empty cells; Excel would let it be scrolled to the end, which is no
+     * use to look at), so an empty bordered form still shows whole.
+     */
+    internal class Extent {
+        private val rowsAt = java.util.TreeSet<Int>(); private val colsAt = java.util.TreeSet<Int>()
+        fun add(r: Int, c: Int) { rowsAt += r; colsAt += c }
+        fun rows(written: Int) = max(written, rowsAt.floor(written + 100) ?: -1)
+        fun cols(written: Int) = max(written, colsAt.floor(written + 26) ?: -1)
     }
 
     // --- .ods ---
@@ -535,7 +563,7 @@ internal object Sheets {
         return when (m.groupValues[2]) { "cm" -> n / 2.54f * 96; "mm" -> n / 25.4f * 96; "in" -> n * 96; "pc" -> n * 16; "px" -> n; else -> n * 4 / 3 }
     }
 
-    private class Ods(val parts: Map<String, ByteArray>) {
+    private class Ods(val parts: (String) -> ByteArray?) {
         /** Every style:style by name: its family, parent, and the properties ("c.", "t.", "p.", "col.", "row.", "tab." + name). */
         class Raw(val family: String, val parent: String?, val props: HashMap<String, String> = HashMap())
         val raw = HashMap<String, Raw>()
@@ -576,7 +604,7 @@ internal object Sheets {
             val parts = s.split(' ')
             val w = odfPx(parts.firstOrNull())?.let { if (it < 1.3f) 1f else if (it < 2.6f) 2f else 3f } ?: 1f
             val color = parts.firstNotNullOfOrNull { hex(it) } ?: 0xFF000000.toInt()
-            return SheetLine(color, w, double = "double" in parts, dashed = parts.any { it in setOf("dashed", "dotted", "dash-dot", "dash-dot-dot", "fine-dashed") })
+            return SheetLine(color, w, double = "double" in parts, dashed = parts.any { it in setOf("dashed", "dash-dot", "dash-dot-dot", "fine-dashed") }, dots = "dotted" in parts)
         }
 
         fun style(name: String?): Int = styleIndex.getOrPut(name ?: "") {
@@ -607,8 +635,8 @@ internal object Sheets {
 
         /** The looks and the sheets' names, in one pass that skips every row; [table] reads one sheet when it is opened. */
         fun read(): Workbook {
-            parts["styles.xml"]?.let { sax(it, styleHandler()) }
-            val content = parts["content.xml"] ?: error("Not a spreadsheet.")
+            parts("styles.xml")?.let { sax(it, styleHandler()) }
+            val content = parts("content.xml") ?: error("Not a spreadsheet.")
             settings = readSettings()
             val tabs = ArrayList<SheetTab>()
             sax(content, object : DefaultHandler() {
@@ -629,7 +657,7 @@ internal object Sheets {
             raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
-            return Workbook(tabs, styles, active) { i -> table(content, i) }
+            return Workbook(tabs, styles, active) { i -> table(parts("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         fun table(content: ByteArray, target: Int): Sheet {
@@ -644,6 +672,7 @@ internal object Sheets {
                 var merges = ArrayList<SheetRange>()
                 var col = 0; var row = 0; var rowRepeat = 1; var rowDefault: String? = null
                 var maxRow = -1; var maxCol = -1
+                var boxed = Extent()
                 var rowCells = ArrayList<Pair<Int, SheetCell>>()
                 // the cell being read
                 var inCell = false; var cellRepeat = 1; var cellAttrs: Map<String, String> = emptyMap()
@@ -660,7 +689,7 @@ internal object Sheets {
                             name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name")
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
-                            col = 0; row = 0; maxRow = -1; maxCol = -1
+                            col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent()
                         }
                         "table-column" -> {
                             val n = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
@@ -753,7 +782,7 @@ internal object Sheets {
                     if (rowCells.isNotEmpty()) {
                         for (k in 0 until min(rowRepeat, 1000)) for ((c, cell) in rowCells) {
                             cells[Sheet.key(row + k, c)] = cell
-                            if (cell.kind != SheetKind.Empty || styles[cell.style].boxed) { maxRow = max(maxRow, row + k); maxCol = max(maxCol, c) }
+                            if (cell.kind != SheetKind.Empty) { maxRow = max(maxRow, row + k); maxCol = max(maxCol, c) } else boxed.add(row + k, c)
                         }
                     }
                     row += rowRepeat
@@ -761,6 +790,7 @@ internal object Sheets {
 
                 fun endTable() {
                     merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
+                    maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
                     val rowHeights = HashMap<Int, Float>(); val hiddenRows = HashSet<Int>()
                     val limit = maxRow + 200
                     rowRuns.forEach { (start, n, h) -> for (r in start until min(start + n, limit)) rowHeights[r] = h }
@@ -788,7 +818,7 @@ internal object Sheets {
 
         /** LibreOffice's view settings: each sheet's frozen rows and columns, the grid, the sheet it was left on. */
         fun readSettings(): Settings {
-            val bytes = parts["settings.xml"] ?: return Settings(emptyMap(), null, null)
+            val bytes = parts("settings.xml") ?: return Settings(emptyMap(), null, null)
             return runCatching {
                 val doc = OfficeFormats.parse(bytes)
                 val tables = HashMap<String, Map<String, String>>()

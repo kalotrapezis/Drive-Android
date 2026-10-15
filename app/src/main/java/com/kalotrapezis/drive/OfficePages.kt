@@ -1763,6 +1763,7 @@ internal object OfficeFonts {
     fun typeface(name: String?): Typeface? {
         val n = name?.lowercase()?.trim() ?: return null
         return when {
+            "narrow" in n || "condensed" in n -> Typeface.create("sans-serif-condensed", Typeface.NORMAL) // Arial Narrow: no metric twin bundled
             "times" in n || n == "liberation serif" -> load("LiberationSerif", "serif")
             "arial" in n || "helvetica" in n || n == "liberation sans" -> load("LiberationSans", "sans-serif")
             "calibri" in n || "carlito" in n -> load("Carlito", "sans-serif")

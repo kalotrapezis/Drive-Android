@@ -1861,6 +1861,7 @@ private fun DriveFiles(
                 back = goParent,
                 emptyTrash = emptyTrash,
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp),
+                island = true,
                 trailing = {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                         IconButton(onClick = toggleGrid) {
@@ -1884,6 +1885,7 @@ internal fun FilesPageHeader(
     back: () -> Unit,
     emptyTrash: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    island: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -1894,8 +1896,18 @@ internal fun FilesPageHeader(
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
         }
-        Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
-        Text(title, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // A header floating over a scrolling list sits in the same island as Gallery's date, so it stays legible.
+        if (island) Box(Modifier.weight(1f)) {
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp))
+                    Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        } else {
+            Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
+            Text(title, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         // The one destructive action on the page sits where the page's actions are, and is the only red thing.
         if (emptyTrash != null) Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = CircleShape) {
             IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Empty Trash") }

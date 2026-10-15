@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.FileObserver
+import android.os.Handler
+import android.os.Looper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -266,6 +269,57 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
         .filterNot { relativePath.isEmpty() && it.name == TRASH_FOLDER }
         .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }
         .sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
+}
+
+/**
+ * Says when something under Tetra changed — a file pushed, synced, saved by another app, renamed or deleted — so
+ * Files and its search show it without a refresh. Android watches one folder at a time, so this watches every
+ * visible folder, and looks for folders again only when one is added: on the tablet that look takes seconds
+ * (700 folders), and while it runs nothing is watched, so the list is read once more after it.
+ */
+internal class DriveWatcher(private val root: File, private val changed: () -> Unit) {
+    private val main = Handler(Looper.getMainLooper())
+    private var observer: FileObserver? = null
+    @Volatile private var stopped = false
+    private var newFolder = false
+    private val settle = Runnable {
+        changed()
+        if (newFolder) {
+            newFolder = false
+            Thread { watch(); main.post { if (!stopped) changed() } }.start()
+        }
+    }
+
+    init { Thread(::watch).start() }
+
+    private fun watch() {
+        val folders = root.walkTopDown().onEnter { it == root || !it.name.startsWith(".") }.filter { it.isDirectory }.toList()
+        synchronized(this) { if (!stopped) start(folders) }
+    }
+
+    private fun start(folders: List<File>) {
+        observer?.stopWatching()
+        observer = object : FileObserver(folders, CREATE or DELETE or MOVED_FROM or MOVED_TO or CLOSE_WRITE) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path == null || path.startsWith(".")) return // the apps' own dot files are not in the list
+                val folderArrived = (event and IS_FOLDER) != 0 && (event and (CREATE or MOVED_TO)) != 0
+                main.post {
+                    if (stopped) return@post
+                    if (folderArrived) newFolder = true
+                    main.removeCallbacks(settle)
+                    main.postDelayed(settle, 300) // a copy is many writes; answer once it settles
+                }
+            }
+        }.also { it.startWatching() }
+    }
+
+    private companion object { const val IS_FOLDER = 0x40000000 } // inotify's IN_ISDIR, which FileObserver passes on
+
+    @Synchronized fun stop() {
+        stopped = true
+        main.removeCallbacks(settle)
+        observer?.stopWatching()
+    }
 }
 
 object DriveRecentsRules {

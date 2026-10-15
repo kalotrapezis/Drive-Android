@@ -1,3 +1,5 @@
+> **Latest — 14 October 2026:** read the top of [HANDOFF.md](HANDOFF.md) (Phase 1 done but .doc; Phase 2 started with captions and cross-references).
+
 # Continue Tetra (desktop + phone)
 
 Updated: 2026-09-23. The same text starts `Drive/CONTINUE.md` and

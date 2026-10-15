@@ -50,6 +50,9 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
     var kind by remember { mutableStateOf(start.kind) }
     var title by remember { mutableStateOf(start.title.orEmpty()) }
     var stacked by remember { mutableStateOf(start.stacked) }
+    var catTitle by remember { mutableStateOf(start.catTitle.orEmpty()) }
+    var valTitle by remember { mutableStateOf(start.valTitle.orEmpty()) }
+    var labels by remember { mutableStateOf(start.dataLabels) }
     val categories = remember { mutableStateListOf(*start.categories.toTypedArray()) }
     val names = remember { mutableStateListOf(*start.series.map { it.name }.toTypedArray()) }
     // The numbers as typed (a comma or a point for decimals), a list per series.
@@ -57,11 +60,12 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
     val cells = remember { mutableStateListOf(*start.series.map { s -> mutableStateListOf(*start.categories.indices.map { shown(s.values.getOrNull(it)) }.toTypedArray()) }.toTypedArray()) }
     fun chart() = DocChart(kind, title.ifBlank { null }, categories.toList(), names.indices.map { k ->
         ChartSeries(names[k], cells[k].map { it.trim().replace(',', '.').toDoubleOrNull() }, start.series.getOrNull(k)?.color, start.series.getOrNull(k)?.pointColors.orEmpty())
-    }, stacked && kind != ChartKind.Pie && kind != ChartKind.Doughnut, start.legend)
+    }, stacked && kind != ChartKind.Pie && kind != ChartKind.Doughnut && kind != ChartKind.Scatter, start.legend,
+        catTitle.ifBlank { null }, valTitle.ifBlank { null }, labels)
     AlertDialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false), modifier = Modifier.widthIn(max = 720.dp).padding(12.dp),
         title = { Text(if (editing) "Edit chart" else "Chart") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.shadedScroll(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // As it will look.
                 val preview = chart()
                 Canvas(Modifier.fillMaxWidth().height(180.dp).background(Color.White)) { drawIntoCanvas { c ->
@@ -74,10 +78,18 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ChartKind.entries.forEach { k -> FilterChip(kind == k, { kind = k }, label = { Text(k.label) }) }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title") }, modifier = Modifier.weight(1f))
-                    if (kind != ChartKind.Pie && kind != ChartKind.Doughnut) { Text("Stacked", style = MaterialTheme.typography.labelLarge); Switch(stacked, { stacked = it }) }
+                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                // Word's Chart elements: axis titles (not for a pie), data labels; and stacked.
+                if (kind != ChartKind.Pie && kind != ChartKind.Doughnut) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val bar = kind == ChartKind.Bar
+                    OutlinedTextField(catTitle, { catTitle = it }, singleLine = true, label = { Text(if (bar) "Vertical axis title" else "Horizontal axis title") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(valTitle, { valTitle = it }, singleLine = true, label = { Text(if (bar) "Horizontal axis title" else "Vertical axis title") }, modifier = Modifier.weight(1f))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Data labels", style = MaterialTheme.typography.labelLarge); Switch(labels, { labels = it })
+                    if (kind != ChartKind.Pie && kind != ChartKind.Doughnut && kind != ChartKind.Scatter) { Text("Stacked", style = MaterialTheme.typography.labelLarge); Switch(stacked, { stacked = it }) }
+                }
+                if (kind == ChartKind.Scatter) Text("Scatter: the first column holds the x values (numbers), each series the y values.", style = MaterialTheme.typography.bodySmall)
                 // The data: a row per category, a column per series (a pie shows the first).
                 val cell = Modifier.width(96.dp)
                 val first = Modifier.width(128.dp) // the categories' names

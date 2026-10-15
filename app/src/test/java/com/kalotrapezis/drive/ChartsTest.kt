@@ -1,6 +1,7 @@
 package com.kalotrapezis.drive
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChartsTest {
@@ -26,6 +27,7 @@ class ChartsTest {
         val data = DocChart(ChartKind.Column, "Sales & costs", listOf("Q1", "Q2", "Q3"), listOf(ChartSeries("North", listOf(4.3, 2.5, 3.5)), ChartSeries("South", listOf(2.4, null, 1.8), 0x70AD47)))
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for (chartKind in ChartKind.entries) for (stacked in listOf(false, true)) {
             if (stacked && (chartKind == ChartKind.Pie || chartKind == ChartKind.Doughnut)) continue
+            if (chartKind == ChartKind.Scatter) continue // its x values are numbers: below
             val chart = data.copy(kind = chartKind, stacked = stacked)
             val img = PictureXml.withWrap(DocImage("c1", null, 396f, 230f, chart = chart), if (stacked) PictureWrap.Square else PictureWrap.InLine, kind)
             val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("A chart: "), DocRun(OBJECT_MARK.toString(), image = img))))), kind)
@@ -40,6 +42,24 @@ class ChartsTest {
             assertEquals("$kind $chartKind", if (stacked) PictureWrap.Square else PictureWrap.InLine, PictureXml.wrapOf(back))
         }
     }
+    @Test fun `axis titles, data labels and a scatter are written and read back in both kinds`() {
+        val titled = DocChart(ChartKind.Column, "Sales", listOf("Q1", "Q2"), listOf(ChartSeries("North", listOf(4.0, 2.5))),
+            catTitle = "Quarter", valTitle = "Euros & cents", dataLabels = true)
+        val scatter = DocChart(ChartKind.Scatter, "Height by age", listOf("2", "4.5", "7"), listOf(ChartSeries("Children", listOf(85.0, 104.0, 122.0))),
+            catTitle = "Age", valTitle = "cm")
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for ((name, chart) in listOf("titled" to titled, "scatter" to scatter, "bar" to titled.copy(kind = ChartKind.Bar), "pie" to titled.copy(kind = ChartKind.Pie, catTitle = null, valTitle = null))) {
+            val img = DocImage("c1", null, 396f, 230f, chart = chart)
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))))), kind)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("chart-options-$name.${kind.extension}").writeBytes(bytes)
+            val back = OfficeFormats.read(bytes, kind).paras.single().runs.mapNotNull { it.image }.single().chart
+            fun plain(c: DocChart?) = c?.copy(series = c.series.map { it.copy(color = null, pointColors = emptyMap()) })
+            assertEquals("$kind $name", plain(chart), plain(back))
+        }
+        // The chart's own title is not an axis's.
+        val untitled = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = DocImage("c1", null, 396f, 230f, chart = titled.copy(title = null))))))), OfficeKind.Docx)
+        assertEquals(null, OfficeFormats.read(untitled, OfficeKind.Docx).paras.single().runs.mapNotNull { it.image }.single().chart?.title)
+    }
+
     @Test fun `saving a new chart twice keeps its editable data and floating placement`() {
         for (kind in OfficeKind.entries) {
             val chart = DocChart(ChartKind.Column, "Still editable", listOf("A", "B"), listOf(ChartSeries("Values", listOf(2.0, 5.0))))
@@ -59,4 +79,25 @@ class ChartsTest {
         }
     }
 
+
+    @Test fun `a Word chart's numbers are in an embedded workbook, for Word's Edit Data`() {
+        for (chart in listOf(DocChart(ChartKind.Column, "Sales & costs", listOf("Q1", "Q2", "Q3"), listOf(ChartSeries("North", listOf(4.3, 2.5, 3.5)), ChartSeries("South", listOf(2.4, null, 1.8)))),
+            DocChart(ChartKind.Scatter, "Growth", listOf("1", "2", "4"), listOf(ChartSeries("Height", listOf(10.0, 14.5, 21.0)))))) {
+            val img = DocImage("c", null, 300f, 180f, chart = chart)
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))))), OfficeKind.Docx)
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("chart-${chart.kind}.docx").writeBytes(bytes) // for a look in LibreOffice
+            val parts = OfficeFormats.unzip(bytes)
+            val chartPart = String(parts.getValue(parts.keys.single { it.matches(Regex("word/charts/chart\\d+\\.xml")) }), Charsets.UTF_8)
+            assertTrue(chartPart, "<c:externalData r:id=\"rId1\">" in chartPart && "<c:f>Sheet1!\$B\$2:\$B\$4</c:f>" in chartPart)
+            val book = parts.keys.single { it.startsWith("word/embeddings/") && it.endsWith(".xlsx") }
+            assertTrue(parts.keys.any { it.startsWith("word/charts/_rels/") && String(parts.getValue(it), Charsets.UTF_8).contains(book.substringAfterLast('/')) })
+            val sheet = String(OfficeFormats.unzip(parts.getValue(book)).getValue("xl/worksheets/sheet1.xml"), Charsets.UTF_8)
+            assertTrue(sheet, "<c r=\"B1\" t=\"inlineStr\"><is><t xml:space=\"preserve\">${chart.series[0].name}</t></is></c>" in sheet)
+            assertTrue(sheet, "<c r=\"B3\"><v>${if (chart.kind == ChartKind.Scatter) "14.5" else "2.5"}</v></c>" in sheet)
+            // Read back: the same chart (from the cached values).
+            val back = OfficeFormats.read(bytes, OfficeKind.Docx).paras[0].runs.single().image!!.chart!!
+            assertEquals(chart.series.map { it.name to it.values }, back.series.map { it.name to it.values })
+            assertEquals(chart.categories, back.categories)
+        }
+    }
 }

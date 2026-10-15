@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.kalotrapezis.drive
 
 import android.content.Context
@@ -7,6 +9,8 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -23,6 +27,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,6 +86,18 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.magnifier
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.foundation.relocation.bringIntoViewResponder
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntOffset
@@ -127,6 +144,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.times
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
@@ -191,8 +210,37 @@ private const val STYLE_ALPHA = 0xFEL
 /** A tracked change's letters: its author's colour, two steps short of opaque (never saved as the letters' own). */
 private const val CHANGE_ALPHA = 0xFDL
 private const val STYLE_SLANT = 0x01L // the shadow's colour: see-through
+/** The letters' own "not bold" / "not italic" under a bold or italic style (DocRun.unbold/unitalic): weight 399, a see-through shadow 0x02. */
+private const val UNBOLD_WEIGHT = 399
+private const val UNSLANT = 0x02L
 /** A paragraph aligned as its style says (not by its own setting); an alignment chosen on the ribbon takes it off. */
 private val STYLE_ALIGNED = androidx.compose.ui.text.style.TextDirection.ContentOrRtl
+
+/**
+ * The editor numbers a list as the file does — "a.", "iii)", "2.1." — rather than always 1. 2. 3. (the pages already do).
+ * The editor gives only an item's own number; it numbers in document order, so each level's last number is the
+ * parent's ("2.1."). Labels that order leaves stale (a parent renumbered) are put right by [WriterBridge.staleNumbers].
+ */
+internal class FileNumbering(val styles: DocStyles, val levels: () -> List<Pair<String, String>?>) : com.mohamedrejeb.richeditor.paragraph.type.OrderedListStyleType {
+    val counts = IntArray(9)
+    val compound get() = levels().any { it != null && Regex("%[1-9]").findAll(it.second).count() > 1 }
+    override fun format(number: Int, listLevel: Int): String {
+        val l = (listLevel - 1).coerceIn(0, 8)
+        counts[l] = number; for (d in l + 1 until 9) counts[d] = 0
+        val all = levels()
+        val (fmt, text) = all.getOrNull(l) ?: return number.toString()
+        val head = Regex("%[1-9]").findAll(text).lastOrNull()?.let { text.substring(0, it.range.last + 1) } ?: return styles.number(number, fmt)
+        return styles.label(all.mapIndexed { i, x -> if (i == l) fmt to head else x }, l, counts) ?: number.toString()
+    }
+    override fun getSuffix(listLevel: Int): String = levels().getOrNull(listLevel - 1)?.second?.let { Regex("%[1-9]([^%]*)$").find(it)?.groupValues?.get(1) } ?: "."
+}
+/** Home › Font: Word's everyday fonts, each drawn by a font of the same widths (Carlito, Caladea, Liberation). */
+private val WRITER_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
+/** The ribbon's and a gallery strip's way in and out: quick, from and to the bottom. */
+private val SLIDE_IN = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(180)) { it } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180))
+private val SLIDE_OUT = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(140)) { it } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
+/** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
+private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
 /** The character the editor holds a picture as (its own choice: U+FFFD, not our U+FFFC). */
 private const val EDITOR_PICTURE_CHAR = '\uFFFD'
@@ -242,7 +290,7 @@ internal object WriterBridge {
         }))
     })
 
-    /** How wide the editor's picture character is, for its size (measured by the screen; about 1 elsewhere). */
+    /** How wide the editor's picture character is (as Display lays it: U+FFFC), for its size (measured by the screen; about 1 elsewhere). */
     var pictureGlyph = 1f
     /** A line of the editor's text, top to bottom, for each point of its size. */
     var lineRatio = 1.17f
@@ -272,7 +320,7 @@ internal object WriterBridge {
 
     /** Visual font and separator styles never enter the editable document or its saved runs. */
     fun displayText(shown: AnnotatedString, rich: RichTextDocument, doc: OfficeDoc, styles: DocStyles,
-        fontFamily: (String?) -> FontFamily? = { name -> OfficeFonts.typeface(name)?.let { FontFamily(it) } }): AnnotatedString {
+        fontFamily: (String?) -> FontFamily? = { name -> OfficeFonts.family(name) }): AnnotatedString {
         val places = blockPlaces(shown.text, rich)
         val fonts = AnnotatedString.Builder(shown).apply {
             doc.paras.forEachIndexed { para, p ->
@@ -318,6 +366,8 @@ internal object WriterBridge {
         places.zipWithNext().mapNotNull { (a, b) ->
             if (a.para == b.para) return@mapNotNull null
             val p = doc.paras.getOrNull(a.para) ?: return@mapNotNull null
+            // An empty list item holds only its number: a gap of its own would split that line from its cursor.
+            if (a.from == a.to && p.list != null) return@mapNotNull null
             val next = doc.paras.getOrNull(b.para) ?: return@mapNotNull null
             val look = if (p.table == null) styles.look(p) else ParaLook()
             val after = if (next.table == null) styles.look(next) else ParaLook()
@@ -327,14 +377,93 @@ internal object WriterBridge {
             (a.to to gap).takeIf { gap > 0f }
         }
 
+    /** Writer's look of the editor's text (fonts, the space between paragraphs, tabs); [shown] is what it was made from. */
+    class Display(val shown: AnnotatedString) : VisualTransformation {
+        private val laid = breakablePictures(shown)
+        // An IME update can precede the display effect. Always keep the input's length/offsets valid.
+        override fun filter(text: AnnotatedString) =
+            TransformedText(if (text.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) laid else text, OffsetMapping.Identity)
+    }
+
+    /**
+     * [s] laid with each picture letter as U+FFFC, same length and marks: Android breaks a line before and after that one
+     * (U+FFFD, the editor's, is a letter to it, so a picture took the word it touches down with it). Word moves only the picture.
+     */
+    fun breakablePictures(s: AnnotatedString): AnnotatedString {
+        if (EDITOR_PICTURE_CHAR !in s.text) return s
+        val marks = ArrayList<AnnotatedString.Range<out AnnotatedString.Annotation>>()
+        s.mapAnnotations { marks += it; it }
+        return AnnotatedString(s.text.replace(EDITOR_PICTURE_CHAR, OBJECT_MARK), marks)
+    }
+
     fun displayText(state: RichTextState, shown: AnnotatedString) {
         runCatching {
             state.javaClass.getMethod("setVisualTransformation\$com_mohamedrejeb_richeditor_richeditor_compose", VisualTransformation::class.java)
-                .invoke(state, VisualTransformation { typed ->
-                    // An IME update can precede the display effect. Always keep the input's length/offsets valid.
-                    TransformedText(if (typed.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else typed, OffsetMapping.Identity)
-                })
+                .invoke(state, Display(shown))
         }.onFailure { WriterLog.w("editor display", it) }
+    }
+
+    /** Whether the editor shows Writer's look now (the library puts back its own, without fonts, at every keystroke). */
+    fun showsWriters(state: RichTextState): Boolean = runCatching {
+        state.javaClass.getMethod("getVisualTransformation\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) is Display
+    }.getOrDefault(true)
+
+    /**
+     * Writer's look [shown] — made from the editor's text [base] — over the editor's text [now], a keystroke or a Bold later:
+     * the editor's own styles as they are now, and only what Writer added to [base] (fonts, the space between paragraphs),
+     * moved past the letters typed or removed (those typed at a span's end take it on). Null when it cannot be laid so.
+     */
+    fun carried(shown: AnnotatedString, base: AnnotatedString, now: AnnotatedString): AnnotatedString? {
+        fun <T> added(all: List<AnnotatedString.Range<T>>, had: List<AnnotatedString.Range<T>>): List<AnnotatedString.Range<T>> {
+            val left = had.groupingBy { it }.eachCount().toMutableMap()
+            return all.filter { r -> val n = left[r] ?: 0; if (n > 0) { left[r] = n - 1; false } else true }
+        }
+        val o = base.text; val t = now.text
+        var pre = 0
+        while (pre < o.length && pre < t.length && o[pre] == t[pre]) pre++
+        var suf = 0
+        while (suf < o.length - pre && suf < t.length - pre && o[o.length - 1 - suf] == t[t.length - 1 - suf]) suf++
+        val oldEnd = o.length - suf; val delta = t.length - o.length
+        fun start(x: Int) = if (x <= pre) x else if (x >= oldEnd) x + delta else pre
+        fun end(x: Int) = if (x < pre) x else if (x >= oldEnd && (x > pre || delta > 0)) x + delta else pre
+        fun <T> moved(list: List<AnnotatedString.Range<T>>) = list.mapNotNull { r ->
+            val a = start(r.start); val z = end(r.end)
+            if (z < a || (z == a && r.end > r.start)) null else AnnotatedString.Range(r.item, a, z)
+        }
+        return runCatching { AnnotatedString(t, now.spanStyles + moved(added(shown.spanStyles, base.spanStyles)),
+            now.paragraphStyles + moved(added(shown.paragraphStyles, base.paragraphStyles))) }.getOrNull()
+    }
+
+    /** Whether a numbered item's label is not what document order gives it ("1.1." under an item that became 2.). */
+    fun staleNumbers(state: RichTextState, numbering: FileNumbering): Boolean {
+        val paras = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }
+            .onFailure { WriterLog.w("editor numbers", it) }.getOrNull() ?: return false
+        val fresh = FileNumbering(numbering.styles, numbering.levels)
+        fun get(o: Any?, name: String) = o?.javaClass?.getMethod(name)?.invoke(o) // the library's paragraph classes are internal
+        return runCatching {
+            paras.any { p ->
+                val t = get(p, "getType")?.takeIf { it.javaClass.simpleName == "OrderedList" } ?: return@any false
+                val level = get(t, "getLevel") as Int
+                (get(get(t, "getStartRichSpan"), "getText") as String).trimEnd() != (fresh.format(get(t, "getNumber") as Int, level) + fresh.getSuffix(level)).trimEnd()
+            }
+        }.onFailure { WriterLog.w("editor numbers", it) }.getOrDefault(false)
+    }
+
+    /**
+     * A list item's number is drawn in its first letter's look (a numbered heading's number as big as the heading) —
+     * but when that letter is a picture's, the number took the picture's size and width and pushed the words onto the
+     * next line ("P" alone by a WordArt). While an item starts with a picture, numbers are drawn in the text's own look.
+     */
+    fun plainMarkersIfPictureFirst(state: RichTextState) {
+        val paras = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }
+            .onFailure { WriterLog.w("editor markers", it) }.getOrNull() ?: return
+        val pictureFirst = runCatching { paras.any { p ->
+            p!!.javaClass.getMethod("getType").invoke(p).javaClass.simpleName.endsWith("List") &&
+                (p.javaClass.getMethod("getStartTextSpanStyle").invoke(p) as SpanStyle).fontSize.let { it.isSp && isPictureSp(it.value) }
+        } }.onFailure { WriterLog.w("editor markers", it) }.getOrDefault(false)
+        val want = if (pictureFirst) com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.AlwaysDefault
+            else com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.InheritFromText
+        if (state.config.listMarkerStyleBehavior != want) state.config.listMarkerStyleBehavior = want
     }
 
     /** Replace only the displayed geometry; setRichTextDocument also clears typing Undo/Redo. */
@@ -349,7 +478,11 @@ internal object WriterBridge {
     }
 
     /** The letters [spans] (paragraph, from, to) given [look]'s letter formatting, their words and marks kept (Format painter). */
-    fun painted(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, look: DocRun): OfficeDoc {
+    fun painted(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, look: DocRun): OfficeDoc = restyled(doc, spans) { r -> r.copy(bold = look.bold, italic = look.italic,
+        underline = look.underline, strike = look.strike, sizePt = look.sizePt, color = look.color, highlight = look.highlight, font = look.font, script = look.script) }
+
+    /** The letters [spans] (paragraph, from, to) changed by [restyle], cut out of their runs where a span begins or ends. */
+    fun restyled(doc: OfficeDoc, spans: List<Triple<Int, Int, Int>>, restyle: (DocRun) -> DocRun): OfficeDoc {
         val byPara = spans.groupBy { it.first }
         return doc.copy(paras = doc.paras.mapIndexed { i, p ->
             val mine = byPara[i] ?: return@mapIndexed p
@@ -360,8 +493,7 @@ internal object WriterBridge {
                 mine.forEach { (_, a, b) -> cuts += (a - at).coerceIn(0, r.text.length); cuts += (b - at).coerceIn(0, r.text.length) }
                 cuts.toList().zipWithNext().filter { (x, y) -> y > x }.forEach { (x, y) ->
                     val inside = r.image == null && r.note == null && mine.any { (_, a, b) -> at + x >= a && at + y <= b }
-                    runs += if (!inside) r.copy(text = r.text.substring(x, y)) else r.copy(text = r.text.substring(x, y), bold = look.bold, italic = look.italic,
-                        underline = look.underline, strike = look.strike, sizePt = look.sizePt, color = look.color, highlight = look.highlight, font = look.font, script = look.script)
+                    runs += r.copy(text = r.text.substring(x, y)).let { if (inside) restyle(it) else it }
                 }
                 at += r.text.length
             }
@@ -382,8 +514,10 @@ internal object WriterBridge {
                 // The paragraph style's look, where the letters have none of their own.
                 if (r.image == null && r.text.isNotEmpty()) {
                     if (r.sizePt == null && r.script == 0) look.sizePt?.takeIf { kotlin.math.abs(it - doc.basePt) > 0.01f }?.let { marks += RichTextSpanMark.FontSize(range, ((it + STYLE_SIZE) * scale).sp) }
-                    if (!r.bold && look.bold == true) marks += RichTextSpanMark.FontWeight(range, STYLE_WEIGHT)
-                    if (!r.italic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
+                    if (!r.bold && !r.unbold && look.bold == true) marks += RichTextSpanMark.FontWeight(range, STYLE_WEIGHT)
+                    if (r.unbold) marks += RichTextSpanMark.FontWeight(range, UNBOLD_WEIGHT)
+                    if (r.unitalic) marks += RichTextSpanMark.Shadow(range, UNSLANT, 0f, 0f, 0f)
+                    if (!r.italic && !r.unitalic && look.italic == true) { marks += RichTextSpanMark.Italic(range); marks += RichTextSpanMark.Shadow(range, STYLE_SLANT, 0f, 0f, 0f) }
                     if (r.color == null) look.color?.takeIf { it != 0 }?.let { marks += RichTextSpanMark.TextColor(range, (STYLE_ALPHA shl 24) or it.toLong()) }
                 }
                 // Capitals, small capitals, double lines: drawn by the editor too (the letters stay as typed).
@@ -413,14 +547,16 @@ internal object WriterBridge {
                     // ponytail: the space the editor puts after each paragraph keeps the editor's own text size, so in Mobile
                     // view (tables shrunk to the screen) a short table's line stays a text line tall; a mark cannot reach it
                     // (the library refuses a range past the block). Print layout has no gap.
-                    marks += RichTextSpanMark.FontSize(range, size.sp)
+                    marks += RichTextSpanMark.FontSize(range, pictureSp(size).sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
-                    // half the spacing before a letter and half after, and none before the first of a line: there, twice.
+                    // half the spacing before a letter and half after, and none before the first of a line: there, twice —
+                    // but not in a list item, whose number the editor puts first (twice there, the picture was a line and a
+                    // half wide and "Page" broke after its "P").
                     // A table's a hair narrower than the line: exactly as wide, the paragraph's closing space sometimes went on to
                     // a line of its own — a text line's gap under the table (the user's CV: "gaps between tables").
                     val room = if (img.table != null) w - 1.5f else w
-                    marks += RichTextSpanMark.LetterSpacing(range, ((room - pictureGlyph * size) * (if (at == 0) 2 else 1)).sp)
+                    marks += RichTextSpanMark.LetterSpacing(range, ((room - pictureGlyph * size) * (if (at == 0 && (p.list == null || afterBreak)) 2 else 1)).sp)
                 }
                 at += r.text.length
             }
@@ -431,8 +567,8 @@ internal object WriterBridge {
                 spans = marks,
                 headingLevel = p.heading,
                 // Its own alignment, else its style's — marked (a text direction no paragraph of its own has) as the style's.
-                textAlign = when (p.align.takeIf { it != DocAlign.Start } ?: look.align ?: DocAlign.Start) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
-                textDirection = if (p.align == DocAlign.Start && look.align != null && look.align != DocAlign.Start) STYLE_ALIGNED else androidx.compose.ui.text.style.TextDirection.Unspecified,
+                textAlign = when (p.align.takeIf { it != DocAlign.Start || ownLeft(p) } ?: look.align ?: DocAlign.Start) { DocAlign.Start -> TextAlign.Unspecified; DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify },
+                textDirection = if (p.align == DocAlign.Start && !ownLeft(p) && look.align != null && look.align != DocAlign.Start) STYLE_ALIGNED else androidx.compose.ui.text.style.TextDirection.Unspecified,
                 // The paragraph's left and first-line indents shown (a list item's indent is the editor's own).
                 textIndent = if (p.list != null || p.table != null) null else look.let { l ->
                     val rest = l.left.coerceAtLeast(0f) * scale
@@ -525,11 +661,14 @@ internal object WriterBridge {
                 val styleSlant = b.spans.any { it is RichTextSpanMark.Shadow && a in it.range && it.argb == STYLE_SLANT }
                 for (m in b.spans) if (a in m.range) r = when (m) {
                     is RichTextSpanMark.Bold -> r.copy(bold = true)
-                    is RichTextSpanMark.FontWeight -> if (m.weight == STYLE_WEIGHT) r else r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.FontWeight -> if (m.weight == STYLE_WEIGHT) r else if (m.weight == UNBOLD_WEIGHT) r.copy(unbold = true) else r.copy(bold = m.weight >= 600)
+                    is RichTextSpanMark.Shadow -> if (m.argb == UNSLANT) r.copy(unitalic = true) else r
                     is RichTextSpanMark.Italic -> if (styleSlant) r else r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
-                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
+                    // A picture's place-holder size is no letter's (typed over a chosen picture, the letters took it: a 127 pt "j").
+                    is RichTextSpanMark.FontSize -> if (spOf(m.size)?.let(::isPictureSp) == true) r
+                        else r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
                     is RichTextSpanMark.BaselineShift -> r.copy(script = if (m.multiplier > 0) 1 else if (m.multiplier < 0) -1 else 0)
                     is RichTextSpanMark.TextColor -> if ((m.argb ushr 24).let { it == STYLE_ALPHA || it == CHANGE_ALPHA }) r else r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
@@ -550,7 +689,9 @@ internal object WriterBridge {
             val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
             val align = if (b.textDirection == STYLE_ALIGNED) DocAlign.Start // its style's
                 else when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
-            DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
+            // A picture's place-holder letter without its picture (half undone): not a letter of the document.
+            val letters = runs.map { if (it.image == null && EDITOR_PICTURE_CHAR in it.text) it.copy(text = it.text.replace(EDITOR_PICTURE_CHAR.toString(), "")) else it }
+            DocPara(OfficeFormats.tidy(letters), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
         }.fold(ArrayList<DocPara>()) { paras, (p, afterBreak) ->
             val prev = paras.lastOrNull()
             if (afterBreak && prev != null) paras[paras.size - 1] = prev.copy(runs = OfficeFormats.tidy(prev.runs + breakRun(prev.runs, p.runs) + p.runs))
@@ -596,6 +737,7 @@ internal object WriterBridge {
                 is RichTextSpanMark.Bold, is RichTextSpanMark.Underline, is RichTextSpanMark.Strikethrough,
                 is RichTextSpanMark.BaselineShift, is RichTextSpanMark.Highlight -> true
                 is RichTextSpanMark.FontWeight -> m.weight != STYLE_WEIGHT
+                is RichTextSpanMark.Shadow -> m.argb == UNSLANT
                 is RichTextSpanMark.Italic -> m.range !in slanted
                 is RichTextSpanMark.FontSize -> spOf(m.size)?.let { !isStyleSize(it / scale) } ?: false
                 is RichTextSpanMark.TextColor -> (m.argb ushr 24).let { it != STYLE_ALPHA && it != CHANGE_ALPHA }
@@ -713,13 +855,26 @@ internal object WriterBridge {
         rich.blocks.forEachIndexed { k, b ->
             // A picture or table is one character in the block and another on the screen.
             val needle = b.text.replace(OBJECT_MARK, EDITOR_PICTURE_CHAR)
-            val from = text.indexOf(needle, pos).takeIf { it >= 0 }
-                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return
+            // An empty list item is after its number, not on it ("" is found anywhere): its separator follows the
+            // number, which ends at a space — Writer's numbers ("2.") have none of their own, the library's ("2. ") one.
+            // shortcut: a number whose own text has a space ("Chapter 1") is passed only to that space.
+            val emptyItem = if (needle.isEmpty() && b.type is RichTextBlockType.ListItem) text.indexOf(' ', pos).takeIf { it >= 0 }?.let { sep ->
+                val next = rich.blocks.getOrNull(k + 1)
+                val nextStartsWithSpace = next == null || next.text.startsWith(' ') || (next.text.isEmpty() && next.type !is RichTextBlockType.ListItem)
+                if (text.getOrNull(sep + 1) == ' ' && !nextStartsWithSpace) sep + 1 else sep
+            } else null
+            val from = emptyItem
+                ?: text.indexOf(needle, pos).takeIf { it >= 0 }
+                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return WriterLog.w("editor block $k not found after $pos")
             each(k, from, from + b.text.length)
             pos = from + b.text.length + 1
         }
     }
 
+    /** The size (sp) a picture's place-holder letter is drawn at: its own, marked by its fraction (.371) as no letter's. */
+    fun pictureSp(size: Float) = kotlin.math.floor(size) + PICTURE_FRACTION
+    fun isPictureSp(sp: Float) = kotlin.math.abs(sp - kotlin.math.floor(sp) - PICTURE_FRACTION) < 0.0005f
+    private const val PICTURE_FRACTION = 0.371f
     /** A size (pt) drawn for a paragraph's style: a few hundredths over half points. */
     fun isStyleSize(pt: Float) = ((pt - STYLE_SIZE) * 2).let { kotlin.math.abs(it - it.roundToInt()) < 0.01f }
     /** Whether a look has a paragraph style's drawn marks in it, and those marks alone (to take them off). */
@@ -833,7 +988,7 @@ private const val OFFICE_RECENT = 50
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
-    .filter { it.isFile && OfficeKind.of(it.name) != null && !it.name.startsWith("~$") }
+    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name)) && !it.name.startsWith("~$") }
     .map { OfficeFile(it, it.relativeTo(root).path) }
     .sortedByDescending { it.file.lastModified() }
     .toList()
@@ -902,6 +1057,21 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
 }
 
 /** Unsaved changes are kept as a file in the app's storage while typing, so closing the app never loses them. */
+/**
+ * This session's history (asked 2026-10-14: a live copy, as Word and LibreOffice keep one, gone on leaving): the working
+ * copy as it was every few minutes, the last 10, in Writer's own storage. Left behind only when Writer did not close.
+ */
+private fun sessionDir(context: Context, key: String) = File(File(context.filesDir, "writer-session"), key.hashCode().toUInt().toString())
+internal fun sessionVersions(context: Context, key: String): List<File> =
+    sessionDir(context, key).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name.substringBefore('.').toLongOrNull() ?: 0 }.orEmpty()
+private fun keepSessionCopy(context: Context, key: String, kind: OfficeKind, bytes: ByteArray) {
+    val last = sessionVersions(context, key).firstOrNull()?.name?.substringBefore('.')?.toLongOrNull() ?: 0
+    if (System.currentTimeMillis() - last < 2 * 60_000) return
+    val dir = sessionDir(context, key).apply { mkdirs() }
+    File(dir, "${System.currentTimeMillis()}.${kind.extension}").writeBytes(bytes)
+    sessionVersions(context, key).drop(10).forEach { it.delete() }
+}
+
 private fun draftFile(context: Context, key: String, kind: OfficeKind) =
     File(File(context.filesDir, "writer-drafts"), "${key.hashCode().toUInt()}.${kind.extension}")
 
@@ -929,7 +1099,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Image"), Table("Table"), Selection("Selection") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -941,7 +1111,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val scope = rememberCoroutineScope()
     val state = remember { RichTextState() }
     var uri by remember { mutableStateOf(open) }
-    val file: File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
+    /** The file as of now ([uri] changes on Save a copy and a first Save; long-lived effects must not keep an old one). */
+    fun currentFile(): File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
+    val file: File? = currentFile()
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }
@@ -951,8 +1123,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var failed by remember { mutableStateOf<String?>(null) }
     var dirty by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(WriterTab.Home) }
+    val textToolbar = remember { WriterTextToolbar() }
+    var beforeSelection by remember { mutableStateOf<WriterTab?>(null) } // the tab to go back to when the words are let go
     var message by remember { mutableStateOf<String?>(null) }
     var naming by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) } // File › Rename
     var leaving by remember { mutableStateOf(false) }
     var linking by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf(false) }
@@ -962,6 +1137,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // ways, as the pages view. View › Mobile view keeps the text to the screen instead (remembered).
     var pageZoom by remember { mutableFloatStateOf(1f) }
     var mobileView by remember { mutableStateOf(context.getSharedPreferences("writer", Context.MODE_PRIVATE).getBoolean("mobileView", false)) }
+    // View › Reading mode (Word's Read Mode, Phase 2): no ribbon, the text reflowed bigger, nothing typed; its size remembered.
+    var reading by remember { mutableStateOf(false) }
+    var readingZoom by remember { mutableIntStateOf(context.getSharedPreferences("writer", Context.MODE_PRIVATE).getInt("readingZoom", 140)) }
     var finding by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
@@ -969,13 +1147,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val draftKey = uri ?: "new"
     var saving by remember { mutableStateOf(false) }
     val draftMutex = remember { Mutex() }
+    var autoSaveDue by remember { mutableIntStateOf(0) } // counted up by the draft's pause; saved by the effect after save()
+    var versionKept by remember { mutableStateOf(false) } // this session's first save kept the file as it was opened
+    var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) }
     var cleanDoc by remember { mutableStateOf<OfficeDoc?>(null) }
     var cleanStyleEdits by remember { mutableIntStateOf(0) }
     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
     var showVersions by remember { mutableStateOf(false) }
     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
-    remember { OfficeFonts.assets = context.applicationContext.assets; WriterUnits.load(context); WriterBridge.documentHeadings() }
-    remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(EDITOR_PICTURE_CHAR.toString()) / 100f }
+    remember { OfficeFonts.assets = context.applicationContext.assets; OfficeMath.measure = MathDrawable.measure(); WriterUnits.load(context); WriterBridge.documentHeadings() }
+    remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(OBJECT_MARK.toString()) / 100f } // the letter Display lays it as
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var documentStyles by remember { mutableStateOf<DocStyles>(DocStyles.Plain) }
@@ -991,19 +1172,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val paneOn = tablet && meta.comments.isNotEmpty() && !panelHidden
     val perPt100 = with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }
     // A tablet keeps the page whole (a landscape page, the pane beside it): shown smaller rather than reflowed.
-    val printPhone = !tablet && !mobileView
-    val shownZoom = if (printPhone) 100 else if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
+    val printPhone = !tablet && !mobileView && !reading
+    val readingWidth = minOf(screen, 720.dp) // a tablet's reading column, not the whole screen's width
+    val shownZoom = if (reading) readingZoom else if (printPhone) 100 else if (!tablet) zoom else minOf(zoom, ((screen - (if (paneOn) COMMENT_PANE + 12.dp else 0.dp) - 44.dp) / (documentStyles.page.width * perPt100) * 100).toInt()).coerceAtLeast(40)
     val perPt = with(LocalDensity.current) { (BASE_SP * shownZoom / 100f / meta.basePt).sp.toDp() }
-    val onPage = printPhone || screen >= 700.dp && sheet.width * perPt + 24.dp <= screen
+    val onPage = !reading && (printPhone || screen >= 700.dp && sheet.width * perPt + 24.dp <= screen)
     WriterBridge.pageWidthPt = if (onPage) sheet.textWidth else null
     // Else the page's text is the screen less its margins (10 + 22 dp a side, below).
     WriterBridge.editorWidthSp = if (printPhone) sheet.textWidth * BASE_SP / meta.basePt
-        else with(LocalDensity.current) { (LocalConfiguration.current.screenWidthDp - 64).dp.toSp().value }
+        else with(LocalDensity.current) { ((if (reading) readingWidth else screen) - 64.dp).toSp().value }
     // The phone's page drawn this many times smaller or larger than laid out: the screen's width at pageZoom 1.
     val pageScale = if (printPhone) (screen - 20.dp) / (sheet.width * perPt) * pageZoom else 1f
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
     var viewing by remember { mutableStateOf(open != null) }
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
+    var galleryViewing by remember { mutableStateOf<Boolean?>(null) } // a page gallery: whether the pages were shown before it
     var pagesIndex by remember { mutableStateOf<IntArray?>(null) } // the page each paragraph starts on, in [pages]
     var navOpen by remember { mutableStateOf(false) }
     var goPage by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a page to scroll to (and when it was asked)
@@ -1033,8 +1216,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val selectedPicture by remember { derivedStateOf {
         val text = state.annotatedString.text
         val sel = state.selection
-        if (sel.collapsed) null else (sel.min until sel.max).firstOrNull { text.getOrNull(it) == EDITOR_PICTURE_CHAR }
-            ?.let { i -> keys.getOrNull(text.substring(0, i).count { it == EDITOR_PICTURE_CHAR })?.let { i to it } }
+        (if (sel.collapsed) null else (sel.min until sel.max).firstOrNull { text.getOrNull(it) == EDITOR_PICTURE_CHAR }
+            ?.let { i -> keys.getOrNull(text.substring(0, i).count { it == EDITOR_PICTURE_CHAR })?.let { i to it } })
+            // A cell being typed in keeps its table selected (the Table tab and Make chart): the cell's own field takes the
+            // focus, and with a physical keyboard the editor's selection then closed — the Table tab went (2026-10-14).
+            ?: cellEdit?.ref?.key?.let { key -> keys.indexOf(key).takeIf { it >= 0 }?.let { n ->
+                text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.getOrNull(n)?.let { i -> i to key } } }
     } }
     LaunchedEffect(selectedPicture) {
         if (selectedPicture == null) {
@@ -1064,6 +1251,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val editorDensity = LocalDensity.current
     var editorTextWidth by remember { mutableIntStateOf(0) }
     var shownTabs by remember { mutableStateOf<List<EditorTab>>(emptyList()) }
+    // Writer's last look of the text and how many paragraphs the editor had then (not state: read while composing).
+    val lastLook = remember { arrayOfNulls<Pair<AnnotatedString, AnnotatedString>>(1) } // Writer's look and the editor's text it was made from
     LaunchedEffect(loaded, state.annotatedString, documentStyles, styleEdits, onPage, WriterBridge.editorWidthSp, editorTextWidth, shownZoom) {
         if (!loaded) return@LaunchedEffect
         val doc = current()
@@ -1072,8 +1261,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (displayed, tabs) = editorTabs(shown, rich, doc, documentStyles, editorMeasurer,
             TextStyle(fontSize = (BASE_SP * shownZoom / 100).sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.None)),
             editorTextWidth.takeIf { it > 0 } ?: with(editorDensity) { WriterBridge.editorWidthSp.sp.roundToPx() }, with(editorDensity) { 1.sp.toPx() }, BASE_SP * shownZoom / 100f / meta.basePt)
+        if (tabs != shownTabs && tabs.isNotEmpty()) WriterLog.i("editor tabs: ${tabs.size}, leaders ${tabs.count { it.leader != null }}, widths px ${tabs.take(6).joinToString { "%.0f".format(it.widthPx) }}")
         shownTabs = tabs
         WriterBridge.displayText(state, displayed)
+        lastLook[0] = displayed to state.annotatedString
     }
 
     // Undo for what Writer changes itself (a style, spacing, a picture, a table, the header…): the editor's own undo
@@ -1115,6 +1306,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     // Typing after an undo: what was undone cannot come back (as in Word).
     LaunchedEffect(Unit) { snapshotFlow { state.history.canUndo }.collect { if (it) redone.clear() } }
+    // "2.1." under an item the editor just renumbered: shown again in document order (once per text, never in a loop).
+    LaunchedEffect(Unit) {
+        var relabeled: String? = null
+        snapshotFlow { state.annotatedString.text }.collect { text ->
+            WriterBridge.plainMarkersIfPictureFirst(state)
+            val n = state.config.orderedListStyleType as? FileNumbering ?: return@collect
+            if (text == relabeled || !n.compound || !WriterBridge.staleNumbers(state, n)) return@collect
+            n.counts.fill(0)
+            WriterBridge.reflow(state, current(), pictures, documentStyles)
+            relabeled = state.annotatedString.text
+            WriterLog.i("list labels shown again")
+        }
+    }
 
     LaunchedEffect(reload) {
         loaded = false
@@ -1122,8 +1326,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         WriterLog.i("open ${file?.name ?: "a new document"} (${kind.name}${file?.let { ", ${it.length() / 1024} KB" } ?: ""})")
         val result = withContext(Dispatchers.IO) {
             runCatching {
+                // An older file (.doc, .rtf): read by Writer's own readers; it has no package — saving writes a .docx beside it.
+                val legacy = file?.let { LegacyDocs.isLegacy(it.name) } == true
                 val bytes = file?.readBytes()
-                val doc = bytes?.let { WriterLog.timed("read the file") { OfficeFormats.read(it, kind) } } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
+                val doc = bytes?.let { WriterLog.timed("read the file") { if (legacy) LegacyDocs.read(it, file!!.name) else OfficeFormats.read(it, kind) } } ?: OfficeDoc(listOf(DocPara(emptyList())), basePt = 12f) // Times New Roman 12, as APA 7 asks (the user's default, 2026-09-30)
                 var draftPackage: ByteArray? = null
                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
                     val draftBytes = d.readBytes()
@@ -1131,7 +1337,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     OfficeFormats.read(draftBytes, kind)
                 }.getOrNull() }
                 // With a draft, the file as it will be written starts from the draft (styles, header and footer as changed).
-                val start = draftPackage ?: bytes
+                val start = draftPackage ?: bytes?.takeIf { !legacy }
                 packageParts = start?.let { OfficeFormats.unzip(it) }.orEmpty()
                 Triple(start, doc, draft)
             }
@@ -1139,6 +1345,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         result.onSuccess { (bytes, doc, draft) ->
             original = bytes
             documentStyles = DocStyles.of(kind, bytes)
+            val fileLevels = documentStyles.orderedLevels(doc.paras)
+            state.config.orderedListStyleType = FileNumbering(documentStyles) { meta.numbering ?: fileLevels }
             pictures.clear()
             state.setRichTextDocument(WriterBridge.toEditor(doc, pictures, documentStyles))
             // What the editor shows, read back, must be what the file holds; if not, saving over it could change
@@ -1166,10 +1374,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: "This file could not be read." }
     }
     // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
-    LaunchedEffect(viewing) { WriterLog.i(if (viewing) "view mode" else "edit mode") }
+    LaunchedEffect(viewing, reading) { WriterLog.i(if (reading) "reading mode at $readingZoom%" else if (viewing) "view mode" else "edit mode") }
     LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
     LaunchedEffect(message) { message?.let { WriterLog.i("said: $it") } }
     DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
+    /**
+     * The package just written ([bytes], from [saved]) becomes the one Writer works from: a picture or shape added in
+     * Writer is in it now, so from here on it goes back as written (its own XML: Arrange, Position… work on it).
+     */
+    fun adopt(bytes: ByteArray, saved: OfficeDoc) {
+        val back = OfficeFormats.read(bytes, kind)
+        val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
+        val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
+        if (before.size == after.size) before.zip(after).forEach { (b, a) ->
+            if (pictures[b.key] === b) pictures[b.key] = a.with(key = b.key)
+        }
+        original = bytes
+        packageParts = OfficeFormats.unzip(bytes)
+        documentStyles = DocStyles.of(kind, bytes)
+        meta = meta.copy(unsupported = back.unsupported)
+    }
     // Any change marks the document unsaved, and is kept as a draft after a short pause.
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
@@ -1193,18 +1417,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             delay(1500)
             val doc = recoverable()
+            val captured = editable() to styleEdits
             // Read the current URI here: this long-lived effect also survives Save a copy/first Save.
             val key = uri ?: "new"
             val source = original
-            withContext(Dispatchers.IO) { draftMutex.withLock {
-                if (dirty && key == (uri ?: "new")) runCatching { writeWriterDraft(draftFile(context, key, kind), OfficeFormats.write(doc, kind, source)) }.onFailure { WriterLog.e("draft", it) }
+            val written = withContext(Dispatchers.IO) { draftMutex.withLock {
+                if (dirty && key == (uri ?: "new")) runCatching { OfficeFormats.write(doc, kind, source).also { writeWriterDraft(draftFile(context, key, kind), it); keepSessionCopy(context, key, kind, it) } }.onFailure { WriterLog.e("draft", it) }.getOrNull() else null
             } }
+            // The working copy is the package from here on when it holds something Writer made that the file has not yet
+            // (a new picture or shape: its XML is written only in a package) — nothing waits for a Save (asked 2026-10-14).
+            if (written != null && cellEdit == null && (editable() to styleEdits) == captured && pictures.values.any { it.raw == null && it.table == null && it.chart == null }) {
+                adopt(written, doc); WriterLog.i("working copy adopted (new pictures have their XML)")
+            }
+            // AutoSave: a little later, over the file itself — never a new or copy-only one (those Save asks about), nor
+            // while a table cell is being typed in (the cell is not in the document until it is left).
+            delay(1500)
+            if (autoSave && dirty && currentFile() != null && meta.blocking.isEmpty() && cellEdit == null) autoSaveDue++
         }
     }
     // The pages, laid out again whenever they are shown (after editing, they show the edits).
-    LaunchedEffect(viewing, loaded) {
+    // A page gallery's choice (styleEdits) shows at once, the pages kept on screen meanwhile.
+    LaunchedEffect(viewing, loaded, if (galleryViewing != null) styleEdits else 0) {
         if (!viewing || !loaded) return@LaunchedEffect
-        pages = null
+        if (galleryViewing == null) pages = null
         val doc = current()
         val parts = packageParts
         val index = IntArray(doc.paras.size) { -1 }
@@ -1228,23 +1463,64 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
 
+    // Word's typing shortcut (ScriptShortcut, asked 2026-10-14): "x^2" then a space → x², "H_2O " → H₂O; Backspace on that
+    // space straight after brings the word back as typed.
+    var scriptUndo by remember { mutableStateOf<Triple<Int, Int, String>?>(null) } // (word's start, the space's place, the word as typed)
+    var scriptKept by remember { mutableStateOf<Pair<Int, String>?>(null) } // a word brought back as typed: left so after the next space (Word's)
+    LaunchedEffect(loaded) {
+        if (!loaded) return@LaunchedEffect
+        var was = state.annotatedString.text
+        snapshotFlow { state.annotatedString.text to state.selection }.collect { (text, sel) ->
+            val prev = was; was = text
+            if (text == prev || !sel.collapsed || cellEdit != null) return@collect
+            val undo = scriptUndo; scriptUndo = null
+            if (undo != null && text.length == prev.length - 1 && sel.min == undo.second && prev.getOrNull(undo.second) == ' ' &&
+                text.startsWith(prev.substring(0, undo.second))) {
+                change {
+                    state.removeTextRange(androidx.compose.ui.text.TextRange(undo.first, undo.second))
+                    state.selection = androidx.compose.ui.text.TextRange(undo.first)
+                    state.addTextAfterSelection(undo.third)
+                    val typed = androidx.compose.ui.text.TextRange(undo.first, undo.first + undo.third.length)
+                    state.selection = typed
+                    listOf(androidx.compose.ui.text.style.BaselineShift.Superscript, androidx.compose.ui.text.style.BaselineShift.Subscript).forEach { state.removeSpanStyle(SpanStyle(baselineShift = it)) }
+                    state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), androidx.compose.ui.text.TextRange(typed.max))
+                    dirty = true
+                }
+                scriptKept = undo.first to undo.third
+                WriterLog.i("script shortcut undone: ${undo.third}")
+                was = state.annotatedString.text
+                return@collect
+            }
+            // A space just typed after a word.
+            val space = sel.min - 1
+            if (text.length != prev.length + 1 || text.getOrNull(space) != ' ' || !text.startsWith(prev.substring(0, space))) return@collect
+            val start = (space - 1 downTo 0).firstOrNull { text[it].isWhitespace() || text[it] == EDITOR_PICTURE_CHAR }?.plus(1) ?: 0
+            val word = text.substring(start, space)
+            if (scriptKept == start to word) return@collect // brought back as typed on purpose
+            val raises = ScriptShortcut.find(word).takeIf { it.isNotEmpty() } ?: return@collect
+            val drop = raises.flatMap { r -> listOf(r.mark) + if (r.bracketed) listOf(r.from - 1, r.to) else emptyList() }.sortedDescending()
+            fun shifted(i: Int) = i - drop.count { it < i }
+            change {
+                drop.forEach { d -> state.removeTextRange(androidx.compose.ui.text.TextRange(start + d, start + d + 1)) }
+                raises.forEach { r ->
+                    state.selection = androidx.compose.ui.text.TextRange(start + shifted(r.from), start + shifted(r.to))
+                    state.addSpanStyle(SpanStyle(baselineShift = if (r.up) androidx.compose.ui.text.style.BaselineShift.Superscript else androidx.compose.ui.text.style.BaselineShift.Subscript))
+                }
+                val after = sel.min - drop.size
+                state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), androidx.compose.ui.text.TextRange(after))
+                dirty = true
+                scriptUndo = Triple(start, after - 1, word)
+            }
+            WriterLog.i("script shortcut: $word → ${ScriptShortcut.shown(word, raises)}")
+            was = state.annotatedString.text
+        }
+    }
+
     suspend fun finishSave(target: File, bytes: ByteArray, saved: OfficeDoc, savedStyleEdits: Int, oldDraftKey: String) {
         val newer = editable() != saved.copy(unsupported = emptySet()) || styleEdits != savedStyleEdits
         uri = Uri.fromFile(target).toString()
         name = target.name
-        val back = OfficeFormats.read(bytes, kind)
-        // A picture added in Writer is in the file now: from here on it goes back as the file has it, not added again.
-        val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
-        val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
-        if (!newer && before.size == after.size) before.zip(after).forEach { (b, a) ->
-            if (pictures[b.key] === b) pictures[b.key] = a.with(key = b.key)
-        }
-        if (!newer) {
-            original = bytes
-            packageParts = OfficeFormats.unzip(bytes)
-            documentStyles = DocStyles.of(kind, bytes)
-            meta = meta.copy(unsupported = back.unsupported)
-        }
+        if (!newer) adopt(bytes, saved)
         // The target now holds the captured snapshot, even if the user has since typed or undone it.
         cleanDoc = if (newer) saved.copy(unsupported = emptySet()) else editable()
         cleanStyleEdits = savedStyleEdits
@@ -1266,10 +1542,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         } while ((editable() to styleEdits) != captured)
     }
     /** Save over the file — only when nothing in it would be lost; otherwise a copy beside it. */
-    fun save(asCopy: Boolean = false, then: () -> Unit = {}) {
+    fun save(asCopy: Boolean = false, auto: Boolean = false, then: () -> Unit = {}) {
         if (saving) return
-        val f = file
-        if (f == null) { naming = true; return }
+        val f = currentFile()
+        if (f == null) { if (!auto) naming = true; return }
         saving = true
         scope.launch {
             try {
@@ -1281,11 +1557,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = WriterLog.timed("wrote the file") { OfficeFormats.write(doc, kind, source) }
-                    val target = if (copy) freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension) else f
+                    // An older file (.doc, .rtf) becomes "name.docx" beside it, the first time (then a copy's name).
+                    val target = if (!copy) f else File(f.parentFile!!, "${f.nameWithoutExtension}.${kind.extension}").takeIf { f.extension != kind.extension && !it.exists() }
+                        ?: freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension)
                     // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
                     val temp = File(target.parentFile, ".${target.name}.tetra-saving")
                     temp.writeBytes(bytes)
-                    if (!copy) keepPrevious(context, f)
+                    // AutoSave keeps the file as it was opened, once: three Versions would not outlast a minute of saves.
+                    if (!copy && !(auto && versionKept)) keepPrevious(context, f)
                     check(temp.renameTo(target)) { "Could not save ${target.name}." }
                     // Its time is now (the phone's storage was seen keeping the old one): sync and the hash cache know it changed.
                     target.setLastModified(System.currentTimeMillis())
@@ -1293,15 +1572,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             result.onSuccess { (target, bytes) ->
-                WriterLog.i("saved ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
+                WriterLog.i("${if (auto) "autosaved" else "saved"} ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
+                if (!copy) versionKept = true
                 finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey)
-                message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
+                if (!auto) message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
                 if (!dirty) then()
-            }.onFailure { WriterLog.e("could not save", it); message = it.message ?: "Could not save." }
+            }.onFailure { WriterLog.e("could not save", it); message = (if (auto) "AutoSave: " else "") + (it.message ?: "Could not save.") }
             } catch (error: Exception) { WriterLog.e("finish save", error); message = error.message ?: "Could not finish saving." }
             finally { saving = false }
         }
     }
+    LaunchedEffect(autoSaveDue) { if (autoSaveDue > 0 && dirty) save(auto = true) }
+    /** A new document's first Save, or Save as (File): beside the document it was, under [typed], and goes on as that one. */
     fun saveNew(typed: String) {
         if (saving) return
         val clean = typed.trim().removeSuffix(".${kind.extension}")
@@ -1309,7 +1591,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         saving = true
         scope.launch {
             try {
-            val dir = TextEditorStore(context).saveDirectory()
+            val dir = currentFile()?.parentFile ?: TextEditorStore(context).saveDirectory()
             val target = File(dir, "$clean.${kind.extension}")
             val doc = current()
             val savedStyleEdits = styleEdits
@@ -1326,7 +1608,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 }
             }
-            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved in ${TextEditorStore(context).saveFolder}" }
+            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved as ${target.name}" }
                 .onFailure { WriterLog.e("could not save new", it); message = it.message }
             } catch (error: Exception) { WriterLog.e("finish save new", error); message = error.message ?: "Could not finish saving." }
             finally { saving = false }
@@ -1349,22 +1631,49 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             result.onSuccess { message = "Saved ${it.name} in ${dir.name}" }.onFailure { message = it.message ?: "Could not make the PDF." }
         }
     }
-    /** A version comes back: the document as it is now is kept as a version first, so restoring is undone the same way. */
-    fun restore(version: File) {
-        val f = file ?: return
+    /** File › Print: the pages as Export PDF makes them, to Android's printing (a printer, or Save as PDF). */
+    fun print() {
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val temp = File(f.parentFile, ".${f.name}.tetra-saving")
-                    version.copyTo(temp, overwrite = true)
-                    keepPrevious(context, f)
-                    check(temp.renameTo(f))
-                    draftFile(context, draftKey, kind).delete()
-                }.isSuccess
-            }
-            if (ok) { reload++; message = "Restored the file as it was before ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(version.name.substringBefore('.').toLong()))}" }
-            else message = "Could not restore it."
+            val doc = current()
+            val pdf = withContext(Dispatchers.IO) { runCatching {
+                File(context.cacheDir, "print.pdf").also { f -> f.outputStream().use { OfficePdf.write(doc, DocStyles.of(kind, original), it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } } }
+            }.onFailure { WriterLog.e("print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+            val manager = context.getSystemService(android.print.PrintManager::class.java) ?: return@launch
+            manager.print(name.substringBeforeLast('.'), PdfPrintAdapter(pdf, name.substringBeforeLast('.')), null)
+            WriterLog.i("print ${pdf.length() / 1024} KB")
         }
+    }
+    /** File › Rename: the file itself, its recovery draft and its versions with it. */
+    fun rename(typed: String) {
+        val f = currentFile() ?: return
+        val clean = typed.trim().removeSuffix(".${kind.extension}")
+        if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
+        val target = File(f.parentFile, "$clean.${kind.extension}")
+        if (target == f) { renaming = false; return }
+        if (target.exists()) { message = "${target.name} is already there. Choose another name."; return }
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { draftMutex.withLock { runCatching {
+                val oldDraft = draftFile(context, draftKey, kind); val oldVersions = versionsDir(context, f)
+                check(f.renameTo(target)) { "Could not rename ${f.name}." }
+                if (oldDraft.isFile) oldDraft.renameTo(draftFile(context, Uri.fromFile(target).toString(), kind))
+                if (oldVersions.isDirectory) oldVersions.renameTo(versionsDir(context, target))
+            }.onFailure { WriterLog.e("rename", it) }.isSuccess } }
+            if (!ok) { message = "Could not rename it."; return@launch }
+            uri = Uri.fromFile(target).toString(); name = target.name; renaming = false
+            WriterLog.i("renamed to ${target.name}"); message = "Renamed ${target.name}"
+        }
+    }
+    /** Versions › This session: the working copy as it was then, back in the editor (one step of Undo). */
+    fun restoreSession(copy: File) = change {
+        val bytes = runCatching { copy.readBytes() }.getOrNull() ?: return@change
+        val doc = runCatching { OfficeFormats.read(bytes, kind) }.onFailure { WriterLog.e("session copy", it) }.getOrNull() ?: run { message = "That copy could not be read."; return@change }
+        original = bytes; packageParts = OfficeFormats.unzip(bytes); documentStyles = DocStyles.of(kind, bytes)
+        pictures.clear()
+        meta = doc.copy(unsupported = meta.unsupported)
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
+        dirty = true; styleEdits++
+        message = "This version is the document now — Undo returns to before"
+        WriterLog.i("version ${copy.name} brought back")
     }
     /**
      * Puts [img] at the cursor and reads the document back in (so its line makes room for it); returns where it is.
@@ -1403,6 +1712,42 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val at = state.selection
         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at)
         dirty = true; styleEdits++ // the text may be the same: the draft is kept all the same
+    }
+    // Insert › Equation (Phase 2): Word's OMML, typed in its linear form; in an empty paragraph a display of its own,
+    // centred (Word's), else in the line. Picture › Edit equation writes it again (the file's own look of it is not kept).
+    var equationOpen by remember { mutableStateOf<Pair<String, MathNode?>?>(null) } // the equation's key ("" for a new one), what it shows
+    // Review › Read aloud (Android's text-to-speech) and the keyboard bar's dictation (Android's voice typing).
+    val reader = rememberReadAloud()
+    var readingParas by remember { mutableStateOf(emptyList<String>()) }
+    val dictate = rememberDictation { said -> change {
+        val at = state.selection.min
+        val before = state.annotatedString.text.getOrNull(at - 1)
+        val after = state.annotatedString.text.getOrNull(state.selection.max)
+        state.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else ""))
+        dirty = true
+    } }
+    fun putEquation(key: String, math: MathNode) = change {
+        val old = pictures[key]
+        if (old != null) {
+            val display = old.raw?.trimStart()?.startsWith("<m:oMathPara") == true
+            // An .odt's: written as a new LibreOffice Math object on saving (raw null), the old one left unused.
+            changePicture(key, OfficeMath.image(key, math, OfficeMath.equation(math, display), meta.basePt).let { if (kind == OfficeKind.Odt) it.with(raw = null) else it })
+            WriterLog.i("equation $key edited: ${OfficeMath.linear(math)}")
+            return@change
+        }
+        // An empty paragraph (as the document has it: the editor's own empty line is not blank letters) gets a display equation.
+        val sel = state.selection.min
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull()?.let { current().paras.getOrNull(it) }
+        val display = here != null && here.table == null && here.runs.none { it.image != null } && here.text.isBlank()
+        val img = OfficeMath.image("n" + java.util.UUID.randomUUID(), math, OfficeMath.equation(math, display), meta.basePt).let { if (kind == OfficeKind.Odt) it.with(raw = null) else it }
+        pictures[img.key] = img
+        val at = placePicture(img)
+        if (display) {
+            val para = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), at, at + 1).firstOrNull()?.first
+            if (para != null) { meta = current().let { d -> d.copy(paras = d.paras.mapIndexed { i, p -> if (i == para) p.copy(align = DocAlign.Center) else p }) }; state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection) }
+        }
+        state.selection = androidx.compose.ui.text.TextRange(at + 1)
+        WriterLog.i("equation inserted (${if (display) "display" else "in line"}): ${OfficeMath.linear(math)}")
     }
     // Picture › Replace: another photo in its place, as wide as it was, wrapped as it was.
     val replacePicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
@@ -1469,7 +1814,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
      * and before the text after it). Saved as "page break before" (both formats); Backspace at the paragraph's start
      * joins it to the one before, which takes the break away, as in Word.
      */
-    fun insertPageBreak(blank: Boolean) = change {
+    fun insertPageBreak(blank: Boolean, column: Boolean = false, section: String? = null) = change {
         val text = state.annotatedString.text
         val rich = state.toRichTextDocument()
         val at = state.selection.min
@@ -1488,10 +1833,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             ?.takeIf { now.blocks.count { !it.isLineBreak } == cur.paras.size } ?: run { message = "Put the cursor in a paragraph of text"; return@change }
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> when {
             p.table != null -> p
-            i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep) else p).let { it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) }
+            i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep?.let { k -> k.copy(parts = k.parts.filter { it.first != "sectPr" }) }?.takeIf { !it.isEmpty }) else p).let {
+                when { section != null -> it; column -> it.copy(keep = OfficeFormats.withColumnBreak(it.keep, kind, true)); else -> it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) } }
+            section != null && !atStart && i == here - 1 && split != null -> p.copy(keep = split.keep?.let { k -> k.copy(parts = k.parts.filter { it.first != "sectPr" }) }?.takeIf { !it.isEmpty }) // a section's end stays with the part after the cursor
             blank && i == here - 1 -> p.copy(heading = 0, list = null, keep = OfficeFormats.withPageBreak(null, kind, true)) // the empty page: a plain paragraph
             else -> p
         } })
+        // Layout › Breaks › Section in an .odt: the text from the cursor on in a section of its own (LibreOffice's).
+        if (section != null && kind == OfficeKind.Odt) {
+            meta = OdtSections.insert(meta, here, section == "nextPage") { it.copy(keep = OfficeFormats.withPageBreak(it.keep, kind, true)) }
+            WriterLog.i("odt section ($section) from paragraph $here")
+        }
+        // Layout › Breaks › Section (Word files): a section ends with the paragraph before the cursor's.
+        if (section != null && kind == OfficeKind.Docx) {
+            val base = original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)
+            val body = SectionBreaks.bodySect(String(OfficeFormats.unzip(base).let { it.getValue(documentPath(it)) }, Charsets.UTF_8)) ?: "<w:sectPr/>"
+            val (withBreak, newBody) = SectionBreaks.insert(meta, here - 1, body, section)
+            meta = withBreak
+            if (newBody != null) original = OfficeFormats.zip(SectionBreaks.withBodySect(OfficeFormats.unzip(base), newBody), null)
+            documentStyles = DocStyles.of(kind, original ?: base)
+            styleEdits++
+            WriterLog.i("section break ($section) after paragraph ${here - 1}")
+        }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(cursor))
     }
@@ -1549,6 +1912,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     } }
     val hereComment by remember { derivedStateOf { state.selection.min.let { at -> commentsShown.firstOrNull { (_, r) -> at in r.first..r.last + 1 }?.first } } }
     var replyTo by remember { mutableStateOf<DocComment?>(null) }
+    var editingComment by remember { mutableStateOf<DocComment?>(null) }
     fun replyComment(parent: DocComment, author: String, text: String) = change {
         val cur = current()
         meta = OfficeFormats.withReply(cur, parent.id, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text,
@@ -1559,16 +1923,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var commentsOpen by remember { mutableStateOf(false) } // the phone's sidebar
     var editorLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var commenting by remember { mutableStateOf(false) }
+    /** The chosen letters (from, to), or with none chosen the word at the cursor (Word's way for a letter command). */
+    fun chosenOrWord(): Pair<Int, Int> {
+        val t = state.annotatedString.text
+        val sel = state.selection
+        if (!sel.collapsed) return sel.min to sel.max
+        var a = sel.min; var z = sel.min
+        while (a > 0 && t[a - 1].isLetterOrDigit()) a--
+        while (z < t.length && t[z].isLetterOrDigit()) z++
+        return a to z
+    }
     /** Insert › Comment: on the chosen letters, or the word at the cursor. */
     fun addComment(author: String, text: String) = change {
         val t = state.annotatedString.text
-        val sel = state.selection
-        val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
-            var a = sel.min; var z = sel.min
-            while (a > 0 && t[a - 1].isLetterOrDigit()) a--
-            while (z < t.length && t[z].isLetterOrDigit()) z++
-            a to z
-        }
+        val (from, to) = chosenOrWord()
         val cur = current()
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), from, to)
         if (spans.isEmpty() || state.toRichTextDocument().blocks.count { !it.isLineBreak } != cur.paras.size) { message = "Choose some words first"; return@change }
@@ -1585,15 +1953,51 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun reshow() = state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
     fun saveSource(s: DocSource) = change {
         val cur = current()
-        val tagged = if (s.tag.isBlank()) s.copy(tag = Citations.tagFor(kind, s, cur.sources.map { it.tag })) else s
+        val tagged = if (s.tag.isBlank()) s.copy(tag = Citations.tagFor(kind, s, cur.sources.map { it.tag }, cur.citeStyle)) else s
         val list = if (cur.sources.any { it.tag == tagged.tag }) cur.sources.map { if (it.tag == tagged.tag) tagged else it } else cur.sources + tagged
         meta = Citations.update(cur.copy(sources = list), kind)
         dirty = true; reshow()
     }
+    /** References › Sources › Import: a Tetra sources file's references added (none twice), the list brought up to date. */
+    fun importSourcesText(text: () -> String?) {
+        val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException("Nothing to import.") }
+        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: "That file could not be read."; WriterLog.w("sources import", read.exceptionOrNull()); return }
+        change {
+            val cur = current()
+            val added = ArrayList<DocSource>()
+            for (s in r.sources) if (!SourcesImport.same(s, cur.sources + added)) added += s.copy(tag = Citations.tagFor(kind, s, (cur.sources + added).map { it.tag }, cur.citeStyle))
+            meta = Citations.update(cur.copy(sources = cur.sources + added), kind)
+            dirty = true; reshow()
+            message = "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else "") + (if (r.skipped.isNotEmpty()) "; skipped: ${r.skipped.joinToString()}" else "")
+            WriterLog.i("sources import: ${r.sources.size} read, ${added.size} added, skipped ${r.skipped}")
+        }
+    }
+    fun importSources(uri: Uri) = importSourcesText { context.contentResolver.openInputStream(uri)?.use { String(it.readBytes(), Charsets.UTF_8) } }
+    val pickSources = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked -> picked?.let { importSources(it) } }
+    /** The sources Claude made (tetra-sources skill), copied from its answer. */
+    fun pasteSources() = importSourcesText {
+        context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+            ?: throw IllegalArgumentException("Nothing copied: copy Claude's answer (the JSON) first.")
+    }
+    /** A request for the Claude app (Android's share sheet): this paper's sources as a Tetra sources file. */
+    fun askClaudeForSources() {
+        val cur = current()
+        val topic = cur.paras.firstOrNull { it.heading == 1 || it.keep?.style?.lowercase() == "title" }?.text?.trim()?.takeIf { it.isNotEmpty() }
+            ?: cur.paras.firstOrNull { it.text.isNotBlank() }?.text?.trim()?.take(160).orEmpty()
+        val have = cur.sources.joinToString("\n") { "- " + Apa.entry(it).joinToString("") { r -> r.text } }
+        val ask = buildString {
+            append("Using the tetra-sources skill, make a Tetra sources file (JSON) for my paper \"$name\"")
+            if (topic.isNotEmpty()) append(" — its topic: $topic")
+            append(".\nOnly real, checked references with their DOIs. I will paste your JSON into Tetra.")
+            if (have.isNotEmpty()) append("\nIt already cites (leave these out):\n$have")
+        }
+        WriterLog.i("ask Claude for sources: ${cur.sources.size} known")
+        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), "Ask Claude for sources"))
+    }
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
     fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
         val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
-        val text = Citations.text(cite, meta.sources)
+        val text = Citations.text(cite, meta.sources, meta.citeStyle)
         if (!state.selection.collapsed) state.removeSelectedText()
         // After a word, a space first (Word's), not part of the citation.
         state.annotatedString.text.getOrNull(state.selection.min - 1)?.takeIf { !it.isWhitespace() && it != '(' }?.let { state.addTextAfterSelection(" ") }
@@ -1610,7 +2014,52 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; reshow()
         message = "References — in APA's order, from the sources cited"
     }
-    fun updateCitations() = change { meta = Citations.update(current(), kind); dirty = true; reshow(); message = "Citations and references updated" }
+    // References › Caption (Phase 2, asked 2026-10-13): "Figure 1: …" under the picture or table at the cursor, its number
+    // Word's SEQ field (renumbered by Update fields), in the document's Caption style (Word's own when it has none).
+    var captionOpen by remember { mutableStateOf(false) }
+    fun insertCaption(label: String, text: String) = change {
+        val cur = current()
+        val at = ((chosen()?.first?.maxOrNull() ?: (cur.paras.size - 1)) + 1).coerceIn(0, cur.paras.size)
+        val style = documentStyles.paragraphStyles().firstOrNull { it.name.equals("caption", ignoreCase = true) }?.id ?: "Caption".takeIf { kind == OfficeKind.Docx }
+        val earlier = cur.paras.take(at).count { p -> p.runs.any { Fields.instr(it)?.split(' ')?.getOrNull(1) == label } || (kind == OfficeKind.Odt && p.text.startsWith("$label ")) }
+        val number = if (kind == OfficeKind.Docx) DocRun("${earlier + 1}", cite = FIELD_CITE + "SEQ $label \\* ARABIC") else DocRun("${earlier + 1}") // an .odt: the number as letters
+        val caption = DocPara(listOf(DocRun("$label "), number) + if (text.isBlank()) emptyList() else listOf(DocRun(": ${text.trim()}")), keep = style?.let { DocKeep(it) })
+        meta = Fields.update(cur.copy(paras = cur.paras.take(at) + caption + cur.paras.drop(at)))
+        WriterLog.i("caption: $label at paragraph $at")
+        dirty = true; reshow(); message = "Caption inserted"
+    }
+    var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
+    /** The page a paragraph is on, as the pages laid it out last (Print layout); null when there are no pages. */
+    fun pageOfPara(j: Int): Int? = if (!onPage) null else (pageStarts.lastOrNull { it.first <= j }?.second ?: 1)
+    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind), ::pageOfPara); dirty = true; reshow(); message = "Citations, references and numbers updated" }
+    // References › Cross-reference (Phase 2): a caption's words or its page, kept up to date by Update fields — Word's REF
+    // and PAGEREF fields to a hidden _Ref bookmark on the caption (Word's own way).
+    var crossRefOpen by remember { mutableStateOf(false) }
+    fun captions(doc: OfficeDoc) = doc.paras.indices.filter { i -> doc.paras[i].runs.any { Fields.instr(it)?.startsWith("SEQ ", true) == true } }
+    /** [how]: "caption" (its words), "label" (its label and number only: "Figure 3"), "page". */
+    fun insertCrossReference(target: Int, how: String) = change {
+        val cur = current()
+        val p = cur.paras.getOrNull(target) ?: return@change
+        val page = how == "page"
+        // Label and number: a bookmark round those alone (Word's), else one on the whole caption.
+        val key = if (how == "label") LABEL_BOOKMARKS else BOOKMARKS
+        val marks = p.keep?.parts?.firstOrNull { it.first == key }?.second?.split(' ').orEmpty()
+        val name = marks.firstOrNull { it.startsWith("_Ref") } ?: "_Ref${(100000000..999999999).random()}"
+        val instr = FIELD_CITE + (if (page) "PAGEREF" else "REF") + " $name \\h"
+        val text = if (page) (pageOfPara(target) ?: 1).toString() else if (how == "label") Fields.labelAndNumber(p) else p.text.trim()
+        if (!state.selection.collapsed) state.removeSelectedText()
+        val start = state.selection.min
+        state.addTextAfterSelection(text)
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + text.length)
+        val withRef = OfficeFormats.withCite(current(), spans, instr)
+        // The caption gets its bookmark (once); the paragraphs are the same ones, the reference only added letters.
+        meta = if (name in marks) withRef else withRef.copy(paras = withRef.paras.mapIndexed { i, q -> if (i != target) q else {
+            val keep = q.keep ?: DocKeep()
+            q.copy(keep = keep.copy(parts = keep.parts.filter { it.first != key } + (key to (marks + name).joinToString(" "))))
+        } })
+        WriterLog.i("cross-reference: $how of paragraph $target ($name)")
+        dirty = true; reshow(); message = "Cross-reference inserted"
+    }
     // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
     /** Each note's reference, where it is in the editor: the note and its number. */
     val notesShown by remember { derivedStateOf {
@@ -1625,6 +2074,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     } }
     val hereNote by remember { derivedStateOf { state.selection.min.let { at -> notesShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
     var noteEditing by remember { mutableStateOf<Pair<DocNote, String>?>(null) } // the note, its number
+    // References › a citation tapped (Word's citation menu, Phase 2): its sources to edit, or the citation changed.
+    /** Each citation's place in the editor: Word's CITATION instruction (or an ODT mark's tag) and its letters. */
+    val citesShown by remember { derivedStateOf {
+        if (meta.paras.none { p -> p.runs.any { it.cite != null && !isField(it.cite) } }) emptyList() else {
+            val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
+            current().paras.flatMapIndexed { i, p ->
+                var at = 0
+                p.runs.flatMap { r -> (r.cite?.takeIf { !isField(it) }?.let { c -> WriterBridge.editorSpans(places, i, at, at + r.text.length).map { c to it } } ?: emptyList()).also { at += r.text.length } }
+            }
+        }
+    } }
+    /** The citation the cursor is inside (not at its edges: typing on after one is not a tap on it). */
+    val hereCite by remember { derivedStateOf { state.selection.min.let { at -> citesShown.firstOrNull { (_, r) -> at in r.first + 1..r.last } } } }
+    var citeChanging by remember { mutableStateOf<Pair<String, IntRange>?>(null) }
     fun insertNote(end: Boolean) = change {
         if (!state.selection.collapsed) state.selection = androidx.compose.ui.text.TextRange(state.selection.max)
         val start = state.selection.min
@@ -1652,7 +2115,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         noteEditing = null
     }
     fun deleteComment(id: String) = change { meta = OfficeFormats.withoutComment(current(), id); dirty = true }
-    fun commentActions(open: (DocComment) -> Unit) = CommentActions({ c -> meta.comments.filter { it.parent == c.id } }, open, { deleteComment(it.id) }, { replyTo = it }, { resolveComment(it) })
+    fun commentActions(open: (DocComment) -> Unit) = CommentActions({ c -> meta.comments.filter { it.parent == c.id } }, open, { deleteComment(it.id) }, { replyTo = it }, { resolveComment(it) }, { editingComment = it })
+    /** Review: a comment's words changed (its author, date, replies and place kept). */
+    fun editComment(c: DocComment, text: String) = change {
+        val cur = current()
+        meta = cur.copy(comments = cur.comments.map { if (it.id == c.id) OfficeFormats.withCommentText(it, text) else it })
+        dirty = true; WriterLog.i("comment ${c.id} edited")
+    }
     // Review › Track changes (asked 2026-09-30): where each change is in the editor's text, and the one at the cursor.
     val changesShown by remember { derivedStateOf {
         if (!TrackChanges.any(meta)) emptyList() else {
@@ -1676,6 +2145,80 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         var pos = 0
         return current().paras.getOrNull(para)?.runs?.firstOrNull { r -> (from < pos + r.text.length).also { pos += r.text.length } && r.image == null }
     }
+    /** Home › Font: the chosen letters (or the word at the cursor) in [name]; letters typed after them take it on. */
+    fun setFont(name: String) = change {
+        val (from, to) = chosenOrWord()
+        val sel = state.selection
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), from, to)
+        if (spans.isEmpty()) { message = "Choose some words first"; return@change }
+        meta = WriterBridge.restyled(current(), spans) { OfficeFormats.withFont(it, kind, name) }
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        WriterLog.i("font $name on ${to - from} letters")
+    }
+    fun paint(look: DocRun, sel: androidx.compose.ui.text.TextRange) {
+        change {
+            val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
+            meta = WriterBridge.painted(current(), spans, look)
+            dirty = true
+            state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        }
+        WriterLog.i("format painted on ${sel.max - sel.min} letters")
+    }
+    // Bold and Italic as Word's: on where the paragraph's style makes the words bold/italic too; off there takes the style's
+    // off for these words (asked 14 Oct: "if the style commands titles to be bold, show that in the buttons as well").
+    fun boldHere(s: SpanStyle) = (s.fontWeight?.weight ?: 400) >= 600
+    fun toggleBold(s: SpanStyle) {
+        val weight = s.fontWeight?.weight
+        if (weight != null && weight >= 600) {
+            state.removeSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            if (weight == STYLE_WEIGHT) { state.removeSpanStyle(SpanStyle(fontWeight = FontWeight(STYLE_WEIGHT))); state.addSpanStyle(SpanStyle(fontWeight = FontWeight(UNBOLD_WEIGHT))) }
+        } else {
+            state.removeSpanStyle(SpanStyle(fontWeight = FontWeight(UNBOLD_WEIGHT)))
+            state.addSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        }
+        WriterLog.i("bold ${if (weight != null && weight >= 600) "off" else "on"} (was weight $weight) on ${state.selection}")
+    }
+    fun toggleItalic(s: SpanStyle) {
+        val slantColor = s.shadow?.color?.toArgb()?.toLong()?.and(0xFFFFFFFFL)
+        if (s.fontStyle == FontStyle.Italic) {
+            state.removeSpanStyle(SpanStyle(fontStyle = FontStyle.Italic))
+            if (slantColor == STYLE_SLANT) { state.removeSpanStyle(SpanStyle(shadow = s.shadow)); state.addSpanStyle(SpanStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(UNSLANT.toInt()), Offset.Zero, 0f))) }
+        } else {
+            if (slantColor == UNSLANT) state.removeSpanStyle(SpanStyle(shadow = s.shadow))
+            state.addSpanStyle(SpanStyle(fontStyle = FontStyle.Italic))
+        }
+        WriterLog.i("italic ${if (s.fontStyle == FontStyle.Italic) "off" else "on"} on ${state.selection}")
+    }
+    /** Selection › Copy formatting: kept here, for Paste formatting (also on other words, later). */
+    var copiedLook by remember { mutableStateOf<DocRun?>(null) }
+    // Words chosen: the Selection tab is there (first; Android's floating menu is Writer's own) but the tab in use stays
+    // (asked 14 Oct: Home stays the default); let go, it goes, and if it was in use the tab before it is back.
+    val selectionTabShown by remember { derivedStateOf { (!state.selection.collapsed || textToolbar.shown) && selectedPicture == null && cellEdit == null } }
+    LaunchedEffect(Unit) {
+        snapshotFlow { selectionTabShown }.collect { chosen ->
+            if (!chosen && tab == WriterTab.Selection) tab = beforeSelection ?: WriterTab.Home
+            if (chosen) beforeSelection = tab.takeIf { it != WriterTab.Selection } ?: beforeSelection
+        }
+    }
+    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager }
+    fun chosenText() = state.selection.let { sel -> state.annotatedString.text.substring(sel.min.coerceAtMost(state.annotatedString.length), sel.max.coerceAtMost(state.annotatedString.length)) }
+    fun copyChosen(cutToo: Boolean) {
+        val viaEditor = if (cutToo) textToolbar.cut else textToolbar.copy
+        val letters = state.selection.length
+        if (viaEditor != null) viaEditor() else {
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Writer", chosenText()))
+            if (cutToo) state.replaceSelectedText("")
+        }
+        WriterLog.i("${if (cutToo) "cut" else "copied"} $letters letters (${if (viaEditor != null) "with their look" else "text"})")
+    }
+    fun pastePlain() {
+        val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+        if (text.isNullOrEmpty()) { message = "Nothing copied yet"; return }
+        if (state.selection.collapsed) state.addTextAfterSelection(text) else state.replaceSelectedText(text)
+        dirty = true
+        WriterLog.i("pasted text only: ${text.length} letters")
+    }
     fun pickPainter() {
         if (painter != null) { painter = null; WriterLog.i("format painter off"); return }
         painter = runAt(state.selection.min) ?: run { message = "Put the cursor in the words whose look to copy"; null }
@@ -1687,13 +2230,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         snapshotFlow { state.selection }.collectLatest { sel ->
             if (sel.collapsed) return@collectLatest
             delay(700) // still chosen: painted
-            change {
-                val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
-                meta = WriterBridge.painted(current(), spans, look)
-                dirty = true
-                state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
-            }
-            WriterLog.i("format painted on ${sel.max - sel.min} letters")
+            paint(look, sel)
             painter = null
         }
     }
@@ -1708,6 +2245,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     } }
     val hereControl by remember { derivedStateOf { state.selection.min.let { at -> controlsShown.firstOrNull { (_, _, r) -> at in r.first..r.last + 1 } } } }
+    // Insert › Content control (Phase 2, Word's Developer tab): a new one at the cursor, its placeholder grey until filled.
+    var controlNew by remember { mutableStateOf(false) }
+    fun insertControl(newKind: Forms.New, title: String, items: List<String>, format: String) = change {
+        val (pr, shown) = Forms.newControl(newKind, title, items, format)
+        if (!state.selection.collapsed) state.removeSelectedText()
+        val start = state.selection.min
+        state.addTextAfterSelection("$shown ") // a space after it, outside: what is typed next is not in it
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + shown.length)
+        meta = WriterBridge.restyled(current(), spans) { it.copy(control = pr, color = if (newKind == Forms.New.CheckBox) it.color else 0x808080) }
+        dirty = true; reshow()
+        state.selection = androidx.compose.ui.text.TextRange(start + shown.length + 1) // after it and its space
+        WriterLog.i("content control: ${newKind.label} \"$title\" (${items.size} items)")
+    }
     fun fillControl(old: String, pr: String, text: String) = change {
         meta = Forms.fill(current(), old, pr, text)
         dirty = true
@@ -1806,12 +2356,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
     }
+    /** Home › Multilevel list: Writer's numbered lists counted as [levels] say; the list at the cursor becomes one of them. */
+    fun setNumbering(levels: List<Pair<String, String>>) {
+        if (!state.isOrderedList) state.addOrderedList()
+        chooseParagraphs { at, _ -> change {
+            val cur = current()
+            // The whole list the cursor is in, as Word changes a list rather than an item.
+            var from = at.min(); var to = at.max()
+            while (from > 0 && cur.paras[from - 1].list != null) from--
+            while (to + 1 < cur.paras.size && cur.paras[to + 1].list != null) to++
+            meta = cur.copy(numbering = levels, paras = cur.paras.mapIndexed { i, p -> if (i in from..to && p.list?.ordered == true && p.keep?.list != null) p.copy(keep = p.keep.copy(list = null)) else p })
+            dirty = true
+            state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
+            WriterLog.i("multilevel list ${levels.take(3)} on paragraphs $from..$to")
+        } }
+    }
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
+    var hereFont by remember { mutableStateOf<String?>(null) }
+    var fontsOpen by remember { mutableStateOf(false) } // Home › Font's window
     // …and the ribbon which style it has.
     LaunchedEffect(loaded, viewing) {
         if (!loaded || viewing) return@LaunchedEffect
-        snapshotFlow { state.selection to meta.paras }.collectLatest { delay(200); rulerAt = chosen() }
+        snapshotFlow { state.selection to meta.paras }.collectLatest { sel ->
+            delay(200); rulerAt = chosen()
+            // The font at the cursor: its letters' own, else its paragraph style's.
+            hereFont = runAt(sel.first.min)?.font?.let { documentStyles.fontName(it) } ?: rulerAt?.second?.font
+        }
     }
     val hereStyle = rulerAt?.first?.min()?.let { i -> meta.paras.getOrNull(i) }?.let { documentStyles.styleOf(it) }
     var stylesPage by remember { mutableStateOf(false) }
@@ -1825,6 +2396,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var wordArt by remember { mutableStateOf(false) } // Insert › WordArt: its words and colour being chosen
     /** Insert › Chart (the key null) or Picture › Edit data (a chart's key): the chart being made. */
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) }
+    var chartUnder by remember { mutableStateOf<String?>(null) } // Table › Make chart: the table (its key) the new chart goes under
     /**
      * The drawing being drawn: on [pages] (each with the paragraph a drawing there is anchored in), or in a box
      * [boxPt] wide when there are none; [edit] is the key of a drawing drawn on again, [strokes] what it had.
@@ -1854,7 +2426,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // top, so typing above them moves them with it. Worked out again after each Writer change, not each keystroke.
     var floatsShown by remember { mutableStateOf<Map<String, FloatShown>>(emptyMap()) }
     var headPage by remember { mutableStateOf<LaidPage?>(null) } // the first page as laid out: its header, shown faded above the text
-    var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
     LaunchedEffect(meta, styleEdits, documentStyles, onPage, loaded) { // styleEdits: a picture changed (meta stays)
         if (!loaded) return@LaunchedEffect
         val doc = current()
@@ -1892,6 +2463,99 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             drawing = Drawing(usable.map { laid[it] }, usable.map { anchors[it] }, usable.indexOf(index[at.min()]).coerceAtLeast(0))
         }
     }
+    /** Arrange › Bring to front / Send to back: [key] over (or under) every other floating picture. */
+    fun arrange(key: String, front: Boolean) {
+        val img = pictures[key] ?: return
+        val others = pictures.values.filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }.map { PictureXml.zOf(it) }
+        // Word counts from about 251 million, LibreOffice from 0: below 0 the others go up one instead.
+        val z = if (front) (others.maxOrNull() ?: PictureXml.zOf(img)) + 1 else (others.minOrNull() ?: PictureXml.zOf(img)) - 1
+        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = "Just put in: a moment, then it can be arranged."; return }
+        change {
+            if (z < 0) pictures.values.toList().filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }
+                .forEach { o -> PictureXml.withZ(o, PictureXml.zOf(o) + 1)?.let { pictures[o.key] = it } }
+            changePicture(key, moved)
+        }
+        message = if (front) "In front of the others — it shows on the pages" else "Behind the others — it shows on the pages"
+    }
+    /** Arrange › Align: [key] against the margins ("left", "center", "right", "top", "middle", "bottom"), staying put the other way. */
+    fun align(key: String, how: String) = scope.launch {
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val page = laid.firstOrNull { p -> p.floats.any { it.key == key } } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
+        val f = page.floats.first { it.key == key }
+        val pg = page.page
+        val x = when (how) { "left" -> pg.left; "center" -> pg.left + (pg.textWidth - f.w) / 2; "right" -> pg.width - pg.right - f.w; else -> f.x }
+        val y = when (how) { "top" -> pg.top; "middle" -> pg.top + (pg.height - pg.top - pg.bottom - f.h) / 2; "bottom" -> pg.height - pg.bottom - f.h; else -> f.y }
+        val img = pictures[key] ?: return@launch
+        changePicture(key, PictureXml.placed(img, x, y, kind))
+        WriterLog.i("align $key $how")
+    }
+    // Arrange › Rotate, Group, Ungroup (Phase 2): any angle; two floating ones on a page made one (Word's group), and back.
+    var rotating by remember { mutableStateOf<String?>(null) }
+    var shapeOptions by remember { mutableStateOf<String?>(null) } // Picture › Shape options: the shape's key
+    var standards by remember { mutableStateOf(false) } // Design › Standards
+    var designGallery by remember { mutableStateOf<DesignGallery?>(null) } // Design › Style set / Colours / Fonts
+    var galleryChosen by remember { mutableStateOf<Any?>(null) } // the choice being previewed on the page
+    var galleryStart by remember { mutableStateOf<WriterSnapshot?>(null) } // the document as it was when the gallery opened
+    var galleryUndo by remember { mutableIntStateOf(0) }
+    fun openGallery(g: DesignGallery) {
+        galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g
+        // Page numbers, headers and footers sit where the editor shows no page: the pages are shown while choosing.
+        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { galleryViewing = viewing; viewing = true }
+    }
+    fun galleryClosed() { galleryViewing?.let { viewing = it }; galleryViewing = null }
+    // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
+    fun galleryCancel() { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; galleryClosed(); WriterLog.i("gallery: cancelled") }
+    var artKey by remember { mutableStateOf<String?>(null) } // the WordArt a gallery put in
+    fun galleryOk() {
+        while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex)
+        // WordArt put in: its words typed next, as Word selects "Your text here".
+        if (designGallery == DesignGallery.WordArt) artKey?.let { boxing = it to "Your text here" }
+        designGallery = null; galleryChosen = null; galleryClosed(); WriterLog.i("gallery: kept")
+    }
+    var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
+    fun rotate(key: String, deg: Float) {
+        val img = pictures[key] ?: return
+        val turned = Arrange.rotated(img, deg) ?: run { message = if (img.raw?.startsWith("<draw:g") == true) "A LibreOffice group turns piece by piece: Ungroup it first." else "Just put in: a moment, then it can be rotated."; return }
+        changePicture(key, turned)
+        WriterLog.i("rotate $key to $deg°")
+    }
+    /** [runs] of the document's pictures changed by [swap] (null: taken out), the editor shown again. */
+    fun swapPictures(swap: (DocRun) -> List<DocRun>?) = change {
+        val cur = current()
+        meta = cur.copy(paras = cur.paras.map { p -> p.copy(runs = p.runs.flatMap { r -> if (r.image == null) listOf(r) else swap(r) ?: listOf(r) }) })
+        val sel = state.selection
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        dirty = true; styleEdits++
+    }
+    fun groupWith(first: String, second: String) = scope.launch {
+        grouping = null
+        val a = pictures[first]; val b = pictures[second]
+        if (a?.raw == null || b?.raw == null) { message = "Just put in: a moment, then it can be grouped."; return@launch }
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val pa = laid.indexOfFirst { p -> p.floats.any { it.key == first } }; val pb = laid.indexOfFirst { p -> p.floats.any { it.key == second } }
+        if (pa < 0 || pb < 0) { message = "Both must float on the pages (Wrap text: not in line)"; return@launch }
+        if (pa != pb) { message = "Both must be on the same page"; return@launch }
+        fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
+        val g = (if (kind == OfficeKind.Odt) Arrange::odtGroup else Arrange::group)(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
+            ?: run { message = "Writer cannot group these (an older kind of drawing?)"; return@launch }
+        // The document read from the editor first (it finds its pictures by their keys), then the map changed.
+        swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
+        pictures.remove(first); pictures.remove(second); pictures[g.key] = g
+        message = "Grouped — moved, wrapped and arranged as one"
+        WriterLog.i("group $first + $second -> ${g.key}")
+    }
+    fun ungroup(key: String) = scope.launch {
+        val img = pictures[key] ?: return@launch
+        val (laid, _) = laidOut(current()) ?: return@launch
+        val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
+        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
+        swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
+        pictures.remove(key); pieces.forEach { pictures[it.key] = it }
+        message = "Ungrouped into ${pieces.size}"
+        WriterLog.i("ungroup $key -> ${pieces.size}")
+    }
+    // The second one tapped while grouping: joined to the first.
+    LaunchedEffect(selectedPicture?.second) { val first = grouping; val now = selectedPicture?.second; if (first != null && now != null && now != first) groupWith(first, now) }
     /** Picture › Position: the page a floating picture is on, as laid out, and its key. */
     var positioning by remember { mutableStateOf<Pair<LaidPage, String>?>(null) }
     fun position(key: String) = scope.launch {
@@ -1923,30 +2587,50 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** Design › APA 7 paper ([ApaPaper]): styles, page number, margins, and what the page asked for; one step to undo. */
     var apaPage by remember { mutableStateOf(false) }
-    fun applyApa(clean: Boolean, title: ApaTitle?) = change {
+    fun applyApa(clean: Boolean, title: ApaTitle?, abstract: ApaAbstract? = null, runningHead: String? = null) = change {
         val entries = documentStyles.paragraphStyles()
-        val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles) }
+        val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles, runningHead) }
             .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         var cur = current()
         if (clean) cur = ApaPaper.clean(cur, kind)
-        if (title != null) {
-            // The title page; the text on the next page, under the title again (APA: bold, centred).
+        cur = ApaPaper.runInAll(cur) // levels 4 and 5 run into their paragraphs
+        if (title != null || abstract != null) {
+            // The title page; the abstract on a page of its own; the text on the next page, under the title again (APA: bold, centred).
             val text = cur.paras.takeUnless { it.size == 1 && it[0].text.isEmpty() && it[0].table == null } ?: listOf(DocPara(emptyList()))
-            val again = DocPara(listOf(DocRun(title.title.trim())), align = DocAlign.Center,
-                keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = entries[1].id), kind, firstLine = 0f), kind, true))
-            cur = cur.copy(paras = ApaPaper.titlePage(title, kind, entries[1].id) + again + text)
+            val again = title?.let { DocPara(listOf(DocRun(it.title.trim())), align = DocAlign.Center,
+                keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = entries[1].id), kind, firstLine = 0f), kind, true)) }
+            val body = if (again != null) listOf(again) + text
+                else if (abstract != null) listOf(text[0].copy(keep = OfficeFormats.withPageBreak(text[0].keep, kind, true))) + text.drop(1) else text
+            val abstractPage = abstract?.let { ApaPaper.abstractPage(it, kind, entries[1].id).let { pg -> if (title == null) listOf(pg[0].copy(keep = OfficeFormats.withPageBreak(pg[0].keep, kind, false))) + pg.drop(1) else pg } }.orEmpty()
+            cur = cur.copy(paras = (title?.let { ApaPaper.titlePage(it, kind, entries[1].id) }.orEmpty()) + abstractPage + body)
+            WriterLog.i("apa: title page ${title != null}, abstract ${abstract != null}")
         }
         if (Citations.find(cur, kind) != null) cur = Citations.update(cur, kind) // the references on a page of their own
         meta = cur
         dirty = true; styleEdits++; reshow()
         message = "APA 7 — shown on the pages (the eye at the top)"
     }
+    /** Design › APA level 4 / 5: the paragraph at the cursor's heading run into it (the chosen words, from its start, if any). */
+    fun apaRunIn(level: Int) = change {
+        val t = state.annotatedString.text
+        val sel = state.selection
+        val span = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), sel.min, maxOf(sel.max, sel.min + 1)).firstOrNull()
+            ?: WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), (sel.min - 1).coerceAtLeast(0), sel.min).firstOrNull()
+            ?: run { message = "Put the cursor in the heading's paragraph"; return@change }
+        val (para, from, to) = span
+        val length = if (!sel.collapsed && from == 0 && to > 0) to else null
+        val done = ApaPaper.runIn(current(), para, level, length) ?: run { message = "Nothing here to make a heading of"; return@change }
+        meta = done; dirty = true; reshow()
+        message = "APA level $level: bold${if (level == 5) " italic" else ""}, ending in a period, the text after it on the same line"
+        WriterLog.i("apa run-in level $level at paragraph $para (${length ?: "auto"})")
+    }
+    var pageBordering by remember { mutableStateOf(false) }
     /** Design › Page colour and Page borders: into the file as it will be written; shown on the pages at once. */
-    fun setDesign(color: Int?, border: Border?) = change {
+    fun setDesign(color: Int?, border: Border?, sides: String = sheet.border?.sides ?: "tlbr") = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
-            if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border) else PageDesign.odt(it, color, border) } }
+            if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border, sides) else PageDesign.odt(it, color, border, sides) } }
             .onFailure { WriterLog.e("design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
@@ -1954,14 +2638,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = "Shown on the pages (the eye at the top)"
     }
     /** Design › Watermark: [text] across every page (null: none), into the file's headers as it will be written. */
-    fun setWatermark(text: String?) = change {
+    fun setWatermark(text: String?, picture: Watermark.Picture? = null) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
-            if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet) else Watermark.odt(it, text, sheet) } }
+            if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet, picture) else Watermark.odt(it, text, sheet, picture) } }
             .onFailure { WriterLog.e("watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = if (text == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+        message = if (text == null && picture == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+        WriterLog.i("watermark: ${text ?: picture?.let { "picture ${it.bytes.size / 1024} KB" } ?: "none"}")
+    }
+    /** Design › Watermark › Picture watermark: a picture of the phone's behind every page, washed out (Word's way). */
+    val pickWatermark = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
+        if (picked != null) scope.launch {
+            val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
+            if (img?.bytes == null) { message = "Could not use that picture."; return@launch }
+            setWatermark(null, Watermark.Picture(img.bytes, img.extension, img.heightPt / img.widthPt))
+        }
     }
     var watermarking by remember { mutableStateOf(false) } // the custom watermark's page
     /** Layout: the page's size, orientation and margins, for every section, into the file as it will be written; shown at once. */
@@ -1969,9 +2662,37 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageSetup.docx(it, page) else PageSetup.odt(it, page, documentStyles.page) } }
             .onFailure { WriterLog.e("page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
+        // The sections a section break ends (their sectPr rides on their last paragraph) take it too.
+        if (kind == OfficeKind.Docx) current().let { cur -> if (cur.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true })
+            meta = cur.copy(paras = cur.paras.map { p -> p.keep?.takeIf { k -> k.parts.any { it.first == "sectPr" } }?.let { k ->
+                p.copy(keep = k.copy(parts = k.parts.map { if (it.first == "sectPr") it.first to PageSetup.docxSection(it.second, page) else it })) } ?: p }) }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
+    }
+    /** A Word document with section breaks: some of its sections end at a paragraph. */
+    fun sectioned() = kind == OfficeKind.Docx && meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }
+    /** Layout › Columns: the whole document's — or, once it has section breaks, the cursor's section's (Word's "This section"). */
+    fun setColumns(n: Int) = change {
+        val sel = state.selection.min
+        // An .odt with the cursor in a section (LibreOffice's): that section's columns.
+        if (kind == OfficeKind.Odt) WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull()
+            ?.let { at -> OdtSections.withColumns(current(), at, n) }?.let { meta = it; dirty = true; styleEdits++; WriterLog.i("odt section: $n columns"); return@change }
+        if (!sectioned()) { setPage(sheet.copy(columns = n)); return@change }
+        val cur = current()
+        val here = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).singleOrNull() ?: 0
+        val end = (here until cur.paras.size).firstOrNull { j -> cur.paras[j].keep?.parts?.any { it.first == "sectPr" } == true }
+        if (end != null) meta = cur.copy(paras = cur.paras.mapIndexed { j, p -> if (j != end) p else p.copy(keep = p.keep!!.copy(parts = p.keep.parts.map {
+            if (it.first == "sectPr") it.first to SectionBreaks.withColumns(it.second, n, sheet.columnGap) else it })) })
+        else {
+            val base = original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)
+            val parts = OfficeFormats.unzip(base)
+            val body = SectionBreaks.bodySect(String(parts.getValue(documentPath(parts)), Charsets.UTF_8)) ?: "<w:sectPr/>"
+            original = OfficeFormats.zip(SectionBreaks.withBodySect(parts, SectionBreaks.withColumns(body, n, sheet.columnGap)), null)
+            documentStyles = DocStyles.of(kind, original!!)
+        }
+        dirty = true; styleEdits++
+        WriterLog.i("columns $n in the section ending at ${end ?: "the document's end"}")
     }
     /** Layout › Hyphenation: automatic or none, into the file as it will be written; the pages break words by it. */
     fun setHyphenation(on: Boolean) = change {
@@ -2002,7 +2723,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = "Shown on the pages (the eye at the top)"
+        if (designGallery == null) message = "Shown on the pages (the eye at the top)"
     }
     /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
     fun editStyle(entry: StyleEntry, edit: StyleChange) = change {
@@ -2020,6 +2741,55 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
     }
     /** Design › Style sets: Normal, Title and Headings 1–3 changed together, one step to undo. */
+    /**
+     * Design › Colours / Fonts: a Word file's theme colours or fonts; in an .odt (no theme) Fonts set the headings' and
+     * the text's styles. The pages and editor shown again with them.
+     */
+    fun applyTheme(colors: ThemeColors?, fonts: ThemeFonts?) = change {
+        val cur = current()
+        var parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
+        val done = runCatching {
+            if (kind == OfficeKind.Docx) {
+                colors?.let { parts = DocTheme.withColors(parts, it) }
+                fonts?.let { f ->
+                    parts = DocTheme.withFonts(parts, f)
+                    // Styles that name a font of their own keep it in Word: the headings and the text take the theme's here.
+                    val path = stylesPath(parts, kind)
+                    parts[path] = StyleSet.apply(StyleSet.fontsOnly(f), String(parts.getValue(path), Charsets.UTF_8), kind, documentStyles).toByteArray()
+                }
+            } else fonts?.let { f -> val path = stylesPath(parts, kind); parts[path] = StyleSet.apply(StyleSet.fontsOnly(f), String(parts.getValue(path), Charsets.UTF_8), kind, documentStyles).toByteArray() }
+        }.onFailure { WriterLog.e("theme", it) }.isSuccess
+        if (!done) { message = "The theme could not be changed."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        documentStyles = DocStyles.of(kind, original)
+        meta = cur
+        dirty = true; styleEdits++
+        state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
+        message = (colors?.label?.let { "Colours: $it" } ?: "") + (fonts?.label?.let { "Fonts: $it" } ?: "")
+        WriterLog.i("theme: ${colors?.name} ${fonts?.name}")
+    }
+    /** References › Style (and Design › Standards): every citation and the list written again in [c]. */
+    fun setCiteStyle(c: CiteStyle) = change {
+        meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
+        message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
+    }
+    fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String {
+        val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
+            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
+            // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
+            .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
+        val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
+        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
+            font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
+        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), PictureWrap.Square, kind)
+        if (fx.any) WriterLog.i("WordArt effects: $fx")
+        pictures[img.key] = img
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        tab = WriterTab.Picture
+        return img.key
+    }
     fun applyStyleSet(set: StyleSet) = change {
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
@@ -2033,6 +2803,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
         message = "${set.label}: Normal, Title and the headings"
+    }
+    /** A gallery's card tapped: the document as it was, then this choice on it (a live preview; OK keeps it). */
+    fun galleryPick(c: Any) {
+        val last = galleryChosen
+        if (last != null) galleryStart?.let(::show)
+        WriterLog.i("gallery pick: $c")
+        when (c) {
+            is StyleSet -> { galleryChosen = c; applyStyleSet(c) }
+            is ThemeColors -> { galleryChosen = c; applyTheme(c, null) }
+            is ThemeFonts -> { galleryChosen = c; applyTheme(null, c) }
+            is ArtStyle, is ArtBend -> {
+                val style = c as? ArtStyle ?: (last as? Pair<*, *>)?.first as? ArtStyle ?: ART_STYLES[0]
+                val bend = c as? ArtBend ?: (last as? Pair<*, *>)?.second as? ArtBend ?: ArtBend(null)
+                galleryChosen = style to bend
+                artKey = putTextBox(listOf("Your text here"), 0xFF000000.toInt() or style.color,
+                    TextEffects(if (style.outline) artOutline(style.color) else null, style.shadow, if (style.glow) artGlow(style.color) else null), bend.warp)
+            }
+            is NumberSpot -> { galleryChosen = c; setHeaderFooter(c.on(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd)))
+                goPage = (if (c.place == HeaderFooter.NumberPlace.Footer) -1 else 0) to System.nanoTime() } // where it went, in view
+            is HeaderLayout -> { galleryChosen = c; val hf = c.make(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd), name.substringBeforeLast('.'))
+                setHeaderFooter(hf); goPage = 0 to System.nanoTime() }
+            is ListScheme -> { galleryChosen = c; setNumbering(c.levels) }
+        }
     }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
     fun setIndents(now: RulerIndents) {
@@ -2073,8 +2866,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             message = if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
         }
     }
-    fun leave() { commitCell(); if (dirty) leaving = true else back() }
-    BackHandler { leave() }
+    /** Leaving the document: this session's history goes with it (a recovery draft stays only when Writer did not close). */
+    fun exit() {
+        // The name it was opened under too (Rename and Save as change it).
+        setOf(uri ?: "new", open ?: "new").forEach { k -> runCatching { sessionDir(context, k).deleteRecursively() } }
+        WriterLog.i("session history cleared"); back()
+    }
+    fun leave() { commitCell(); if (dirty) leaving = true else exit() }
+    BackHandler { if (reading) reading = false else leave() }
 
     val ink = Color.Black
     val w = islandContentColor()
@@ -2127,21 +2926,31 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             androidx.compose.animation.AnimatedVisibility(barShown) { Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
-                Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 6.dp))
-                // A tablet counts words and characters in the top bar, of the selection when there is one, as Word's status
-                // bar does (asked 2026-09-30); a tap shows all the counts. A phone has them in File › About this file.
+                // The words, counted as one types (Word's status bar, Phase 2): of the selection too when there is one, worked
+                // out a moment after typing stops (a thesis is long); a tap shows all the counts (File › About this file).
+                val text = state.annotatedString.text
+                val sel = state.selection
+                val tables = keys.map { pictures[it]?.table } // a cell edited changes no text
+                val all by produceState(TextCounts(0, 0, 0), text, tables, loaded) { if (loaded) { delay(150); value = withContext(Dispatchers.Default) { counted(text) } } }
+                val part = remember(text, sel, tables) { if (sel.collapsed) null else counted(text, sel.min, sel.max) }
+                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                    Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // A phone: under the name. A tablet has room beside it (words and characters).
+                    if (phone && loaded) Text(TextCounts.label(all.words, part?.words), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                        modifier = Modifier.clickable { details = true })
+                }
                 if (!phone && loaded) {
-                    val text = state.annotatedString.text
-                    val sel = state.selection
-                    val tables = keys.map { pictures[it]?.table } // a cell edited changes no text
-                    val all = remember(text, tables) { counted(text) }
-                    val part = remember(text, sel, tables) { if (sel.collapsed) null else counted(text, sel.min, sel.max) }
                     Text(if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
                         else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
-                if (viewing) {
+                if (reading) {
+                    Tool(R.drawable.ic_remove, "Smaller text", w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    Tool(R.drawable.ic_add, "Bigger text", w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    RibbonButton("Close reading", w, R.drawable.ic_close) { reading = false }
+                } else if (viewing) {
+                    Tool(R.drawable.ic_menu_book, "Reading mode", w, enabled = loaded) { viewing = false; reading = true }
                     Tool(R.drawable.ic_view_list, "Navigation", w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
                     Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
@@ -2158,14 +2967,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val copyOnly = meta.blocking.isNotEmpty()
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
-                    Text(if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
+                    Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) "An older ${name.substringAfterLast('.').uppercase()} file: saving makes ${name.substringBeforeLast('.')}.docx beside it; the original stays as it is."
+                        else if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
                         else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
             } }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
-                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage) }
+                pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage,
+                    covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
@@ -2181,6 +2992,32 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 IndentRuler(sheet, perPt, x, rulerIndents) { setIndents(it) }
             }
             val downScroll = rememberScrollState(); val sideScroll = rememberScrollState()
+            var handleAt by remember { mutableStateOf<Offset?>(null) } // a handle being dragged: where, on the (unscaled) page
+            val densityHere = LocalDensity.current
+            /** The cursor on the page (unscaled), from the last styled layout, with room around it. */
+            fun cursorOnPage(): androidx.compose.ui.geometry.Rect? = editorLayout?.let { l ->
+                val at = state.selection.max.coerceIn(0, l.layoutInput.text.length)
+                with(densityHere) { l.getCursorRect(at).translate(margins.calculateLeftPadding(LayoutDirection.Ltr).toPx(), margins.calculateTopPadding().toPx())
+                    .let { c -> androidx.compose.ui.geometry.Rect(c.left - 32.dp.toPx(), c.top - 16.dp.toPx(), c.right + 32.dp.toPx(), c.bottom + 16.dp.toPx()) } }
+            }
+            // The zoomed page keeps the cursor in sight at every styled layout, at once (the editor's own request came once a
+            // keystroke, from the unstyled layout, so the page fell behind the typing).
+            // Keyed on the layout alone: a handle being dragged moves the selection, and the page then jumped to its other end.
+            LaunchedEffect(editorLayout, pageScale) {
+                if (!printPhone) return@LaunchedEffect
+                val c = cursorOnPage() ?: return@LaunchedEffect
+                val padX = with(densityHere) { 10.dp.toPx() }; val padY = with(densityHere) { 8.dp.toPx() }
+                fun follow(sc: androidx.compose.foundation.ScrollState, from: Float, to: Float): Float {
+                    val view = sc.viewportSize.toFloat().takeIf { it > 0f } ?: return 0f
+                    return when { from < sc.value -> from - sc.value; to > sc.value + view -> minOf(to - sc.value - view, from - sc.value); else -> 0f }
+                }
+                val dx = follow(sideScroll, padX + c.left * pageScale, padX + c.right * pageScale)
+                val dy = follow(downScroll, padY + c.top * pageScale, padY + c.bottom * pageScale)
+                if (dx != 0f) sideScroll.scrollBy(dx)
+                if (dy != 0f) downScroll.scrollBy(dy)
+                if (dx != 0f || dy != 0f) WriterLog.i("followed the cursor: at ${state.selection.max}, on the page (${c.left.roundToInt()}, ${c.top.roundToInt()}), zoom ${"%.2f".format(pageScale)}, " +
+                    "scrolled by (${dx.roundToInt()}, ${dy.roundToInt()}) to (${sideScroll.value}, ${downScroll.value}) of (${sideScroll.maxValue}, ${downScroll.maxValue}), view ${sideScroll.viewportSize}×${downScroll.viewportSize}")
+            }
             // Navigation: the heading brought near the top (the cursor alone only scrolled it just into view, under the ribbon).
             val densityNow = LocalDensity.current
             LaunchedEffect(goText) {
@@ -2191,36 +3028,107 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             Box(Modifier.weight(1f).fillMaxWidth()
                 .then(if (printPhone) Modifier.pinchZoom({ pageZoom }, 1f, 5f, sideScroll, downScroll) { pageZoom = it } else Modifier)
+                // A loupe over a handle being dragged, a little above the finger (asked 14 Oct): the page's letters at a size to aim by.
+                .then(if (printPhone) Modifier.magnifier(
+                    sourceCenter = { handleAt?.let { p -> Offset(10.dp.toPx() + p.x * pageScale - sideScroll.value, 8.dp.toPx() + p.y * pageScale - downScroll.value) } ?: Offset.Unspecified },
+                    magnifierCenter = { handleAt?.let { p -> Offset(10.dp.toPx() + p.x * pageScale - sideScroll.value, 8.dp.toPx() + p.y * pageScale - downScroll.value - 44.dp.toPx()) } ?: Offset.Unspecified },
+                    zoom = (1.3f / pageScale).coerceIn(1.25f, 4f), size = androidx.compose.ui.unit.DpSize(150.dp, 48.dp), cornerRadius = 24.dp) else Modifier)
                 .verticalScroll(downScroll)
                 .then(if (printPhone) Modifier.horizontalScroll(sideScroll) else Modifier)
                 .padding(horizontal = 10.dp, vertical = 8.dp)) {
+                // The comments' cards, and (as Word draws them) a line from each one's words to its card.
+                var cardTops by remember { mutableStateOf<List<Int>>(emptyList()) }
+                val ordered = if (paneOn && onPage && loaded) commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } to spans.maxOf { it.second.last + 1 } }
+                    .entries.sortedBy { it.value.first } else emptyList()
                 if (paneOn && onPage && loaded) {
                     val density = LocalDensity.current
-                    val first = commentsShown.groupBy { it.first }.mapValues { (_, spans) -> spans.minOf { it.second.first } }
-                    CommentPane(first.entries.sortedBy { it.value }.map { (c, at) ->
-                        c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at)) } ?: 0f).toDp() })
+                    CommentPane(ordered.map { (c, at) ->
+                        c to (sheet.top * perPt + with(density) { (editorLayout?.takeIf { at.first < it.layoutInput.text.length }?.let { it.getLineTop(it.getLineForOffset(at.first)) } ?: 0f).toDp() })
                     }, hereComment, Modifier.align(Alignment.TopCenter).offset(x = sheet.width * perPt / 2 - shift + 12.dp + COMMENT_PANE / 2).width(COMMENT_PANE),
-                        commentActions { c -> first[c]?.let { state.selection = androidx.compose.ui.text.TextRange(it) } })
+                        commentActions { c -> ordered.firstOrNull { it.key == c }?.let { state.selection = androidx.compose.ui.text.TextRange(it.value.first) } }) { if (it != cardTops) cardTops = it }
+                }
+                if (ordered.isNotEmpty() && !printPhone) editorLayout?.let { l ->
+                    val here = hereComment
+                    androidx.compose.foundation.Canvas(Modifier.matchParentSize().zIndex(1f)) {
+                        val sheetW = (sheet.width * perPt).toPx()
+                        val sheetX = (size.width - sheetW) / 2 - shift.toPx()
+                        val textX = sheetX + (sheet.left * perPt).toPx(); val textY = (margins.calculateTopPadding()).toPx()
+                        val paneX = sheetX + sheetW + 12.dp.toPx()
+                        ordered.forEachIndexed { k, (c, at) ->
+                            val top = cardTops.getOrNull(k) ?: return@forEachIndexed
+                            val end = at.second.coerceIn(0, l.layoutInput.text.length)
+                            val line = l.getLineForOffset((end - 1).coerceAtLeast(0))
+                            val x = textX + l.getHorizontalPosition(end, usePrimaryDirection = true); val y = textY + l.getLineBottom(line)
+                            val mine = c == here
+                            val color = if (mine) Color(0xFF1A73E8) else Color(0xFF757575)
+                            val dash = if (mine) null else androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 5f))
+                            // Under the words to the page's edge, then across to the card's first line.
+                            val edge = sheetX + sheetW - 4.dp.toPx()
+                            drawLine(color, androidx.compose.ui.geometry.Offset(x, y), androidx.compose.ui.geometry.Offset(edge, y), 1.dp.toPx(), pathEffect = dash)
+                            drawLine(color, androidx.compose.ui.geometry.Offset(edge, y), androidx.compose.ui.geometry.Offset(paneX, top + 22.dp.toPx()), 1.dp.toPx(), pathEffect = dash)
+                        }
+                    }
                 }
                 Surface(color = paper, shape = RoundedCornerShape(if (onPage) 0.dp else 6.dp),
-                    modifier = (if (printPhone) Modifier.scaledBy(pageScale).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
-                        else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
+                    modifier = (if (printPhone) Modifier.scaledBy(pageScale).followCursor { cursorOnPage() }.width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
+                        else if (onPage) Modifier.align(Alignment.TopCenter).offset(x = -shift).width(sheet.width * perPt).heightIn(min = sheet.height * perPt)
+                        else if (reading) Modifier.align(Alignment.TopCenter).width(readingWidth) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
                         !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                            var unstyled by remember { mutableStateOf(false) }
+                            var hadFonts by remember { mutableStateOf(false) }
                             // A selected picture or table has its blue frame: the selection's shading over its (invisible,
                             // picture-tall) letter only showed as a grey block behind it.
                             val selection = androidx.compose.foundation.text.selection.LocalTextSelectionColors.current
-                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
-                                if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(selection.handleColor, Color.Transparent) else selection) {
+                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalTextToolbar provides textToolbar,
+                                androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
+                                // Dark blue handles and shading, as Word's (asked 14 Oct: the theme's pale one hardly showed on the white page).
+                                if (selectedPicture != null) androidx.compose.foundation.text.selection.TextSelectionColors(SELECTION_BLUE, Color.Transparent)
+                                // The phone's page is drawn scaled and Compose puts its handles where the unscaled page would be
+                                // (far off the words): Writer draws its own there (PageHandles).
+                                else androidx.compose.foundation.text.selection.TextSelectionColors(if (printPhone) Color.Transparent else SELECTION_BLUE, SELECTION_BLUE.copy(alpha = 0.35f))) {
                             // Line heights untrimmed: Compose's default trims the first and last line's, so a one-line paragraph (an empty
                             // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
-                            BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
+                            // A keystroke: the library has put back its own look (no fonts, no space between paragraphs) and Writer's
+                            // comes only after the next frame — so its last look, carried over the typed letters, goes in now,
+                            // before this frame is drawn (the text jumped half a page up and back at each letter, 14 Oct).
+                            val heldText = state.annotatedString
+                            if (!WriterBridge.showsWriters(state)) lastLook[0]?.let { (look, base) ->
+                                WriterBridge.carried(look, base, heldText)?.let { WriterBridge.displayText(state, it) } ?: WriterLog.i("look not carried over: its paragraphs would overlap")
+                            }
+                            BasicRichTextEditor(state, readOnly = reading, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
-                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it; editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
+                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = {
+                                    // A keystroke can lay the text out once without its styles (the library, between the typed letter and its
+                                    // spans): that layout is not the page — kept, its cursor
+                                    // shook the zoomed page up, down and sideways (14 Oct).
+                                    // Its fonts all gone (only a heading's bold is left) where the last layout had them: a new document
+                                    // with no fonts at all is never taken for it.
+                                    val fonts = it.layoutInput.text.spanStyles.any { s -> s.item.fontFamily != null }
+                                    val plain = !fonts && hadFonts && it.layoutInput.text.isNotEmpty()
+                                    if (!plain) hadFonts = fonts
+                                    if (plain && !unstyled) {
+                                        val held = state.annotatedString
+                                        WriterLog.i("unstyled layout skipped: laid out ${it.layoutInput.text.length} letters, ${it.layoutInput.text.spanStyles.size} spans (" +
+                                            it.layoutInput.text.spanStyles.take(3).joinToString { s -> "${s.start}-${s.end} w=${s.item.fontWeight?.weight} size=${s.item.fontSize}" } +
+                                            "); the editor holds ${held.length} letters, ${held.spanStyles.size} spans, ${held.spanStyles.count { s -> s.item.fontFamily != null }} with a font; same text: ${held.text == it.layoutInput.text.text}; " +
+                                            "selection ${state.selection}")
+                                    }
+                                    unstyled = plain
+                                    if (!unstyled) {
+                                        // The page's height changing under the typing is what moves the text below it.
+                                        editorLayout?.let { was -> if (was.size.height != it.size.height) WriterLog.i("edit layout: ${was.size.height} → ${it.size.height} px tall, ${was.lineCount} → ${it.lineCount} lines, cursor at ${state.selection.max}") }
+                                        layout = it; editorLayout = it
+                                    }
+                                    editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                            }
+                            if (printPhone && selectedPicture == null) layout?.let { l ->
+                                val d = LocalDensity.current
+                                PageHandles(state, l, Offset(with(d) { margins.calculateLeftPadding(LayoutDirection.Ltr).toPx() }, with(d) { margins.calculateTopPadding().toPx() }), pageScale) { handleAt = it }
                             }
                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
                             layout?.let { l ->
@@ -2228,7 +3136,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 val density = LocalDensity.current
                                 val scale = BASE_SP / meta.basePt
                                 // Where each picture goes, worked out first; then drawn (no skipping inside the drawing).
-                                val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
+                                val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR || text[it] == OBJECT_MARK }.mapIndexedNotNull { n, i -> // U+FFFC: as Display lays it
                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
                                 }
                                 if (shownTabs.any { it.leader != null }) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -2240,13 +3148,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val line = l.getLineForOffset(tab.at)
                                         if (l.getLineForOffset(tab.at + 1) != line) return@forEach
                                         val a = l.getHorizontalPosition(tab.at, true)
-                                        val z = l.getHorizontalPosition(tab.at + 1, true)
+                                        // The gap's own width: the layout puts the letter after a widened tab (letter spacing) at half
+                                        // of it, and the dots stopped half way (asked 2026-10-13).
+                                        val z = a + tab.widthPx
                                         val dot = paint.measureText(leader.toString()).coerceAtLeast(1f)
+
                                         var x = a + dot
                                         while (x + dot < z) { canvas.drawText(leader.toString(), x, l.getLineBaseline(line), paint); x += dot }
                                     }
                                 }
                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
+                                var stretch by remember { mutableStateOf<Pair<Float, Float>?>(null) } // its size while a handle is pulled (pixels)
+                                var turning by remember { mutableStateOf<Float?>(null) } // its angle while the knob is turned
                                 // A page break before a paragraph: the editor has no pages, so a dashed line says where one starts.
                                 // A form's fields: a light box behind each (Word shades them), deeper where the cursor is.
                                 if (controlsShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -2306,7 +3219,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 // …and a paragraph's borders, as a light outline (the pages draw them as they print).
                                 val looks = remember(meta.paras, documentStyles) { meta.paras.map { if (it.table != null) null else documentStyles.look(it) } }
-                                val breaks = remember(looks) { looks.indices.filter { it > 0 && looks[it]?.pageBreakBefore == true } }
+                                // Page breaks, column breaks and section ends: a dashed line at the paragraph that starts after them, named.
+                                val breakNames = remember(looks, meta.paras, documentStyles) {
+                                    // How the section after a break starts is said by that section's own sectPr (the next one's).
+                                    val sections = if (meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }) documentStyles.sections(meta.paras) else emptyList()
+                                    looks.indices.mapNotNull { i -> if (i == 0) null else listOfNotNull(
+                                        "Page break".takeIf { looks[i]?.pageBreakBefore == true },
+                                        (if (sections.getOrNull(i)?.continuous == true) "Section break (continuous)" else "Section break (next page)")
+                                            .takeIf { meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true },
+                                        "Column break".takeIf { looks[i]?.columnBreakBefore == true },
+                                        "Section break".takeIf { kind == OfficeKind.Odt && OdtSections.tags(meta.paras[i]) != OdtSections.tags(meta.paras[i - 1]) },
+                                    ).takeIf { it.isNotEmpty() }?.let { i to it.joinToString(" · ") } }.toMap()
+                                }
+                                val breaks = breakNames.keys.toList()
                                 val boxed = remember(looks) { looks.indices.filter { looks[it]?.box != null } }
                                 val starts = remember(text, breaks, boxed) { if (breaks.isEmpty() && boxed.isEmpty()) emptyList() else state.toRichTextDocument().let { rich ->
                                     WriterBridge.paragraphStarts(text, rich).takeIf { it.size == meta.paras.size } } ?: emptyList() }
@@ -2333,7 +3258,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
                                         val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
-                                        Text("Page break" + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                        Text(breakNames[i].orEmpty() + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
                                 // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
@@ -2360,7 +3285,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 }
                                 val paraStarts = remember(text, floatsShown) { if (floatsShown.isEmpty()) emptyList() else WriterBridge.paragraphStarts(text, state.toRichTextDocument()) }
                                 Box(Modifier.matchParentSize().padding(margins)) {
-                                    placed.forEach { (i, img, at) ->
+                                    // Drawn in the order the pages draw them (Arrange: the higher over the lower; else as in the text).
+                                    placed.sortedBy { PictureXml.zOf(it.second) }.forEach { (i, img, at) ->
                                         // In front of or behind the text: in its place on the page, its own size (from its paragraph's top).
                                         val float = floatsShown[img.key]
                                         val left = float?.let { with(density) { (it.x * scale).sp.toPx() } } ?: at.first
@@ -2369,7 +3295,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val y = if (float != null) (l.getLineTop(l.getLineForOffset(paraStarts.lastOrNull { it <= i } ?: i)) + with(density) { (float.y * scale).sp.toPx() }).toInt()
                                             else if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
                                             else with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
-                                        val size = with(density) { Modifier.size(w.sp.toDp(), h.sp.toDp()) }
+                                        val size = with(density) { stretch?.takeIf { selectedPicture?.first == i }?.let { (a, b) -> Modifier.size(a.toDp(), b.toDp()) } ?: Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         val shownWidth = with(density) { w.sp.toPx() }
                                         val shownHeight = with(density) { h.sp.toPx() }
                                         val selected = selectedPicture?.first == i
@@ -2427,11 +3353,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                         onDragCancel = { drag = Offset.Zero },
                                                     )
                                                 })
-                                            .clickable {
+                                            .combinedClickable(onLongClick = {
+                                                // Held (asked 15 Oct): straight to Position, where it follows the finger — for one that is not in line.
+                                                state.selection = androidx.compose.ui.text.TextRange(i, i + 1)
+                                                tab = WriterTab.Picture
+                                                if (PictureXml.wrapOf(img) != PictureWrap.InLine && PictureXml.editable(img)) { WriterLog.i("long press ${img.key}: position"); position(img.key) }
+                                            }) {
                                                 state.selection = androidx.compose.ui.text.TextRange(i, i + 1)
                                                 tab = WriterTab.Picture
                                             }
                                         Box(Modifier.offset { IntOffset(left.toInt(), y) }.then(size)
+                                            .then((turning?.takeIf { selected } ?: Arrange.rotationOf(img)).takeIf { it != 0f && (float != null || PictureXml.wrapOf(img) != PictureWrap.InLine) }?.let { Modifier.rotate(it) } ?: Modifier) // turned (Arrange › Rotate)
                                             .then(if (selected) Modifier.border(2.dp, Color(0xFF1A73E8)) else Modifier)
                                             .then(objectInput),
                                             contentAlignment = Alignment.Center) {
@@ -2440,6 +3372,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val s = this.size.width / laid.page.width
                                                     n.save(); n.scale(s, s); laid.draw(n); n.restore()
                                                 } }
+                                            } else if (img.group != null) {
+                                                // A group: its pieces, as the pages draw them.
+                                                val drawn = remember(img, documentStyles) { OfficePages.pictureOf(OfficeDoc(emptyList(), basePt = meta.basePt), documentStyles, img) { pictureBytes(it) } }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
+                                                    val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
+                                                    n.save(); n.scale(k, k); drawn.setBounds(0, 0, img.widthPt.toInt(), img.heightPt.toInt()); drawn.draw(n); n.restore()
+                                                } }
+                                            } else if (img.math != null) {
+                                                // An equation: drawn as the pages draw it.
+                                                val drawn = remember(img.math) { MathDrawable(img.math, meta.basePt) }
+                                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c -> drawn.setBounds(0, 0, this.size.width.toInt(), this.size.height.toInt()); drawn.draw(c.nativeCanvas) } }
                                             } else if (img.chart != null) {
                                                 // A chart: drawn from what it shows, as the pages draw it.
                                                 val drawn = remember(img.chart) { ChartDrawable(img.chart) }
@@ -2454,16 +3397,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
                                                     n.save(); n.scale(k, k); drawn?.setBounds(0, 0, img.widthPt.toInt(), img.heightPt.toInt()); drawn?.draw(n); n.restore()
                                                 } }
-                                            } else if (ShapePicture.of(img.raw) != null) {
+                                            } else if (ShapePicture.of(img) != null) {
                                                 // A shape: drawn as the pages draw it (its outline's width in points too).
-                                                val shape = remember(img.raw) { ShapePicture.of(img.raw)!! }
+                                                val shape = remember(img.raw) { ShapePicture.of(img)!! }
                                                 androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c ->
                                                     val n = c.nativeCanvas; val k = this.size.width / img.widthPt.coerceAtLeast(0.1f)
                                                     n.save(); n.scale(k, k); shape.drawAt(n, 0f, 0f, img.widthPt, img.heightPt); n.restore()
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
-                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.box == null && ShapePicture.of(img.raw) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.group == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
                                             if (table != null && tab == WriterTab.Table) {
                                                 val from = mergeFrom?.takeIf { it.key == img.key }
@@ -2519,6 +3462,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                 )
                                             }
                                         }
+                                        // Handles on it: stretch from the corner or a side, turn from the knob above (asked 15 Oct).
+                                        if (selected && table == null && drag == Offset.Zero) ObjectHandles(left, y.toFloat(), stretch?.first ?: shownWidth, stretch?.second ?: shownHeight,
+                                            turning ?: if (PictureXml.wrapOf(img) != PictureWrap.InLine) Arrange.rotationOf(img) else 0f,
+                                            rotatable = PictureXml.wrapOf(img) != PictureWrap.InLine && img.raw?.startsWith("<draw:g") != true,
+                                            keepAspect = pictureBytes(img) != null, size = { a, b -> stretch = a to b }, sized = {
+                                                val k = with(density) { scale.sp.toPx() }
+                                                stretch?.let { (a, b) -> stretch = null; WriterLog.i("handles: ${img.key} ${img.widthPt}×${img.heightPt} → ${a / k}×${b / k} pt"); changePicture(img.key, PictureXml.resized(img, a / k, b / k)) }
+                                            }, turn = { turning = it }, turned = { turning?.let { turning = null; rotate(img.key, it) } })
                                     }
                                 }
                             }
@@ -2549,7 +3500,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val physicalKeyboard = config.keyboard == android.content.res.Configuration.KEYBOARD_QWERTY &&
             config.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
         val island = !imeOpen || physicalKeyboard
-        if (!viewing) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(
+        // The phone with the screen's keyboard up: Word's bar on it (B I U, highlighter, dictation, ⋯, hide); ⋯ the ribbon.
+        var ribbonOverKeyboard by remember { mutableStateOf(false) }
+        LaunchedEffect(imeOpen) { if (!imeOpen) ribbonOverKeyboard = false }
+        val keyboardBar = !island && !ribbonOverKeyboard && LocalConfiguration.current.screenWidthDp < 700
+        // A Design gallery: in the ribbon's place, a strip of its choices (asked 15 Oct); the page above shows the one tapped.
+        var stripOf by remember { mutableStateOf<DesignGallery?>(null) } // kept while its strip slides away
+        if (designGallery != null && stripOf != designGallery) stripOf = designGallery
+        androidx.compose.animation.AnimatedVisibility(designGallery != null && (!viewing || galleryViewing != null) && !reading,
+            Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { stripOf?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk, ::galleryPick,
+            more = if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { { galleryCancel(); headerPage = true } } else null,
+            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.')) } }
+        // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
+        // The ribbon and a gallery's strip slide down and up as they take each other's place (asked 15 Oct).
+        androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
+            Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
@@ -2562,6 +3527,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("Edit", color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
+            // A citation, the cursor in it: each of its sources (a tap edits it), and Change (its sources or page).
+            hereCite?.let { (c, r) -> CitationBar(c, meta.sources, w, { s, t -> WriterLog.i("citation: edit source $t"); if (s != null) sourceEdit = s else sourceNew = true }) { WriterLog.i("citation: change $c"); citeChanging = c to r } }
+            // An equation chosen: its linear form, typed into in place (the page redraws it).
+            selectedPicture?.second?.let { k -> pictures[k]?.math?.let { m -> androidx.compose.runtime.key(k) { EquationBar(m, w) { putEquation(k, it) } } } }
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
             hereWord?.let { (r, w, suggestions) ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2591,15 +3560,33 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Text("Open", color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
+            if (keyboardBar) {
+                val keyboard = LocalSoftwareKeyboardController.current
+                val span = state.currentSpanStyle
+                KeyboardBar(w, boldHere(span), span.fontStyle == FontStyle.Italic, span.textDecoration?.contains(TextDecoration.Underline) == true,
+                    { toggleBold(span) }, { toggleItalic(span) }, { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) },
+                    { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c)) },
+                    { dictate?.invoke() ?: run { message = "This phone has no voice typing" } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
+            } else Column(Modifier.fillMaxWidth()) {
+            val tabsScroll = rememberScrollState()
+            Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, "Back to the keyboard bar", w, on = true) { ribbonOverKeyboard = false }
                 val selectedObject = selectedPicture?.second?.let { pictures[it] }
-                WriterTab.entries.filter { t -> when (t) {
+                // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
+                (listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
+                    WriterTab.Selection -> selectionTabShown || tab == WriterTab.Selection
                     WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                     WriterTab.Table -> selectedObject?.table != null
                     else -> true
                 } }.forEach { t ->
-                    Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
+                    // The chosen tab scrolls clear of the edge's shade (Design sat half under it on a phone).
+                    val seen = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                    var wide by remember { mutableStateOf(0) }
+                    val shade = with(LocalDensity.current) { 48.dp.toPx() }
+                    LaunchedEffect(tab == t, wide) { if (tab == t && wide > 0) seen.bringIntoView(androidx.compose.ui.geometry.Rect(-shade, 0f, wide + shade, 1f)) }
+                    Text(if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
                             .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
                 }
             }
@@ -2610,9 +3597,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.File -> listOf({
                     RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                     RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { commitCell(); save(asCopy = true) }
+                    RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
+                        autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
+                        message = if (!autoSave) "AutoSave off — Save when you want the file changed" else if (file == null) "AutoSave on — once the document has a name" else if (meta.blocking.isNotEmpty()) "AutoSave on — but this file is saved only as a copy" else "AutoSave on"
+                    }
                 }, {
+                    RibbonButton("Save as", w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
+                    RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
+                    RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
                     RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
-                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
+                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = loaded) { showVersions = true }
                 }, {
                     RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
                         file?.let { shareDriveFile(context, it) }
@@ -2625,8 +3619,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // Typing in a table cell: Home formats the cell's text.
                 WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
                     { p, r -> r.sizePt ?: documentStyles.look(p).sizePt ?: meta.basePt }) { c -> cellEdit = e.copy(cell = c) } } ?: listOf({
-                    Tool(R.drawable.ic_format_bold, "Bold", w, on = span.fontWeight == FontWeight.Bold) { state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold)) }
-                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { state.toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic)) }
+                    Tool(R.drawable.ic_format_bold, "Bold", w, on = boldHere(span)) { toggleBold(span) }
+                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
                     Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
                     Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
                     // Superscript and subscript: read back in at once, so they show smaller as a file's do.
@@ -2649,7 +3643,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             if (state.selection.collapsed) set() else change { set() }
                         }
                     }
-                    Divider(w)
+                // Font and size on a page of their own: beside B I U they ran off a phone's width (found 14 Oct).
+                }, {
                     // Superscript and subscript are shown smaller: the size told and changed is the letters' own.
                     val shrink = if ((span.baselineShift?.multiplier ?: 0f) != 0f) SCRIPT_SIZE else 1f
                     val size = (WriterBridge.spOf(span.fontSize) ?: BASE_SP) / shrink
@@ -2660,6 +3655,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         t.getOrNull(i) == EDITOR_PICTURE_CHAR && (!state.selection.collapsed || i == 0 || t.getOrNull(i - 1) == '\n') || t.getOrNull(i - 1) == EDITOR_PICTURE_CHAR }
                     val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
+                    // Home › Font: a window of the fonts, each shown in itself (the user: a modal, not a list).
+                    RibbonButton((hereFont ?: "Font").take(18), w, enabled = !onObject, outlined = true) { fontsOpen = true }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
                         Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
@@ -2680,12 +3677,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             WriterBridge.Case.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { casing = false; change {
                                 val text = state.annotatedString.text
                                 val sel = state.selection
-                                val (from, to) = if (!sel.collapsed) sel.min to sel.max else {
-                                    var a = sel.min; var z = sel.min
-                                    while (a > 0 && text[a - 1].isLetterOrDigit()) a--
-                                    while (z < text.length && text[z].isLetterOrDigit()) z++
-                                    a to z
-                                }
+                                val (from, to) = chosenOrWord()
                                 state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
                             } }) }
                         }
@@ -2708,12 +3700,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     listOf(styles[0] to "Normal", styles[1] to "Title", styles.first { it.heading == 1 } to "H1", styles.first { it.heading == 2 } to "H2", styles.first { it.heading == 3 } to "H3").forEach { (style, label) ->
                         RibbonButton(label, w, on = hereStyle == style) { applyStyle(style) }
                     }
-                    RibbonButton("Styles…", w, R.drawable.ic_more_vert) { stylesPage = true }
+                    RibbonButton("Styles…", w) { stylesPage = true }
                 }, {
                     Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
                     Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
                     Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
                     Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
+                    RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }
                 }, {
                     listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
@@ -2727,7 +3720,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             chooseParagraphs { at, look -> setSpacing(at, look, look.copy(lineMultiple = m, lineExact = null)); message = "Line spacing ${plain(m)} — it shows on the pages" }
                         }
                     }
-                    Divider(w)
+                }, {
                     // Borders (Word's menu, for paragraphs): each side on or off, a box, none, a horizontal line.
                     Box {
                         var bordering by remember { mutableStateOf(false) }
@@ -2761,15 +3754,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                 }, {
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
-                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { wordArt = true }
+                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { openGallery(DesignGallery.WordArt) }
                     RibbonButton("Chart", w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
                 }, {
                     RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
                     RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).
-                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { headerPage = true }
-                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { headerPage = true }
+                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { openGallery(DesignGallery.HeaderFooter) }
+                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { openGallery(DesignGallery.PageNumbers) }
                 }, {
                     // Word's Drop Cap: none, dropped, in the margin, or its options page.
                     Box {
@@ -2793,6 +3786,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     } }
                 }, {
                     RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
+                    RibbonButton("Equation", w, R.drawable.ic_functions, enabled = loaded) { equationOpen = "" to null }
+                    RibbonButton("Content control", w, R.drawable.ic_check_box, enabled = loaded) { controlNew = true }
+                })
+                WriterTab.Selection -> listOf({
+                    RibbonButton("Cut", w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
+                    RibbonButton("Copy", w, R.drawable.ic_copy, enabled = !state.selection.collapsed) { copyChosen(false) }
+                    RibbonButton("Paste", w, R.drawable.ic_content_paste) { textToolbar.paste?.invoke()?.also { dirty = true; WriterLog.i("pasted with its look") } ?: pastePlain() }
+                }, {
+                    RibbonButton("Paste text only", w, R.drawable.ic_content_paste) { pastePlain() }
+                    RibbonButton("Select all", w, R.drawable.ic_select_all) { textToolbar.selectAll?.invoke() ?: run { state.selection = androidx.compose.ui.text.TextRange(0, state.annotatedString.length) } }
+                }, {
+                    RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) {
+                        copiedLook = runAt(state.selection.min)
+                        message = if (copiedLook != null) "Formatting copied — choose other words, then Paste formatting" else "No formatting here to copy"
+                    }
+                    RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -2804,7 +3813,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     listOf({
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
+                        img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
                         img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
+                        // A shape (or a text box's frame): its fill, outline, size, angle and alt text in one page.
+                        if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton("Shape options", w, R.drawable.ic_tune, enabled = editable) { shapeOptions = key }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
@@ -2816,6 +3828,24 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
                         // Floating ones are dragged where they go on their page.
                         RibbonButton("Position", w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
+                    }, {
+                        // Arrange (Word's): which floating picture is over which, and lined up with the margins.
+                        val floating = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine
+                        RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
+                        RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                        RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
+                        if (img?.group != null) RibbonButton("Ungroup", w, R.drawable.ic_group_objects, enabled = floating) { ungroup(key) }
+                        else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating, on = grouping == key) {
+                            grouping = if (grouping == key) null else key.also { message = "Now tap the other picture or shape to group with it" }
+                        }
+                        Box {
+                            var aligning by remember { mutableStateOf(false) }
+                            RibbonButton("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating) { aligning = true }
+                            DropdownMenu(aligning, { aligning = false }) {
+                                listOf("left" to "Align left", "center" to "Align centre", "right" to "Align right", "top" to "Align top", "middle" to "Align middle", "bottom" to "Align bottom")
+                                    .forEach { (how, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; align(key, how) }) }
+                            }
+                        }
                     }, {
                         RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
                         RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
@@ -2852,6 +3882,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                         RibbonButton("Cancel", w, R.drawable.ic_close) { mergeFrom = null; mergeTo = null }
                     }) else listOf({
+                        // The table's numbers as a chart under it (asked 2026-10-14), its look chosen in the chart's own dialog.
+                        RibbonButton("Make chart", w, R.drawable.ic_bar_chart, enabled = table != null) {
+                            commitCell()
+                            val key = selectedPicture?.second
+                            val made = key?.let { pictures[it]?.table }?.let { OfficeCharts.fromTable(it) }
+                            if (made == null) message = "The table has no numbers to chart." else { chartUnder = key; charting = null to made }
+                        }
+                    }, {
                         // Everyday tools on the ribbon, the rest behind ⋯ (asked 2026-09-28); three to a page, as a phone fits them.
                         RibbonButton("Row above", w, R.drawable.ic_add_row_above, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
                         RibbonButton("Row below", w, R.drawable.ic_add_row_below, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
@@ -2879,15 +3917,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
-                    RibbonButton("APA 7 paper", w, R.drawable.ic_school, enabled = loaded) { apaPage = true }
-                    // Word's Document Formatting gallery: a set of looks for Normal, Title and the headings at once.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            StyleSet.entries.forEach { set -> DropdownMenuItem(text = { Text(set.label) }, onClick = { open = false; applyStyleSet(set) }) }
-                        }
-                    }
+                    // A paper's standards in one window (asked 15 Oct): APA 7's paper and run-in headings, the citation style.
+                    RibbonButton("Standards", w, R.drawable.ic_school, enabled = loaded) { standards = true }
+                    // Word's Document Formatting gallery, Colours and Fonts (its theme): windows of pictures of the choices.
+                    RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.StyleSets) }
+                    RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { openGallery(DesignGallery.Colours) }
+                    RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.Fonts) }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
@@ -2908,28 +3943,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Box {
                         var open by remember { mutableStateOf(false) }
                         val now = documentStyles.section.watermark
-                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null) { open = true }
+                        val picture = documentStyles.section.watermarkPicture != null
+                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture) { open = true }
                         DropdownMenu(open, { open = false }) {
                             Watermark.PRESETS.forEach { t -> DropdownMenuItem(text = { Text(t) }, trailingIcon = { if (t == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
                                 onClick = { open = false; setWatermark(t) }) }
                             DropdownMenuItem(text = { Text("Custom watermark…") }, onClick = { open = false; watermarking = true })
-                            if (now != null) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            DropdownMenuItem(text = { Text("Picture watermark…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                trailingIcon = { if (picture) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
+                                onClick = { open = false; pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                            if (now != null || picture) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
                                 onClick = { open = false; setWatermark(null) })
                         }
                     }
                     Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
                         setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
                     }
-                    Box {
-                        var bordering by remember { mutableStateOf(false) }
-                        RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { bordering = true }
-                        DropdownMenu(bordering, { bordering = false }) {
-                            listOf("No border" to null, "Box, thin (½ pt)" to 0.5f, "Box, medium (1½ pt)" to 1.5f, "Box, thick (3 pt)" to 3f).forEach { (label, width) ->
-                                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(if (width == null) R.drawable.ic_border_clear else R.drawable.ic_border_outer), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                                    onClick = { bordering = false; setDesign(sheet.color, width?.let { Border(it, sheet.border?.line?.color ?: 0) }) })
-                            }
-                        }
-                    }
+                    RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { pageBordering = true }
                 })
                 WriterTab.Draw -> listOf({
                     // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
@@ -2953,13 +3983,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         DropdownMenu(columning, { columning = false }) {
                             listOf(1 to "One", 2 to "Two", 3 to "Three").forEach { (n, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { columning = false
-                                    if (n != sheet.columns) { setPage(sheet.copy(columns = n)); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
+                                    if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
                             }
                         }
                     }
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    // Layout › Breaks (Phase 2): a column break; section breaks — a new page, or on down the same one.
+                    Box {
+                        var breaking by remember { mutableStateOf(false) }
+                        RibbonButton("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded) { breaking = true }
+                        DropdownMenu(breaking, { breaking = false }) {
+                            DropdownMenuItem(text = { Text("Column break") }, onClick = { breaking = false; insertPageBreak(false, column = true); WriterLog.i("column break") })
+                            DropdownMenuItem(text = { Text("Section break · next page") }, onClick = { breaking = false; insertPageBreak(false, section = "nextPage") })
+                            DropdownMenuItem(text = { Text("Section break · continuous") }, onClick = { breaking = false; insertPageBreak(false, section = "continuous") })
+                        }
+                    }
                 }, {
                     // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
                     Box {
@@ -2996,10 +4036,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
                     RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
                 }, {
+                    // With Claude (tetra-sources skill): ask in the Claude app, then paste its answer — the research's references at once.
+                    RibbonButton("Ask Claude", w, R.drawable.ic_share, enabled = loaded) { askClaudeForSources() }
+                    RibbonButton("Paste sources", w, R.drawable.ic_content_paste, enabled = loaded) { pasteSources() }
+                }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
-                    RibbonButton("Update citations", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
-                    Text("APA 7", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    // References › Style (Word's): APA 7, MLA 9 or Chicago author-date — the citations and the list written again in it.
+                    Box {
+                        var styling by remember { mutableStateOf(false) }
+                        RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { styling = true }
+                        DropdownMenu(styling, { styling = false }) {
+                            CiteStyle.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; setCiteStyle(c) }) }
+                        }
+                    }
+                }, {
+                    // Captions and their numbers (Word's Insert Caption and F9).
+                    RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
+                    RibbonButton("Cross-reference", w, R.drawable.ic_link, enabled = loaded && kind == OfficeKind.Docx) { crossRefOpen = true }
+                }, {
+                    RibbonButton("Update fields", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                 })
                 WriterTab.Review -> listOf({
                     // Word's Proofing group: spelling marked as one types (on or off), and the next word marked.
@@ -3008,6 +4064,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         message = if (spelling) "Spelling on — Greek and English, the phone's own checker" else "Spelling off"
                     }
                     Tool(R.drawable.ic_chevron_right, "Next spelling mistake", w, enabled = loaded && spelling) { nextMisspelled() }
+                    // Word's Speech group: Read aloud from the cursor, a paragraph at a time (Greek or English each).
+                    RibbonButton(if (reader.speaking) "Stop reading" else "Read aloud", w, R.drawable.ic_volume_up, enabled = loaded, on = reader.speaking) {
+                        if (reader.speaking) reader.stop() else {
+                            val doc = current()
+                            // Equations said in words, in their paragraph's language (one of only maths: the document's).
+                            val greekDoc = doc.paras.count { languageOf(it.text).language == "el" } * 2 > doc.paras.count { it.text.isNotBlank() }
+                            readingParas = doc.paras.map { p -> if (p.table != null) p.countedText() else {
+                                val greek = if (p.runs.any { it.image == null && it.text.any(Char::isLetter) }) languageOf(p.text).language == "el" else greekDoc
+                                p.runs.joinToString("") { r -> r.image?.math?.let { " " + OfficeMath.spoken(it, greek) + " " } ?: r.text.replace(OBJECT_MARK.toString(), "") } } }
+                            val sel = state.selection.min
+                            val from = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).minOrNull() ?: 0
+                            if (!reader.read(readingParas, from)) message = "This phone cannot read aloud (no text-to-speech)"
+                        }
+                    }
                 }, {
                     // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
                     RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
@@ -3048,12 +4118,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
                     }
                     // A phone: the page as it prints (Print layout), or the text to the screen's width (Mobile view).
+                    RibbonButton("Reading mode", w, R.drawable.ic_menu_book) { commitCell(); reading = true }
                     if (!tablet) RibbonButton("Mobile view", w, R.drawable.ic_wrap_text, on = mobileView) {
                         mobileView = !mobileView
                         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putBoolean("mobileView", mobileView).apply()
                     }
                 }, {
                     // Centimetres or inches for the rulers and every length (APA's margins are given in inches).
+                    Text("Units", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
                     RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
                     RibbonButton("inches", w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
                 })
@@ -3061,7 +4133,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
             // spread over the width they were too far apart). A phone swipes them page by page.
             if (LocalConfiguration.current.screenWidthDp >= 700) Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
+                rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
             ) { pages.forEachIndexed { i, page -> if (i > 0) Divider(w); page() } }
             else androidx.compose.runtime.key(tab) {
@@ -3070,7 +4142,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Spread over the width; a page wider than the phone scrolls sideways (found 2026-09-30: Design's last
                     // three tools were off the screen, out of reach), then the next swipe turns the page.
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
+                        val sc = rememberScrollState()
+                        Row(Modifier.scrollShade(sc).horizontalScroll(sc).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
                     }
                 }
@@ -3078,7 +4151,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     repeat(pages.size) { i -> Box(Modifier.padding(horizontal = 3.dp).size(6.dp).clip(CircleShape).background(w.copy(alpha = if (i == pager.currentPage) 0.9f else 0.3f))) }
                 }
             }
-        }
+            }
+        } }
         message?.let { m ->
             LaunchedEffect(m) { delay(2800); message = null }
             Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {
@@ -3107,44 +4181,88 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
 
+    // The dialogs, in a function of their own: WriterScreen's one method is at the JVM's 64 KB limit.
+    @Composable fun Dialogs() {
+    if (controlNew) ContentControlDialog({ controlNew = false }) { k, title, items, format -> controlNew = false; insertControl(k, title, items, format) }
+    if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
+        pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
+    }
+    if (standards) StandardsDialog(meta.citeStyle, { standards = false }, paper = { standards = false; apaPage = true },
+        runIn = { level -> standards = false; apaRunIn(level) }, citeStyle = { c -> standards = false; setCiteStyle(c) })
+    shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
+        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
+            shapeOptions = null
+            var next = PictureXml.shapeLook(img, o.fill, o.line, o.lineWidth) ?: img
+            if (o.widthPt != img.widthPt || o.heightPt != img.heightPt) next = PictureXml.resized(next, o.widthPt, o.heightPt)
+            if (o.degrees != Arrange.rotationOf(img)) next = Arrange.rotated(next, o.degrees) ?: next
+            if (o.alt != PictureXml.altOf(img)) next = PictureXml.withAlt(next, o.alt) ?: next
+            changePicture(key, next)
+            WriterLog.i("shape options $key: fill ${o.fill?.let { "%08X".format(it) }} line ${o.line?.let { "%06X".format(it and 0xFFFFFF) }} ${o.lineWidth}pt ${o.widthPt.toInt()}×${o.heightPt.toInt()} ${o.degrees}°")
+        } } } }
+    rotating?.let { key -> RotateDialog(pictures[key]?.let { Arrange.rotationOf(it) } ?: 0f, { rotating = null }) { deg -> rotating = null; rotate(key, deg) } }
+    equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }
     if (naming) {
-        var typed by remember { mutableStateOf("") }
+        var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }
         AlertDialog(
             onDismissRequest = { naming = false },
             title = { Text("Save as") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") })
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // A new document chooses its kind; a file stays what it is (its own package is what is written).
+                    if (file == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OfficeKind.entries.forEach { k -> RibbonButton(if (k == OfficeKind.Docx) "Word (.docx)" else "OpenDocument (.odt)", MaterialTheme.colorScheme.onSurface, on = kind == k) { kind = k } }
                     }
-                    Text("In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                    Text(file?.parentFile?.let { "Beside ${file.name}, in ${it.name}. Writer goes on with the new one." } ?: "In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
         )
     }
+    if (fontsOpen) {
+        val own = remember(meta.paras, hereFont) { (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted() }
+        FontDialog(own, WRITER_FONTS.filter { it !in own }, hereFont, { fontsOpen = false }) { fontsOpen = false; setFont(it) }
+    }
+    if (renaming) {
+        var typed by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
+        AlertDialog(onDismissRequest = { renaming = false }, title = { Text("Rename") },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") }) },
+            confirmButton = { TextButton(onClick = { rename(typed) }) { Text("Rename") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } })
+    }
     if (leaving) AlertDialog(
         onDismissRequest = { leaving = false },
         title = { Text("Save $name?") },
         text = { Text(if (meta.blocking.isNotEmpty() && file != null) "It has changes that are not saved. Saving makes a copy; the original stays as it is." else "It has changes that are not saved.") },
-        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { back() } }) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { exit() } }) { Text("Save") } },
         dismissButton = {
             Row {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
-                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); back() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
+                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); exit() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
             }
         },
     )
     if (apaPage) ApaPaperDialog(remember(meta) { current().paras.any { it.text.isNotBlank() } },
-        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title ->
-        apaPage = false; applyApa(clean, title)
+        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title, abstract, head ->
+        apaPage = false; applyApa(clean, title, abstract, head)
     }
     if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
         citing = false; insertCitation(list, page)
     }
-    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }) { deleteSource(it) }
+    citeChanging?.let { (c, r) ->
+        val (tags, page) = Citations.parse(c)
+        CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citeChanging = null }, { sourceNew = true }, tags, page) { list, newPage ->
+            citeChanging = null
+            state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1) // the old citation, replaced by the new
+            insertCitation(list, newPage)
+            WriterLog.i("citation changed: $c -> ${list.map { it.tag }} p.$newPage")
+        }
+    }
+    if (crossRefOpen) current().let { doc -> CrossReferenceDialog(captions(doc).map { it to doc.paras[it].text.trim() }, { crossRefOpen = false }) { target, how -> crossRefOpen = false; insertCrossReference(target, how) } }
+    if (captionOpen) CaptionDialog({ captionOpen = false }) { label, text -> captionOpen = false; insertCaption(label, text) }
+    if (sourcesOpen) SourcesDialog(meta.sources, remember(meta) { Citations.usedTags(current()) }, { sourcesOpen = false }, { s -> if (s == null) sourceNew = true else sourceEdit = s }, { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+        { sourcesOpen = false; pasteSources() }, { askClaudeForSources() }) { deleteSource(it) }
     if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { s -> sourceNew = false; sourceEdit = null; saveSource(s) }
     dropCapPage?.let { (at, now) ->
         val first = current().paras.getOrNull(at)?.runs?.firstOrNull { it.image == null && it.text.isNotEmpty() }
@@ -3321,6 +4439,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
         addComment(author, text)
     }
+    editingComment?.let { c ->
+        NewCommentDialog(c.author, { editingComment = null }, title = "Edit comment", start = c.text, confirm = "Done") { _, text -> editingComment = null; editComment(c, text) }
+    }
     replyTo?.let { parent ->
         NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { replyTo = null }, title = "Reply to " + parent.author.ifBlank { "comment" }) { author, text ->
             replyTo = null
@@ -3351,7 +4472,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false
         // An inch square (a line: two inches across); its picture tab sizes, wraps and places it after.
-        val (w, h) = if (shape == "line") 144f to 0.75f else 72f to 72f
+        // Long ones (sideways arrows, banners, scrolls, waves) half as tall as they are wide.
+        val (w, h) = if (shape == "line") 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(shape)) 108f to 54f else 72f to 72f
         val img = DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, kind, fill, line, 1f, w, h))
         pictures[img.key] = img
         val at = placePicture(img)
@@ -3359,19 +4481,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         tab = WriterTab.Picture
     }
     /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
-    fun putTextBox(lines: List<String>, art: Int?) {
-        val (w, h) = if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
-            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f } // as big as its words
-        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF))) }
-        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art), box = box), PictureWrap.Square, kind)
-        pictures[img.key] = img
-        val at = placePicture(img)
-        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
-        tab = WriterTab.Picture
-    }
     boxing?.let { (key, words) ->
-        TextBoxDialog(words, { boxing = null }) { text, _ ->
+        TextBoxDialog(words, { boxing = null }) { text, _, _, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
@@ -3380,8 +4491,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     charting?.let { (key, start) ->
-        ChartDialog(start, key != null, { charting = null }) { ch ->
+        ChartDialog(start, key != null, { charting = null; chartUnder = null }) { ch ->
             charting = null
+            // From a table: a paragraph of its own right under it (a table is a paragraph "t<index>"), the table kept.
+            chartUnder?.let { tk ->
+                chartUnder = null
+                change {
+                    val cur = current()
+                    val at = (tk.removePrefix("t").toIntOrNull() ?: (cur.paras.size - 1)) + 1
+                    val w = minOf(396f, sheet.textWidth)
+                    val img = DocImage("c${System.nanoTime()}", null, w, w * 230f / 396f, chart = ch)
+                    pictures[img.key] = img
+                    meta = cur.copy(paras = cur.paras.take(at) + DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))) + cur.paras.drop(at))
+                    WriterLog.i("chart from table $tk: ${ch.series.size} series × ${ch.categories.size} categories, under paragraph ${at - 1}")
+                    dirty = true; reshow(); message = "Chart made from the table"
+                }
+                return@ChartDialog
+            }
             val old = key?.let { pictures[it] }
             if (old != null) {
                 // Written anew (Word's chart part, LibreOffice's object) where it was, as big, wrapped and placed as it was.
@@ -3400,11 +4526,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             tab = WriterTab.Picture
         }
     }
-    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true) { text, color -> wordArt = false; putTextBox(text.split('\n'), color) }
+    if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx, bend -> wordArt = false; putTextBox(text.split('\n'), color, fx, bend) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
     if (datePage) DateDialog({ datePage = false }) { datePage = false; typeIn(it) }
-    if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }
+    if (headerPage) HeaderFooterDialog(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd), HeaderFooter.rich(documentStyles.section), { headerPage = false }) { headerPage = false; setHeaderFooter(it) }
     if (stylesPage) StylesDialog(documentStyles, hereStyle, meta.basePt, { stylesPage = false }, { editingStyle = it }) { stylesPage = false; applyStyle(it) }
     editingStyle?.let { entry ->
         StyleDialog(entry, documentStyles.look(DocPara(emptyList(), heading = entry.heading, keep = entry.id?.let { DocKeep(style = it) })), meta.basePt,
@@ -3414,29 +4540,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }
     if (showVersions) {
-        val list = remember(reload, dirty) { file?.let { versions(context, it) }.orEmpty() }
-        val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
-        AlertDialog(
-            onDismissRequest = { showVersions = false },
-            title = { Text("Versions") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (list.isEmpty()) "Writer keeps the file as it was before each save — the last 3. None yet: this document has not been saved over here."
-                        else "The file as it was before each of Writer's saves. Restoring one keeps the document as it is now as a version too.", style = MaterialTheme.typography.bodySmall)
-                    list.forEach { v ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Before the save at " + format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())), style = MaterialTheme.typography.titleSmall)
-                                Text("${(v.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = { showVersions = false; restore(v) }, enabled = !dirty) { Text("Restore") }
-                        }
-                    }
-                    if (dirty && list.isNotEmpty()) Text("Save or undo your changes first.", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Close") } },
-        )
+        // History (the user, 2026-10-14): every version as pages to look at; one kept becomes the document, the rest go.
+        val entries = remember(reload, dirty, showVersions) {
+            (sessionVersions(context, uri ?: "new").map { it to true } + (file?.let { versions(context, it) }.orEmpty()).map { it to false })
+                .sortedByDescending { it.first.name.substringBefore('.').toLongOrNull() ?: it.first.lastModified() }
+        }
+        HistoryDialog(entries, kind, { showVersions = false }) { chosen ->
+            showVersions = false
+            restoreSession(chosen)
+            // The others, older and newer, deleted; the one kept stays as the only version.
+            entries.map { it.first }.filter { it != chosen }.forEach { it.delete() }
+            WriterLog.i("history: kept ${chosen.name}, ${entries.size - 1} others deleted")
+        }
     }
     if (details) AlertDialog(
         onDismissRequest = { details = false },
@@ -3459,6 +4574,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         },
         confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
     )
+    }
+    Dialogs()
 }
 
 /** "1 word", "1,234 words". */
@@ -3471,6 +4588,8 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
         fun of(text: String) = TextCounts(WORD.findAll(text).count(),
             text.count { !it.isWhitespace() && it !in PICTURES }, text.count { it != '\n' && it != LINE_BREAK && it !in PICTURES })
         private val PICTURES = charArrayOf(OBJECT_MARK, EDITOR_PICTURE_CHAR, PICTURE_SPOT)
+        /** The live count's words (Word's status bar): "1,234 words", or the selection's "12 of 1,234 words". */
+        fun label(all: Int, chosen: Int?) = if (chosen == null) plural(all, "word") else "%,d of %s".format(chosen, plural(all, "word"))
     }
 }
 /** A paragraph's letters as Word counts them: a table's are its cells'. */
@@ -3511,10 +4630,18 @@ private fun Modifier.pinchZoom(now: () -> Float, min: Float, max: Float, side: a
     }
 }
 
+/** WordArt's outline: black round coloured letters, grey round black ones; its glow gold, blue round gold letters. */
+private fun artOutline(color: Int) = if (color and 0xFFFFFF == 0) 0x7F7F7F else 0x000000
+private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 else 0xFFC000
+
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, done: (String, Int) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects, TextWarp?) -> Unit) {
+    var bend by remember { mutableStateOf<TextWarp?>(null) }
+    // A gallery's WordArt: "Your text here" chosen, so the first letter typed replaces it (as Word does).
+    var field by remember { mutableStateOf(TextFieldValue(initial, androidx.compose.ui.text.TextRange(if (initial == "Your text here") 0 else initial.length, initial.length))) }
+    val text = field.text
+    var outlined by remember { mutableStateOf(false) }; var shadowed by remember { mutableStateOf(false) }; var glowing by remember { mutableStateOf(false) }
     // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
     val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF70AD47, 0xFF000000).map { it.toInt() }
     var color by remember { mutableIntStateOf(colors[0]) }
@@ -3522,13 +4649,28 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(text, { text = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) else androidx.compose.material3.LocalTextStyle.current)
+            OutlinedTextField(field, { field = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    // The effects as near as the field can show them: a glow or a shadow; outlined letters hollow.
+                    shadow = if (glowing) androidx.compose.ui.graphics.Shadow(Color(0xFF000000 or artGlow(color).toLong()), androidx.compose.ui.geometry.Offset.Zero, 12f)
+                        else if (shadowed) androidx.compose.ui.graphics.Shadow(Color(0x99000000), androidx.compose.ui.geometry.Offset(3f, 3f), 3f) else null,
+                    drawStyle = if (outlined) androidx.compose.ui.graphics.drawscope.Stroke(2f) else null) else androidx.compose.material3.LocalTextStyle.current)
             if (art) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 colors.forEach { c -> Box(Modifier.size(32.dp).clip(CircleShape).background(Color(c)).border(3.dp, if (c == color) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape).clickable { color = c }) }
             }
+            // Word's text effects (Format › Text Effects): an outline, a shadow, a glow (Word files only: LibreOffice has none).
+            if (art) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Choice("Outline", outlined) { outlined = !outlined }
+                Choice("Shadow", shadowed) { shadowed = !shadowed }
+                if (glowAllowed) Choice("Glow", glowing) { glowing = !glowing }
+            }
+            // Word's Transform (LibreOffice's Fontwork): the words along a bend.
+            if (art) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Choice("Straight", bend == null) { bend = null }
+                TextWarp.entries.forEach { b -> Choice(b.label, bend == b) { bend = b } }
+            }
         } },
-        confirmButton = { TextButton(onClick = { done(text, color) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
@@ -3614,8 +4756,114 @@ private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("
 private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
 
 /** A named tool of the ribbon (Save, Heading 1…). */
-@Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, click: () -> Unit) = Row(
+/** A sideways-scrolling row with more beyond an edge: that edge shaded, so it shows there is more (the user, 2026-10-14). */
+/**
+ * The zoomed page scrolls to [cursor] (the styled layout's) whenever the editor asks to be brought into view — not to
+ * the rectangle the editor gives, which a one-frame unstyled layout puts elsewhere.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.followCursor(cursor: () -> androidx.compose.ui.geometry.Rect?) = this.bringIntoViewResponder(object : androidx.compose.foundation.relocation.BringIntoViewResponder {
+    override fun calculateRectForParent(localRect: androidx.compose.ui.geometry.Rect) = (cursor() ?: localRect).also { r ->
+        if (kotlin.math.abs(r.top - localRect.top) > 200f) WriterLog.i("editor asked to show (${localRect.left.roundToInt()}, ${localRect.top.roundToInt()}), the cursor is at (${r.left.roundToInt()}, ${r.top.roundToInt()}): the cursor's kept")
+    }
+    override suspend fun bringChildIntoView(localRect: () -> androidx.compose.ui.geometry.Rect?) {}
+})
+
+/**
+ * Selection handles drawn on the page itself (so they scale and scroll with it): a drop with a sharp nose at each end of the
+ * chosen letters, one under the cursor; dragged, they move that end (asked 14 Oct: Compose's sat far off on the phone's
+ * scaled page, and the user wanted a pointier nose). [at]: where the text starts in this box; [scale]: the page's.
+ */
+@Composable
+private fun PageHandles(state: RichTextState, layout: TextLayoutResult, at: Offset, scale: Float, dragging: (Offset?) -> Unit) {
+    val sel = state.selection
+    val len = layout.layoutInput.text.length
+    if (len == 0 || sel.max > len) return
+    val size = with(LocalDensity.current) { 22.dp.toPx() } / scale.coerceAtLeast(0.05f)
+    val ends = if (sel.collapsed) listOf(0 to sel.min) else listOf(-1 to sel.min, 1 to sel.max)
+    ends.forEach { (side, index) ->
+        val c = layout.getCursorRect(index)
+        val nose = Offset(at.x + c.left, at.y + c.bottom)
+        // The drop hangs from its nose: to the left of the start, to the right of the end, centred under a cursor.
+        val left = when (side) { -1 -> nose.x - size; 1 -> nose.x; else -> nose.x - size / 2 }
+        val sideNow by rememberUpdatedState(side); val selNow by rememberUpdatedState(sel)
+        val layoutNow by rememberUpdatedState(layout); val startNow by rememberUpdatedState(nose - at - Offset(0f, c.height / 2))
+        var drag by remember { mutableStateOf(Offset.Zero) }
+        Box(Modifier.offset { IntOffset(left.roundToInt(), nose.y.roundToInt()) }.size(with(LocalDensity.current) { size.toDp() })
+            // Keyed on the side alone: keyed on the place too, the drag ended at the first letter it moved.
+            .pointerInput(side) {
+                detectDragGestures(onDragStart = { drag = startNow; dragging(at + drag) }, onDragEnd = { dragging(null) }, onDragCancel = { dragging(null) }) { change, by ->
+                    change.consume(); drag += by; dragging(at + drag)
+                    val to = layoutNow.getOffsetForPosition(drag)
+                    val s = selNow
+                    state.selection = when (sideNow) {
+                        -1 -> TextRange(minOf(to, s.max - 1).coerceAtLeast(0), s.max)
+                        1 -> TextRange(s.min, maxOf(to, s.min + 1))
+                        else -> TextRange(to)
+                    }
+                }
+            }
+            .drawBehind {
+                val r = size * 0.42f
+                val centre = when (side) { -1 -> Offset(size - r * 1.25f, r * 1.25f + r * 0.2f); 1 -> Offset(r * 1.25f, r * 1.25f + r * 0.2f); else -> Offset(size / 2, size - r) }
+                val tip = when (side) { -1 -> Offset(size, 0f); 1 -> Offset(0f, 0f); else -> Offset(size / 2, 0f) }
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    // The nose: from the tip to the two points where its lines touch the round part.
+                    val v = centre - tip; val dist = v.getDistance(); val a = kotlin.math.atan2(v.y, v.x); val spread = kotlin.math.asin((r / dist).coerceAtMost(1f))
+                    val t1 = tip + Offset(kotlin.math.cos(a - spread), kotlin.math.sin(a - spread)) * (dist * kotlin.math.cos(spread))
+                    val t2 = tip + Offset(kotlin.math.cos(a + spread), kotlin.math.sin(a + spread)) * (dist * kotlin.math.cos(spread))
+                    moveTo(tip.x, tip.y); lineTo(t1.x, t1.y); lineTo(centre.x, centre.y); lineTo(t2.x, t2.y); close()
+                }
+                drawPath(path, SELECTION_BLUE); drawCircle(SELECTION_BLUE, r, centre)
+            })
+    }
+}
+
+/**
+ * Android's floating menu over chosen words, taken over (asked 14 Oct): Writer's Selection tab shows instead, with
+ * the editor's own Cut/Copy/Paste kept here for its buttons.
+ */
+private class WriterTextToolbar : androidx.compose.ui.platform.TextToolbar {
+    var copy: (() -> Unit)? = null; var cut: (() -> Unit)? = null; var paste: (() -> Unit)? = null; var selectAll: (() -> Unit)? = null
+    var shown by mutableStateOf(false); private set
+    override val status get() = if (shown) androidx.compose.ui.platform.TextToolbarStatus.Shown else androidx.compose.ui.platform.TextToolbarStatus.Hidden
+    override fun showMenu(rect: androidx.compose.ui.geometry.Rect, onCopyRequested: (() -> Unit)?, onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?, onSelectAllRequested: (() -> Unit)?) {
+        onCopyRequested?.let { copy = it }; onCutRequested?.let { cut = it }; onPasteRequested?.let { paste = it }; onSelectAllRequested?.let { selectAll = it }
+        if (!shown) WriterLog.i("text menu asked: " + listOfNotNull("copy".takeIf { onCopyRequested != null }, "cut".takeIf { onCutRequested != null }, "paste".takeIf { onPasteRequested != null }, "select all".takeIf { onSelectAllRequested != null }).joinToString())
+        shown = true
+    }
+    override fun hide() { shown = false }
+}
+
+private val SELECTION_BLUE = Color(0xFF0B3D91)
+
+internal fun Modifier.scrollShade(state: androidx.compose.foundation.ScrollState): Modifier = drawWithContent {
+    drawContent()
+    val w = 36.dp.toPx()
+    val shade = Color.Black.copy(alpha = 0.85f)
+    if (state.value > 0) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(shade, Color.Transparent), 0f, w), size = androidx.compose.ui.geometry.Size(w, size.height))
+    if (state.value < state.maxValue) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, shade), size.width - w, size.width),
+        topLeft = androidx.compose.ui.geometry.Offset(size.width - w, 0f), size = androidx.compose.ui.geometry.Size(w, size.height))
+}
+
+/** A dialog's scrolling column: a shade at the top or bottom edge while there is more that way (asked 14 Oct). */
+internal fun Modifier.shadedScroll(): Modifier = composed {
+    val sc = rememberScrollState()
+    val bg = MaterialTheme.colorScheme.surfaceContainerHigh // AlertDialog's own colour
+    drawWithContent {
+        drawContent()
+        val h = 28.dp.toPx()
+        if (sc.value > 0) drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(bg, Color.Transparent), 0f, h), size = androidx.compose.ui.geometry.Size(size.width, h))
+        if (sc.value < sc.maxValue) drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, bg), size.height - h, size.height),
+            topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width, h))
+    }.verticalScroll(sc)
+}
+
+/** [outlined]: a thin border, for a button that is a word (Font's name) and would otherwise read as a label. */
+@Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, outlined: Boolean = false, click: () -> Unit) = Row(
     Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+        .then(if (outlined) Modifier.border(1.dp, tint.copy(alpha = 0.5f), CircleShape) else Modifier)
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
         .focusProperties { canFocus = false }
@@ -3680,10 +4928,17 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
  * page in view, down each page's side. A phone fits the page to its width, no rulers.
  */
 @Composable
-private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null) {
+private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null, covered: Dp = 0.dp) {
     var zoom by remember { mutableFloatStateOf(1f) }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
-    LaunchedEffect(goTo) { goTo?.let { (page, _) -> list.animateScrollToItem(page.coerceIn(0, pages.lastIndex)) } } // Navigation: a heading's page
+    val coveredPx = with(LocalDensity.current) { covered.toPx() }
+    // Navigation: a heading's page. A page as -(n + 1): its foot, clear of a strip [covered] at the bottom (a footer's gallery).
+    LaunchedEffect(goTo) { goTo?.let { (page, _) ->
+        val p = (if (page < 0) -page - 1 else page).coerceIn(0, pages.lastIndex)
+        list.animateScrollToItem(p)
+        if (page < 0) list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == p }?.let { item ->
+            list.animateScrollBy(item.offset + item.size - (list.layoutInfo.viewportEndOffset - coveredPx)) }
+    } }
     BoxWithConstraints(modifier) {
         val rulers = maxWidth >= 700.dp
         val ruler = if (rulers) 18.dp else 0.dp
@@ -3706,7 +4961,7 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
                     .transformable(androidx.compose.foundation.gestures.rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(0.5f, 4f) }, canPan = { false }),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 72.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = maxOf(72.dp, covered + 16.dp)),
             ) {
                 items(pages.size) { i ->
                     val laid = pages[i]
@@ -3735,11 +4990,13 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
 internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
     override fun getSpanStyle(richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig) =
         // ALL CAPS: every letter a small capital, drawn about as tall as a capital (the font's small capitals are ~0.77 of it).
-        if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
-        else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null)
+        (if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
+        else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null))
+            // Hidden text is still edited here: grey, with Word's dotted line under it (the pages leave it out).
+            .let { if (looks.hidden) it.copy(color = Color(0xFF8A8A8A)) else it }
     override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCustomStyle(layoutResult: TextLayoutResult, textRange: androidx.compose.ui.text.TextRange,
         richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig, topPadding: Float, startPadding: Float) {
-        if (!looks.doubleStrike && !looks.doubleUnder) return
+        if (!looks.doubleStrike && !looks.doubleUnder && !looks.hidden) return
         val l = layoutResult
         if (textRange.min >= l.layoutInput.text.length) return
         for (line in l.getLineForOffset(textRange.min)..l.getLineForOffset((textRange.max - 1).coerceAtLeast(textRange.min))) {
@@ -3748,7 +5005,142 @@ internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.ric
             val x1 = l.getHorizontalPosition(a, true) + startPadding; val x2 = l.getHorizontalPosition(z, true) + startPadding
             val base = l.getLineBaseline(line) + topPadding; val h = l.getLineBottom(line) - l.getLineTop(line)
             val ys = if (looks.doubleStrike) listOf(base - h * 0.30f, base - h * 0.19f) else listOf(base + h * 0.15f) // the editor's own underline is the first
-            ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
+            if (looks.hidden) { var x = x1; val y = base + h * 0.12f; while (x < x2) { drawCircle(Color(0xFF8A8A8A), h * 0.025f, Offset(x, y)); x += h * 0.12f } }
+            if (looks.doubleStrike || looks.doubleUnder) ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
         }
     }
+}
+
+/** References › Caption: which label ("Figure", "Table" — Word's, and the Greek ones) and the words after its number. */
+@Composable
+private fun CaptionDialog(dismiss: () -> Unit, insert: (String, String) -> Unit) {
+    val labels = listOf("Figure", "Table", "Equation", "Εικόνα", "Πίνακας")
+    var label by remember { mutableStateOf(labels[0]) }
+    var text by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Caption") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                labels.forEach { l -> androidx.compose.material3.FilterChip(selected = l == label, onClick = { label = l }, label = { Text(l) }) }
+            }
+            OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("$label 1: …") }, modifier = Modifier.fillMaxWidth())
+            Text("Goes under the paragraph at the cursor; its number counts itself (Update fields after moving things).", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton(onClick = { insert(label, text) }) { Text("Insert") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** References › Cross-reference: one of the document's captions, shown as its words or as its page. */
+@Composable
+private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () -> Unit, insert: (Int, String) -> Unit) {
+    var how by remember { mutableStateOf("caption") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Cross-reference") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Word's "Insert reference to".
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("caption" to "Entire caption", "label" to "Only label and number", "page" to "Page number").forEach { (k, label) ->
+                    androidx.compose.material3.FilterChip(selected = how == k, onClick = { how = k }, label = { Text(label) }) }
+            }
+            if (captions.isEmpty()) Text("No captions yet: References › Caption puts one under a picture or table.", style = MaterialTheme.typography.bodyMedium)
+            Column(Modifier.heightIn(max = 320.dp).shadedScroll()) {
+                captions.forEach { (i, text) -> Text(text.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
+                    modifier = Modifier.fillMaxWidth().clickable { insert(i, how) }.padding(vertical = 10.dp)) }
+            }
+        } },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** File › Print: a PDF already made, handed to Android's printing as it is. */
+private class PdfPrintAdapter(val pdf: File, val title: String) : android.print.PrintDocumentAdapter() {
+    override fun onLayout(old: android.print.PrintAttributes?, new: android.print.PrintAttributes, cancel: android.os.CancellationSignal?, callback: LayoutResultCallback, extras: android.os.Bundle?) {
+        if (cancel?.isCanceled == true) { callback.onLayoutCancelled(); return }
+        callback.onLayoutFinished(android.print.PrintDocumentInfo.Builder("$title.pdf").setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), old != new)
+    }
+    override fun onWrite(pages: Array<out android.print.PageRange>, out: android.os.ParcelFileDescriptor, cancel: android.os.CancellationSignal?, callback: WriteResultCallback) {
+        runCatching { pdf.inputStream().use { input -> java.io.FileOutputStream(out.fileDescriptor).use { input.copyTo(it) } } }
+            .onSuccess { callback.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES)) }
+            .onFailure { callback.onWriteFailed(it.message) }
+    }
+}
+
+/**
+ * File › Versions: this session's copies (every few minutes) and the file as it was before saves, newest first. One
+ * opened shows its pages; "Keep this one" makes it the document and deletes every other version.
+ */
+@Composable
+private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, dismiss: () -> Unit, keep: (File) -> Unit) {
+    var open by remember { mutableStateOf<File?>(null) }
+    val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    fun timeOf(f: File) = format.format(java.util.Date(f.name.substringBefore('.').toLongOrNull() ?: f.lastModified()))
+    androidx.compose.ui.window.Dialog(onDismissRequest = { if (open != null) open = null else dismiss() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.systemBarsPadding().padding(16.dp)) {
+                val shown = open
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (shown != null) TextButton(onClick = { open = null }) { Text("‹ All versions") }
+                    Text(if (shown == null) "Versions" else timeOf(shown), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    if (shown != null) Button(onClick = { keep(shown) }) { Text("Keep this one") }
+                    TextButton(onClick = dismiss) { Text("Close") }
+                }
+                if (shown == null) {
+                    Text(if (entries.isEmpty()) "None yet. Writer keeps a copy every few minutes while you work, and the file as it was before it saves over it."
+                        else "Open one to see its pages. Keeping one makes it the document and deletes the others.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    Column(Modifier.shadedScroll()) {
+                        entries.forEach { (f, session) ->
+                            Row(Modifier.fillMaxWidth().clickable { open = f }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(timeOf(f), style = MaterialTheme.typography.titleSmall)
+                                    Text((if (session) "While you worked — goes when the document closes" else "The file before a save") + " · ${(f.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Open", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                } else {
+                    // Its pages, as View shows a document.
+                    val pages by produceState<List<LaidPage>?>(null, shown) {
+                        value = withContext(Dispatchers.Default) { runCatching {
+                            val bytes = shown.readBytes()
+                            val parts = OfficeFormats.unzip(bytes)
+                            OfficePages.layout(OfficeFormats.read(bytes, kind), DocStyles.of(kind, bytes)) { img -> img.bytes ?: img.part?.let { parts[it] } }
+                        }.onFailure { WriterLog.e("history pages", it) }.getOrNull() }
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF3A3A3A))) {
+                        pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / 11f).sp.toDp() }, Modifier.fillMaxSize()) }
+                            ?: Text("Laying out the pages…", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Home › Font: the document's fonts, then Word's everyday ones, each name and a sample written in its own face. */
+@Composable
+private fun FontDialog(own: List<String>, others: List<String>, now: String?, dismiss: () -> Unit, choose: (String) -> Unit) {
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Font") },
+        text = {
+            Column(Modifier.shadedScroll()) {
+                @Composable fun section(title: String, names: List<String>) {
+                    if (names.isEmpty()) return
+                    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                    names.forEach { name ->
+                        val face = remember(name) { OfficeFonts.typeface(name)?.let { androidx.compose.ui.text.font.FontFamily(it) } }
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .then(if (name == now) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier)
+                            .clickable { choose(name) }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(name, fontFamily = face, style = MaterialTheme.typography.titleMedium)
+                                Text("Aa Αα 123 — Η γρήγορη αλεπού", fontFamily = face, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (name == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+                section("In this document", own)
+                section("Word's fonts", others)
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

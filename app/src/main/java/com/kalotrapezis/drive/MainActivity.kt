@@ -69,6 +69,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -213,6 +214,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
+        // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
         val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
         setContent { LocalDriveApp(external) }
     }
@@ -296,6 +299,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
+    var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -489,6 +493,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             )
             context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
         }
+        // A Word or LibreOffice document opens in Writer (Settings › Office); Open with… still offers other apps.
+        if (!forceChooser && file.extension.lowercase(Locale.ROOT) in setOf("docx", "odt", "doc", "rtf") && TextEditorStore(context).opensOffice) {
+            WriterLog.i("open from Files: ${file.name}")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            writerOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Writer
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -656,9 +667,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Office -> androidx.compose.runtime.key(officeVersion) {
                     OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    }, open = { writerOpen = it; screen = Screen.Writer })
+                    }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer })
                 }
-                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = Screen.Office }, open = writerOpen)
+                Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -1491,6 +1502,32 @@ private fun SettingsTab(
             }
         }
         item {
+            val officeContext = LocalContext.current
+            val office = remember { TextEditorStore(officeContext) }
+            var opens by remember { mutableStateOf(office.opensOffice) }
+            SettingsCard("Office", Category.Office) {
+                Row(Modifier.fillMaxWidth().clickable { opens = !opens; office.opensOffice = opens }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open Word documents here", style = MaterialTheme.typography.titleSmall)
+                        Text(if (opens) "Files opens a .docx or .odt in Writer. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
+                }
+                var auto by remember { mutableStateOf(office.autoSave) }
+                Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AutoSave", style = MaterialTheme.typography.titleSmall)
+                        Text(if (auto) "Writer saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Writer saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = auto, onCheckedChange = { auto = it; office.autoSave = it })
+                }
+                var speed by remember { mutableStateOf(office.readAloudSpeed) }
+                Text("Read aloud speed", style = MaterialTheme.typography.titleSmall)
+                Text("How fast Review › Read aloud speaks (1× is normal).", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
+            }
+        }
+        item {
             val editorContext = LocalContext.current
             val editor = remember { TextEditorStore(editorContext) }
             var wrap by remember { mutableStateOf(editor.wordWrap) }
@@ -1642,6 +1679,7 @@ private fun DriveTab(
     var toolsOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
+    var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
     var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf<String?>(null) }
@@ -1745,6 +1783,7 @@ private fun DriveTab(
                 home = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Home) },
                 favorites = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Favorites) },
                 files = { searchQuery = ""; selectedTag = null; setPane(DrivePane.Files); refresh() },
+                new = { newOpen = true },
                 expand = { toolsOpen = true },
                 visible = !toolsOpen && selection.isEmpty(),
             )
@@ -1796,6 +1835,17 @@ private fun DriveTab(
     )
     bulkPanel?.let { panel ->
         DriveBulkSheet(panel, chosen, metadata, { items, action -> performAll(items, action); selection = emptySet() }) { bulkPanel = null }
+    }
+    // New (asked 14 Oct): made in the folder open in Files (Drive's top elsewhere, never in Trash), then opened.
+    if (newOpen) {
+        val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
+        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root) }, { newOpen = false }) { kind, name ->
+            val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
+            newOpen = false
+            refresh()
+            if (kind.extension == null) openFolder(made) else error = openFile(made, false)
+            null
+        }
     }
     if (emptyTrashConfirm) EmptyTrashSheet(
         dismiss = { emptyTrashConfirm = false },
@@ -1917,6 +1967,7 @@ private fun DriveFiles(
                 back = goParent,
                 emptyTrash = emptyTrash,
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp),
+                island = true,
                 trailing = {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                         IconButton(onClick = toggleGrid) {
@@ -1940,6 +1991,7 @@ internal fun FilesPageHeader(
     back: () -> Unit,
     emptyTrash: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    island: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -1950,8 +2002,18 @@ internal fun FilesPageHeader(
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
         }
-        Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
-        Text(title, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // A header floating over a scrolling list sits in the same island as Gallery's date, so it stays legible.
+        if (island) Box(Modifier.weight(1f)) {
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp))
+                    Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        } else {
+            Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
+            Text(title, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         // The one destructive action on the page sits where the page's actions are, and is the only red thing.
         if (emptyTrash != null) Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = CircleShape) {
             IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Empty Trash") }
@@ -2237,17 +2299,52 @@ private fun driveItemIcon(item: DriveItem): Int = when {
     else -> R.drawable.ic_file
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+/** New: what to make ([kinds]) and its name; [create] gives back a problem to show, or null when done. */
+@Composable private fun NewItemDialog(where: String, kinds: List<DriveNew>, dismiss: () -> Unit, create: (DriveNew, String) -> String?) {
+    var kind by remember { mutableStateOf(kinds.first()) }
+    var name by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("New") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("In $where", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                kinds.forEach { k ->
+                    // Each kind in its own colour and picture, as Files shows it: Word blue, text purple (asked 14 Oct).
+                    val ext = k.extension?.lowercase(Locale.ROOT)
+                    val tint = when (ext) { null -> Color(0xFFE0A030); "txt", "md" -> Category.Text.color; else -> driveExtensionColor(ext).takeIf { it != MaterialTheme.colorScheme.onSurfaceVariant } ?: Category.Text.color }
+                    val icon = when (ext) { null -> R.drawable.ic_folder; "docx", "doc", "odt", "rtf" -> R.drawable.ic_file_word; "txt", "md" -> R.drawable.ic_file_text; else -> R.drawable.ic_file }
+                    androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
+                        label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
+                        leadingIcon = { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = if (kind == k) Color.White else tint) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = tint, selectedLabelColor = Color.White,
+                            containerColor = tint.copy(alpha = 0.12f), labelColor = MaterialTheme.colorScheme.onSurface),
+                        border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(enabled = true, selected = kind == k, borderColor = tint.copy(alpha = 0.5f), selectedBorderColor = tint))
+                }
+            }
+            OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") },
+                suffix = { kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { Text(".$it") } },
+                isError = problem != null, supportingText = problem?.let { { Text(it) } },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus))
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { problem = create(kind, name.trim()) }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
 private fun driveItemIconDescription(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else "File"
 
 private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
 @Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
 
-@Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
+@Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, new: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
     IslandBottomBar(expand, visible, modifier) {
         IslandNavigationItem("Home", pane == DrivePane.Home, R.drawable.ic_home, home)
         IslandNavigationItem("Favorites", pane == DrivePane.Favorites, if (pane == DrivePane.Favorites) R.drawable.ic_favorite else R.drawable.ic_favorite_border, favorites)
         IslandNavigationItem("Files", pane == DrivePane.Files, R.drawable.ic_folder, files)
+        IslandNavigationItem("New", false, R.drawable.ic_add, new)
     }
 }
 
@@ -2419,8 +2516,13 @@ private fun driveSpaceColor(type: String): Color = when (type) {
 private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
     if (item.isDirectory) return folderColor?.let(::driveFolderAccent) ?: MaterialTheme.colorScheme.onSurfaceVariant
-    return when (item.file.extension.lowercase(Locale.ROOT)) {
-        "doc", "docx", "odt" -> Color(0xFF4F86E8)
+    return driveExtensionColor(item.file.extension)
+}
+
+/** A kind of file's colour, the same in the list and wherever its kind is named (New's choices). */
+@Composable internal fun driveExtensionColor(extension: String): Color {
+    return when (extension.lowercase(Locale.ROOT)) {
+        "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
         "xls", "xlsx", "csv" -> Color(0xFF55A96B)
         "pdf" -> Color(0xFFE3685F)
         "txt", "md" -> Color(0xFF9AA3A4)

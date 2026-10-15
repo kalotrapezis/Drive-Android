@@ -21,7 +21,7 @@ internal data class DocSource(
     val wordType: String? = null, // Word's own source type when it is one Writer shows as another (Report as a book)
     val extra: String = "", // what Word's source has that Writer does not edit (its Guid, city, …), as the file had it
 ) {
-    enum class Type(val label: String) { Book("Book"), Article("Journal article"), Web("Web page"), Chapter("Book chapter") }
+    enum class Type(val label: String) { Book("Book"), Article("Journal article"), Web("Web page"), Chapter("Book chapter"), Report("Report"), Thesis("Thesis"), Video("Video") }
     data class Person(val last: String, val first: String = "") {
         /** "Κ. Μ." / "J. R." from the given names, as APA writes them. */
         val initials get() = first.split(' ', '-').filter { it.isNotBlank() }.joinToString(" ") { it.take(1).uppercase() + "." }
@@ -94,6 +94,18 @@ internal object Apa {
                 plain(". ")
                 if (s.publisher.isNotBlank()) plain(end(s.publisher) + (if (link.isNotEmpty()) " " else ""))
             }
+            // Report: *Title* (Report No. 12). Publisher. — Thesis: *Title* [Master's thesis, University]. — Video: *Title* [Video]. YouTube.
+            DocSource.Type.Report, DocSource.Type.Thesis, DocSource.Type.Video -> {
+                italic(s.title)
+                when (s.type) {
+                    DocSource.Type.Report -> if (s.container.isNotBlank()) plain(" (${s.container})")
+                    DocSource.Type.Thesis -> plain(" [" + listOf(s.container.ifBlank { "Thesis" }, s.publisher).filter { it.isNotBlank() }.joinToString(", ") + "]")
+                    else -> plain(" [Video]")
+                }
+                plain(if (who.isNotEmpty()) ". " else ". $date ")
+                val by = if (s.type == DocSource.Type.Video) s.container else if (s.type == DocSource.Type.Report) s.publisher else ""
+                if (by.isNotBlank() && by != s.authors.firstOrNull()?.last) plain(end(by) + " ")
+            }
             DocSource.Type.Web -> {
                 if (who.isNotEmpty()) { italic(s.title); plain(". ") } else { italic(s.title); plain(". $date ") }
                 if (s.container.isNotBlank() && s.container != s.authors.firstOrNull()?.last) plain(end(s.container) + " ")
@@ -129,13 +141,18 @@ internal object WordSources {
         "JournalArticle", "ArticleInAPeriodical" -> DocSource.Type.Article
         "InternetSite", "DocumentFromInternetSite" -> DocSource.Type.Web
         "BookSection" -> DocSource.Type.Chapter
+        "Report" -> DocSource.Type.Report
+        "Film" -> DocSource.Type.Video
         else -> DocSource.Type.Book
     }
     private fun wordOf(t: DocSource.Type) = when (t) {
         DocSource.Type.Book -> "Book"; DocSource.Type.Article -> "JournalArticle"; DocSource.Type.Web -> "InternetSite"; DocSource.Type.Chapter -> "BookSection"
+        DocSource.Type.Report, DocSource.Type.Thesis -> "Report"; DocSource.Type.Video -> "Film"
     }
     /** Where each kind keeps what it is in: a journal's name, a web site's, a chapter's book's title. */
-    private fun containerTag(t: DocSource.Type) = when (t) { DocSource.Type.Article -> "JournalName"; DocSource.Type.Web -> "InternetSiteTitle"; DocSource.Type.Chapter -> "BookTitle"; else -> null }
+    private fun containerTag(t: DocSource.Type) = when (t) { DocSource.Type.Article -> "JournalName"; DocSource.Type.Web -> "InternetSiteTitle"; DocSource.Type.Chapter -> "BookTitle"
+        // A report's number and a thesis's kind are Word's report type; a video's platform its distributor.
+        DocSource.Type.Report, DocSource.Type.Thesis -> "ThesisType"; DocSource.Type.Video -> "Distributor"; else -> null }
 
     fun read(parts: Map<String, ByteArray>): List<DocSource> {
         val xml = path(parts)?.let { parts[it] } ?: return emptyList()
@@ -153,8 +170,9 @@ internal object WordSources {
             fun v(name: String) = kid(src, name)?.textContent?.trim().orEmpty()
             val tag = v("Tag").ifBlank { return@mapNotNull null }
             val word = v("SourceType")
-            val type = typeOf(word)
-            val known = setOf("Tag", "SourceType", "Author", "Title", "Year", "Publisher", "JournalName", "InternetSiteTitle", "BookTitle", "Volume", "Issue", "Pages", "DOI", "URL", "Edition")
+            // Word keeps a thesis as a report whose type says so.
+            val type = typeOf(word).let { if (it == DocSource.Type.Report && THESIS.containsMatchIn(v("ThesisType"))) DocSource.Type.Thesis else it }
+            val known = setOf("Tag", "SourceType", "Author", "Title", "Year", "Publisher", "JournalName", "InternetSiteTitle", "BookTitle", "ThesisType", "Distributor", "Volume", "Issue", "Pages", "DOI", "URL", "Edition")
             val author = kid(src, "Author")
             DocSource(tag, type, people(kid(author, "Author")), v("Year"), v("Title"), containerTag(type)?.let { v(it) }.orEmpty(), v("Publisher"), v("Volume"), v("Issue"),
                 v("Pages"), v("DOI").ifBlank { v("URL") }, v("Edition"), people(kid(author, "Editor")),
@@ -164,6 +182,7 @@ internal object WordSources {
         }
     }
 
+    private val THESIS = Regex("thesis|dissertation|διατριβή|διπλωματική|εργασία", RegexOption.IGNORE_CASE)
     private fun esc(s: String) = OfficeFormats.esc(s)
     private fun names(tag: String, people: List<DocSource.Person>) = if (people.isEmpty()) "" else if (people.size == 1 && people[0].first.isBlank())
         "<b:$tag><b:Corporate>${esc(people[0].last)}</b:Corporate></b:$tag>"
@@ -182,13 +201,20 @@ internal object WordSources {
             el("Volume", s.volume) + el("Issue", s.issue) + el("Pages", s.pages) + el("Edition", s.edition) + link + rest + "</b:Source>"
     }
 
-    /** [sources] into the package: the part rewritten (its style settings kept), or made with its properties and links. */
-    fun write(parts: MutableMap<String, ByteArray>, sources: List<DocSource>) {
+    /** The style Word's citations are in (the part's StyleName: "APA", "MLA", "Chicago"…). */
+    fun styleName(parts: Map<String, ByteArray>): String? = path(parts)?.let { String(parts.getValue(it), Charsets.UTF_8) }
+        ?.let { Regex("""<b:Sources\b[^>]*\bStyleName="([^"]*)"""").find(it)?.groupValues?.get(1) }
+
+    /** [sources] into the package: the part rewritten (its other settings kept, its style [style]), or made with its properties and links. */
+    fun write(parts: MutableMap<String, ByteArray>, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA) {
         val at = path(parts)
         if (at == null && sources.isEmpty()) return
         val old = at?.let { String(parts.getValue(it), Charsets.UTF_8) }
-        val head = old?.let { Regex("""<b:Sources\b[^>]*>""").find(it)?.value }
-            ?: """<b:Sources xmlns:b="$B" xmlns="$B" SelectedStyle="\APASixthEditionOfficeOnline.xsl" StyleName="APA" Version="6">"""
+        // Word's own name for the style it is in, unless the file already says one Writer reads as the same.
+        val head = (old?.let { Regex("""<b:Sources\b[^>]*>""").find(it)?.value }
+            ?: """<b:Sources xmlns:b="$B" xmlns="$B" SelectedStyle="${style.wordXsl}" StyleName="${style.wordName}" Version="6">""")
+            .let { h -> if (CiteStyle.ofWord(Regex("""\bStyleName="([^"]*)"""").find(h)?.groupValues?.get(1)) == style) h
+                else h.replace(Regex("""\s(StyleName|SelectedStyle|Version)="[^"]*""""), "").removeSuffix(">") + """ SelectedStyle="${style.wordXsl}" StyleName="${style.wordName}">""" }
         val xml = """<?xml version="1.0" standalone="no"?>""" + head + sources.joinToString("") { source(it) } + "</b:Sources>"
         if (at != null) { parts[at] = xml.toByteArray(); return }
         val n = generateSequence(1) { it + 1 }.first { "customXml/item$it.xml" !in parts }
@@ -236,11 +262,11 @@ internal object Citations {
     fun cite(kind: OfficeKind, tags: List<String>, page: String): String = if (kind == OfficeKind.Odt) tags.first()
         else "CITATION ${tags.first()} \\l 1033" + tags.drop(1).joinToString("") { " \\m $it" } + (if (page.isNotBlank()) " \\p $page" else "")
 
-    /** What a citation shows: APA's parenthetical, from its sources (a missing one by its tag). */
-    fun text(cite: String, sources: List<DocSource>): String {
+    /** What a citation shows: its [style]'s parenthetical, from its sources (a missing one by its tag). */
+    fun text(cite: String, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA): String {
         val (tags, page) = parse(cite)
         val found = tags.mapNotNull { t -> sources.firstOrNull { it.tag == t } }
-        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else Apa.parenthetical(found, page)
+        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else style.parenthetical(found, page)
     }
 
     /** Where the reference list is (its heading, if it has one, and its entries), or null. */
@@ -248,7 +274,7 @@ internal object Citations {
         val first = doc.paras.indexOfFirst { it.keep?.style == entryStyle(kind) }.takeIf { it >= 0 } ?: return null
         var last = first
         while (last + 1 < doc.paras.size && doc.paras[last + 1].keep?.style == entryStyle(kind)) last++
-        val start = if (first > 0 && doc.paras[first - 1].text.trim() == HEADING) first - 1 else first
+        val start = if (first > 0 && doc.paras[first - 1].text.trim() in CiteStyle.HEADINGS) first - 1 else first
         return start..last
     }
 
@@ -257,20 +283,25 @@ internal object Citations {
         val used = usedTags(doc)
         // The sources cited, in APA's order; with none cited yet, every source (a list made first, cited after).
         val list = doc.sources.filter { it.tag in used }.ifEmpty { doc.sources }
-        val heading = DocPara(listOf(DocRun(HEADING, bold = true)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true)) // APA: on a new page
-        val entries = Apa.sorted(list).map { DocPara(Apa.entry(it), keep = DocKeep(style = entryStyle(kind))) }
+        // APA, MLA and Chicago alike: on a new page, its heading centred (APA's bold; MLA's and Chicago's plain).
+        val heading = DocPara(listOf(DocRun(doc.citeStyle.heading, bold = doc.citeStyle == CiteStyle.APA)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true))
+        val entries = doc.citeStyle.sorted(list).map { DocPara(doc.citeStyle.entry(it), keep = DocKeep(style = entryStyle(kind))) }
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }
 
-    fun usedTags(doc: OfficeDoc): Set<String> = doc.paras.flatMap { p -> p.runs.mapNotNull { it.cite } }.flatMap { parse(it).first }.toSet()
+    fun usedTags(doc: OfficeDoc): Set<String> = doc.paras.flatMap { p -> p.runs.mapNotNull { it.cite?.takeIf { c -> !isField(c) } } }.flatMap { parse(it).first }.toSet()
 
     /**
      * A new source's tag: Word's (Smi20); in an OpenDocument the citation itself ("Smith & Jones, 2019"; 2019a, 2019b
      * when two are alike), which is what LibreOffice shows for a mark.
      */
-    fun tagFor(kind: OfficeKind, s: DocSource, taken: Collection<String>): String {
+    fun tagFor(kind: OfficeKind, s: DocSource, taken: Collection<String>, style: CiteStyle = CiteStyle.APA): String {
         if (kind == OfficeKind.Docx) return Apa.newTag(s, taken)
-        val base = "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
+        val base = when (style) {
+            CiteStyle.APA -> "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
+            CiteStyle.MLA -> Mla.citeNames(s)
+            CiteStyle.Chicago -> "${ChicagoAD.citeNames(s)} ${s.year.ifBlank { "n.d." }}"
+        }
         return (sequenceOf(base) + ('a'..'z').asSequence().map { "$base$it" }).first { it !in taken }
     }
 
@@ -279,7 +310,7 @@ internal object Citations {
         // An OpenDocument's tags are the citations themselves: made again from the sources, the marks renamed with them.
         val doc = if (kind == OfficeKind.Docx) doc0 else {
             val taken = HashSet<String>()
-            val renamed = doc0.sources.associate { s -> s.tag to tagFor(kind, s, taken).also { taken += it } }
+            val renamed = doc0.sources.associate { s -> s.tag to tagFor(kind, s, taken, doc0.citeStyle).also { taken += it } }
             doc0.copy(sources = doc0.sources.map { it.copy(tag = renamed.getValue(it.tag)) },
                 paras = doc0.paras.map { p -> if (p.runs.none { it.cite in renamed }) p else p.copy(runs = p.runs.map { r -> r.cite?.let { c -> renamed[c]?.let { r.copy(cite = it) } } ?: r }) })
         }
@@ -290,10 +321,10 @@ internal object Citations {
                 val runs = p.runs
                 while (k < runs.size) {
                     val c = runs[k].cite
-                    if (c == null) { out += runs[k]; k++; continue }
+                    if (c == null || isField(c)) { out += runs[k]; k++; continue }
                     var e = k
                     while (e < runs.size && runs[e].cite == c) e++
-                    out += runs[k].copy(text = text(c, doc.sources))
+                    out += runs[k].copy(text = text(c, doc.sources, doc.citeStyle))
                     k = e
                 }
                 p.copy(runs = out)
@@ -316,14 +347,16 @@ internal object Citations {
     }
 
     // --- OpenDocument: a source is kept in the bibliography marks that cite it ---
-    private val ODT_TYPES = mapOf(DocSource.Type.Book to "book", DocSource.Type.Article to "article", DocSource.Type.Web to "www", DocSource.Type.Chapter to "incollection")
+    private val ODT_TYPES = mapOf(DocSource.Type.Book to "book", DocSource.Type.Article to "article", DocSource.Type.Web to "www", DocSource.Type.Chapter to "incollection",
+        DocSource.Type.Report to "techreport", DocSource.Type.Thesis to "phdthesis", DocSource.Type.Video to "misc")
     private fun names(people: List<DocSource.Person>) = people.joinToString("; ") { if (it.first.isBlank()) it.last else "${it.last}, ${it.first}" }
     private fun people(s: String) = s.split(';').map { it.trim() }.filter { it.isNotEmpty() }.map { n -> n.split(',', limit = 2).let { DocSource.Person(it[0].trim(), it.getOrElse(1) { "" }.trim()) } }
 
     /** The mark's attributes (text:…) for [s]. */
     fun odtAttributes(s: DocSource): String {
         fun a(name: String, v: String) = if (v.isBlank()) "" else " text:$name=\"${OfficeFormats.esc(v)}\""
-        val container = when (s.type) { DocSource.Type.Article -> a("journal", s.container); DocSource.Type.Chapter -> a("booktitle", s.container); DocSource.Type.Web -> a("note", s.container); else -> "" }
+        val container = when (s.type) { DocSource.Type.Article -> a("journal", s.container); DocSource.Type.Chapter -> a("booktitle", s.container); DocSource.Type.Web, DocSource.Type.Video -> a("note", s.container)
+            DocSource.Type.Report, DocSource.Type.Thesis -> a("report-type", s.container); else -> "" }
         return a("identifier", s.tag) + " text:bibliography-type=\"${ODT_TYPES.getValue(s.type)}\"" + a("author", names(s.authors)) + a("title", s.title) + a("year", s.year) +
             container + a("publisher", s.publisher) + a("volume", s.volume) + a("number", s.issue) + a("pages", s.pages) + a("edition", s.edition) +
             a("editor", names(s.editors)) + a("url", s.doi.let { d -> if (d.isBlank() || d.startsWith("http")) d else "https://doi.org/$d" })
@@ -331,8 +364,9 @@ internal object Citations {
     /** A source from a bibliography mark's attributes. */
     fun odtSource(attr: (String) -> String?): DocSource? {
         val tag = attr("identifier")?.takeIf { it.isNotBlank() } ?: return null
-        val type = ODT_TYPES.entries.firstOrNull { it.value == attr("bibliography-type") }?.key ?: DocSource.Type.Book
-        val container = when (type) { DocSource.Type.Article -> attr("journal"); DocSource.Type.Chapter -> attr("booktitle"); DocSource.Type.Web -> attr("note"); else -> null }.orEmpty()
+        val type = if (attr("bibliography-type") == "mastersthesis") DocSource.Type.Thesis else ODT_TYPES.entries.firstOrNull { it.value == attr("bibliography-type") }?.key ?: DocSource.Type.Book
+        val container = when (type) { DocSource.Type.Article -> attr("journal"); DocSource.Type.Chapter -> attr("booktitle"); DocSource.Type.Web, DocSource.Type.Video -> attr("note")
+            DocSource.Type.Report, DocSource.Type.Thesis -> attr("report-type"); else -> null }.orEmpty()
         return DocSource(tag, type, people(attr("author").orEmpty()), attr("year").orEmpty(), attr("title").orEmpty(), container, attr("publisher").orEmpty(),
             attr("volume").orEmpty(), attr("number").orEmpty(), attr("pages").orEmpty(), attr("url").orEmpty().removePrefix("https://doi.org/"), attr("edition").orEmpty(), people(attr("editor").orEmpty()))
     }

@@ -137,6 +137,33 @@ object DriveRules {
         return relative(root, target)
     }
 
+    /**
+     * What New can make (asked 14 Oct): a folder, each file in Drive's hidden .templates (copied as it is), and a text
+     * file and a Word document of Writer's own where .templates has none of that kind.
+     */
+    fun newKinds(root: File): List<DriveNew> {
+        val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
+            .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
+        val built = listOf(DriveNew("Text file", "txt"), DriveNew("Word document", "docx")).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        return listOf(DriveNew("Folder", null)) + templates + built
+    }
+
+    /** [kind] named [name] in the folder [folderRelativePath]; its path. Never over something already there. */
+    fun create(root: File, folderRelativePath: String, kind: DriveNew, name: String): String {
+        val full = kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { "$name.$it" } ?: name
+        require(full.isSafeDriveName() && !full.startsWith(".")) { "Invalid name." }
+        val target = File(folder(root, folderRelativePath), full).canonicalFile
+        require(inside(root, target)) { "Invalid name." }
+        require(!target.exists()) { "Something named $full is already here." }
+        when {
+            kind.extension == null -> require(target.mkdir()) { "Could not make the folder." }
+            kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
+            kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
+            else -> target.writeBytes(ByteArray(0))
+        }
+        return relative(root, target)
+    }
+
     fun copy(root: File, relativePath: String, destinationRelativePath: String): String {
         val source = item(root, relativePath)
         val destination = folder(root, destinationRelativePath)
@@ -208,7 +235,7 @@ object DriveRules {
 }
 
 fun fileTypeGroup(extension: String): String = when (extension.lowercase(Locale.ROOT)) {
-    "doc", "docx", "odt" -> "Documents"
+    "doc", "docx", "odt", "rtf" -> "Documents"
     "xls", "xlsx", "csv" -> "Spreadsheets"
     "pdf" -> "PDF"
     "txt", "md" -> "Text"
@@ -225,6 +252,10 @@ private fun String.isSafeDriveName(): Boolean = isNotBlank() && trim() == this &
     this !in setOf(".", "..") && '/' !in this && '\\' !in this
 
 private const val TRASH_FOLDER = "Trash"
+private const val TEMPLATES_FOLDER = ".templates"
+
+/** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
+data class DriveNew(val label: String, val extension: String?, val template: File? = null)
 
 fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath)

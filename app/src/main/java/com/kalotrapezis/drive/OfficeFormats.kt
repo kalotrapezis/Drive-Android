@@ -28,6 +28,10 @@ internal data class DocRun(
     val text: String,
     val bold: Boolean = false,
     val italic: Boolean = false,
+    // Not bold / not italic though the paragraph's style is (Word's w:b w:val="0", ODF's font-weight normal): a heading's
+    // words unbolded on purpose (asked 14 Oct).
+    val unbold: Boolean = false,
+    val unitalic: Boolean = false,
     val underline: Boolean = false,
     val strike: Boolean = false,
     val sizePt: Float? = null, // null: the document's own size
@@ -95,9 +99,12 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val table: DocTable? = null /* the editor's stand-in for a table */,
     val onPage: Pair<Float, Float>? = null /* a new floating one's top left on its page (pt): Draw › Draw on page */,
     val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
-    val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */) {
+    val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */,
+    val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */,
+    val math: MathNode? = null /* an equation (Word's OMML, [raw]): what it shows, drawn by MathDrawable */,
+    val group: List<GroupPart>? = null /* a group (Word's wpg): its pieces where they are in it, drawn one by one */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math, group)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -115,7 +122,7 @@ internal object PictureXml {
     /** A picture Writer can resize and re-wrap: a new one, or a file's picture — not a chart, shape or old VML drawing. */
     fun editable(img: DocImage): Boolean {
         val raw = img.raw ?: return img.bytes != null || img.chart != null
-        if (raw.startsWith("<draw:custom-shape")) return true
+        if (raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return true
         return if (raw.startsWith("<draw:frame")) "<draw:image" in raw || "<draw:text-box" in raw || img.chart != null
             else ("<pic:pic" in raw || "<wps:wsp" in raw || img.chart != null) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
@@ -123,14 +130,17 @@ internal object PictureXml {
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
     fun kind(img: DocImage): String {
         if (img.table != null) return "Table"
-        val raw = img.raw ?: return "Picture"
+        if (img.math != null) return "Equation"
+        val raw = img.raw ?: return "Image"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
             "diagram" in raw -> "SmartArt"
+            // Words with no box round them, bent or in Writer's WordArt style: Word's and LibreOffice's WordArt (fontwork).
+            "prstTxWarp" in raw || "draw:fontwork" in raw || "Tetra_20_art_" in raw || "txbx" in raw && Regex("""<wps:bodyPr\b[^>]*wrap="none"""").containsMatchIn(raw) -> "WordArt"
             "txbx" in raw || "<draw:text-box" in raw -> "Text box"
             "OLEObject" in raw || "<draw:object" in raw -> "Embedded object"
             "<wps:" in raw || "<v:" in raw || "<draw:custom-shape" in raw || "<draw:rect" in raw || "<draw:line" in raw -> "Shape"
-            else -> "Picture"
+            else -> "Image"
         }
     }
 
@@ -145,11 +155,19 @@ internal object PictureXml {
         if (wrap == PictureWrap.InLine) return null
         // A new one: where it was drawn on its page, or (as it is written) at its paragraph's top left.
         val raw = img.raw ?: return img.onPage?.let { (x, y) -> Place("page", x, null, "page", y, null, wrap) } ?: Place("margin", 0f, null, "paragraph", 0f, null, wrap)
-        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) {
             val head = raw.substring(0, raw.indexOf('>'))
+            val group = if (raw.startsWith("<draw:g")) Arrange.odtGroupBox(raw) else null // a group stands where its pieces are
             fun attr(n: String) = Regex("""\s$n="([^"]*)"""").find(head)?.groupValues?.get(1)
-            val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head) "page" else "paragraph"
-            return Place(if (from == "page") "page" else "margin", odfLength(attr("svg:x")) ?: 0f, null, from, odfLength(attr("svg:y")) ?: 0f, null, wrap)
+            // Its style may place it on the page (a letterhead "from the top of the page, centred" — asked 2026-10-13: the
+            // box came down to its paragraph): style:vertical-rel / horizontal-rel / horizontal-pos.
+            fun styled(n: String) = img.look?.let { Regex("""\s$n="([^"]*)"""").findAll(it).lastOrNull()?.groupValues?.get(1) } // the frame's own, after its parents' 
+            val pageV = styled("style:vertical-rel")?.startsWith("page") == true
+            val pageH = styled("style:horizontal-rel")?.startsWith("page") == true
+            val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head || pageV) "page" else "paragraph"
+            val alignH = styled("style:horizontal-pos")?.takeIf { it in setOf("center", "left", "right") }
+            val turned = Arrange.odtTransform(head)?.second // turned: its place is in the transform
+            return Place(if (from == "page" || pageH) "page" else "margin", group?.get(0) ?: turned?.first ?: odfLength(attr("svg:x")) ?: 0f, alignH, from, group?.get(1) ?: turned?.second ?: odfLength(attr("svg:y")) ?: 0f, null, wrap)
         }
         if ("<wp:anchor" !in raw) return null
         fun axis(tag: String): Triple<String, Float?, String?> {
@@ -173,9 +191,12 @@ internal object PictureXml {
     fun wrapOf(img: DocImage): PictureWrap? {
         img.wrap?.let { return it }
         val raw = img.raw ?: return PictureWrap.InLine
-        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return if ("text:anchor-type=\"as-char\"" in raw.substring(0, raw.indexOf('>'))) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
+            // Another's frame: its style's wrap (a letterhead the text runs through no longer pushed the text down).
+            ?: img.look?.let { l -> fun v(n: String) = Regex("""\s$n="([^"]*)"""").findAll(l).lastOrNull()?.groupValues?.get(1)
+                when (v("style:wrap")) { "run-through" -> if (v("style:run-through") == "background") PictureWrap.Behind else PictureWrap.InFront; "none" -> PictureWrap.TopBottom; null -> null; else -> PictureWrap.Square } }
         return when {
             "<wp:inline" in raw -> PictureWrap.InLine
             "<wp:wrapTopAndBottom" in raw -> PictureWrap.TopBottom
@@ -187,7 +208,7 @@ internal object PictureXml {
 
     fun resized(img: DocImage, widthPt: Float, heightPt: Float): DocImage {
         val raw = img.raw ?: return img.with(widthPt = widthPt, heightPt = heightPt)
-        val out = if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
+        val out = if (raw.startsWith("<draw:g")) Arrange.odtGroupMoved(raw, null, widthPt, heightPt) else if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
             val end = raw.indexOf('>')
             raw.substring(0, end).replace(Regex("""svg:width="[^"]*""""), "svg:width=\"${OdtWriter.fmt(widthPt)}pt\"")
                 .replace(Regex("""svg:height="[^"]*""""), "svg:height=\"${OdtWriter.fmt(heightPt)}pt\"") + raw.substring(end)
@@ -213,13 +234,23 @@ internal object PictureXml {
             val place = (if (m.groupValues[1] == "anchor") Regex("""<wp:simplePos[^>]*/>[\s\S]*</wp:positionV>""").find(inner)?.value else null)
                 ?: """<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>"""
             val how = when (wrap) { PictureWrap.Square -> """<wp:wrapSquare wrapText="bothSides"/>"""; PictureWrap.TopBottom -> "<wp:wrapTopAndBottom/>"; else -> "<wp:wrapNone/>" }
-            """<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264" behindDoc="${if (wrap == PictureWrap.Behind) 1 else 0}" locked="0" layoutInCell="1" allowOverlap="1"$ns>$place$extent$effect$how$rest</wp:anchor>"""
+            """<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="${Regex("""relativeHeight="(\d+)"""").find(m.groupValues[2])?.groupValues?.get(1) ?: "251659264"}" behindDoc="${if (wrap == PictureWrap.Behind) 1 else 0}" locked="0" layoutInCell="1" allowOverlap="1"$ns>$place$extent$effect$how$rest</wp:anchor>"""
         }
         return xml.replaceRange(m.range, frame)
     }
 
     /** ODF: the frame's anchor, and a graphic style of Writer's own saying how the text goes around it. */
     fun odt(xml: String, wrap: PictureWrap, onPage: Pair<Float, Float>? = null): String {
+        // Turned (Arrange › Rotate): its place is in its draw:transform — set straight, placed, turned again.
+        val turn = Arrange.odtTransform(xml.substring(0, xml.indexOf('>').coerceAtLeast(0)))?.first
+        if (turn != null) return Arrange.odtTurned(odt(Arrange.odtTurned(xml, 0f), wrap, onPage), turn)
+        // A group (LibreOffice's draw:g): its anchor and wrap on it, its place in its pieces (moved together).
+        if (xml.startsWith("<draw:g")) {
+            val moved = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { Arrange.odtGroupMoved(xml, it) } ?: xml
+            val e = moved.indexOf('>')
+            val head = moved.substring(0, e).replace(Regex("""\s(text:anchor-type|draw:style-name)="[^"]*""""), "")
+            return head + " draw:style-name=\"${odtStyleName(wrap, onPage != null && wrap != PictureWrap.InLine)}\" text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + moved.substring(e)
+        }
         val end = xml.indexOf('>')
         val at = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { (x, y) -> " svg:x=\"${OdtWriter.fmt(x)}pt\" svg:y=\"${OdtWriter.fmt(y)}pt\"" } ?: ""
         // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
@@ -244,10 +275,25 @@ internal object PictureXml {
         val place = img.onPage?.takeIf { wrap != PictureWrap.InLine } // placed on its page: it stays there
         return img.with(raw = if (file == OfficeKind.Docx) docx(raw, wrap).let { d -> place?.let { docxOnPage(d, it) } ?: d } else odt(raw, wrap, place), wrap = wrap)
     }
+    /** Its place among the floating ones (higher in front): Word's relativeHeight, LibreOffice's draw:z-index; 0: not said. */
+    fun zOf(img: DocImage): Long {
+        val raw = img.raw ?: return 0
+        if (raw.startsWith("<draw:")) return Regex("""\sdraw:z-index="(\d+)"""").find(raw.substring(0, raw.indexOf('>').coerceAtLeast(0)))?.groupValues?.get(1)?.toLongOrNull() ?: 0
+        return Regex("""<wp:anchor\b[^>]*\brelativeHeight="(\d+)"""").find(raw)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+    }
+    /** [img] at [z] among the floating ones (Arrange › Bring to front / Send to back); null: it has no XML to say it in yet. */
+    fun withZ(img: DocImage, z: Long): DocImage? {
+        val raw = img.raw ?: return null
+        val out = if (raw.startsWith("<draw:")) {
+            val end = raw.indexOf('>')
+            raw.substring(0, end).replace(Regex("""\sdraw:z-index="[^"]*""""), "") + " draw:z-index=\"$z\"" + raw.substring(end)
+        } else Regex("""(<wp:anchor\b[^>]*\brelativeHeight=")\d+""").find(raw)?.let { raw.replaceRange(it.range, it.groupValues[1] + z) } ?: return null
+        return img.with(raw = out)
+    }
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
         val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
-        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart), wrap, file)
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart, img.look, img.math, img.group), wrap, file)
     }
 
     /**
@@ -259,7 +305,7 @@ internal object PictureXml {
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (file == OfficeKind.Odt) {
             val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${PictureWrap.InLine.name}"
-            return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/></draw:custom-shape>"""
+            return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/>${ShapeGeometry.odfGeometry(kind, widthPt, heightPt)?.takeIf { kind != "line" } ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/>"""}</draw:custom-shape>"""
         }
         val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
         val id = (System.nanoTime() % 900000 + 100000)
@@ -272,48 +318,163 @@ internal object PictureXml {
      * line), or in an .odt LibreOffice's rectangle with its words in it (its look in Writer's shape style) — in line with
      * the text as made; the caller floats it. Its words are written by [boxText].
      */
-    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null): String {
+    fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String =
+        newTextBox(file, widthPt, heightPt, lines, art, effects).let { x -> if (warp == null) x else TextWarp.applied(x, warp, file == OfficeKind.Odt) }
+    private fun newTextBox(file: OfficeKind, widthPt: Float, heightPt: Float, lines: List<String>, art: Int?, effects: TextEffects): String {
         // WordArt ([art]: its colour): no box round it, its words big and bold in that colour, on one line.
         val shape = if (art != null) newShape("rect", file, null, null, 0f, widthPt, heightPt) else newShape("rect", file, 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f, widthPt, heightPt)
-        return if (file == OfficeKind.Odt) boxText(shape, file, lines, art)
+        return if (file == OfficeKind.Odt) boxText(shape, file, lines, art, effects)
             else boxText(shape.replace("<wps:cNvSpPr/>", """<wps:cNvSpPr txBox="1"/>""")
-                .replace("<wps:bodyPr/>", """<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="${if (art != null) "none" else "square"}" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t"><a:noAutofit/></wps:bodyPr>"""), file, lines, art)
+                .replace("<wps:bodyPr/>", """<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="${if (art != null) "none" else "square"}" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t"><a:noAutofit/></wps:bodyPr>"""), file, lines, art, effects)
     }
     /** WordArt's words: bold, [ART_PT], its colour. */
     const val ART_PT = 36f
     /** An .odt's WordArt words are in a text style of Writer's, named for their colour; [odtArtStyle] writes it. */
-    fun odtArtStyle(name: String): String? = Regex("""Tetra_20_art_([0-9A-F]{6})""").matchEntire(name)?.let { m ->
-        """<style:style style:name="$name" style:family="text"><style:text-properties fo:font-size="${OdtWriter.fmt(ART_PT)}pt" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold" fo:color="#${m.groupValues[1]}"/></style:style>""" }
+    fun odtArtStyle(name: String): String? = Regex("""Tetra_20_art_([0-9A-F]{6})(_o)?(_s)?""").matchEntire(name)?.let { m ->
+        val effects = TextEffects(outline = if (m.groupValues[2].isNotEmpty()) 0 else null, shadow = m.groupValues[3].isNotEmpty()).odt()
+        """<style:style style:name="$name" style:family="text"><style:text-properties fo:font-size="${OdtWriter.fmt(ART_PT)}pt" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold" fo:color="#${m.groupValues[1]}"$effects/></style:style>""" }
     /**
-     * A text box's words made [lines], a paragraph each, in its first paragraph's style and its first words' look —
-     * or, when it has none yet, WordArt's in [art] (its colour).
+     * A text box's words made [lines], a paragraph each: each line keeps its paragraph's style and each letter its run's
+     * look (a letter typed takes the look of the one before it); a new line takes the look of the one before it. When it
+     * has no words yet, WordArt's in [art] (its colour).
      */
-    fun boxText(xml: String, file: OfficeKind, lines: List<String>, art: Int? = null): String {
+    fun boxText(xml: String, file: OfficeKind, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects()): String {
         fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        fun unesc(t: String) = t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
         if (file == OfficeKind.Odt) {
-            val style = Regex("""<text:p\b[^>]*?(\stext:style-name="[^"]*")""").find(xml)?.groupValues?.get(1) ?: ""
-            val span = Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1) ?: art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) }
-            val paras = lines.joinToString("") { t -> esc(t).replace("\t", "<text:tab/>").let { w -> "<text:p$style>${span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w}</text:p>" } }
-            Regex("""(<draw:text-box\b[^>]*>)[\s\S]*?(</draw:text-box>)""").find(xml)?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[2]) }
+            // Each paragraph: its opening tag's style, its letters as (span style or null, text).
+            val area = Regex("""(<draw:text-box\b[^>]*>)([\s\S]*?)(</draw:text-box>)""").find(xml)
+            val inner = area?.groupValues?.get(2) ?: xml.substring(xml.indexOf('>') + 1, xml.indexOf("<draw:enhanced-geometry").coerceAtLeast(xml.indexOf('>') + 1))
+            val old = Regex("""<text:p\b([^>]*?)(/>|>([\s\S]*?)</text:p>)""").findAll(inner).map { m ->
+                val style = Regex("""\stext:style-name="[^"]*"""").find(m.groupValues[1])?.value ?: ""
+                val runs = Regex("""<text:span\b[^>]*?text:style-name="([^"]*)"[^>]*>([\s\S]*?)</text:span>|([^<]+)|<text:tab/>|<text:s(?: text:c="(\d+)")?/>""").findAll(m.groupValues[3]).map { r -> when {
+                    r.groupValues[1].isNotEmpty() -> r.groupValues[1] to unesc(r.groupValues[2].replace("<text:tab/>", "\t").replace(Regex("<[^>]+>"), ""))
+                    r.groupValues[3].isNotEmpty() -> null to unesc(r.groupValues[3])
+                    r.value == "<text:tab/>" -> null to "\t"
+                    else -> null to " ".repeat(r.groupValues[4].toIntOrNull() ?: 1)
+                } }.toList()
+                style to runs
+            }.toList()
+            val artSpan = art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) + effects.odtName() }
+            val paras = relaid(old, lines, "", artSpan ?: Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1)).joinToString("") { (style, runs) ->
+                "<text:p$style>" + runs.joinToString("") { (span, t) -> esc(t).replace("\t", "<text:tab/>").let { w -> span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w } } + "</text:p>"
+            }
+            area?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[3]) }
             // A shape: its words before its geometry.
             val start = xml.indexOf('>') + 1
             val end = xml.indexOf("<draw:enhanced-geometry").takeIf { it >= 0 } ?: return xml
             val between = xml.substring(start, end).replace(Regex("""<text:(p|list|h)\b[\s\S]*?</text:\1>|<text:p\b[^>]*/>"""), "")
             return xml.substring(0, start) + between + paras + xml.substring(end)
         }
-        // Word: every copy of its words (the older-Word fallback has one too).
+        // Word: every copy of its words (the older-Word fallback has one too), from the first copy's paragraphs and runs.
         val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(xml)?.groupValues?.get(1) ?: return xml
-        val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(first)?.value ?: ""
-        val rPr = Regex("""<w:r>\s*(<w:rPr>[\s\S]*?</w:rPr>)""").find(first)?.groupValues?.get(1)
-            ?: art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/></w:rPr>""" } ?: ""
-        val paras = lines.joinToString("") { "<w:p>$pPr<w:r>$rPr<w:t xml:space=\"preserve\">${esc(it)}</w:t></w:r></w:p>" }
+        val old = Regex("""<w:p\b[^>]*?(/>|>([\s\S]*?)</w:p>)""").findAll(first).map { m ->
+            val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(m.groupValues[2])?.value ?: ""
+            val runs = Regex("""<w:r\b[^>]*>([\s\S]*?)</w:r>""").findAll(m.groupValues[2]).mapNotNull { r ->
+                val rPr = Regex("""<w:rPr>[\s\S]*?</w:rPr>""").find(r.groupValues[1])?.value ?: ""
+                val text = Regex("""<w:t\b[^>]*>([^<]*)</w:t>|<w:tab/>""").findAll(r.groupValues[1]).joinToString("") { if (it.value == "<w:tab/>") "\t" else unesc(it.groupValues[1]) }
+                (rPr to text).takeIf { text.isNotEmpty() }
+            }.toList()
+            pPr to runs
+        }.toList()
+        val artPr = art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
+        val paras = relaid(old, lines, "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
+            "<w:p>$pPr" + runs.joinToString("") { (rPr, t) -> "<w:r>${rPr ?: ""}" + t.split('\t').joinToString("<w:tab/>") { "<w:t xml:space=\"preserve\">${esc(it)}</w:t>" } + "</w:r>" } + "</w:p>"
+        }
         return xml.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
     }
-    /** A text box's words for the pages, until the file is read again: [lines] in its first words' look. */
+
+    /**
+     * [lines] laid over the paragraphs a text box had, [old] (each its paragraph look and its runs as (look, letters)):
+     * a line keeps the paragraph it came from (matched as the editor matches paragraphs; a new one takes the one
+     * before it), each letter left as it was its run's look, a typed one the look of the letter before it (at the start,
+     * after it). Lines with nothing to come from take the first paragraph's, [fresh] for their letters.
+     */
+    fun <P, R> relaid(old: List<Pair<P, List<Pair<R?, String>>>>, lines: List<String>, freshPara: P, fresh: R?): List<Pair<P, List<Pair<R?, String>>>> {
+        val from = OfficeFormats.pairParagraphs(old.map { (_, runs) -> DocPara(listOf(DocRun(runs.joinToString("") { it.second }))) }, lines.map { DocPara(listOf(DocRun(it))) })
+        // An empty paragraph's letters: the box's first words' look.
+        val firstLook = old.firstNotNullOfOrNull { it.second.firstOrNull() }?.first ?: fresh
+        var last = 0
+        return lines.mapIndexed { j, line ->
+            val i = from[j].takeIf { it >= 0 } ?: last
+            last = i
+            val (look, runs) = old.getOrNull(i) ?: (freshPara to emptyList())
+            look to relook(runs.ifEmpty { listOf(firstLook to "") }, line)
+        }
+    }
+
+    /** [text] in the looks of [runs] (look, letters): letters kept keep theirs, typed ones the replaced one's or the one before (at the start, after). */
+    fun <R> relook(runs: List<Pair<R?, String>>, text: String): List<Pair<R?, String>> {
+        val was = runs.joinToString("") { it.second }
+        val owner = runs.flatMap { (look, t) -> List(t.length) { look } }
+        var pre = 0
+        while (pre < was.length && pre < text.length && was[pre] == text[pre]) pre++
+        var suf = 0
+        while (suf < was.length - pre && suf < text.length - pre && was[was.length - 1 - suf] == text[text.length - 1 - suf]) suf++
+        // Letters typed over others take the first replaced one's look (as Word's typing over a selection); else the one before.
+        val typed = when { pre + suf < was.length -> owner[pre]; pre > 0 -> owner[pre - 1]; owner.isNotEmpty() -> owner[0]; else -> runs.firstOrNull()?.first }
+        val looks = List(text.length) { k -> when {
+            k < pre -> owner[k]
+            k >= text.length - suf -> owner[was.length - (text.length - k)]
+            else -> typed
+        } }
+        val out = ArrayList<Pair<R?, String>>()
+        text.forEachIndexed { k, c -> if (out.isNotEmpty() && out.last().first == looks[k]) out[out.size - 1] = looks[k] to out.last().second + c else out += looks[k] to c.toString() }
+        return out.ifEmpty { listOf(typed to "") }
+    }
+
+    /** A text box's words for the pages, until the file is read again: [lines] with the looks [boxText] gives them. */
     fun boxParas(img: DocImage, lines: List<String>): List<DocPara> {
-        val p0 = img.box?.firstOrNull()
-        val r0 = p0?.runs?.firstOrNull { it.image == null && it.note == null }
-        return lines.map { t -> p0?.copy(runs = listOf((r0 ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null))) ?: DocPara(listOf(DocRun(t))) }
+        val old = img.box.orEmpty().map { p -> p to p.runs.filter { it.image == null && it.note == null }.map { r -> r to r.text } }
+        return relaid<DocPara?, DocRun>(old, lines, null, null).map { (p, runs) ->
+            p?.copy(runs = runs.filter { it.second.isNotEmpty() }.map { (r, t) -> (r ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null) })
+                ?: DocPara(listOf(DocRun(runs.joinToString("") { it.second })))
+        }
+    }
+
+    /**
+     * Picture › Shape settings: a shape's fill (null: none) and outline (null: none) and its width — Word's spPr (its
+     * fill and a:ln replaced, the geometry kept); in an .odt Writer's own shape style named for them (and its wrap, as
+     * placed). Null: not a shape.
+     */
+    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float): DocImage? {
+        val raw = img.raw ?: return null
+        fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+        if (raw.startsWith("<draw:custom-shape")) {
+            val end = raw.indexOf('>')
+            val wrap = wrapOf(img) ?: PictureWrap.InLine
+            val page = placeOf(img)?.fromV == "page"
+            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+            val head = raw.substring(0, end).replace(Regex("""\sdraw:style-name="[^"]*""""), "") + " draw:style-name=\"$style\""
+            return img.with(raw = head + raw.substring(end))
+        }
+        val sp = Regex("""<wps:spPr\b[^>]*>([\s\S]*?)</wps:spPr>""").find(raw) ?: return null
+        var inner = sp.groupValues[1]
+        inner = inner.replace(Regex("""<a:ln\b[^>]*?(?:/>|>[\s\S]*?</a:ln>)"""), "")
+            .replace(Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill|grpFill)\b[^>]*?(?:/>|>[\s\S]*?</a:\1>)"""), "")
+        val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
+        // In spPr's order: the transform, the geometry, then the fill, then the outline.
+        val at = Regex("""</a:prstGeom>|</a:custGeom>|<a:prstGeom\b[^>]*/>""").find(inner)?.range?.last?.plus(1) ?: Regex("""</a:xfrm>""").find(inner)?.range?.last?.plus(1) ?: 0
+        inner = inner.substring(0, at) + fillXml + lineXml + inner.substring(at)
+        val open = Regex("""<wps:spPr\b[^>]*>""").find(sp.value)!!.value
+        return img.with(raw = raw.replaceRange(sp.range, "$open$inner</wps:spPr>"))
+    }
+    /** Its description for screen readers (Word's docPr descr, LibreOffice's svg:desc). */
+    fun altOf(img: DocImage): String = img.raw?.let { r -> Regex("""<wp:docPr\b[^>]*\bdescr="([^"]*)"""").find(r)?.groupValues?.get(1)
+        ?: Regex("""<svg:desc>([^<]*)</svg:desc>""").find(r)?.groupValues?.get(1) }
+        ?.replace("&quot;", "\"")?.replace("&lt;", "<")?.replace("&gt;", ">")?.replace("&amp;", "&").orEmpty()
+    fun withAlt(img: DocImage, alt: String): DocImage? {
+        val raw = img.raw ?: return null
+        val e = OfficeFormats.esc(alt).replace("\"", "&quot;")
+        if (raw.startsWith("<draw:")) {
+            val bare = raw.replace(Regex("""<svg:desc>[^<]*</svg:desc>"""), "")
+            val end = bare.indexOf('>') + 1
+            return img.with(raw = if (alt.isBlank()) bare else bare.substring(0, end) + "<svg:desc>$e</svg:desc>" + bare.substring(end))
+        }
+        val doc = Regex("""<wp:docPr\b[^>]*?(/?)>""").find(raw) ?: return null
+        val head = doc.value.replace(Regex("""\sdescr="[^"]*""""), "").let { h -> if (alt.isBlank()) h else h.replace(Regex("""(/?)>$"""), " descr=\"$e\"$1>") }
+        return img.with(raw = raw.replaceRange(doc.range, head))
     }
 
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
@@ -354,6 +515,13 @@ internal const val PAGES_FIELD = '\uE002'
 
 /** A line break inside a paragraph (Shift+Enter in Word): Unicode's line separator, in a run's text. */
 internal const val LINE_BREAK = '\u2028'
+/**
+ * A field kept with its shown letters (a date, a reference, a sequence number — asked 2026-10-13): stored in [DocRun.cite]
+ * after this mark, so the citations' own code passes it by and Word gets the field back as it was.
+ */
+internal const val FIELD_CITE = '\u0002'
+internal fun isField(cite: String?) = cite?.firstOrNull() == FIELD_CITE
+/** Fields whose letters are whole paragraphs: kept only inside a content control (sdtBlock), else a copy. */
 
 /** A list item: bulleted or numbered, how deep (0 = top), and the number it starts at when that is not 1. */
 internal data class DocList(val ordered: Boolean, val level: Int, val start: Int? = null)
@@ -436,6 +604,8 @@ internal val DOCX_BUILTIN = mapOf(
     "TOC1" to """<w:style w:type="paragraph" w:styleId="TOC1"><w:name w:val="toc 1"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr><w:spacing w:after="100"/></w:pPr></w:style>""",
     "TOC2" to """<w:style w:type="paragraph" w:styleId="TOC2"><w:name w:val="toc 2"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr><w:spacing w:after="100"/><w:ind w:left="220"/></w:pPr></w:style>""",
     "TOC3" to """<w:style w:type="paragraph" w:styleId="TOC3"><w:name w:val="toc 3"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr><w:spacing w:after="100"/><w:ind w:left="440"/></w:pPr></w:style>""",
+    // A figure's or table's caption (Word 2016's): small, italic, blue-grey.
+    "Caption" to """<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="35"/><w:unhideWhenUsed/><w:qFormat/><w:pPr><w:spacing w:after="200" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:i/><w:iCs/><w:color w:val="44546A"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>""",
     "Quote" to """<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="NORMAL"/><w:next w:val="NORMAL"/><w:uiPriority w:val="29"/><w:qFormat/><w:pPr><w:spacing w:before="200" w:after="160"/><w:ind w:left="864" w:right="864"/><w:jc w:val="center"/></w:pPr><w:rPr><w:i/><w:iCs/><w:color w:val="404040"/></w:rPr></w:style>""",
 )
 /** LibreOffice's Title, Subtitle and Quotations, likewise. */
@@ -472,6 +642,8 @@ internal data class OfficeDoc(
     val basePt: Float = 11f,
     val comments: List<DocComment> = emptyList(),
     val sources: List<DocSource> = emptyList(), // References: Word's sources part, or an ODT's bibliography marks' sources
+    val numbering: List<Pair<String, String>>? = null, // Writer's own numbered lists, each level's (numFmt, lvlText) (Home › Multilevel list); null: 1. 2. 3.
+    val citeStyle: CiteStyle = CiteStyle.APA, // References › Style: the citations' and the list's (Word's sources part's StyleName)
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {
@@ -516,7 +688,7 @@ internal object OfficeFormats {
         val parts = unzip(bytes)
         return numberNotes(when (kind) {
             OfficeKind.Docx -> DocxReader(parts).read()
-            OfficeKind.Odt -> OdtReader(parts).read()
+            OfficeKind.Odt -> OdtReader(parts).read().let { it.copy(citeStyle = CiteStyle.infer(it)) }
         })
     }
 
@@ -706,6 +878,22 @@ internal object OfficeFormats {
     fun withDone(doc: OfficeDoc, id: String, done: Boolean): OfficeDoc =
         doc.copy(comments = doc.comments.map { if (it.id == id || it.parent == id) it.copy(done = done) else it })
 
+    /**
+     * A comment with its words changed (Review: Edit) and the rest kept: Word's comment keeps its own tag and its last
+     * paragraph's id (replies and "resolved" are said by it); LibreOffice's keeps its author and date.
+     */
+    fun withCommentText(c: DocComment, text: String): DocComment {
+        val raw = c.raw ?: return c.copy(text = text)
+        val lines = text.split('\n')
+        val out = if (raw.startsWith("<w:comment")) {
+            val para = Regex("""w14:paraId="([0-9A-Fa-f]+)"""").findAll(raw).lastOrNull()?.groupValues?.get(1)
+            raw.substring(0, raw.indexOf('>') + 1) + lines.mapIndexed { i, l ->
+                "<w:p${if (i == lines.lastIndex && para != null) " w14:paraId=\"$para\"" else ""}>${if (i == 0) "<w:r><w:annotationRef/></w:r>" else ""}<w:r><w:t xml:space=\"preserve\">${esc(l)}</w:t></w:r></w:p>"
+            }.joinToString("") + "</w:comment>"
+        } else raw.replace(Regex("""<text:(p|list)\b[^>]*/>|<text:(p|list)\b[\s\S]*?</text:\2>"""), "") + lines.joinToString("") { "<text:p>${esc(it)}</text:p>" }
+        return c.copy(text = text, raw = out)
+    }
+
     /** A comment taken off (its letters stay). */
     fun withoutComment(doc: OfficeDoc, id: String): OfficeDoc {
         val ids = setOf(id) + doc.comments.filter { it.parent == id }.map { it.id } // its replies go with it (Word's)
@@ -733,16 +921,19 @@ internal object OfficeFormats {
         return k.copy(parts = parts).takeIf { !it.isEmpty }
     }
 
+    /** [r] in the font [font] (Home › Font), in the file's own words: Word's rFonts for every script, ODF's fo:font-family. */
+    fun withFont(r: DocRun, kind: OfficeKind, font: String): DocRun = r.copy(font = if (kind == OfficeKind.Docx)
+        (r.font.orEmpty().replace(Regex("""<w:rFonts\b[^>]*/>"""), "") + """<w:rFonts w:ascii="${esc(font)}" w:hAnsi="${esc(font)}" w:eastAsia="${esc(font)}" w:cs="${esc(font)}"/>""")
+        else Regex(""" (\S+)="([^"]*)"""").findAll(r.font.orEmpty()).map { it.groupValues[1] to it.groupValues[2] }.filter { (n, _) -> n != "style:font-name" && n != "fo:font-family" }
+            .joinToString("") { (n, v) -> " $n=\"$v\"" } + " fo:font-family=\"'${esc(font)}'\"")
+
     /**
      * The first [length] letters of [p] in [font] (null: as they are) and [color] (null: as they are; -1 automatic) —
      * a drop cap's own look: in both kinds it is its letters' (Word's letter paragraph; LibreOffice draws the letters).
      */
     fun withLettersLook(p: DocPara, length: Int, kind: OfficeKind, font: String?, color: Int?): DocPara {
         if (font == null && color == null) return p
-        fun restyle(r: DocRun) = r.copy(color = when (color) { null -> r.color; -1 -> null; else -> color }, font = if (font == null) r.font else if (kind == OfficeKind.Docx)
-            (r.font.orEmpty().replace(Regex("""<w:rFonts\b[^>]*/>"""), "") + """<w:rFonts w:ascii="${esc(font)}" w:hAnsi="${esc(font)}" w:eastAsia="${esc(font)}" w:cs="${esc(font)}"/>""")
-            else Regex(""" (\S+)="([^"]*)"""").findAll(r.font.orEmpty()).map { it.groupValues[1] to it.groupValues[2] }.filter { (n, _) -> n != "style:font-name" && n != "fo:font-family" }
-                .joinToString("") { (n, v) -> " $n=\"$v\"" } + " fo:font-family=\"'${esc(font)}'\"")
+        fun restyle(r: DocRun) = (if (font == null) r else withFont(r, kind, font)).let { it.copy(color = when (color) { null -> it.color; -1 -> null; else -> color }) }
         val out = ArrayList<DocRun>()
         var left = length
         for (r in p.runs) when {
@@ -754,6 +945,13 @@ internal object OfficeFormats {
     }
 
     /** A page break before the paragraph put in ([on]) or taken out, in the file's own words (Word's pageBreakBefore, ODT's fo:break-before). */
+    /** Layout › Breaks › Column: the paragraph starts the next column (Word's column break at its start; ODT's fo:break-before). */
+    fun withColumnBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
+        val k = keep ?: DocKeep()
+        val rest = k.parts.filter { (name, xml) -> name != COLUMN_BREAK && !(name == "@" && xml.startsWith(" fo:break-before=\"column")) }
+        val set = when { !on -> emptyList(); kind == OfficeKind.Docx -> listOf(COLUMN_BREAK to "<w:columnBreak/>"); else -> listOf("@" to " fo:break-before=\"column\"") }
+        return k.copy(parts = rest + set).takeIf { !it.isEmpty }
+    }
     fun withPageBreak(keep: DocKeep?, kind: OfficeKind, on: Boolean): DocKeep? {
         val k = keep ?: DocKeep()
         val rest = k.parts.filter { (name, xml) -> name != "pageBreakBefore" && !(name == "@" && xml.startsWith(" fo:break-before=")) }
@@ -1077,6 +1275,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val images = HashMap<String, String>() // relationship id → the picture's part in the package
     val charts = HashMap<String, String>() // relationship id → a chart's part
     val styleName = HashMap<String, String>() // styleId → name, lowercased
+    /** Character styles that change nothing (no formatting of their own, on the plain font): web pages' names pasted along. */
+    val emptyCharStyles = HashSet<String>()
     var defaultParaStyle: String? = null
     var basePt = 10f
     val numAbstract = HashMap<String, String>() // numId → abstractNumId
@@ -1179,11 +1379,12 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         }
         readStyles(); readNumbering()
         val body = root.kid(W, "body") ?: error("Not a Word document.")
+        columnsArePages = root.getElementsByTagNameNS(W, "cols").let { l -> (0 until l.length).none { ((l.item(it) as Element).attr(W, "num")?.toIntOrNull() ?: 1) > 1 } }
         readComments(body)
         readNotes()
         val paras = ArrayList<DocPara>()
         block(body, paras)
-        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts))
+        return OfficeDoc(joinDropCaps(paras).ifEmpty { listOf(DocPara(emptyList())) }, notes, basePt, comments.values.toList(), WordSources.read(parts), citeStyle = CiteStyle.ofWord(WordSources.styleName(parts)))
     }
 
     /** A drop cap's framed letter paragraph and the paragraph it drops into, as one paragraph with a [DropCap]. */
@@ -1212,15 +1413,18 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
 
     fun readStyles() {
         val root = parts[dir + "styles.xml"]?.let { OfficeFormats.parse(it).documentElement } ?: return
+        val plainBased = HashMap<String, String>() // a character style with no formatting → the style it is based on
         root.kid(W, "docDefaults")?.kid(W, "rPrDefault")?.kid(W, "rPr")?.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.let { basePt = it / 2 }
         for (s in root.kids().filter { it.localName == "style" }) {
             val id = s.attr(W, "styleId") ?: continue
             styleName[id] = (s.kid(W, "name")?.attr(W, "val") ?: id).lowercase()
+            if (s.attr(W, "type") == "character" && s.kid(W, "rPr")?.kids().isNullOrEmpty() && s.kid(W, "pPr") == null) plainBased[id] = s.kid(W, "basedOn")?.attr(W, "val") ?: ""
             if (s.attr(W, "type") == "paragraph" && s.attr(W, "default").let { it == "1" || it == "true" }) {
                 defaultParaStyle = id
                 s.kid(W, "rPr")?.kid(W, "sz")?.attr(W, "val")?.toFloatOrNull()?.let { basePt = it / 2 }
             }
         }
+        emptyCharStyles += plainBased.filter { (_, base) -> base.isEmpty() || styleName[base] == "default paragraph font" || plainBased[base]?.isEmpty() == true }.keys
     }
 
     fun readNumbering() {
@@ -1248,11 +1452,39 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
 
     /** The body, a table cell or a content control: paragraphs, and what Writer cannot keep, named. */
     fun block(parent: Element, out: MutableList<DocPara>) {
-        for (e in parent.kids()) {
+        val kids = parent.kids()
+        // A field that runs on over paragraphs (a contents list or a list of references written as a bare field; Zotero's
+        // and Mendeley's bibliographies): from its first paragraph to its last, kept whole as the file has it — as a
+        // content control's paragraphs are ([sdtBlock]) — and written back so while their words are unchanged.
+        var fieldBlock: Triple<Int, Int, Set<String>>? = null // where it starts in [out] and in [kids]; the notes before it
+        for ((ki, e) in kids.withIndex()) {
             if (e.namespaceURI != W) { if (e.localName != "AlternateContent") notes += "other content" ; continue }
             when (e.localName) {
-                "p" -> paragraph(e, out)
-                "tbl" -> out += tablePara(table(e))
+                "p" -> {
+                    val open = fieldDepth > 0
+                    val start = out.size
+                    val notesBefore = notes.toSet()
+                    paragraph(e, out)
+                    if (sdtDepth == 0 && fieldBlock == null && !open && fieldDepth > 0) fieldBlock = Triple(start, ki, notesBefore)
+                    else if (fieldBlock != null && fieldDepth == 0) {
+                        val (from, fromKid, before) = fieldBlock
+                        fieldBlock = null
+                        val mine = out.subList(from, out.size)
+                        // Its field rode on its letters as one paragraph's would: off them (edited, they are written plain).
+                        val field = mine.firstNotNullOfOrNull { p -> p.runs.firstNotNullOfOrNull { r -> r.cite?.takeIf { isField(it) } } }
+                        for (i in mine.indices) mine[i] = mine[i].let { p -> p.copy(runs = p.runs.map { r -> if (r.cite == field) r.copy(cite = null) else r }) }
+                        var xml = kids.subList(fromKid, ki + 1).joinToString("") { OfficeFormats.xml(it) }
+                        if (mine.first().keep?.parts?.any { it.first == "pageBreakBefore" } == true && "<w:pageBreakBefore" !in xml.substringBefore("</w:p>"))
+                            Regex("""<w:p\b[^>]*>(<w:pPr>(<w:pStyle\b[^>]*/>)?)?""").find(xml)?.let { m ->
+                                xml = xml.replaceRange(m.range, if (m.groupValues[1].isEmpty()) m.value + "<w:pPr><w:pageBreakBefore/></w:pPr>" else m.value + "<w:pageBreakBefore/>") }
+                        val raw = "${OfficeFormats.blockText(mine)}|$xml"
+                        mine.forEachIndexed { i, p -> val k = p.keep ?: DocKeep(); mine[i] = p.copy(keep = k.copy(parts = k.parts.filter { it.first != SDT_BLOCK && it.first != SDT_PART } + (if (i == 0) SDT_BLOCK to raw else SDT_PART to ""))) }
+                        // What its paragraphs could not keep as paragraphs is kept in the XML: the copy-only notes they made go.
+                        notes.retainAll(before)
+                        citeNow = null
+                    }
+                }
+                "tbl" -> { fieldBlock = null; out += tablePara(table(e)) } // a field round a table: not kept whole (a copy, as before)
                 "sdt" -> if (e.kid(W, "sdtPr")?.kid(W, "docPartObj") != null) sdtBlock(e, out)
                     else { notes += "content controls"; e.kid(W, "sdtContent")?.let { block(it, out) } }
                 "customXml" -> { notes += "content controls"; block(e, out) }
@@ -1276,11 +1508,14 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     fun sdtBlock(e: Element, out: MutableList<DocPara>) {
         val start = out.size
         val pageBefore = pageBreakPending // a page break ended the paragraph before: the block's first paragraph starts a page
+        sdtDepth++
         aside(notes, openComments) { e.kid(W, "sdtContent")?.let { block(it, out) } }
+        sdtDepth--
         fieldDepth = 0; fieldState = 0; citeNow = null; pageBreakPending = false
         if (out.size == start) { notes += "content controls"; return }
         val mine = out.subList(start, out.size)
         var xml = OfficeFormats.xml(e)
+        if (pageBefore) xml.substringBefore("</w:p>").let { first -> xml = first.replaceFirst(PAGE_BREAK_OFF, "") + xml.substring(first.length) } // Google Docs says "no break" on every paragraph
         if (pageBefore && "<w:pageBreakBefore" !in xml.substringBefore("</w:p>")) Regex("""<w:p\b[^>]*>(<w:pPr>(<w:pStyle\b[^>]*/>)?)?""").find(xml)?.let { m ->
             xml = xml.replaceRange(m.range, if (m.groupValues[1].isEmpty()) m.value + "<w:pPr><w:pageBreakBefore/></w:pPr>" else m.value + "<w:pageBreakBefore/>")
         }
@@ -1311,11 +1546,17 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         var keepStyle: String? = null
         var ownNumbering = false // the paragraph says itself whether it is a list item (numId 0: it is not)
         val keepParts = ArrayList<Pair<String, String>>()
+        val bookmarkNames = HashMap<String, String>() // a bookmark's id → its name, while its paragraph is read
         p.kid(W, "pPr")?.let { pPr ->
             for (e in pPr.kids()) when (e.localName) {
                 "pStyle" -> e.attr(W, "val")?.let { id -> heading = paragraphStyle(id); if (heading == 0 && !plainStyle(id)) keepStyle = id }
-                "numPr" -> { list = listItem(e); ownNumbering = true }
-                "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify; else -> DocAlign.Start }
+                "numPr" -> { list = listItem(e); ownNumbering = true
+                    // A heading whose style numbers it, said here to have no number: kept, or saving numbers it (a thesis's
+                    // "Περίληψη" became "2 Περίληψη" and every chapter after it moved on by one — 2026-10-13).
+                    if (list == null && heading > 0 && e.kid(W, "numId")?.attr(W, "val") == "0") keepParts += e.localName to OfficeFormats.xml(e) }
+                "jc" -> align = when (e.attr(W, "val")) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute", "thaiDistribute" -> DocAlign.Justify
+                    // Left said on purpose overrides a centred style (a heading): kept, or the heading centres on saving.
+                    else -> { keepParts += e.localName to OfficeFormats.xml(e); DocAlign.Start } }
                 // A section break (page size, margins, headers of the part before it): kept as the file has it (2026-09-28).
                 "sectPr" -> keepParts += e.localName to OfficeFormats.xml(e)
                 // A drop cap's letter (a framed paragraph of its own): joined to the paragraph after it, below.
@@ -1336,21 +1577,41 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // does, nothing else is kept (LibreOffice shows nothing there either). In the middle: the part after it starts a
         // page, with no space before it (it is the same paragraph going on, in the file).
         var afterPageBreak = pageBreakPending.also { pageBreakPending = false }
+        val brokenBefore = afterPageBreak
+        columnBreak = false
         val done = ArrayList<DocPara>()
         fun keep(): DocKeep? {
-            var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS } // a bookmark once
-            if (afterPageBreak && parts.none { it.first == "pageBreakBefore" }) parts = parts + ("pageBreakBefore" to "<w:pageBreakBefore/>")
-            if (afterPageBreak && done.isNotEmpty()) parts = parts.filter { it.first != "spacing" } +
-                ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.replace(Regex("""\sw:before(Autospacing)?="[^"]*""""), "")?.replace("<w:spacing", "<w:spacing w:before=\"0\"") ?: "<w:spacing w:before=\"0\"/>"))
+            var parts: List<Pair<String, String>> = if (done.isEmpty()) keepParts else keepParts.filter { it.first != BOOKMARKS && it.first != LABEL_BOOKMARKS } // a bookmark once
+            // Not "parts has one": Google Docs writes <w:pageBreakBefore w:val="0"/> on every paragraph, and a break before
+            // such a paragraph was lost (a paper's contents moved up onto its cover page — 2026-10-13).
+            if (afterPageBreak && parts.none { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }) parts = parts.filter { it.first != "pageBreakBefore" } + ("pageBreakBefore" to "<w:pageBreakBefore/>")
+            // No space before at the new page's top either when the break was the paragraph before's: LibreOffice gives a
+            // paragraph its space only when it breaks the page itself (a heading came two lines lower — 02_Tables).
+            val breaksItself = keepParts.any { it.first == "pageBreakBefore" && !PAGE_BREAK_OFF.matches(it.second) }
+            if (afterPageBreak && (done.isNotEmpty() || (brokenBefore && !breaksItself && sdtDepth == 0))) parts = parts.filter { it.first != "spacing" } +
+                ("spacing" to (parts.firstOrNull { it.first == "spacing" }?.second?.let(::noSpaceBefore) ?: "<w:spacing w:before=\"0\"/>"))
             return DocKeep(keepStyle, parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } }, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
         }
         fun breakLine(page: Boolean = false) {
             if (page && runs.isEmpty() && done.isEmpty()) { afterPageBreak = true; return }
             done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null }; afterPageBreak = page
         }
+        fun breakColumn() {
+            if (runs.isNotEmpty() || done.isNotEmpty()) { done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep()); runs.clear(); list = list?.let { null } }
+            if (keepParts.none { it.first == COLUMN_BREAK }) keepParts += COLUMN_BREAK to "<w:columnBreak/>"
+        }
         fun content(parent: Element, link: String?) {
             for (e in parent.kids()) {
-                if (e.namespaceURI != W) { notes += if (e.localName == "oMath" || e.localName == "oMathPara") "equations" else "other content"; continue }
+                if (e.namespaceURI != W) {
+                    // An equation (Phase 2): drawn from what it shows, its XML written back as it was.
+                    if (e.localName == "oMath" || e.localName == "oMathPara") {
+                        val math = runCatching { OfficeMath.read(e) }.getOrNull()
+                        if (math == null) { notes += "equations"; continue }
+                        if (e.localName == "oMathPara" && runs.none { it.text.isNotBlank() } && align == DocAlign.Start) align = DocAlign.Center // a display: centred, as Word shows it
+                        runs += DocRun(OBJECT_MARK.toString(), image = OfficeMath.image("f${imageCount++}", math, OfficeFormats.xml(e), basePt))
+                    } else notes += "other content"
+                    continue
+                }
                 when (e.localName) {
                     "pPr" -> Unit
                     "r" -> run(e, link, runs, ::breakLine)
@@ -1378,21 +1639,53 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "commentRangeEnd" -> e.attr(W, "id")?.let { openComments -= it }
                     // A bookmark (the contents' links and page numbers go to the headings' _Toc ones): kept on its paragraph.
                     "bookmarkStart" -> e.attr(W, "name")?.takeIf { it != "_GoBack" }?.let { n ->
+                        e.attr(W, "id")?.let { bookmarkNames[it] = n }
                         keepParts.indexOfFirst { it.first == BOOKMARKS }.let { i -> if (i < 0) keepParts += BOOKMARKS to n else keepParts[i] = BOOKMARKS to keepParts[i].second + " " + n } }
-                    "bookmarkEnd", "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
+                    // One that ends just after a caption's number (Word's "Only label and number"): kept as that.
+                    "bookmarkEnd" -> e.attr(W, "id")?.let { bookmarkNames[it] }?.let { n ->
+                        val i = keepParts.indexOfFirst { it.first == BOOKMARKS }
+                        val names = keepParts.getOrNull(i)?.second?.split(' ').orEmpty()
+                        if (n in names && runs.lastOrNull()?.cite?.let { isField(it) && it.drop(1).trimStart().startsWith("SEQ ", true) } == true) {
+                            if (names.size == 1) keepParts.removeAt(i) else keepParts[i] = BOOKMARKS to (names - n).joinToString(" ")
+                            keepParts.indexOfFirst { it.first == LABEL_BOOKMARKS }.let { j -> if (j < 0) keepParts += LABEL_BOOKMARKS to n else keepParts[j] = LABEL_BOOKMARKS to keepParts[j].second + " " + n }
+                        }
+                    }
+                    "proofErr", "permStart", "permEnd", "lastRenderedPageBreak" -> Unit
                     // A move's two ends are named: its deletion and insertion are kept, the pairing is not.
                     "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd" -> Unit
                     else -> if (e.localName.endsWith("RangeStart") || e.localName.endsWith("RangeEnd")) notes += "tracked changes" else notes += "other content"
                 }
             }
         }
+        val outerBreak = columnBreakHere // a text box's paragraph read inside this one gives it back
+        columnBreakHere = ::breakColumn
         content(p, null)
-        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0)) pageBreakPending = true
+        columnBreakHere = outerBreak
+        if (fieldDepth > 0 && isField(citeNow)) notes += "fields (page numbers, dates, contents)" // it goes on past this paragraph
+        // A column break leaves an empty line at the top of the next page, a page break does not (LibreOffice, measured
+        // 2026-10-13): that line is kept as an empty paragraph starting the page, so a paper keeps its page ends.
+        if (afterPageBreak && runs.isEmpty() && (done.isNotEmpty() || p.getElementsByTagNameNS(W, "br").length > 0) && !columnBreak) {
+            // A page break alone in its paragraph still has that paragraph's line on the page before (Word and LibreOffice):
+            // kept as an empty paragraph, or a full page's last table no longer spills onto a page of its own (2026-10-13).
+            if (done.isEmpty() && p.getElementsByTagNameNS(W, "br").length > 0) { afterPageBreak = brokenBefore; done += DocPara(emptyList(), heading, list, align, keep()) }
+            pageBreakPending = true
+        }
         else done += DocPara(OfficeFormats.tidy(runs), heading, list, align, keep())
         out += done
     }
     /** A page break ended the paragraph before: this one starts a page. */
     var pageBreakPending = false
+    /** In a paragraph of the body: a column break there splits it, the part after it marked to start the next column. */
+    var columnBreakHere: (() -> Unit)? = null
+    /**
+     * No section has more than one column: a column break goes on at the next page, in Word and LibreOffice alike, so
+     * it is read as the page break it looks like and saves as one (2026-10-13: it made 10 of the user's papers copy-only).
+     */
+    var columnsArePages = false
+    /** Inside a content control kept whole (its XML written back as it was): its paragraphs' spacing is the XML's. */
+    var sdtDepth = 0
+    /** The paragraph being read broke with a column break: its empty rest is a line of its own on the next page. */
+    var columnBreak = false
 
     /** Reads a run into [runs]; returns its font (the rFonts element) when it names one. */
     fun run(r: Element, link: String?, runs: MutableList<DocRun>, breakLine: (page: Boolean) -> Unit) {
@@ -1411,11 +1704,13 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "softHyphen", "lastRenderedPageBreak" -> Unit
                 "br", "cr" -> when (e.attr(W, "type")) {
                     "page" -> breakLine(true)
-                    "column" -> { notes += "columns"; breakLine(false) }
+                    // In columns (Phase 2): the part after it starts the next column — a paragraph of its own marked so,
+                    // written back with the break at its start (no longer copy-only).
+                    "column" -> if (columnsArePages) { columnBreak = true; breakLine(true) } else columnBreakHere?.invoke() ?: run { notes += "columns"; breakLine(false) }
                     else -> runs += look.copy(text = LINE_BREAK.toString())
                 }
                 "drawing", "pict", "object" -> if (!(e.localName == "pict" && e.getElementsByTagNameNS("urn:schemas-microsoft-com:vml", "shape").let { l ->
-                        (0 until l.length).any { (l.item(it) as Element).getAttribute("id").startsWith(Watermark.NAME) } })) // a watermark: the pages draw it
+                        (0 until l.length).any { Watermark.isOne((l.item(it) as Element).getAttribute("id")) } })) // a watermark: the pages draw it
                     runs += look.copy(text = OBJECT_MARK.toString(), image = drawing(e))
                 // Fields: a citation's is kept with its letters (written again as it was); other fields' shown text is
                 // read as text and the file said to have fields (saving makes a copy).
@@ -1426,6 +1721,10 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         fieldState = 2
                         val instr = fieldInstr.toString().trim()
                         if (!fieldMarks && instr.startsWith("CITATION ")) citeNow = instr
+                        // Any other field: its letters kept, the field written back round them — a contents list or a list of
+                        // references too, when it is in one paragraph (lines broken inside it). One that runs on over
+                        // paragraphs is kept whole by [block] (its paragraphs' XML).
+                        else if (!fieldMarks && instr.isNotEmpty()) citeNow = FIELD_CITE + instr
                         else { notes += "fields (page numbers, dates, contents)"; if (fieldMarks) fieldMark(fieldInstr.toString())?.let { runs += look.copy(text = it.toString()) } }
                     }
                     e.attr(W, "fldCharType") == "end" -> {
@@ -1454,8 +1753,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             for (e in rPr.kids()) {
                 val on = e.attr(W, "val").let { it == null || it == "1" || it == "true" || it == "on" }
                 when (e.localName) {
-                    "b" -> look = look.copy(bold = on)
-                    "i" -> look = look.copy(italic = on)
+                    "b" -> look = look.copy(bold = on, unbold = !on)
+                    "i" -> look = look.copy(italic = on, unitalic = !on)
                     "strike" -> look = look.copy(strike = on)
                     "u" -> {
                         look = look.copy(underline = e.attr(W, "val") != "none")
@@ -1469,12 +1768,13 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                         "emphasis" -> look = look.copy(italic = true)
                         "placeholder text" -> look = look.copy(color = 0x808080) // a form's empty field: Word's grey
                         "hyperlink", "internet link", "default paragraph font", "footnote reference", "endnote reference" -> Unit
-                        else -> notes += "character styles"
+                        else -> if (e.attr(W, "val") !in emptyCharStyles) notes += "character styles"
                     }
                     // Kept exactly, letter by letter (asked 2026-09-27 for fonts; 2026-09-28 the rest, from the user's test suite).
                     in RPR_CARRIED -> kept.append(OfficeFormats.xml(e))
                     "vertAlign" -> look = look.copy(script = when (e.attr(W, "val")) { "superscript" -> 1; "subscript" -> -1; else -> 0 })
-                    "vanish" -> if (on) notes += "hidden text"
+                    // Hidden text: kept with its letters (the pages leave it out, the editor greys it), no reason for a copy.
+                    "vanish" -> kept.append(OfficeFormats.xml(e))
                     "rPrChange" -> kept.append(OfficeFormats.xml(e)) // formatting changed (tracked): carried, for Accept or Reject
                     else -> if (e.namespaceURI != W) kept.append(OfficeFormats.xml(e)) // Word 2010's own (w14:ligatures…), last in the list
                         else if (on) notes += "other text effects"
@@ -1513,7 +1813,79 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A text box: its words (Word's own, not the older-Word copy in the fallback), for the pages to show.
         val box = (e.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } }
         val chart = (e.getElementsByTagNameNS("*", "chart").item(0) as Element?)?.getAttributeNS(R, "id")?.let { charts[it] }?.let { parts[it] }?.let { OfficeCharts.readDrawingml(it) }
-        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box, chart = chart)
+        // A group (Word's wpg): its pieces, each drawn in its place (only the first piece's picture or words showed before).
+        val group = (e.getElementsByTagNameNS("*", "wgp").item(0) as Element?)?.let { groupParts(it, w, h) }
+            ?: (e.getElementsByTagNameNS("*", "relIds").item(0) as Element?)?.let { smartArt(it) }
+        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group)
+    }
+    /**
+     * SmartArt, shown (not edited): the drawing Word saves beside its data (word/diagrams/drawing*.xml — the data part
+     * names it in dsp:dataModelExt), each shape where it stands with its words, as a group's pieces. The SmartArt itself
+     * is kept in the file as it was. Null: no saved drawing (an old file; shown as a grey box).
+     */
+    fun smartArt(ids: Element): List<GroupPart>? {
+        val docRels = parts[relsPath(docPath)]?.let { OfficeFormats.parse(it).documentElement.kids() }.orEmpty()
+        fun target(id: String) = docRels.firstOrNull { it.getAttribute("Id") == id }?.getAttribute("Target")?.let { resolve(dir, it) }
+        val data = ids.getAttributeNS(R, "dm").takeIf { it.isNotEmpty() }?.let(::target)?.let { parts[it] } ?: return null
+        val drawingId = Regex("""dataModelExt\b[^>]*\brelId="([^"]+)"""").find(String(data, Charsets.UTF_8))?.groupValues?.get(1) ?: return null
+        val root = target(drawingId)?.let { parts[it] }?.let { OfficeFormats.parse(it).documentElement } ?: return null
+        val out = ArrayList<GroupPart>()
+        fun num(x: Element?, kid: String, a: String) = x?.kids()?.firstOrNull { it.localName == kid }?.getAttribute(a)?.toFloatOrNull()?.div(12700f) ?: 0f
+        val all = root.getElementsByTagNameNS("*", "sp")
+        for (i in 0 until all.length) {
+            val sp = all.item(i) as Element
+            val xfrm = sp.kids().firstOrNull { it.localName == "spPr" }?.kids()?.firstOrNull { it.localName == "xfrm" }
+            val w = num(xfrm, "ext", "cx"); val h = num(xfrm, "ext", "cy")
+            if (w <= 0f || h <= 0f) continue
+            // As a Word shape (wps) for the shape's drawing: its geometry, fill, outline and style's theme colours.
+            val xml = OfficeFormats.xml(sp).replace("<dsp:spPr", "<wps:spPr").replace("</dsp:spPr>", "</wps:spPr>").replace("<dsp:style", "<wps:style").replace("</dsp:style>", "</wps:style>")
+            val fontColor = Regex("""<a:fontRef\b[^>]*>([\s\S]*?)</a:fontRef>""").find(xml)?.groupValues?.get(1)?.let { ShapePicture.themeColor(it) }?.and(0xFFFFFF)
+            val paras = sp.kids().firstOrNull { it.localName == "txBody" }?.kids()?.filter { it.localName == "p" }?.map { p ->
+                val algn = p.kids().firstOrNull { it.localName == "pPr" }?.getAttribute("algn")
+                val runs = p.kids().filter { it.localName == "r" }.map { r ->
+                    val pr = r.kids().firstOrNull { it.localName == "rPr" }
+                    val color = pr?.kids()?.firstOrNull { it.localName == "solidFill" }?.let { ShapePicture.themeColor(OfficeFormats.xml(it)) }?.and(0xFFFFFF) ?: fontColor
+                    DocRun(r.kids().firstOrNull { it.localName == "t" }?.textContent.orEmpty(), bold = pr?.getAttribute("b") == "1", italic = pr?.getAttribute("i") == "1",
+                        sizePt = pr?.getAttribute("sz")?.toFloatOrNull()?.div(100f), color = color)
+                }
+                DocPara(OfficeFormats.tidy(runs), align = when (algn) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start })
+            }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
+            // Its words in their own rectangle (dsp:txXfrm: inside a chevron's body, not over its notch), the shape apart.
+            val tx = sp.kids().firstOrNull { it.localName == "txXfrm" }
+            val tw = num(tx, "ext", "cx"); val th = num(tx, "ext", "cy")
+            // Words wider than their rectangle made smaller to fit (Word shrinks SmartArt's text so; ~0.56 of a letter's size is its width).
+            fun fitted(ps: List<DocPara>, room: Float): List<DocPara> {
+                val need = ps.flatMap { p -> p.runs.flatMap { r -> r.text.split(' ').map { it.length * (r.sizePt ?: 11f) * 0.56f } } }.maxOrNull() ?: return ps
+                val k = (room / need).takeIf { it < 1f } ?: return ps
+                return ps.map { p -> p.copy(runs = p.runs.map { r -> r.copy(sizePt = ((r.sizePt ?: 11f) * k * 2).toInt() / 2f) }) }
+            }
+            if (paras != null && tx != null && tw > 0f && th > 0f) {
+                out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml))
+                val body = Regex("""<a:bodyPr\b[^>]*?/?>""").find(xml)?.value?.replace("<a:bodyPr", "<wps:bodyPr")?.let { if (it.endsWith("/>")) it else it.dropLast(1) + "/>" } ?: """<wps:bodyPr anchor="ctr"/>"""
+                val words = """<wps:wsp><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></wps:spPr>$body</wps:wsp>"""
+                out += GroupPart(num(tx, "off", "x"), num(tx, "off", "y"), tw, th, DocImage("f${imageCount++}", null, tw, th, words, box = fitted(paras, tw)))
+            } else out += GroupPart(num(xfrm, "off", "x"), num(xfrm, "off", "y"), w, h, DocImage("f${imageCount++}", null, w, h, xml, box = paras))
+        }
+        return out.takeIf { it.isNotEmpty() }
+    }
+
+    /** A group's pieces in its box ([w] × [h] pt): pictures, shapes and text boxes, and groups inside it. */
+    fun groupParts(g: Element, w: Float, h: Float): List<GroupPart>? {
+        fun xfrm(e: Element) = e.kids().firstOrNull { it.localName.endsWith("spPr") || it.localName == "grpSpPr" }?.kids()?.firstOrNull { it.localName == "xfrm" }
+        fun num(x: Element?, kid: String, a: String) = x?.kids()?.firstOrNull { it.localName == kid }?.getAttribute(a)?.toFloatOrNull() ?: 0f
+        val gx = xfrm(g)
+        val sx = w / num(gx, "chExt", "cx").takeIf { it > 0 }.let { it ?: (w * 12700) }; val sy = h / num(gx, "chExt", "cy").takeIf { it > 0 }.let { it ?: (h * 12700) }
+        val out = ArrayList<GroupPart>()
+        for (k in g.kids().filter { it.localName in setOf("wsp", "pic", "grpSp") }) {
+            val kx = xfrm(k)
+            val x = (num(kx, "off", "x") - num(gx, "chOff", "x")) * sx; val y = (num(kx, "off", "y") - num(gx, "chOff", "y")) * sy
+            val pw = num(kx, "ext", "cx") * sx; val ph = num(kx, "ext", "cy") * sy
+            val relId = (k.getElementsByTagNameNS("*", "blip").item(0) as Element?)?.getAttributeNS(R, "embed")?.takeIf { it.isNotEmpty() }
+            val box = if (k.localName == "wsp") (k.getElementsByTagNameNS("*", "txbxContent").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it) } } } else null
+            val inner = if (k.localName == "grpSp") groupParts(k, pw, ph) else null
+            out += GroupPart(x, y, pw, ph, DocImage("f${imageCount++}", relId?.let { images[it] }, pw, ph, OfficeFormats.xml(k), box = box, group = inner))
+        }
+        return out.takeIf { it.isNotEmpty() }
     }
     var imageCount = 0
 
@@ -1534,7 +1906,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             "bullet" -> false
             "decimal" -> true
             "none" -> { notes += "other list formats"; false }
-            else -> { notes += "letter or roman numbering"; true }
+            else -> true // a), iii., B.: drawn as the file says on the pages and in the editor, and the file's list is kept on saving
         }
         // Word counts on through the whole document for one list; a number is kept by saying where each part starts.
         val c = counters.getOrPut(numId) { IntArray(9) { Int.MIN_VALUE } }
@@ -1563,7 +1935,20 @@ internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "picture", "bib
 internal const val SDT_BLOCK = "sdtBlock"
 internal const val SDT_PART = "sdtPart"
 internal const val BOOKMARKS = "bookmarks"
-internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS)
+/** Bookmarks round a caption's label and number only ("Figure 1"): from the paragraph's start to its first SEQ field's end. */
+internal const val LABEL_BOOKMARKS = "labelBookmarks"
+/** A column break before the paragraph (Word: a w:br type="column" run at its start), as its pages lay it out. */
+internal const val COLUMN_BREAK = "columnBreak"
+internal val NOT_PPR = setOf("runFonts", SDT_BLOCK, SDT_PART, BOOKMARKS, LABEL_BOOKMARKS, COLUMN_BREAK)
+/** A spacing element with no space before, its attributes in the order the parser gives them back (so it reads back the same). */
+private fun noSpaceBefore(spacing: String): String {
+    val attrs = Regex("""\s([\w:]+)="[^"]*"""").findAll(spacing).filter { it.groupValues[1] !in setOf("w:before", "w:beforeAutospacing") }.map { it.value.trim() }.toList()
+    return "<w:spacing " + (attrs + "w:before=\"0\"").sortedBy { it.substringBefore('=') }.joinToString(" ") + "/>"
+}
+
+/** Word's "no page break before", as Google Docs writes it on every paragraph. */
+private val PAGE_BREAK_OFF = Regex("""<w:pageBreakBefore\s+w:val="(0|false|off)"\s*/>""")
+
 internal val PPR_ORDER = listOf("pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers", "pBdr",
     "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
     "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap",
@@ -1676,7 +2061,9 @@ private object DocxWriter {
                 append("""<w:abstractNum w:abstractNumId="$id"><w:multiLevelType w:val="hybridMultilevel"/>""")
                 for (l in 0..8) {
                     val indent = 720 * (l + 1)
-                    if (ordered) append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%${l + 1}."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="360"/></w:pPr></w:lvl>""")
+                    val (fmt, text) = doc.numbering?.getOrNull(l) ?: ("decimal" to "%${l + 1}.")
+                    val hanging = if (text.count { it == '%' } > 1) 360 + 144 * l else 360 // "1.1.1." needs more room than "1." (the pages: OfficePages.paragraph)
+                    if (ordered) append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="$fmt"/><w:lvlText w:val="$text"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="$hanging"/></w:pPr></w:lvl>""")
                     else append("""<w:lvl w:ilvl="$l"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${bulletChars[l % 3]}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="$indent" w:hanging="360"/></w:pPr></w:lvl>""")
                 }
                 append("</w:abstractNum>")
@@ -1724,8 +2111,14 @@ private object DocxWriter {
         picture = { img -> (img.raw ?: img.chart?.let { ch ->
                 // A new chart (Insert › Chart, or one whose data Writer changed): its own part, as Word keeps one.
                 val name = generateSequence(1) { it + 1 }.map { "${dir}charts/chart$it.xml" }.first { it !in parts }
-                parts[name] = ChartWriter.drawingml(ch).toByteArray()
+                parts[name] = ChartWriter.drawingml(ch, workbook = true).toByteArray()
                 types = types.replace("</Types>", """<Override PartName="/$name" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>""")
+                // Its numbers in an embedded workbook, as Word keeps them: Word's Edit Data opens it.
+                val book = generateSequence(1) { it + 1 }.map { "${dir}embeddings/Microsoft_Excel_Worksheet_tetra$it.xlsx" }.first { it !in parts }
+                parts[book] = ChartWriter.workbook(ch)
+                parts[name.substringBeforeLast('/') + "/_rels/" + name.substringAfterLast('/') + ".rels"] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/${book.substringAfterLast('/')}"/></Relationships>""").toByteArray()
+                if (!Regex("""Extension="xlsx"""", RegexOption.IGNORE_CASE).containsMatchIn(types))
+                    types = types.replace("</Types>", """<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/></Types>""")
                 val rel = newRel(REL_CHART, name.removePrefix(dir), false)
                 val cx = (img.widthPt * 12700).toLong(); val cy = (img.heightPt * 12700).toLong(); val id = docPrId++
                 """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Chart $id"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="$R" r:id="$rel"/></a:graphicData></a:graphic></wp:inline></w:drawing>"""
@@ -1811,7 +2204,7 @@ private object DocxWriter {
             }
             body.append("<w:p>")
             // Writer's own properties and the ones carried from the file, in the order Word requires.
-            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR })
+            val props = ArrayList(p.keep?.parts.orEmpty().filter { it.first !in NOT_PPR && !(it.first == "jc" && p.align != DocAlign.Start) && !(it.first == "numPr" && p.list != null) }) // the file's own left and "no number", unless changed here
             (if (p.heading > 0) headingIds.getValue(p.heading) else p.keep?.style)?.let { props += "pStyle" to """<w:pStyle w:val="${OfficeFormats.esc(it)}"/>""" }
             // A list item in a table's cell keeps the file's own list (Writer's own lists are numbered for the body's).
             p.list?.let { l -> (index?.let { numIds[it] } ?: p.keep?.list?.substringBefore('|'))?.let { props += "numPr" to """<w:numPr><w:ilvl w:val="${l.level}"/><w:numId w:val="$it"/></w:numPr>""" } }
@@ -1829,7 +2222,10 @@ private object DocxWriter {
                 body.append("</w:pPr>")
             }
             val marks = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
-            marks.forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
+            var labelMarks = p.keep?.parts?.firstOrNull { it.first == LABEL_BOOKMARKS }?.second?.split(' ')?.map { it to bookmarkId++ }.orEmpty()
+            (marks + labelMarks).forEach { (n, id) -> body.append("""<w:bookmarkStart w:id="$id" w:name="${OfficeFormats.esc(n)}"/>""") }
+            fun endLabels() { labelMarks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }; labelMarks = emptyList() }
+            if (p.keep?.parts?.any { it.first == COLUMN_BREAK } == true) body.append("""<w:r><w:br w:type="column"/></w:r>""")
             var k = 0
             val runs = OfficeFormats.tidy(p.runs)
             // A citation: its letters inside its field, as Word writes one (begin, instruction, separate, text, end).
@@ -1837,7 +2233,9 @@ private object DocxWriter {
             fun citeTo(c: String?) {
                 if (c == cite) return
                 if (cite != null) body.append("""<w:r><w:fldChar w:fldCharType="end"/></w:r>""")
-                if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c)} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
+                // The caption's number ends its "label and number" bookmarks.
+                if (cite?.drop(1)?.trimStart()?.startsWith("SEQ ", true) == true) endLabels()
+                if (c != null) body.append("""<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${OfficeFormats.esc(c.removePrefix(FIELD_CITE.toString()))} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>""")
                 cite = c
             }
             // Tracked changes: the letters inside Word's w:ins / w:del.
@@ -1880,6 +2278,7 @@ private object DocxWriter {
             citeTo(null); controlTo(null)
             // A comment ends here unless the next paragraph goes on in it.
             commentMarks(nextFirst[p]?.runs?.firstOrNull()?.comments.orEmpty().filter { it in openComments })
+            endLabels()
             marks.forEach { (_, id) -> body.append("""<w:bookmarkEnd w:id="$id"/>""") }
             body.append("</w:p>")
         }
@@ -1926,7 +2325,7 @@ private object DocxWriter {
         parts[docPath] = out.toByteArray()
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
-        WordSources.write(parts, doc.sources)
+        WordSources.write(parts, doc.sources, doc.citeStyle)
         return OfficeFormats.zip(parts)
     }
 
@@ -1984,12 +2383,13 @@ private object DocxWriter {
     var picture: (DocImage) -> String = { it.raw ?: "" }
 
     private fun run(r: DocRun, style: String?, basePt: Float): String = buildString {
+        if (r.image?.math != null) { append(r.image.raw.orEmpty()); return@buildString } // an equation stands beside the runs, not in one
         // Writer's own settings and the ones carried from the file, in the order Word requires.
         val props = ArrayList<Pair<String, String>>()
         r.font?.let { raw -> RAW_ELEMENT.findAll(raw).forEach { m -> val name = m.groupValues[1].removePrefix("w:"); if (name != "u" || r.underline) props += name to m.value } }
         style?.let { props += "rStyle" to """<w:rStyle w:val="$it"/>""" }
-        if (r.bold) props += "b" to "<w:b/>"
-        if (r.italic) props += "i" to "<w:i/>"
+        if (r.bold) props += "b" to "<w:b/>" else if (r.unbold) props += "b" to """<w:b w:val="0"/>"""
+        if (r.italic) props += "i" to "<w:i/>" else if (r.unitalic) props += "i" to """<w:i w:val="0"/>"""
         if (r.strike) props += "strike" to "<w:strike/>"
         r.color?.let { props += "color" to """<w:color w:val="${OfficeFormats.hex(it)}"/>""" }
         r.sizePt?.let { props += "sz" to """<w:sz w:val="${(it * 2).roundToInt()}"/>""" }
@@ -2026,11 +2426,13 @@ internal const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible
 private const val XLINK = "http://www.w3.org/1999/xlink"
 internal const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
 internal const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+internal const val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
 
 /** LibreOffice's name for a style ("Heading_20_1") as people see it ("Heading 1"). */
 internal fun odfDisplayName(name: String) = Regex("""_([0-9a-fA-F]{2})_""").replace(name) { it.groupValues[1].toInt(16).toChar().toString() }
 
-private class OdtStyle(val name: String, val family: String, val parent: String?, val listStyle: String?, val masterPage: String?, val text: Element?, val paragraph: Element?, val automatic: Boolean)
+private class OdtStyle(val name: String, val family: String, val parent: String?, val listStyle: String?, val masterPage: String?, val text: Element?, val paragraph: Element?, val automatic: Boolean,
+    val graphic: Element? = null)
 
 private class OdtReader(val parts: Map<String, ByteArray>) {
     val notes = linkedSetOf<String>()
@@ -2069,7 +2471,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         val master = root.kid(OFFICE, "master-styles")?.kids()?.let { ms -> ms.firstOrNull { it.attr(STYLE, "name") == "Standard" } ?: ms.firstOrNull() }
             ?: return emptyMap<String, List<DocPara>>() to emptyMap()
         fun read(tag: String) = master.kid(STYLE, tag)?.takeIf { it.attr(STYLE, "display") != "false" }?.let { ArrayList<DocPara>().also { out -> block(it, out, null, -1) } }
-        fun both(kind: String) = listOfNotNull(read(kind)?.let { "default" to it }, read("$kind-first")?.let { "first" to it }).toMap()
+        // LibreOffice's left pages are Word's even ones.
+        fun both(kind: String) = listOfNotNull(read(kind)?.let { "default" to it }, read("$kind-first")?.let { "first" to it }, read("$kind-left")?.let { "even" to it }).toMap()
         return both("header") to both("footer")
     }
 
@@ -2079,7 +2482,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 val family = e.attr(STYLE, "family") ?: continue
                 val name = e.attr(STYLE, "name") ?: continue
                 styles["$family/$name"] = OdtStyle(name, family, e.attr(STYLE, "parent-style-name"), e.attr(STYLE, "list-style-name"),
-                    e.attr(STYLE, "master-page-name"), e.kid(STYLE, "text-properties"), e.kid(STYLE, "paragraph-properties"), automatic)
+                    e.attr(STYLE, "master-page-name"), e.kid(STYLE, "text-properties"), e.kid(STYLE, "paragraph-properties"), automatic, e.kid(STYLE, "graphic-properties"))
             }
             "list-style" -> e.attr(STYLE, "name")?.let { listStyles[it] = e }
         }
@@ -2113,8 +2516,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             if (!(ns == FO || ns == STYLE)) continue // another program's own (revision ids…)
             if (local.endsWith("-asian") || local.endsWith("-complex")) { carry(); continue }
             when (local) {
-                "font-weight" -> l = l.copy(bold = v == "bold" || (v.toIntOrNull() ?: 400) >= 600)
-                "font-style" -> l = l.copy(italic = v == "italic" || v == "oblique")
+                "font-weight" -> (v == "bold" || (v.toIntOrNull() ?: 400) >= 600).let { b -> l = l.copy(bold = b, unbold = !b) }
+                "font-style" -> (v == "italic" || v == "oblique").let { i -> l = l.copy(italic = i, unitalic = !i) }
                 "text-underline-style" -> if (!inLink) l = l.copy(underline = v != "none")
                 "text-line-through-style" -> l = l.copy(strike = v != "none")
                 "font-size" -> size(v, basePt)?.let { l = l.copy(sizePt = it) } ?: run { notes += "other text effects" }
@@ -2123,7 +2526,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "font-name", "font-family" -> carry()
                 // "super 58%", "sub", "33% 58%", "-33% 58%", "0% 100%"
                 "text-position" -> v.substringBefore(' ').let { p -> l = l.copy(script = when { p == "super" -> 1; p == "sub" -> -1; else -> p.removeSuffix("%").toFloatOrNull()?.let { Math.signum(it).toInt() } ?: 0 }) }
-                "display" -> if (v == "none") notes += "hidden text"
+                "display" -> carry() // hidden text (none): kept with its letters, as in Word files
                 else -> carry()
             }
         }
@@ -2177,7 +2580,15 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                 "list" -> list(e, out, null, 0, null)
                 "sequence-decls", "variable-decls", "user-field-decls", "dde-connection-decls", "soft-page-break", "bookmark", "bookmark-start", "bookmark-end" -> Unit
                 "tracked-changes" -> notes += "tracked changes"
-                "section" -> { notes += "sections"; block(e, out, list, level) }
+                // A section (LibreOffice's columns in part of the text, a protected or named part): each of its paragraphs
+                // carries its opening tag (an outer one's first), written round them again (OdtSections).
+                "section" -> {
+                    val start = out.size
+                    block(e, out, list, level)
+                    if (out.size == start) notes += "sections"
+                    val tag = "<text:section${attrs(e)}>"
+                    for (k in start until out.size) out[k] = OdtSections.within(out[k], tag)
+                }
                 "table-of-content", "alphabetical-index", "illustration-index", "table-index", "object-index", "user-index", "bibliography" ->
                     { notes += "fields (page numbers, dates, contents)"; e.kid(TEXT, "index-body")?.let { block(it, out, list, level) } }
                 "numbered-paragraph" -> { notes += "other list formats"; block(e, out, list, level) }
@@ -2286,8 +2697,25 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         // rectangles with words) — a shape only when it has some.
         val box = (e.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0", "text-box").item(0) as Element?)?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }
             ?: e.takeIf { it.localName == "custom-shape" }?.let { t -> aside(notes, openComments) { ArrayList<DocPara>().also { block(t, it, null, 0) } } }?.takeIf { ps -> ps.any { it.text.isNotBlank() } }
-        val chart = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }?.let { OfficeCharts.readOdf(it) }
-        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart)
+        val objectXml = (e.getElementsByTagNameNS("*", "object").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { parts["$it/content.xml"] }
+        val chart = objectXml?.let { OfficeCharts.readOdf(it) }
+        // A formula (LibreOffice Math's object, MathML): drawn as Word's equations are; the file's object kept as it is.
+        if (chart == null && e.localName == "frame") objectXml?.let { OfficeMath.fromMathML(it) }?.let { m -> return OfficeMath.image("f${imageCount++}", m, OfficeFormats.xml(e), basePt) }
+        // Its graphic style, parents first so the frame's own settings win: as attributes, for where it goes and how it looks.
+        val look = generateSequence(e.getAttributeNS(DRAW, "style-name").takeIf { it.isNotEmpty() }?.let { styles["graphic/$it"] }) { s -> s.parent?.let { styles["graphic/$it"] } }
+            .take(10).toList().asReversed().mapNotNull { it.graphic }.joinToString("") { g -> (0 until g.attributes.length).joinToString("") { i -> g.attributes.item(i).let { a -> " ${a.nodeName}=\"${a.nodeValue}\"" } } }
+            .takeIf { it.isNotEmpty() }
+        // A group: each piece read as one, in the group's box (LibreOffice's pieces stand where its anchor puts them).
+        if (e.localName == "g") {
+            val raw = OfficeFormats.xml(e)
+            val gb = Arrange.odtGroupBox(raw) ?: floatArrayOf(0f, 0f, 144f, 96f)
+            val parts = e.kids().filter { it.namespaceURI == DRAW }.mapNotNull { k ->
+                val pb = Arrange.odtGroupBox(OfficeFormats.xml(k)) ?: return@mapNotNull null
+                GroupPart(pb[0] - gb[0], pb[1] - gb[1], pb[2], pb[3], frame(k))
+            }
+            return DocImage("f${imageCount++}", null, gb[2], gb[3], raw, look = look, group = parts.ifEmpty { null })
+        }
+        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart, look = look)
     }
     var imageCount = 0
 
@@ -2361,7 +2789,15 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                             openComments += name
                         }
                     } else if (e.namespaceURI == OFFICE && e.localName == "annotation-end") e.attr(OFFICE, "name")?.let { openComments -= it }
-                    else if (e.localName == "custom-shape" && e.getAttributeNS(e.namespaceURI, "name").startsWith(Watermark.NAME)) Unit // the pages draw it
+                    // LibreOffice's content control (a form's field): its letters carry it, as Word's sdtPr (Forms.fromOdt).
+                    else if (e.namespaceURI == LOEXT && e.localName == "content-control") {
+                        val attrs = (0 until e.attributes.length).map { e.attributes.item(it) }.filter { it.namespaceURI == LOEXT }.associate { it.localName to it.nodeValue }
+                        val items = e.kids().filter { it.namespaceURI == LOEXT && it.localName == "list-item" }.map { (it.getAttributeNS(LOEXT, "display-text").ifEmpty { it.getAttributeNS(LOEXT, "value") }) to it.getAttributeNS(LOEXT, "value") }
+                        val pr = Forms.fromOdt(attrs, items).takeIf { look.control == null }
+                        if (pr == null) notes += "content controls"
+                        content(e, if (pr != null) look.copy(control = pr) else look, inLink)
+                    } else if (e.namespaceURI == LOEXT && e.localName == "list-item") Unit
+                    else if ((e.localName == "custom-shape" || e.localName == "frame") && Watermark.isOne(e.getAttributeNS(e.namespaceURI, "name"))) Unit // a watermark: the pages draw it
                     else if (e.localName == "frame" || e.namespaceURI?.contains("drawing") == true) runs += look.copy(text = OBJECT_MARK.toString(), image = frame(e))
                     else notes += "other content"
                 }
@@ -2409,7 +2845,7 @@ private object OdtWriter {
             if (add.isNotEmpty() || builtin.isNotEmpty()) { stylesXml = stylesXml.replace("</office:styles>", "$add$builtin</office:styles>"); parts["styles.xml"] = stylesXml.toByteArray() }
             // Citations: LibreOffice shows a mark as its identifier between the document's brackets — round ones, so
             // "Smith & Jones, 2019" reads as APA's (Smith & Jones, 2019).
-            if (doc.paras.any { p -> p.runs.any { it.cite != null } }) {
+            if (doc.paras.any { p -> p.runs.any { it.cite != null && !isField(it.cite) } }) {
                 val xml = stylesXml!!
                 val conf = Regex("""<text:bibliography-configuration\b[^>]*>""").find(xml)
                 stylesXml = if (conf != null) xml.replaceRange(conf.range, conf.value.replace(Regex("""\stext:(prefix|suffix)="[^"]*""""), "").replaceFirst("<text:bibliography-configuration", """<text:bibliography-configuration text:prefix="(" text:suffix=")""""))
@@ -2450,13 +2886,15 @@ private object OdtWriter {
             }
         }
         fun textStyle(r: DocRun): String? {
-            val look = r.copy(text = "", link = null, image = null, comments = emptyList())
+            val look = r.copy(text = "", link = null, image = null, comments = emptyList(), control = null)
             if (look == DocRun("")) return null
             return textStyles.getOrPut(look) {
                 val name = fresh("TT")
                 val p = buildString {
                     if (r.bold) append(""" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold"""")
+                    else if (r.unbold) append(""" fo:font-weight="normal" style:font-weight-asian="normal" style:font-weight-complex="normal"""")
                     if (r.italic) append(""" fo:font-style="italic" style:font-style-asian="italic" style:font-style-complex="italic"""")
+                    else if (r.unitalic) append(""" fo:font-style="normal" style:font-style-asian="normal" style:font-style-complex="normal"""")
                     if (r.underline) append(""" style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"""")
                     if (r.strike) append(""" style:text-line-through-style="solid" style:text-line-through-type="single"""")
                     r.sizePt?.let { val s = fmt(it); append(""" fo:font-size="${s}pt" style:font-size-asian="${s}pt" style:font-size-complex="${s}pt"""") }
@@ -2478,7 +2916,11 @@ private object OdtWriter {
                 pattern.forEachIndexed { i, c ->
                     val indent = "%.3fcm".format(java.util.Locale.ROOT, 0.635 * (i + 1))
                     val props = """<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="$indent" fo:text-indent="-0.635cm" fo:margin-left="$indent"/></style:list-level-properties>"""
-                    if (c == 'n') auto.append("""<text:list-level-style-number text:level="${i + 1}" style:num-suffix="." style:num-format="1">$props</text:list-level-style-number>""")
+                    val (fmt, text) = doc.numbering?.getOrNull(i) ?: ("decimal" to "%${i + 1}.")
+                    val format = when (fmt) { "lowerLetter" -> "a"; "upperLetter" -> "A"; "lowerRoman" -> "i"; "upperRoman" -> "I"; else -> "1" }
+                    val shown = Regex("%[1-9]").findAll(text).count().coerceAtLeast(1) // "%1.%2." → two levels, joined by "." (ODF's way)
+                    val prefix = OfficeFormats.esc(text.substringBefore('%')); val suffix = OfficeFormats.esc(text.substringAfterLast('%').drop(1))
+                    if (c == 'n') auto.append("""<text:list-level-style-number text:level="${i + 1}" style:num-prefix="$prefix" style:num-suffix="$suffix" style:num-format="$format"${if (shown > 1) " text:display-levels=\"$shown\"" else ""}>$props</text:list-level-style-number>""")
                     else auto.append("""<text:list-level-style-bullet text:level="${i + 1}" text:bullet-char="${listOf("•", "◦", "▪")[i % 3]}">$props</text:list-level-style-bullet>""")
                 }
                 auto.append("</text:list-style>")
@@ -2498,6 +2940,14 @@ private object OdtWriter {
             manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.chart"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
             val n = ++frames
             """<draw:frame draw:name="Tetra chart $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+        } ?: img.math?.let { m ->
+            // A new or rewritten equation: LibreOffice Math's object (MathML), in the line ("as-char"), sized as drawn.
+            val name = generateSequence(1) { it + 1 }.map { "Object tetra-math-$it" }.first { "$it/content.xml" !in parts }
+            parts["$name/content.xml"] = OfficeMath.mathml(m, true).toByteArray() // LibreOffice's own formulas are "block" in a line too
+            if ("Tetra_20_formula" !in usedNames && shapeStyles.add("Tetra_20_formula")) auto.append("""<style:style style:name="Tetra_20_formula" style:family="graphic"><style:graphic-properties fo:margin-left="0cm" fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm" style:vertical-pos="middle" style:vertical-rel="text"/></style:style>""")
+            manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.formula"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
+            val n = ++frames
+            """<draw:frame draw:style-name="Tetra_20_formula" draw:name="Tetra equation $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         } ?: run {
             val bytes = img.bytes ?: return@run ""
             val name = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.${img.extension}" }.first { it !in parts }
@@ -2507,8 +2957,12 @@ private object OdtWriter {
             """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         }).let { x -> img.wrap?.let { w -> val page = img.onPage != null && w != PictureWrap.InLine
             if (wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)); PictureXml.odt(x, w, img.onPage.takeIf { page }) } ?: x }
-            .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } }
-            .also { x -> Regex("""text:style-name="(Tetra_20_art_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtArtStyle(n)?.let(auto::append) } }
+            .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").findAll(x).forEach { m -> m.groupValues[1].let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } } }
+            .also { x -> Regex("""text:style-name="(Tetra_20_art_[^"]+)"""").findAll(x).forEach { m -> m.groupValues[1].let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtArtStyle(n)?.let(auto::append) } } }
+            // A group's pieces may name Writer's wrap styles of their own (a picture's).
+            .also { x -> Regex("""draw:style-name="Tetra_20_wrap_20_(\w+?)(${PictureXml.ODT_PAGE_REL})?"""").findAll(x).forEach { m ->
+                PictureWrap.entries.firstOrNull { it.name == m.groupValues[1] }?.let { w -> val page = m.groupValues[2].isNotEmpty()
+                    if (PictureXml.odtStyleName(w, page) !in usedNames && wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)) } } }
 
         // Comments: an annotation where one starts (its contents as the file had them, or written out), its end where it ends.
         val live = doc.liveComments.associateBy { it.id }
@@ -2533,7 +2987,7 @@ private object OdtWriter {
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
             val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
-            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" })
+            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" && it.first != OdtSections.PART })
             append("<$tag text:style-name=\"$style\"")
             if (p.heading > 0) append(" text:outline-level=\"${p.heading}\"")
             append(">")
@@ -2547,8 +3001,14 @@ private object OdtWriter {
                 while (end < runs.size && runs[end].link == link) end++
                 if (link != null) append("""<text:a xlink:type="simple" xlink:href="${OfficeFormats.esc(link)}">""")
                 var q = k
+                var control: String? = null // a form's content control open here (LibreOffice's, from Word's sdtPr)
                 while (q < end) {
                     val r = runs[q++]
+                    if (r.control != control) {
+                        if (control != null) append("</loext:content-control>")
+                        control = r.control
+                        control?.let { append(Forms.odt(it)) }
+                    }
                     commentMarks(r.comments)
                     if (r.image != null) { append(frame(r.image)); prev = "x"; continue }
                     // A note, where its reference is: LibreOffice's, its number shown, its paragraphs inside.
@@ -2560,7 +3020,7 @@ private object OdtWriter {
                         prev = "x"; continue
                     }
                     // A citation: a bibliography mark holding its source, its letters inside as plain text.
-                    r.cite?.let { tag ->
+                    r.cite?.takeIf { !isField(it) }?.let { tag -> // a Word field: its letters only (LibreOffice has its own fields)
                         val text = StringBuilder(r.text)
                         while (q < end && runs[q].cite == tag && runs[q].image == null) text.append(runs[q++].text)
                         val src = doc.sources.firstOrNull { it.tag == tag }
@@ -2574,6 +3034,7 @@ private object OdtWriter {
                     prev = r.text
                     if (s != null) append("</text:span>")
                 }
+                if (control != null) { append("</loext:content-control>"); control = null }
                 if (link != null) append("</text:a>")
                 k = end
             }
@@ -2585,8 +3046,17 @@ private object OdtWriter {
         /** Paragraphs, lists and tables as the body has them; a table's cells hold the same (a table in a cell too). */
         fun blockXml(paras: List<DocPara>, text: StringBuilder) {
         var i = 0
+        var sections = emptyList<String>() // the sections open here, outermost first
+        fun sectionTo(p: DocPara?) {
+            val want = p?.let(OdtSections::tags).orEmpty()
+            val same = sections.zip(want).takeWhile { (a, b) -> a == b }.size
+            repeat(sections.size - same) { text.append("</text:section>") }
+            want.drop(same).forEach { text.append(it); Regex("""text:style-name="(${OdtSections.TETRA}\d+)"""").find(it)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) auto.append(OdtSections.style(n)) } }
+            sections = want
+        }
         while (i < paras.size) {
             val p = paras[i]
+            sectionTo(p)
             p.table?.let { t ->
                 // A table as the file had it: its attributes and columns raw, header rows grouped, merged-away cells kept.
                 text.append("<table:table${t.props}>").append(t.grid)
@@ -2610,7 +3080,7 @@ private object OdtWriter {
             }
             if (p.list == null) { text.append(paragraphXml(p)); i++; continue }
             var end = i
-            while (end < paras.size && paras[end].list != null && paras[end].table == null) end++
+            while (end < paras.size && paras[end].list != null && paras[end].table == null && OdtSections.tags(paras[end]) == sections) end++
             val items = paras.subList(i, end)
             // The file's own list style, when every item still belongs to it and is still of its kind at its level.
             val source = items.first().keep?.list
@@ -2633,6 +3103,7 @@ private object OdtWriter {
             text.append("</text:list>")
             i = end
         }
+        sectionTo(null)
         }
         val text = StringBuilder().also { blockXml(doc.paras, it) }
 

@@ -368,6 +368,56 @@ class OfficeFormatsTest {
         }
     }
 
+    @Test fun `a floating picture's order among the others is read, changed and kept through a new wrap`() {
+        val anchor = """<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">""" +
+            """<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>""" +
+            """<wp:extent cx="1270000" cy="1270000"/><wp:wrapSquare wrapText="bothSides"/><wp:docPr id="1" name="P"/></wp:anchor></w:drawing>"""
+        val word = DocImage("a", null, 100f, 100f, anchor)
+        assertEquals(251659264L, PictureXml.zOf(word))
+        val front = PictureXml.withZ(word, 251659300L)!!
+        assertEquals(251659300L, PictureXml.zOf(front))
+        // A new wrap keeps its place among the others.
+        assertEquals(251659300L, PictureXml.zOf(PictureXml.withWrap(front, PictureWrap.InFront, OfficeKind.Docx)))
+        val frame = DocImage("b", null, 100f, 100f, """<draw:frame draw:name="P" draw:z-index="2" text:anchor-type="char" svg:width="100pt" svg:height="100pt"><draw:image xlink:href="Pictures/p.png"/></draw:frame>""")
+        assertEquals(2L, PictureXml.zOf(frame))
+        assertEquals(0L, PictureXml.zOf(PictureXml.withZ(frame, 0)!!))
+        assertEquals(1, Regex("draw:z-index").findAll(PictureXml.withZ(frame, 5)!!.raw!!).count())
+        // A picture just put in has no XML yet: nothing to say it in.
+        assertEquals(null, PictureXml.withZ(DocImage("c", null, 10f, 10f, null, byteArrayOf(1), "png"), 3))
+    }
+
+    @Test fun `a picture watermark is set in both kinds, read back, replaced by words and taken away`() {
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 1, 2, 3, 4) // the bytes are carried, not looked at
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a picture behind its text.")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val page = DocStyles.of(kind, bytes).page
+            fun set(from: ByteArray, text: String?, picture: Watermark.Picture?) = OfficeFormats.zip(OfficeFormats.unzip(from).let {
+                if (kind == OfficeKind.Docx) Watermark.docx(it, text, page, picture) else Watermark.odt(it, text, page, picture) }, if (kind == OfficeKind.Odt) "mimetype" else null)
+            val pictured = set(bytes, null, Watermark.Picture(png, "png", 0.5f))
+            java.io.File("build/office-roundtrip").apply { mkdirs() }.resolve("picture-watermark.${kind.extension}").writeBytes(pictured)
+            val styles = DocStyles.of(kind, pictured)
+            assertTrue(kind.name, styles.section.watermarkPicture?.contentEquals(png) == true)
+            assertEquals(kind.name, null, styles.section.watermark)
+            // Not a picture in the header's text, and no reason for a copy.
+            assertEquals(kind.name, false, styles.section.headers.values.flatten().any { p -> p.runs.any { it.image != null } })
+            assertEquals(kind.name, emptySet<String>(), OfficeFormats.read(pictured, kind).blocking)
+            // Words in its place: the picture goes; then none at all.
+            val worded = DocStyles.of(kind, set(pictured, "DRAFT", null)).section
+            assertEquals(kind.name, "DRAFT" to null, worded.watermark to worded.watermarkPicture)
+            assertEquals(kind.name, null, DocStyles.of(kind, set(set(pictured, null, null), null, null)).section.watermarkPicture)
+            // Set twice: one picture shape, not two.
+            val twice = set(pictured, null, Watermark.Picture(png, "png", 0.5f))
+            val shapes = OfficeFormats.unzip(twice).values.sumOf { Regex(Watermark.PICTURE + "1").findAll(String(it, Charsets.UTF_8)).count() }
+            assertEquals(kind.name, 1, shapes)
+            assertEquals(kind.name, doc.paras.single().text, OfficeFormats.read(twice, kind).paras.single().text)
+        }
+        // Its size: the text's width, no taller than the text.
+        val a4 = DocPage()
+        assertEquals(a4.textWidth, Watermark.pictureBox(0.5f, a4).first, 0.01f)
+        assertEquals(a4.height - a4.top - a4.bottom, Watermark.pictureBox(5f, a4).second, 0.01f)
+    }
+
     @Test fun `page colour and page border are set in both kinds, read back and taken away`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A page with a colour and a box round it.")))))
@@ -713,20 +763,173 @@ class OfficeFormatsTest {
             HeaderFooter(header = "Running head", headerAlign = DocAlign.Start, footer = "Draft", footerAlign = DocAlign.Center,
                 number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "Page # of N"),
             HeaderFooter(number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, numberFormat = "#", firstDifferent = true),
+            // Several lines; even pages their own (a book: the title on even pages, the chapter on odd ones, numbers outside).
+            HeaderFooter(header = "Chapter 1\nIntroduction", headerAlign = DocAlign.End, footer = "Faculty of Education", footerAlign = DocAlign.Center,
+                number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.End, oddEven = true, evenHeader = "My thesis", evenFooter = "Faculty of Education"),
+            // Front matter: i, ii, iii.
+            HeaderFooter(number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, roman = true),
         )) {
             for (kind in OfficeKind.entries) {
                 val start = OfficeFormats.write(doc, kind)
                 val parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(OfficeFormats.unzip(start), hf, DocPage()) else HeaderFooterEdit.odt(OfficeFormats.unzip(start), hf, DocPage())
                 val bytes = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+                if (hf.oddEven || hf.roman) File("build/office-roundtrip").apply { mkdirs() }.resolve("${if (hf.roman) "roman" else "odd-even"}.${kind.extension}") // for a look in LibreOffice
+                    .writeBytes(OfficeFormats.write(OfficeDoc(List(3) { i -> DocPara(listOf(DocRun("Page ${i + 1}")), keep = if (i > 0) OfficeFormats.withPageBreak(null, kind, true) else null) }), kind, bytes))
                 // Saved again with new text: the page setup and its header and footer stay.
                 val saved = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun("Changed"))))), kind, bytes)
                 for (b in listOf(bytes, saved)) {
-                    val section = DocStyles.of(kind, b).section
-                    assertEquals(kind.name, hf, HeaderFooter.of(section))
+                    val styles = DocStyles.of(kind, b)
+                    assertEquals(kind.name, hf, HeaderFooter.of(styles.section, styles.evenAndOdd))
                     OfficeFormats.unzip(b).filterKeys { it.endsWith(".xml") || it.endsWith(".rels") }.values.forEach { OfficeFormats.parse(it) } // well formed
                 }
                 assertEquals(listOf("Changed"), OfficeFormats.read(saved, kind).paras.map { it.text })
             }
         }
+    }
+
+    @Test fun `a column break in a one-column document is the page break it looks like`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        val broken = "<w:p><w:r><w:t>Before</w:t></w:r><w:r><w:br w:type=\"column\"/></w:r><w:r><w:t>After</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals(listOf("Before", "After"), doc.paras.take(2).map { it.text })
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, Regex("<w:pageBreakBefore/>(?:(?!</w:p>).)*>After<").containsMatchIn(out))
+        // At a paragraph's end it leaves an empty line at the top of the next page (LibreOffice): an empty paragraph there.
+        val atEnd = "<w:p><w:r><w:t>First</w:t></w:r><w:r><w:br w:type=\"column\"/></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$atEnd").toByteArray()
+        val ended = OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx)
+        assertEquals(listOf("First", "", "Second"), ended.paras.take(3).map { it.text })
+        assertTrue(ended.paras[1].keep!!.parts.any { it.first == "pageBreakBefore" })
+        // A heading whose style is centred, set left in the file: still left after saving, centred once realigned here.
+        val left = "<w:p><w:pPr><w:pStyle w:val=\"Title\"/><w:jc w:val=\"left\"/></w:pPr><w:r><w:t>Left</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$left").toByteArray()
+        val leftBytes = OfficeFormats.zip(parts, null)
+        val leftDoc = OfficeFormats.read(leftBytes, OfficeKind.Docx)
+        fun firstP(d: OfficeDoc) = String(OfficeFormats.unzip(OfficeFormats.write(d, OfficeKind.Docx, leftBytes)).getValue("word/document.xml"), Charsets.UTF_8).substringAfter("<w:body>").substringBefore("</w:p>")
+        assertTrue(firstP(leftDoc), "<w:jc w:val=\"left\"/>" in firstP(leftDoc))
+        val centred = firstP(leftDoc.copy(paras = leftDoc.paras.mapIndexed { i, p -> if (i == 0) p.copy(align = DocAlign.Center) else p }))
+        assertEquals(centred, 1, Regex("<w:jc ").findAll(centred).count())
+        assertTrue(centred, "<w:jc w:val=\"center\"/>" in centred)
+        // Google Docs writes "no page break" on every paragraph: a break before one still starts its page.
+        val docs = "<w:p><w:r><w:t>Cover</w:t></w:r></w:p><w:p><w:r><w:br w:type=\"page\"/></w:r></w:p><w:p><w:pPr><w:pageBreakBefore w:val=\"0\"/></w:pPr><w:r><w:t>Contents</w:t></w:r></w:p>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$docs").toByteArray()
+        val gdocs = OfficeFormats.zip(parts, null)
+        val saved = String(OfficeFormats.unzip(OfficeFormats.write(OfficeFormats.read(gdocs, OfficeKind.Docx), OfficeKind.Docx, gdocs)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(saved, Regex("<w:pageBreakBefore/>(?:(?!</w:p>).)*>Contents<").containsMatchIn(saved))
+        // Two columns somewhere: a column break means the next column — kept as one (15 Oct; a copy before), not a page break.
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body>$broken").replace("<w:sectPr>", "<w:sectPr><w:cols w:num=\"2\"/>").toByteArray()
+        val inColumns = OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx)
+        assertTrue(inColumns.blocking.toString(), inColumns.blocking.isEmpty())
+        assertTrue(inColumns.paras.any { p -> p.keep?.parts?.any { it.first == COLUMN_BREAK } == true })
+    }
+
+    @Test fun `a lettered list level is read, labelled and saved as the file has it`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("One")), list = DocList(true, 0)), DocPara(listOf(DocRun("Sub")), list = DocList(true, 1))))
+        val parts = OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx))
+        val numbering = String(parts.getValue("word/numbering.xml"), Charsets.UTF_8)
+        val lettered = Regex("""(<w:abstractNum w:abstractNumId="2">.*?<w:lvl w:ilvl="1">.*?)<w:numFmt w:val="decimal"/><w:lvlText w:val="%2."/>""")
+            .replace(numbering) { it.groupValues[1] + "<w:numFmt w:val=\"lowerLetter\"/><w:lvlText w:val=\"%2)\"/>" }
+        assertTrue(lettered != numbering)
+        parts["word/numbering.xml"] = lettered.toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val back = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), back.blocking)
+        val styles = DocStyles.of(OfficeKind.Docx, bytes)
+        assertEquals("lowerLetter" to "%2)", styles.orderedLevels(back.paras)[1])
+        assertEquals("a)", styles.listLabel(back.paras[1], intArrayOf(1, 1)))
+        val saved = OfficeFormats.unzip(OfficeFormats.write(back, OfficeKind.Docx, bytes))
+        assertEquals("a)", DocStyles.of(OfficeKind.Docx, OfficeFormats.zip(saved, null)).listLabel(OfficeFormats.read(OfficeFormats.zip(saved, null), OfficeKind.Docx).paras[1], intArrayOf(1, 1)))
+    }
+
+    @Test fun `a multilevel scheme is saved, read back and labelled in both formats and in the editor`() {
+        val legal = (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } }
+        val lettered = (0..8).map { listOf("decimal", "lowerLetter", "lowerRoman")[it % 3] to "%${it + 1}." }
+        fun item(t: String, level: Int) = DocPara(listOf(DocRun(t)), list = DocList(true, level))
+        val paras = listOf(item("One", 0), item("Two", 0), item("Sub", 1), item("Deep", 2))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(paras, numbering = legal), kind)
+            val back = OfficeFormats.read(bytes, kind)
+            val styles = DocStyles.of(kind, bytes)
+            assertEquals("$kind", "2.1.", styles.listLabel(back.paras[2], intArrayOf(2, 1)))
+            assertEquals("$kind", "2.1.1.", styles.listLabel(back.paras[3], intArrayOf(2, 1, 1)))
+            // The editor gives only an item's own number, in document order: the parents' come from the items before.
+            val editor = FileNumbering(styles) { styles.orderedLevels(back.paras) }
+            assertTrue("$kind", editor.compound)
+            val shown = listOf(1 to 1, 2 to 1, 1 to 2, 1 to 3).map { (n, l) -> editor.format(n, l) + editor.getSuffix(l) }
+            assertEquals("$kind", listOf("1.", "2.", "2.1.", "2.1.1."), shown)
+            val abc = OfficeFormats.write(OfficeDoc(paras, numbering = lettered), kind)
+            assertEquals("$kind", "a.", DocStyles.of(kind, abc).listLabel(OfficeFormats.read(abc, kind).paras[2], intArrayOf(2, 1)))
+            assertEquals("$kind", "i.", DocStyles.of(kind, abc).listLabel(OfficeFormats.read(abc, kind).paras[3], intArrayOf(2, 1, 1)))
+        }
+        // Without a scheme Writer's lists stay 1. 2. 3. at every level.
+        val plain = OfficeFormats.write(OfficeDoc(paras), OfficeKind.Docx)
+        assertEquals("1.", DocStyles.of(OfficeKind.Docx, plain).listLabel(OfficeFormats.read(plain, OfficeKind.Docx).paras[2], intArrayOf(2, 1)))
+    }
+
+    @Test fun `a character style with no formatting of its own is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val styles = String(parts.getValue("word/styles.xml"), Charsets.UTF_8)
+        parts["word/styles.xml"] = styles.replace("</w:styles>", "<w:style w:type=\"character\" w:customStyle=\"1\" w:styleId=\"given-name\"><w:name w:val=\"given-name\"/></w:style>" +
+            "<w:style w:type=\"character\" w:customStyle=\"1\" w:styleId=\"Loud\"><w:name w:val=\"Loud\"/><w:rPr><w:b/></w:rPr></w:style></w:styles>").toByteArray()
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        fun with(style: String): Set<String> {
+            parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:rPr><w:rStyle w:val=\"$style\"/></w:rPr><w:t>Name</w:t></w:r></w:p>").toByteArray()
+            return OfficeFormats.read(OfficeFormats.zip(parts, null), OfficeKind.Docx).blocking
+        }
+        assertEquals(emptySet<String>(), with("given-name"))
+        assertEquals(setOf("character styles"), with("Loud"))
+    }
+
+    @Test fun `a heading said to have no number keeps having none`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        val heading = Regex("""<w:pStyle w:val="([^"]+)"/>""").findAll(xml).map { it.groupValues[1] }.first { it.contains("1") }
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:pPr><w:pStyle w:val=\"$heading\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"0\"/></w:numPr></w:pPr><w:r><w:t>Abstract</w:t></w:r></w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(1, doc.paras[0].heading)
+        fun first(d: OfficeDoc) = String(OfficeFormats.unzip(OfficeFormats.write(d, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8).substringAfter("<w:body>").substringBefore("</w:p>")
+        assertTrue(first(doc), "<w:numId w:val=\"0\"/>" in first(doc))
+        // Made a numbered item here: its own number, and no "none" beside it.
+        val listed = first(doc.copy(paras = doc.paras.mapIndexed { i, p -> if (i == 0) p.copy(list = DocList(true, 0)) else p }))
+        assertEquals(listed, 1, Regex("<w:numPr>").findAll(listed).count())
+    }
+
+    @Test fun `hidden text is kept hidden and is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:t xml:space=\"preserve\">Seen </w:t></w:r><w:r><w:rPr><w:vanish/></w:rPr><w:t>SECRET</w:t></w:r></w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals("Seen SECRET", doc.paras[0].text)
+        assertEquals(listOf(false, true), doc.paras[0].runs.map { LetterLooks.of(it.font).hidden })
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, Regex("<w:vanish/>(?:(?!</w:r>).)*>SECRET<").containsMatchIn(out))
+        assertTrue(LetterLooks.of(" text:display=\"none\"").hidden)
+        assertTrue(!LetterLooks.of("<w:vanish w:val=\"0\"/>").hidden)
+    }
+
+    @Test fun `a date or a reference field is kept with its letters and is no reason for a copy`() {
+        val parts = OfficeFormats.unzip(OfficeFormats.write(sample, OfficeKind.Docx))
+        val xml = String(parts.getValue("word/document.xml"), Charsets.UTF_8)
+        fun field(instr: String, shown: String) = "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> $instr </w:instrText></w:r>" +
+            "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:t>$shown</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>"
+        parts["word/document.xml"] = xml.replaceFirst("<w:body>", "<w:body><w:p><w:r><w:t xml:space=\"preserve\">Today </w:t></w:r>${field("DATE \\@ &quot;d/M/yyyy&quot;", "13/10/2026")}" +
+            "<w:r><w:t xml:space=\"preserve\">, see page </w:t></w:r>${field("PAGEREF _Toc1 \\h", "4")}</w:p>").toByteArray()
+        val bytes = OfficeFormats.zip(parts, null)
+        val doc = OfficeFormats.read(bytes, OfficeKind.Docx)
+        assertEquals(emptySet<String>(), doc.blocking)
+        assertEquals("Today 13/10/2026, see page 4", doc.paras[0].text)
+        assertEquals("Update leaves a field alone", doc.paras[0], Citations.update(doc, OfficeKind.Docx).paras[0])
+        val out = String(OfficeFormats.unzip(OfficeFormats.write(doc, OfficeKind.Docx, bytes)).getValue("word/document.xml"), Charsets.UTF_8)
+        assertTrue(out, "DATE \\@ &quot;d/M/yyyy&quot;" in out || "DATE \\@ \"d/M/yyyy\"" in out)
+        assertTrue(out, Regex("PAGEREF _Toc1 .*?separate.*?>4<").containsMatchIn(out))
+        assertTrue(out, FIELD_CITE !in out)
+        assertEquals(doc.paras[0].text, OfficeFormats.read(OfficeFormats.write(doc, OfficeKind.Docx, bytes), OfficeKind.Docx).paras[0].text)
     }
 }

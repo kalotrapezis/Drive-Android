@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 /** An APA 7 student paper's title page: what it says, top to bottom (blank lines are left out). */
 internal data class ApaTitle(val title: String = "", val author: String = "", val department: String = "", val university: String = "",
     val course: String = "", val instructor: String = "", val date: String = "")
+/** APA's abstract page: its words (one paragraph, not indented) and keywords (none: no Keywords line). */
+internal data class ApaAbstract(val text: String = "", val keywords: String = "")
 
 /**
  * Design › APA 7 paper (asked 2026-09-30: an APA paper in one tap, the user's assignments): the student paper of APA's
@@ -46,7 +48,7 @@ internal object ApaPaper {
     val title = body(DocAlign.Center, true, false, 0f)
 
     /** The file's side: the styles, the page number in the header, margins of an inch (an ODT's header room allowed for). */
-    fun file(source: Map<String, ByteArray>, kind: OfficeKind, styles: DocStyles): LinkedHashMap<String, ByteArray> {
+    fun file(source: Map<String, ByteArray>, kind: OfficeKind, styles: DocStyles, runningHead: String? = null): LinkedHashMap<String, ByteArray> {
         var parts = LinkedHashMap(source)
         val path = stylesPath(parts, kind)
         var xml = String(parts.getValue(path), Charsets.UTF_8)
@@ -61,13 +63,16 @@ internal object ApaPaper {
         edit(entries[1], title)
         for ((n, c) in headings) edit(StyleEntry("Heading $n", null, n), c)
         parts[path] = xml.toByteArray()
-        // The page number top right on every page; no running head (APA's student paper).
-        val hf = HeaderFooter.of(styles.section).copy(header = "", number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false)
+        // The page number top right on every page; a professional paper's running head flush left, in capitals (APA 2.8).
+        val hf = HeaderFooter.of(styles.section).copy(header = runningHead?.let(::runningHead).orEmpty(), headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#", firstDifferent = false, oddEven = false)
         parts = if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(parts, hf, styles.page) else HeaderFooterEdit.odt(parts, hf, styles.page)
         val mid = DocStyles.of(kind, OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)).page
         val inch = mid.copy(top = INCH, bottom = INCH, left = INCH, right = INCH)
         return if (kind == OfficeKind.Docx) PageSetup.docx(parts, inch) else PageSetup.odt(parts, inch, mid)
     }
+
+    /** A professional paper's running head: the short title in capitals, at most 50 characters (APA 7, 2.8). */
+    fun runningHead(shortTitle: String) = shortTitle.trim().uppercase().take(50).trim()
 
     /**
      * What was set by hand on single paragraphs and letters, taken off so the styles decide (the file's own spacing,
@@ -88,6 +93,72 @@ internal object ApaPaper {
         }
     })
 
+    /**
+     * The abstract page (APA 7, 2.9): "Abstract" bold and centred at the top of a new page, the abstract in one
+     * paragraph with no first-line indent, then "Keywords:" in italics, indented, and the keywords.
+     */
+    fun abstractPage(a: ApaAbstract, kind: OfficeKind, labelStyle: String?): List<DocPara> {
+        val label = DocPara(listOf(DocRun("Abstract", bold = true)), align = DocAlign.Center,
+            keep = OfficeFormats.withPageBreak(OfficeFormats.withSpacing(DocKeep(style = labelStyle), kind, firstLine = 0f), kind, true))
+        val text = DocPara(listOf(DocRun(a.text.trim().replace(Regex("""\s*\n\s*"""), " "))), keep = OfficeFormats.withSpacing(null, kind, firstLine = 0f))
+        val words = a.keywords.trim().trimEnd('.', ',', ';')
+        return listOf(label, text) + if (words.isEmpty()) emptyList() else listOf(DocPara(listOf(DocRun("Keywords:", italic = true), DocRun(" $words"))))
+    }
+
+    /**
+     * APA's run-in heading (levels 4 and 5): the heading's words bold (5: bold italic) at the start of an indented
+     * paragraph, ending in a period, the text going on after it on the same line. [at]: a paragraph; its first
+     * [length] letters are the heading (null: a heading paragraph of its own is joined to the paragraph after it, else
+     * the words up to the first full stop). Null when there is nothing to make one of.
+     */
+    fun runIn(doc: OfficeDoc, at: Int, level: Int, length: Int? = null): OfficeDoc? {
+        val p = doc.paras.getOrNull(at)?.takeIf { it.table == null } ?: return null
+        val next = doc.paras.getOrNull(at + 1)
+        val alone = length == null && next != null && next.table == null && next.heading == 0 && next.text.isNotBlank() &&
+            (p.heading > 0 || !p.text.trim().let { it.contains(". ") || it.endsWith(".") && it.count { c -> c == ' ' } > 12 })
+        val head: List<DocRun>; val rest: List<DocRun>
+        if (alone) { head = p.runs; rest = next!!.runs } else {
+            val n = (length ?: Regex("""[.?!](\s|$)""").find(p.text)?.let { it.range.first + 1 } ?: p.text.length).coerceIn(0, p.text.length)
+            if (n == 0) return null
+            val (a, b) = split(p.runs, n); head = a; rest = b
+        }
+        val words = head.joinToString("") { it.text }.trimEnd()
+        if (words.isBlank()) return null
+        val stop = if (words.last() in ".?!") "" else "."
+        val shaped = trimEnd(head).map { r -> if (r.image != null) r else r.copy(bold = true, italic = level == 5, unbold = false, unitalic = false) } +
+            (if (stop.isEmpty()) emptyList() else listOf(DocRun(stop, bold = true, italic = level == 5)))
+        val after = rest.dropWhile { it.image == null && it.text.isBlank() }.let { r -> r.firstOrNull()?.let { f -> listOf(f.copy(text = f.text.trimStart())) + r.drop(1) } ?: r }
+        val keep = (if (alone) next!!.keep else p.keep)?.let { k -> k.copy(style = if (p.heading > 0 && !alone) null else k.style) }
+        val joined = DocPara(OfficeFormats.tidy(shaped + listOf(DocRun(" ")) + after), heading = 0, align = DocAlign.Start, keep = keep?.takeIf { !it.isEmpty })
+        return doc.copy(paras = doc.paras.take(at) + joined + doc.paras.drop(at + if (alone) 2 else 1))
+    }
+    /** Every Heading 4 and 5 paragraph followed by text, made a run-in heading (Design › APA 7 paper). */
+    fun runInAll(doc: OfficeDoc): OfficeDoc {
+        var d = doc
+        var i = 0
+        while (i < d.paras.size) { val h = d.paras[i].heading; if (h == 4 || h == 5) d = runIn(d, i, h) ?: d; i++ }
+        return d
+    }
+    private fun split(runs: List<DocRun>, n: Int): Pair<List<DocRun>, List<DocRun>> {
+        val a = ArrayList<DocRun>(); val b = ArrayList<DocRun>(); var at = 0
+        for (r in runs) {
+            val len = r.text.length
+            when {
+                at + len <= n -> a += r
+                at >= n -> b += r
+                else -> { a += r.copy(text = r.text.substring(0, n - at)); b += r.copy(text = r.text.substring(n - at)) }
+            }
+            at += len
+        }
+        return a to b
+    }
+    private fun trimEnd(runs: List<DocRun>): List<DocRun> {
+        val out = runs.toMutableList()
+        while (out.isNotEmpty() && out.last().image == null && out.last().text.isBlank()) out.removeAt(out.lastIndex)
+        if (out.isNotEmpty() && out.last().image == null) out[out.lastIndex] = out.last().let { it.copy(text = it.text.trimEnd()) }
+        return out
+    }
+
     /** The title page's paragraphs (APA: the title three or four lines down, bold; a blank line; the rest), centred. */
     fun titlePage(t: ApaTitle, kind: OfficeKind, titleStyle: String?): List<DocPara> {
         fun centred(text: String, style: String? = null) = DocPara(if (text.isEmpty()) emptyList() else listOf(DocRun(text)), align = DocAlign.Center,
@@ -100,10 +171,14 @@ internal object ApaPaper {
 
 /** The APA 7 paper page: what it sets, whether to clear what was set by hand, and a title page to put first. */
 @Composable
-internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit, apply: (clean: Boolean, title: ApaTitle?) -> Unit) {
+internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit, apply: (clean: Boolean, title: ApaTitle?, abstract: ApaAbstract?, runningHead: String?) -> Unit) {
+    var professional by remember { mutableStateOf(false) }
+    var head by remember { mutableStateOf("") }
     var clean by remember { mutableStateOf(hasText) }
     var withTitle by remember { mutableStateOf(!hasText) }
     var t by remember { mutableStateOf(ApaTitle(date = today)) }
+    var withAbstract by remember { mutableStateOf(false) }
+    var ab by remember { mutableStateOf(ApaAbstract()) }
     @Composable fun field(label: String, value: String, set: (String) -> Unit) = OutlinedTextField(value, set, singleLine = true, label = { Text(label) }, modifier = Modifier.fillMaxWidth())
     @Composable fun check(label: String, on: Boolean, set: (Boolean) -> Unit) = Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
         Checkbox(on, set); Text(label, style = MaterialTheme.typography.bodyMedium)
@@ -111,25 +186,40 @@ internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit
     AlertDialog(
         onDismissRequest = dismiss,
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
-        title = { Text("APA 7 student paper") },
+        title = { Text(if (professional) "APA 7 professional paper" else "APA 7 student paper") },
         text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Times New Roman 12 · margins of 1 inch · double spacing, no extra space between paragraphs · first lines indented 0.5 inch · " +
-                    "the page number top right · APA's heading levels as Heading 1–5 · references on a new page.", style = MaterialTheme.typography.bodyMedium)
+                    "the page number top right · APA's heading levels as Heading 1–5 (4 and 5 run into their paragraph, ending in a period) · references on a new page.", style = MaterialTheme.typography.bodyMedium)
                 check("Also clear fonts, sizes and spacing set by hand", clean) { clean = it }
+                // A professional paper (for publication): the running head on every page; its title page without course, instructor, date.
+                check("Professional paper (a running head on every page)", professional) { professional = it }
+                if (professional) {
+                    field("Running head (a short title, up to 50 letters)", head) { head = it.take(50) }
+                    Text(ApaPaper.runningHead(head.ifBlank { t.title }).ifBlank { "SHORT TITLE" } + " — top left, in capitals; the page number top right", style = MaterialTheme.typography.bodySmall)
+                }
                 check("Add a title page first", withTitle) { withTitle = it }
                 if (withTitle) {
                     field("Title of the paper", t.title) { t = t.copy(title = it) }
                     field("Your name", t.author) { t = t.copy(author = it) }
                     field("Department", t.department) { t = t.copy(department = it) }
                     field("University", t.university) { t = t.copy(university = it) }
-                    field("Course (number and name)", t.course) { t = t.copy(course = it) }
-                    field("Instructor", t.instructor) { t = t.copy(instructor = it) }
-                    field("Due date", t.date) { t = t.copy(date = it) }
+                    if (!professional) {
+                        field("Course (number and name)", t.course) { t = t.copy(course = it) }
+                        field("Instructor", t.instructor) { t = t.copy(instructor = it) }
+                        field("Due date", t.date) { t = t.copy(date = it) }
+                    }
+                }
+                check("Add an abstract page (after the title page)", withAbstract) { withAbstract = it }
+                if (withAbstract) {
+                    OutlinedTextField(ab.text, { ab = ab.copy(text = it) }, label = { Text("Abstract (150–250 words, one paragraph)") }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                    Text("${ab.text.split(Regex("""\s+""")).count { it.isNotBlank() }} words", style = MaterialTheme.typography.bodySmall)
+                    field("Keywords (optional, separated by commas)", ab.keywords) { ab = ab.copy(keywords = it) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { apply(clean, if (withTitle && t.title.isNotBlank()) t else null) }) { Text("Apply") } },
+        confirmButton = { TextButton(onClick = { apply(clean, if (withTitle && t.title.isNotBlank()) (if (professional) t.copy(course = "", instructor = "", date = "") else t) else null, if (withAbstract) ab else null,
+            if (professional) head.ifBlank { t.title }.takeIf { it.isNotBlank() } ?: "Short title" else null) }) { Text("Apply") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }

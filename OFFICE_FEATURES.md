@@ -5,6 +5,8 @@ checklist for Tetra's Office. Tetra is local — nothing that needs Microsoft's 
 Copilot). Each item: **done**, **next**, or later. Build them in order, one at a time; each one is tested on the
 emulator and on the phone, and a file saved with it opens right in Word / LibreOffice.
 
+**15 Oct: none of the user's 318 documents is copy-only any more** (fields over paragraphs kept, the last cause).
+
 Rule for every feature: a file part Writer can show *and* save is no longer "copy-only" — each item below that adds
 such a part also moves it out of `OfficeDoc.blocking`.
 
@@ -15,15 +17,15 @@ too; it just can never beat a big screen, so on the phone Claude decides how eac
 to Claude). A document opens **view only** (as LibreOffice does), with **Edit** at the top.
 
 ### FIRST — proper pages, viewing before editing (asked 2026-09-27)
-- [ ] A document opens **view only**, as pages (Print layout), like LibreOffice: the file's page size and margins, a
+- [x] A document opens **view only**, as pages (Print layout), like LibreOffice: the file's page size and margins, a
       gap between pages, scroll and pinch-zoom, "Page 3 of 12"; **Edit** at the top switches to the editor and back
-- [ ] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
+- [x] The pages show what the file sets: line spacing, space before/after, indents, page breaks, pictures in place,
       fonts as close as the phone has them
-- [ ] **Tablet view** (asked 2026-09-27): the text must not stretch across the whole screen — a page of its real width,
+- [x] **Tablet view** (asked 2026-09-27): the text must not stretch across the whole screen — a page of its real width,
       centred, zoomable (landscape tablet: one page, or two side by side); the editor too keeps the page's width
 - [x] Tablet ribbon: a tab's tools in one line, close together and centred (no pages, which spread them apart)
-- [ ] Then: header and footer, page numbers, tables
-- [ ] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
+- [x] Then: header and footer, page numbers, tables
+- [x] Built on the Export PDF layout (OfficePdf.kt), so the PDF gets every improvement too; checked page by page against
       LibreOffice on the user's documents
 
 **Order (agreed 29 Sep 2026, from Word and OnlyOffice's ribbons the user sent):** finish Home and Insert first, then
@@ -41,11 +43,11 @@ one pass once the tabs' features are done.
 - [x] Undo/redo for Writer's own changes too (style, spacing, picture, table, header…), not only typing
 - [x] Find and Replace — **improve: the match is not highlighted while the Find box has the keyboard; match case / whole words**
 - [x] Share the file (as last saved) — as PDF with Export
-- [ ] Mobile view (text reflows to the phone) / Print layout (the page as it prints)
-- [ ] ⋯ menu: Save as, Rename, Print, Properties
+- [x] Mobile view (text reflows to the phone) / Print layout (the page as it prints) — View tab; the phone keeps Print layout (Mobile view off, the user's choice)
+- [x] File: Save as (beside the file, going on as the new one), Rename (draft and versions move with it), Print (Android printing of the PDF pages) — 14 Oct; Properties is About this file
 - [x] Word and character counter (1 Oct): tablet — in the top bar, of the selection when there is one ("12 of 1,234
       words"), a tap opens About; phone — File › About this file (words, characters with and without spaces, and the
-      selection's). Tables' words count, pictures do not
+      selection's). Tables' words count, pictures do not; the phone's top bar too, under the name: "12 of 1,234 words" (15 Oct)
 
 ### File
 - [x] Save over the file when nothing is lost; else a copy beside it
@@ -53,8 +55,8 @@ one pass once the tabs' features are done.
 - [x] Unsaved changes kept as a draft; leaving asks Save / Don't save
 - [x] Versions (File): the file as it was before each of the last 3 saves; Restore keeps the current one as a version too
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
-- [ ] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only
-- [ ] Open .doc / .rtf (read; save as .docx)
+- [x] AutoSave (on by default in Word): save by itself after a pause, for files that are not copy-only — File › AutoSave and Settings › Office (14 Oct)
+- [x] Open .doc / .rtf (read; save as .docx) — Writer's own readers (LegacyDocs.kt): text, letters' looks, alignment, spacing, indents, headings, numbered lists, links, tables, page breaks (an .rtf's PNG/JPEG pictures); Save writes name.docx beside it (15 Oct, evening) — [ ] a .doc's pictures, headers and footers, footnotes
 
 ### Home
 - [x] Bold, Italic, Underline, Strikethrough
@@ -62,19 +64,19 @@ one pass once the tabs' features are done.
 - [x] Styles: Normal, Heading 1–3 (**the library fixes heading sizes (H1 = 2× text); show the document's own — workaround needed**)
 - [x] Bullets, numbering, indent −/+
 - [x] Alignment: left, centre, right, justify
-- [x] Fonts kept letter by letter on save (the editor shows its own font) — [ ] choose a font from the ribbon
+- [x] Fonts kept letter by letter on save (the editor shows its own font) ; Home › Font: the chosen letters or the word at the cursor in a font — the document's own, or Calibri, Cambria, Times New Roman, Arial, Courier New (drawn as Word draws them), each shown in its face (14 Oct)
 - [x] Superscript, subscript
 - [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
 - [x] Borders (Home, after line spacing): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
       line (an empty paragraph with a line under it). Word's pBdr / ODT fo:border (+ join-border); drawn on the pages
       (and PDF) as Word groups them, outlined in the editor — [ ] border style and colour (behind ⋯)
 - [x] Change case (Aa beside the eraser: Sentence case, lowercase, UPPERCASE, Capitalise Each Word; the chosen letters or the word at the cursor; looks kept; Greek capitals without accents, final ς)
-- [ ] Multilevel list — later
+- [x] Multilevel list — Home › Multilevel: 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1.; "2.1." shown in Edit as on the pages (14 Oct)
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
-- [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
+- [x] Paragraph formatting *shown* on the page and in the editor (the space before/after each paragraph drawn by Writer's own look over the library's) and *changed* from the ribbon (Home's ⋯ page, line spacing buttons)
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
-- [ ] Format painter (copy formatting)
+- [x] Format painter (copy formatting) — Home, and Copy/Paste formatting in the Selection tab
 - [x] More styles: Title, Subtitle, Quote, Heading 4–6 and the document's own (Home › Styles…); Normal, Title, H1–H3 on the ribbon; the editor draws each as the document defines it
 
 ### Viewing (asked 2026-09-29)
@@ -87,11 +89,10 @@ one pass once the tabs' features are done.
       document's own style, so every paragraph with it changes, in Word/LibreOffice too
 - [x] **Line spacing** quick buttons on Home (1 · 1.15 · 1.5 · 2) — shown on the pages and in the file; the editor keeps its own lines
 - [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left, right and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style" from there
-- [ ] **Page format**: margins, orientation, paper size (Layout)
+- [x] **Page format**: margins, orientation, paper size (Layout › Page setup)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
-- [ ] **Bibliography / citations** (references list, citation style — APA etc.)
-- [ ] The editor cannot show space between paragraphs (library limit); what is set is saved and shows in Word,
-      LibreOffice and Export PDF
+- [x] **Bibliography / citations** (references list, APA 7 — see References)
+- [x] The editor shows the space between paragraphs (Writer's own look, `WriterBridge.Display`, carried over each keystroke and Enter), as the pages, Word, LibreOffice and Export PDF do
 
 ### Insert
 - [x] Link
@@ -99,9 +100,11 @@ one pass once the tabs' features are done.
 - [x] Pictures, charts, shapes, text boxes in a file: kept exactly on save (no longer copy-only)
 - [x] Pictures shown on the page (Writer draws them over the text; charts, shapes and text boxes drawn as they are; a floating one in line in the typing view, in its place on the pages)
 - [x] Insert › Picture from the phone's photos (a big photo is made a 2400 px JPEG; as wide as the page at most), saved into .docx/.odt
-- [ ] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
+- [x] **Picture tab** (the user's full list, 27 Sep): appears when a picture is selected —
       - **Resize** in a window: horizontal xx px · vertical xx px (not by hand), **Crop** in a window (Photos' crop), **Save picture as…** (take a picture out of a document
      someone sent, into the phone's photos/Files), **Delete**.
+      - **Handles** on the chosen object (15 Oct): corner (a photo keeps proportions), right and bottom sides stretch it live;
+        a knob above turns one not in line (snaps at 45°); held, it opens Position.
       - **Wrapping**: in line with text (standard) · square / around text · top and bottom (nothing at its sides) ·
      behind text · in front of text.
       - **Moving**: in line — drag it and it lands where it fits in the text (left, centre, right, between lines), not
@@ -111,10 +114,10 @@ one pass once the tabs' features are done.
      behindDoc), a:srcRect for crop, wp:extent + a:ext for size; ODT draw:frame svg:x/y, text:anchor-type,
      style:wrap / style:run-through on its graphic style, fo:clip for crop.
 - [x] Page break, blank page (Insert: split at the cursor, the rest starts a page — Word's pageBreakBefore / ODT fo:break-before; a dashed "Page break" line in the editor; Backspace at its start removes it)
-- [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) — [ ] richer headers (several lines, pictures), odd/even
+- [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) ; several lines each, different odd and even pages (even pages their own words, mirrored; Word's even headers + evenAndOddHeaders, LibreOffice's left pages) (15 Oct, evening) — [ ] pictures in headers
 - [x] Comment (Insert: on the chosen words or the word at the cursor, your name remembered); comments read and kept in Word and ODT, tinted in the editor, following typing; tablet: cards in a pane beside the page (as Word), phone: View › Comments sidebar + a bar above the ribbon for the one at the cursor; delete, undo — [ ] reply, resolve (Review tab); show them on the pages view
 - [x] Symbol (Ω: punctuation, money, signs, maths, arrows), date and time (today in the phone's language and in English, numeric and ISO; typed at the cursor)
-- [ ] **Shapes** (Insert, as OnlyOffice/Word/LibreOffice — the user's screenshots, 29 Sep): a gallery by group —
+- [x] **Shapes** (Insert, as OnlyOffice/Word/LibreOffice — the user's screenshots, 29 Sep): a gallery by group —
       recently used; basic (rectangle, ellipse, triangle, right triangle, parallelogram, trapezoid, diamond, pentagon,
       hexagon, heptagon/octagon/decagon/dodecagon, pie, chord, frame, L-shape, plus, cylinder, cube, donut, smiley,
       heart, lightning, sun, moon, cloud, arc, braces/brackets); block arrows; maths (+ − × ÷ = ≠); flowchart; stars and
@@ -127,30 +130,39 @@ one pass once the tabs' features are done.
       and PDF; the Picture tab sizes, wraps, replaces… it (wrapping now shows on the pages at once). Shapes in a file
       of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,
       changing fill/outline after.
+      **15 Oct, evening: the full gallery** — all 187 of Word's preset shapes, in Word's groups (recently used, lines,
+      rectangles, basic shapes, block arrows, equation shapes, flowchart, stars and banners, callouts), drawn from their
+      real geometry (DrawingML's presetShapeDefinitions via LibreOffice's copy: `ShapeGeometry`), written as Word's prst
+      and as LibreOffice's enhanced geometry; files' shapes of any preset (with their adjustments and theme colours) and
+      LibreOffice's own custom shapes drawn; **Picture › Shape options**: fill, outline and its width, size (locked or
+      not), rotation, alt text — [ ] lines with arrows and connectors, freeform, a shape's text
 - [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
 - [x] **Floating objects** (1 Oct): Picture › **Position** drags a floating picture, shape, text box or chart on its page
       (the page as laid out, the text re-flowing on letting go), saved from the page's corner (Word positionH/V
       relativeFrom="page", ODT svg:x/y page-relative); **Square wrap flows the text beside it** on the pages (the side
       with more room; too little room: below it, as Word) — also beside paragraphs before its anchor (a second pass)
-      — [ ] text on both sides of a picture in the middle; forward/backward, align, group, rotate
+      ; forward/backward, align (14 Oct); rotate any angle, group / ungroup (15 Oct; .odt groups — LibreOffice's draw:g — 15 Oct evening) — [ ] text on both sides of a picture in the middle, rotating a whole .odt group
 - [x] **Text box** (Insert › Text box, Picture › Edit text): Word's wps text box / LibreOffice's rectangle with words;
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
-      editor — [ ] editing a file's text box keeps only its first words' look
-- [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame — [ ] Word's text
-      effects (outline, shadow, glow, warp)
+      editor ; editing a file's text box keeps every run's look and each paragraph's (15 Oct)
+- [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame; outline, shadow,
+      glow (15 Oct; glow in Word files — LibreOffice has no glow for letters in a text document); bends — arch up/down, circle, wave, slant up/down (Word's prstTxWarp, LibreOffice's fontwork), the words along them inside the box (15 Oct, evening) — [ ] Word's other warps (inflate, triangle…), changing effects after
 - [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
       no per-section); drawn on the pages
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages
       hyphenate by the paragraph's language (Greek or English) — [ ] manual hyphenation, hyphenation zone/limits
 - [x] **Style sets** (Design, 1 Oct): Basic (Word), Classic (Times), Modern (Arial), Elegant (Georgia) — Normal, Title,
-      Headings 1–3 at once — [ ] Word's theme fonts/colours, more sets
+      Headings 1–3 at once; nine sets (+ Word 2010, Word 2003, Centred, Casual, Minimalist); Design › Colours (Word's seven palettes, the file's theme) and Design › Fonts (seven pairs: the theme's in Word files, the styles' in .odt) (15 Oct, evening)
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;
       title, legend, colours; a grid of categories × series with the chart drawn above; Word's chart part (data inside,
-      no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) — [ ] scatter as
-      x/y, axis titles, data labels; Word's own Edit data (it needs the embedded workbook)
-- [ ] Later: equations (√x,
-      kept in files today); SmartArt, charts; forms (content controls: plain/rich text, picture, drop-down/combo list,
-      date picker, check box — OnlyOffice's last Insert button)
+      no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
+      axis titles, data labels (14 Oct); Word's own Edit Data works on Writer's charts — their numbers in an embedded workbook, the chart pointing at its cells (15 Oct, evening)
+- [x] **Equations** (15 Oct): Word's equations read, drawn and kept (no longer copy-only); Insert › Equation in Word's
+      linear form with a preview, Picture › Edit equation ; typing in one in place — an equation chosen shows its linear form in a bar over the ribbon, the page redrawing it as you type (15 Oct); LibreOffice's formulas (MathML objects) read and drawn, Insert › Equation and Edit equation in .odt write LibreOffice Math objects (15 Oct, evening)
+- [x] **Content controls** (Insert › Content control, 15 Oct): plain/rich text, check box, drop-down and combo
+      list, date picker, with a title; filled from the form bar; .odt's too — LibreOffice's loext:content-control read,
+      filled, written and inserted (15 Oct, evening) — [ ] picture controls
+- [x] SmartArt shown (15 Oct, evening): from the drawing Word saves with it (word/diagrams/drawing*.xml), each shape and its words where they stand, theme colours; kept in the file as it was — [ ] editing SmartArt, an .odt's (LibreOffice turns it into shapes)
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)
 - [x] A **drawing box** (Draw › Drawing box): drawn in with finger or pen, put in the text as a see-through PNG in a
@@ -161,42 +173,42 @@ one pass once the tabs' features are done.
       Shape / Ink to Math / Ink Replay not planned
 
 ### Design (Word's Design tab; OnlyOffice Σχεδίαση)
-- [x] APA 7 student paper (Design › APA 7 paper, asked 2026-09-30): Times New Roman 12, 1-inch margins, double spacing with no space between paragraphs, first lines 0.5 in, the page number top right, APA's heading levels 1–5 as Heading 1–5, references on a new page; optionally clears fonts/sizes/spacing set by hand and adds the title page (title, name, department & university, course, instructor, date) with the title again over the text — [ ] APA's abstract page, the professional paper (running head), Level 4–5 run-in headings
-- [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick) — [ ] a picture watermark, border styles and colours, borders on some sides only
+- [x] APA 7 student paper (Design › APA 7 paper, asked 2026-09-30): Times New Roman 12, 1-inch margins, double spacing with no space between paragraphs, first lines 0.5 in, the page number top right, APA's heading levels 1–5 as Heading 1–5, references on a new page; optionally clears fonts/sizes/spacing set by hand and adds the title page (title, name, department & university, course, instructor, date) with the title again over the text ; the abstract page and run-in level 4–5 headings (15 Oct); the professional paper — its running head (short title in capitals) top left on every page, the title page without course/instructor/date (15 Oct, evening)
+- [x] Page background: watermark (Word's six words or your own; remove) — as Word's WordArt in the header / LibreOffice's fontwork in each page style; page colour (Word's light tints); page borders (a box: thin, medium, thick); a picture watermark (washed out, Word's VML imagedata / LibreOffice's frame in colour mode "watermark", 14 Oct) ; border styles (solid, double, dotted, dashed), colours and some sides only (15 Oct) — [ ] art borders
 - [x] Paragraph spacing presets for the whole document (No space, Compact, Tight, Open, Relaxed, Double) — the Normal style's
-- [ ] Style sets, theme colours and fonts, themes — rarely used; last
+- [x] Style sets, theme colours and fonts (15 Oct, evening) — [ ] whole themes (effects), .odt's theme colours (LibreOffice 7.6+'s loext:theme)
 
 ### Layout (Word's Layout; OnlyOffice Διάταξη)
 - [x] Margins (Normal = 1 in/APA, Narrow, Moderate, Wide, 2.5 cm, or custom in cm/in), orientation, size (A4, Letter, Legal, A5, A3) — Layout tab, one Page setup page; every section of a Word file (pgSz/pgMar, header distances kept), every page layout of an ODT (the header band allowed for); a tablet shows a page too wide smaller rather than reflowing
-- [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) — [ ] column break, balancing a continuous section, columns in part of a document
-- [x] Page break, blank page (also on Layout) — [ ] column, section breaks
-- [ ] Line numbers, hyphenation
+- [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) ; column breaks, columns in part of a document through continuous section breaks (15 Oct); in .odt a section's own columns (LibreOffice's text:section), files' sections kept and shown, page styles changing mid-document start a page of their size (15 Oct, evening) — [ ] balancing a continuous section
+- [x] Page break, blank page (also on Layout); Layout › Breaks: column break, section break next page / continuous (15 Oct; .odt: LibreOffice's text:section, 15 Oct evening)
+- [x] Line numbers, hyphenation (Layout, 1 Oct — see Insert's entries)
 - [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
-- [ ] Arrange (for floating objects): position, wrap, forward/backward, align, group, rotate — with floating objects
+- [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup (15 Oct; .odt too, 15 Oct evening) — [ ] a rotation handle
 
 ### References
 - [x] Table of contents (References: from Heading 1–3, at the cursor; Update table rewrites it in place with fresh page numbers) — written as plain paragraphs in the file's TOC 1–3 / Contents 1–3 styles with a dot leader, not a field: Word/LibreOffice show it as written — [ ] clickable entries, levels chosen
 - [x] Footnotes and endnotes (References › Insert footnote / Insert endnote): the number in the text (superscript, numbered in order — endnotes i, ii…), the note's words in a bar at the cursor and a dialog (Edit, Delete note); on the pages at the foot of their page under a short line, endnotes after the text; kept as each program keeps them (Word's footnotes.xml/endnotes.xml, LibreOffice's text:note) — a file with notes no longer copy-only — [ ] the note's own formatting when its words are edited (edited notes become plain), numbering formats other than 1/i, footnotes in columns
-- [x] Citations and bibliography, APA 7 (References › Insert citation, Sources, References list / Update references, Update citations): Word's form — the kind of source, then its fields; APA writes the citation "(Smith & Jones, 2019, p. 47)" and the reference entry. Kept as each program keeps them: Word's CITATION fields and its sources part (Source Manager); LibreOffice's bibliography marks — [ ] other styles (the user: APA 7 only for now), more source kinds (report, thesis, video…), a citation's own options (no author, suppress year), tapping a citation to edit it
-- [ ] Captions, cross-references — later
+- [x] Citations and bibliography, APA 7 (References › Insert citation, Sources, References list / Update references, Update citations): Word's form — the kind of source, then its fields; APA writes the citation "(Smith & Jones, 2019, p. 47)" and the reference entry. Kept as each program keeps them: Word's CITATION fields and its sources part (Source Manager); LibreOffice's bibliography marks ; report, thesis, video sources (14 Oct); **a citation tapped** shows a bar — Edit each of its sources, Change… its sources or page (15 Oct) ; **References › Style**: APA 7, MLA 9, Chicago author-date — citations and the list rewritten, kept as Word keeps it (15 Oct, evening) — [ ] a citation's own options (no author, suppress year), Harvard/IEEE
+- [x] Captions, cross-references (References › Caption, Cross-reference, Update fields — 14 Oct)
 
 ### Review
-- [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off — [ ] Tetra's own dictionaries (works without Gboard)
-- [x] Word count (File › About this file) — [ ] counter in the tablet's top bar, the selection's counts, characters (asked 30 Sep)
-- [x] Comments: read, add, delete, reply, resolve / reopen (Word's commentsExtended; LibreOffice's loext:parent-name / resolved) — [ ] editing a comment's words
+- [x] Spelling (Android's spell checker, Greek and English): wavy line, suggestions at the cursor, Next mistake, on/off ; Tetra's own dictionaries (LibreOffice's Greek and English Hunspell ones in the app: works without Gboard)
+- [x] Word count (File › About this file); live in the top bar on the tablet and the phone, with the selection's (15 Oct)
+- [x] Comments: read, add, delete, reply, resolve / reopen (Word's commentsExtended; LibreOffice's loext:parent-name / resolved), edit a comment's words (14 Oct)
 - [x] Track changes in Word files (Review tab): shown as Word's All Markup (inserted underlined, deleted struck through, in the author's colour; a bar beside changed lines; ¶ for split/joined paragraphs), the change at the cursor named (what · who · when), Previous / Next, Accept / Reject (then on to the next), Accept all / Reject all (tables' row and formatting changes too); kept on saving — a corrected .docx is no longer copy-only ; **recording** (Review › Track changes, Word files: typing is your insertion, Backspace/Delete strike through and walk on past, Enter/joins are paragraph marks, under your name — asked once) — [ ] tracking remembered in the file (Word's trackRevisions), the typed insertion's colour before the next redraw (underlined at once), recording pasted/Writer-made changes, ODT's tracked changes (still copy-only), reject restoring a paragraph's style/list
-- [ ] Read aloud (Android text-to-speech)
+- [x] Read aloud (Review): Android's text-to-speech from the cursor, each paragraph in Greek or English, equations said in words; a bar with Stop (15 Oct, evening); its speed in Settings › Office (0.75×–2×)
 
 ### View
 - [x] Zoom
 - [ ] Fit to width; multiple pages
-- [ ] Reading mode (no ribbon, bigger text)
-- [ ] Navigation pane: jump to a heading
+- [x] Reading mode (no ribbon, bigger text): View › Reading mode or the book over the pages; text reflowed at 140 %, − / +, read only (15 Oct)
+- [x] Navigation pane: jump to a heading
 
 ### On the phone
 - [x] Ribbon at the bottom; a strip on the keyboard; the tools in pages with dots (asked 2026-09-27)
-- [ ] Keyboard strip like Word's phone bar: B · I · U · highlighter · ⋯ · hide keyboard
-- [ ] Dictation (Android voice typing into the page)
+- [x] Keyboard bar like Word's phone bar: B · I · U · highlighter · dictation · ⋯ (the whole ribbon, ⋯ again back) · hide keyboard (15 Oct, evening)
+- [x] Dictation (the keyboard bar's mic: Android's voice typing, put in at the cursor) (15 Oct, evening)
 
 ## Excel (Calc) — after Writer and PowerPoint; a viewer first (the user, 30 Sep)
 - [ ] **Viewer first**: an .xlsx / .ods read comfortably on the phone (sheets as tabs, cells, widths, number formats)

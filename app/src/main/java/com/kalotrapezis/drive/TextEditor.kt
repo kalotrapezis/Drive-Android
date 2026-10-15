@@ -178,6 +178,20 @@ internal class TextEditorStore(context: Context) {
         get() = prefs.getBoolean("opens_txt", true)
         set(on) { prefs.edit().putBoolean("opens_txt", on).apply() }
 
+    /** Files opens a Word or LibreOffice document (.docx, .odt) in Writer (asked 2026-10-13) rather than another app. */
+    var opensOffice: Boolean
+        get() = prefs.getBoolean("opens_office", true)
+        set(on) { prefs.edit().putBoolean("opens_office", on).apply() }
+    /** Writer saves over the file by itself after a pause (Word's AutoSave), when it can save over it at all. */
+    var autoSave: Boolean
+        get() = prefs.getBoolean("office_autosave", true)
+        set(on) { prefs.edit().putBoolean("office_autosave", on).apply() }
+
+    /** Review › Read aloud's speed (Android's speech rate: 1 is normal), Settings › Office (asked 15 Oct). */
+    var readAloudSpeed: Float
+        get() = prefs.getFloat("read_aloud_speed", 1f)
+        set(v) { prefs.edit().putFloat("read_aloud_speed", v).apply() }
+
     /** Where Save puts a new file, under the phone's storage (default Tetra/Documents). */
     var saveFolder: String
         get() = prefs.getString("save_folder", "Tetra/Documents") ?: "Tetra/Documents"

@@ -9,13 +9,13 @@ package com.kalotrapezis.drive
 internal object PageDesign {
     private fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
 
-    fun docx(source: Map<String, ByteArray>, color: Int?, border: Border?): LinkedHashMap<String, ByteArray> {
+    fun docx(source: Map<String, ByteArray>, color: Int?, border: Border?, sides: String = "tlbr"): LinkedHashMap<String, ByteArray> {
         val parts = LinkedHashMap(source)
         val docPath = documentPath(parts)
         var xml = String(parts.getValue(docPath), Charsets.UTF_8)
         xml = xml.replace(Regex("""<w:background\b[^>]*?(?:/>|>[\s\S]*?</w:background>)"""), "")
         if (color != null) Regex("""<w:document\b[^>]*>""").find(xml)?.let { m -> xml = xml.replaceRange(m.range.last + 1, m.range.last + 1, """<w:background w:color="${hex(color)}"/>""") }
-        xml = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""").replace(xml) { m -> section(m.value, border) }
+        xml = Regex("""<w:sectPr\b[^>]*?(?:/>|>[\s\S]*?</w:sectPr>)""").replace(xml) { m -> section(m.value, border, sides) }
         parts[docPath] = xml.toByteArray()
         // Word draws the page's colour only when its settings say so.
         val settingsPath = if (color != null) settings(parts, docPath) else docPath.substringBeforeLast('/') + "/settings.xml"
@@ -75,15 +75,21 @@ internal object PageDesign {
         return parts
     }
 
-    private fun section(sect: String, border: Border?): String {
+    /** Word's names for the border's line, and LibreOffice's. */
+    private fun wordStyle(style: String) = when (style) { "double", "dotted", "dashed" -> style; else -> "single" }
+    private fun odfStyle(style: String) = when (style) { "double", "dotted", "dashed" -> style; else -> "solid" }
+
+    private fun section(sect: String, border: Border?, sides: String): String {
         val self = sect.endsWith("/>") && !sect.contains("</w:sectPr>")
         val open = if (self) sect.dropLast(2) + ">" else sect.substring(0, sect.indexOf('>') + 1)
         var inner = if (self) "" else sect.substring(sect.indexOf('>') + 1, sect.length - "</w:sectPr>".length)
         inner = inner.replace(Regex("""<w:pgBorders\b[^>]*?(?:/>|>[\s\S]*?</w:pgBorders>)"""), "")
-        if (border != null) {
-            val sz = (border.width * 8).toInt().coerceIn(2, 96)
+        if (border != null && sides.isNotEmpty()) {
+            // A double line's sz is each of its lines (Word draws two and the gap between, three times as wide).
+            val sz = ((if (border.style == "double") border.width / 3 else border.width) * 8).toInt().coerceIn(2, 96)
             val c = if (border.color == 0) "auto" else hex(border.color)
-            val box = """<w:pgBorders w:offsetFrom="page">""" + listOf("top", "left", "bottom", "right").joinToString("") { """<w:$it w:val="single" w:sz="$sz" w:space="24" w:color="$c"/>""" } + "</w:pgBorders>"
+            val box = """<w:pgBorders w:offsetFrom="page">""" + listOf("top", "left", "bottom", "right").filter { it[0] in sides }
+                .joinToString("") { """<w:$it w:val="${wordStyle(border.style)}" w:sz="$sz" w:space="24" w:color="$c"/>""" } + "</w:pgBorders>"
             // Word's order: after the page's size, margins and paper source, before line numbers and the rest.
             val at = Regex("""<w:(lnNumType|pgNumType|cols|formProt|vAlign|noEndnote|titlePg|textDirection|bidi|rtlGutter|docGrid|printerSettings)\b""").find(inner)?.range?.first ?: inner.length
             inner = inner.substring(0, at) + box + inner.substring(at)
@@ -91,15 +97,22 @@ internal object PageDesign {
         return "$open$inner</w:sectPr>"
     }
 
-    fun odt(source: Map<String, ByteArray>, color: Int?, border: Border?): LinkedHashMap<String, ByteArray> {
+    fun odt(source: Map<String, ByteArray>, color: Int?, border: Border?, sides: String = "tlbr"): LinkedHashMap<String, ByteArray> {
         val parts = LinkedHashMap(source)
         var xml = String(parts.getValue("styles.xml"), Charsets.UTF_8)
         xml = Regex("""<style:page-layout-properties\b[^>]*>""").replace(xml) { m ->
             val self = m.value.endsWith("/>")
             var tag = m.value.removeSuffix("/>").removeSuffix(">")
-            tag = tag.replace(Regex("""\s(fo:background-color|fo:border(?:-top|-bottom|-left|-right)?|fo:padding(?:-top|-bottom|-left|-right)?|draw:fill|draw:fill-color)="[^"]*""""), "")
+            tag = tag.replace(Regex("""\s(fo:background-color|fo:border(?:-top|-bottom|-left|-right)?|style:border-line-width(?:-top|-bottom|-left|-right)?|fo:padding(?:-top|-bottom|-left|-right)?|draw:fill|draw:fill-color)="[^"]*""""), "")
             if (color != null) tag += """ fo:background-color="#${hex(color).lowercase()}" draw:fill="solid" draw:fill-color="#${hex(color).lowercase()}""""
-            if (border != null) tag += """ fo:border="${"%.2f".format(java.util.Locale.ROOT, border.width)}pt solid #${if (border.color == 0) "000000" else hex(border.color).lowercase()}" fo:padding="4pt""""
+            if (border != null && sides.isNotEmpty()) {
+                val line = "${"%.2f".format(java.util.Locale.ROOT, border.width)}pt ${odfStyle(border.style)} #${if (border.color == 0) "000000" else hex(border.color).lowercase()}"
+                val third = "%.2fpt".format(java.util.Locale.ROOT, border.width / 3)
+                for ((side, c) in listOf("top" to 't', "bottom" to 'b', "left" to 'l', "right" to 'r')) if (c in sides) {
+                    tag += """ fo:border-$side="$line" fo:padding-$side="4pt""""
+                    if (border.style == "double") tag += """ style:border-line-width-$side="$third $third $third""""
+                }
+            }
             tag + if (self) "/>" else ">"
         }
         parts["styles.xml"] = xml.toByteArray()

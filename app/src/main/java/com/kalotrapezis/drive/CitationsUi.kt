@@ -65,7 +65,7 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), // a form half filled is not lost to a stray tap
         title = { Text(if (start == null) "New source" else "Edit source") },
         text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DocSource.Type.entries.forEach { t -> Choice(t.label, type == t) { type = t } }
                 }
@@ -85,6 +85,9 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
                         field("Pages", pages, { pages = it }); field("Publisher", publisher, { publisher = it })
                     }
                     DocSource.Type.Web -> field("Web site", container, { container = it })
+                    DocSource.Type.Report -> { field("Report number (e.g. Report No. 12)", container, { container = it }); field("Publisher", publisher, { publisher = it }) }
+                    DocSource.Type.Thesis -> { field("Kind (e.g. Master's thesis, Doctoral dissertation)", container, { container = it }); field("University", publisher, { publisher = it }) }
+                    DocSource.Type.Video -> field("Where (e.g. YouTube)", container, { container = it })
                     DocSource.Type.Book -> { field("Edition (e.g. 2nd)", edition, { edition = it }); field("Publisher", publisher, { publisher = it }) }
                 }
                 field("DOI or web address", doi, { doi = it })
@@ -107,14 +110,15 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
  * files: APA's "p. 12"). [multiple]: several sources in one citation (Word's; an ODT's mark holds one).
  */
 @Composable
-internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: Boolean, dismiss: () -> Unit, newSource: () -> Unit, insert: (List<DocSource>, String) -> Unit) {
-    val chosen = remember { mutableStateListOf<String>() }
-    var page by remember { mutableStateOf("") }
+internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: Boolean, dismiss: () -> Unit, newSource: () -> Unit,
+    startTags: List<String> = emptyList(), startPage: String = "", insert: (List<DocSource>, String) -> Unit) {
+    val chosen = remember { mutableStateListOf<String>().apply { addAll(startTags) } }
+    var page by remember { mutableStateOf(startPage) }
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Insert citation") },
+        title = { Text(if (startTags.isEmpty()) "Insert citation" else "Change citation") },
         text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     fun pick(on: Boolean) { if (!on) chosen -= s.tag else { if (!multiple) chosen.clear(); chosen += s.tag } }
@@ -130,19 +134,20 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
                 if (pages && chosen.size == 1) OutlinedTextField(page, { page = it }, singleLine = true, label = { Text("Page(s), for a quotation (e.g. 12 or 12-14)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             }
         },
-        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim()) }) { Text("Insert") } },
+        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim()) }) { Text(if (startTags.isEmpty()) "Insert" else "Change") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }
 
 /** References › Sources: the document's sources — edit one, add one, take one away (a cited one says so). */
 @Composable
-internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss: () -> Unit, edit: (DocSource?) -> Unit, delete: (DocSource) -> Unit) {
+internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss: () -> Unit, edit: (DocSource?) -> Unit, import: () -> Unit = {},
+    paste: () -> Unit = {}, askClaude: () -> Unit = {}, delete: (DocSource) -> Unit) {
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("Sources") },
         text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -155,9 +160,29 @@ internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss
                     }
                 }
                 Choice("+ New source…", false) { edit(null) }
+                // A Tetra sources file (TETRA_SOURCES_FORMAT.md): the research's references, into this draft at once.
+                Choice("Import sources file…", false) { import() }
+                // With Claude (the tetra-sources skill): ask in the Claude app, copy its answer, paste it here.
+                Choice("Ask Claude for sources…", false) { askClaude() }
+                Choice("Paste sources (copied from Claude)", false) { paste() }
             }
         },
         confirmButton = { TextButton(onClick = dismiss) { Text("Done") } },
     )
 }
 
+
+/** A citation, the cursor in it: each of its sources (a tap edits it — a missing one is made), and Change (its sources or page). */
+@Composable
+internal fun CitationBar(cite: String, sources: List<DocSource>, color: androidx.compose.ui.graphics.Color, edit: (DocSource?, String) -> Unit, change: () -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Citation", color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+        Citations.parse(cite).first.forEach { t ->
+            val s = sources.firstOrNull { it.tag == t }
+            TextButton(onClick = { edit(s, t) }) {
+                Text(if (s != null) "Edit " + Apa.citeNames(s) + ", " + s.year.ifBlank { "n.d." } else "$t: new source", color = color, maxLines = 1)
+            }
+        }
+        TextButton(onClick = change) { Text("Change…", color = color) }
+    }
+}

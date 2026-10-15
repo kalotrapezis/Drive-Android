@@ -139,7 +139,7 @@ internal object TrackChanges {
         val align = oldParts.firstOrNull { it.first == "jc" }?.second?.let { Regex("""w:val="([^"]*)"""").find(it)?.groupValues?.get(1) }.let {
             when (it) { "center" -> DocAlign.Center; "right", "end" -> DocAlign.End; "both", "distribute" -> DocAlign.Justify; else -> DocAlign.Start } }
         val mine = setOf("pStyle", "numPr", "jc", "rPr", "sectPr")
-        val parts = rest.filter { it.first in mine } + oldParts.filter { it.first !in mine }
+        val parts = rest.filter { it.first in mine && it.first != "jc" } + oldParts.filter { it.first !in mine || it.first == "jc" } // the old alignment, a left said in the file too
         return p.copy(align = align, keep = keep.copy(parts = parts.sortedBy { PPR_ORDER.indexOf(it.first).let { i -> if (i < 0) PPR_ORDER.indexOf("rPr") else i } }).takeIf { !it.isEmpty })
     }
 

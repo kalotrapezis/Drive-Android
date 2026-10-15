@@ -40,3 +40,11 @@ Barcode scanning (`com.google.mlkit:barcode-scanning`), text recognition,
 face detection and image labelling run on-device through Google ML Kit, used
 under the ML Kit Terms of Service: https://developers.google.com/ml-kit/terms
 Camera capture uses AndroidX CameraX, licensed under Apache License 2.0.
+
+## Word's preset shape geometry (LibreOffice)
+
+`app/src/main/resources/shapes/presets.txt` is converted by `tools/shape-presets.py` from LibreOffice's
+`share/filter/oox-drawingml-cs-presets` (LibreOffice 26.2), the preset shape definitions of ECMA-376 (Office Open XML)
+in LibreOffice's custom-shape notation. LibreOffice is licensed under the Mozilla Public License 2.0, which allows
+this file to be combined with GPL 2.0 or later code: https://www.mozilla.org/MPL/2.0/ — source:
+https://git.libreoffice.org/core/+/refs/heads/master/oox/source/drawingml/customshapes/

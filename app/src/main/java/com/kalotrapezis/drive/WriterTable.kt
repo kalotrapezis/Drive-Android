@@ -107,7 +107,7 @@ internal fun TablePropertiesDialog(table: DocTable, row: Int, cell: Int, dismiss
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PropTab.entries.forEach { t -> Choice(t.label, tab == t) { tab = t } }
                 }
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f).fillMaxWidth().shadedScroll(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     when (tab) {
                         PropTab.Table -> {
                             Section("Alignment on the page") {
@@ -205,7 +205,7 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Paragraph", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Line spacing") {
                         LINE_SPACINGS.forEach { m ->
                             Choice(plain(m), draft.lineExact == null && kotlin.math.abs(draft.lineMultiple - m) < 0.01f) {
@@ -262,7 +262,7 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
             Column(Modifier.padding(20.dp)) {
                 Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
                 Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Font") {
                         (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }
                     }
@@ -315,12 +315,13 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
 }
 
 /**
- * Insert › Header & footer, Page numbers (asked 2026-09-27): a line of text at the top and at the bottom of every
+ * Insert › Header & footer, Page numbers (asked 2026-09-27): lines of text at the top and at the bottom of every
  * page, where each stands, and the page number — for APA, top right on every page.
  */
 @Composable
 internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () -> Unit, apply: (HeaderFooter) -> Unit) {
     var d by remember { mutableStateOf(now) }
+    // Several lines each (Enter): the first carries the page number.
     @Composable fun aligns(on: DocAlign, set: (DocAlign) -> Unit) =
         listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right").forEach { (a, l) -> Choice(l, on == a) { set(a) } }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -329,10 +330,10 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
                 Text("Header, footer and page numbers", style = MaterialTheme.typography.titleLarge)
                 if (rich) Text("This document's header or footer has more than a line of text (a logo, a table…). Setting it here puts this in its place.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
-                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    OutlinedTextField(d.header, { d = d.copy(header = it.replace("\n", " ")) }, label = { Text("Header") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    OutlinedTextField(d.header, { d = d.copy(header = it) }, label = { Text(if (d.oddEven) "Header (odd pages)" else "Header") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
                     Section("Header stands") { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
-                    OutlinedTextField(d.footer, { d = d.copy(footer = it.replace("\n", " ")) }, label = { Text("Footer") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(d.footer, { d = d.copy(footer = it) }, label = { Text(if (d.oddEven) "Footer (odd pages)" else "Footer") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
                     Section("Footer stands") { aligns(d.footerAlign) { d = d.copy(footerAlign = it) } }
                     Section("Page number") {
                         Choice("None", d.number == null) { d = d.copy(number = null) }
@@ -344,6 +345,13 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
                         Section("Written as") { HeaderFooter.FORMATS.forEach { f -> Choice(f.replace("#", "1").replace("N", "3"), d.numberFormat == f) { d = d.copy(numberFormat = f) } } }
                     }
                     Toggle("A different first page (a title page without header, footer or number)", d.firstDifferent) { d = d.copy(firstDifferent = it) }
+                    // Word's "Different odd & even pages": even pages their own words, left and right the other way round.
+                    Toggle("Different odd and even pages", d.oddEven) { d = d.copy(oddEven = it, evenHeader = d.evenHeader.ifEmpty { d.header }, evenFooter = d.evenFooter.ifEmpty { d.footer }) }
+                    if (d.oddEven) {
+                        OutlinedTextField(d.evenHeader, { d = d.copy(evenHeader = it) }, label = { Text("Header (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.evenFooter, { d = d.copy(evenFooter = it) }, label = { Text("Footer (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        Text("On even pages what stands left stands right, and the number goes to the other side (a book's outer edge).", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }
@@ -541,7 +549,7 @@ internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Symbol", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     SYMBOLS.forEach { (title, chars) -> Section(title) {
                         chars.codePoints().toArray().forEach { c -> val s = String(Character.toChars(c))
                             Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { insert(s) },
@@ -582,15 +590,15 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(start) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
         } },
-        confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text("Add") } },
+        confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
@@ -651,30 +659,61 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { act.reply(c) }) { Text("Reply", color = Color(0xFF1A73E8)) }
-            TextButton(onClick = { act.resolve(c) }) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8)) }
-            TextButton(onClick = { act.delete(c) }) { Text("Delete", color = Color(0xFF1A73E8)) }
+            // Four of them in the pane's width: closer than a button's own padding.
+            val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+            TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text("Edit", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text("Reply", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.resolve(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text("Delete", color = Color(0xFF1A73E8), maxLines = 1) }
         }
     }
 }
 
 /** What a comment card can do: its replies, go to its words, delete it (and its replies), reply, resolve or reopen. */
 internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, val open: (DocComment) -> Unit, val delete: (DocComment) -> Unit,
-    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit)
+    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit, val edit: (DocComment) -> Unit = {})
 
 /**
  * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only
  * as far as the one above needs.
  */
 @Composable
-internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions) {
-    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.roundToPx() }
-    val tops = items.map { with(androidx.compose.ui.platform.LocalDensity.current) { it.second.roundToPx() } }
-    androidx.compose.ui.layout.Layout(content = { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }, modifier = modifier) { measurables, constraints ->
-        val placeables = measurables.map { it.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)) }
-        var bottom = 0
-        val ys = placeables.mapIndexed { i, p -> maxOf(tops[i], bottom).also { bottom = it + p.height + gap } }
-        layout(constraints.maxWidth, bottom) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
+internal fun CommentPane(items: List<Pair<DocComment, androidx.compose.ui.unit.Dp>>, here: DocComment?, modifier: Modifier, act: CommentActions,
+    placed: (List<Int>) -> Unit = {} /* each card's top as placed (px), pushed down below the one above: its line goes there */) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val gap = with(density) { 8.dp.roundToPx() }
+    val slack = with(density) { 48.dp.roundToPx() } // pushed further below its words than this: the pane is crowded
+    val tops = items.map { with(density) { it.second.roundToPx() } }
+    // Crowded (the user, 2026-10-14): every card but the one at the cursor folds to a line, so each stays by its words;
+    // a tap on it (or on its words) opens it.
+    androidx.compose.ui.layout.SubcomposeLayout(modifier) { constraints ->
+        val loose = constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)
+        fun stack(heights: List<Int>): List<Int> { var bottom = 0; return heights.mapIndexed { i, h -> maxOf(tops[i], bottom).also { bottom = it + h + gap } } }
+        val full = subcompose("full") { items.forEach { (c, _) -> CommentCard(c, c == here, act) } }.map { it.measure(loose) }
+        val crowded = stack(full.map { it.height }).withIndex().any { (i, y) -> y - tops[i] > slack }
+        val placeables = if (!crowded) full else subcompose("folded") {
+            items.forEach { (c, _) -> if (c == here) CommentCard(c, true, act) else FoldedComment(c, act) }
+        }.map { it.measure(loose) }
+        val ys = stack(placeables.map { it.height })
+        placed(ys)
+        layout(constraints.maxWidth, (ys.lastOrNull() ?: 0) + (placeables.lastOrNull()?.height ?: 0)) { placeables.forEachIndexed { i, p -> p.place(0, ys[i]) } }
+    }
+}
+
+/** A comment folded to one line (a crowded pane): who, and its words' start. */
+@Composable
+private fun FoldedComment(c: DocComment, act: CommentActions) = Surface(
+    color = if (c.done) Color(0xFFF1F3F4) else Color.White, contentColor = Color(0xFF202124), shape = RoundedCornerShape(8.dp),
+    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDADCE0)),
+    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = { act.open(c) })) {
+    Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(20.dp).clip(CircleShape).background(Color(0xFFFFB300)), contentAlignment = Alignment.Center) {
+            Text(c.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
+        }
+        Text(c.text.replace('\n', ' '), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f).padding(start = 8.dp))
+        val replies = act.repliesOf(c).size
+        if (replies > 0) Text("+$replies", style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368))
     }
 }
 
@@ -691,7 +730,7 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
                         TextButton(onClick = dismiss) { Text("Close") }
                     }
                     if (comments.isEmpty()) Text("No comments", modifier = Modifier.padding(top = 12.dp))
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.shadedScroll().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         comments.forEach { c -> CommentCard(c, c == here, act) }
                     }
                 }
@@ -700,20 +739,51 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
     }
 }
 
+/** Word's Insert › Shapes gallery, its groups in its order (DrawingML's preset names). */
+internal val SHAPE_GROUPS = listOf(
+    "Lines" to listOf("line"),
+    "Rectangles" to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
+    "Basic shapes" to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
+        "dodecagon", "pie", "chord", "teardrop", "frame", "halfFrame", "corner", "diagStripe", "plus", "plaque", "can", "cube", "bevel", "donut", "noSmoking",
+        "blockArc", "foldedCorner", "smileyFace", "heart", "lightningBolt", "sun", "moon", "cloud", "arc", "bracketPair", "bracePair", "leftBracket", "rightBracket",
+        "leftBrace", "rightBrace"),
+    "Block arrows" to listOf("rightArrow", "leftArrow", "upArrow", "downArrow", "leftRightArrow", "upDownArrow", "quadArrow", "leftRightUpArrow", "bentArrow",
+        "uturnArrow", "leftUpArrow", "bentUpArrow", "curvedRightArrow", "curvedLeftArrow", "curvedUpArrow", "curvedDownArrow", "stripedRightArrow",
+        "notchedRightArrow", "homePlate", "chevron", "rightArrowCallout", "downArrowCallout", "leftArrowCallout", "upArrowCallout", "leftRightArrowCallout",
+        "quadArrowCallout", "circularArrow"),
+    "Equation shapes" to listOf("mathPlus", "mathMinus", "mathMultiply", "mathDivide", "mathEqual", "mathNotEqual"),
+    "Flowchart" to listOf("flowChartProcess", "flowChartAlternateProcess", "flowChartDecision", "flowChartInputOutput", "flowChartPredefinedProcess",
+        "flowChartInternalStorage", "flowChartDocument", "flowChartMultidocument", "flowChartTerminator", "flowChartPreparation", "flowChartManualInput",
+        "flowChartManualOperation", "flowChartConnector", "flowChartOffpageConnector", "flowChartPunchedCard", "flowChartPunchedTape", "flowChartSummingJunction",
+        "flowChartOr", "flowChartCollate", "flowChartSort", "flowChartExtract", "flowChartMerge", "flowChartOnlineStorage", "flowChartDelay",
+        "flowChartMagneticTape", "flowChartMagneticDisk", "flowChartMagneticDrum", "flowChartDisplay"),
+    "Stars and banners" to listOf("irregularSeal1", "irregularSeal2", "star4", "star5", "star6", "star7", "star8", "star10", "star12", "star16", "star24", "star32",
+        "ribbon2", "ribbon", "ellipseRibbon2", "ellipseRibbon", "verticalScroll", "horizontalScroll", "wave", "doubleWave"),
+    "Callouts" to listOf("wedgeRectCallout", "wedgeRoundRectCallout", "wedgeEllipseCallout", "cloudCallout", "borderCallout1", "borderCallout2", "borderCallout3",
+        "accentCallout1", "accentCallout2", "accentCallout3", "callout1", "callout2", "callout3", "accentBorderCallout1", "accentBorderCallout2", "accentBorderCallout3"),
+)
+
 /**
- * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): each kind drawn as it will be, in the colours
- * chosen above it — a fill (or none, for a circle around a word) and an outline. A tap puts it at the cursor.
+ * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
+ * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
  */
 @Composable
 internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: String, fill: Int?, line: Int?) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
+    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" } }
     val colors = listOf(0xFF4472C4, 0xFFFFC114, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFF000000).map { it.toInt() }
     var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
     var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
+    fun put(kind: String) {
+        prefs.edit().putString("recentShapes", (listOf(kind) + recent.filter { it != kind }).take(10).joinToString(",")).apply()
+        insert(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null)
+    }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+        Surface(Modifier.widthIn(max = 720.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Shapes", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
                         Choice("None", chosen == null) { set(null) }
                         colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c))
@@ -722,18 +792,79 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                     }
                     swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
                     swatches("Outline", line) { line = it }
-                    Section("Shape") {
-                        ShapePicture.KINDS.filter { !odt || it != "line" }.forEach { kind ->
-                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { insert(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null) }.padding(8.dp)) {
-                                val preview = ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 2f)
-                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                                    drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, if (kind == "line") size.height - 4f else size.height - 4f) }
+                    (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
+                        val shown = kinds.filter { !odt || it != "line" }
+                        if (shown.isNotEmpty()) Section(title) {
+                            shown.forEach { kind ->
+                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
+                                    val preview = remember(kind, fill, line) { ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 1.5f) }
+                                    androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) }
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+            }
+        }
+    }
+}
+
+/** What Picture › Shape options sets: fill and outline (null: none), the outline's width, size, angle, alt text. */
+internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String)
+
+/**
+ * Picture › Shape options (OnlyOffice's "Advanced settings", Word's Format Shape): the shape's fill and outline, the
+ * outline's width, its size (proportions locked or not) in the document's units, its angle, its text for screen readers.
+ */
+@Composable
+internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply: (ShapeOptions) -> Unit) {
+    var o by remember { mutableStateOf(start) }
+    var locked by remember { mutableStateOf(true) }
+    val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFFE53935, 0xFF8E24AA, 0xFF000000, 0xFFFFFFFF).map { it.toInt() }
+    val unit = WriterUnits.pt
+    val unitName = WriterUnits.name
+    fun shown(pt: Float) = "%.2f".format(java.util.Locale.ROOT, pt / unit).trimEnd('0').trimEnd('.')
+    var wText by remember { mutableStateOf(shown(start.widthPt)) }
+    var hText by remember { mutableStateOf(shown(start.heightPt)) }
+    var degText by remember { mutableStateOf(start.degrees.toInt().toString()) }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Shape options", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
+                        Choice("None", chosen == null) { set(null) }
+                        colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c)).border(1.dp, Color(0x55888888), CircleShape)
+                            .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                            .clickable { set(c) }) }
+                    }
+                    swatches("Fill", o.fill) { o = o.copy(fill = it) }
+                    swatches("Outline", o.line) { o = o.copy(line = it) }
+                    if (o.line != null) Section("Outline width") {
+                        listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2.25f, 3f, 4.5f, 6f).forEach { w -> Choice("${if (w % 1f == 0f) w.toInt() else w} pt", o.lineWidth == w) { o = o.copy(lineWidth = w) } }
+                    }
+                    Section("Size ($unitName)") {
+                        OutlinedTextField(wText, { v -> wText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
+                            val w = n * unit; o = if (locked) { val h = o.heightPt * w / o.widthPt.coerceAtLeast(0.1f); hText = shown(h); o.copy(widthPt = w, heightPt = h) } else o.copy(widthPt = w) } },
+                            label = { Text("Width") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                        OutlinedTextField(hText, { v -> hText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
+                            val h = n * unit; o = if (locked) { val w = o.widthPt * h / o.heightPt.coerceAtLeast(0.1f); wText = shown(w); o.copy(widthPt = w, heightPt = h) } else o.copy(heightPt = h) } },
+                            label = { Text("Height") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                        Choice("Lock proportions", locked) { locked = !locked }
+                    }
+                    Section("Rotation") {
+                        OutlinedTextField(degText, { v -> degText = v; v.toFloatOrNull()?.let { o = o.copy(degrees = ((it % 360f) + 360f) % 360f) } }, label = { Text("Degrees") }, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.widthIn(max = 130.dp))
+                    }
+                    OutlinedTextField(o.alt, { o = o.copy(alt = it) }, label = { Text("Alt text (what it shows, for screen readers)") }, maxLines = 3, modifier = Modifier.fillMaxWidth())
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(o) }) { Text("OK") }
+                }
             }
         }
     }

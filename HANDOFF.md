@@ -1,3 +1,507 @@
+> **Latest — 15 October 2026, evening: finishing Word** (branch `writer-library`). The task: every item left in Word
+> done or deferred by the user, one commit each, each checked with a unit test, in LibreOffice where Writer writes files,
+> and on the phone (208c8192, Print layout, Mobile view off). `UserDocsSweepTest` (run with `TETRA_SWEEP=1`) reads, writes
+> and reads again every one of the user's documents in `~/Tetra/Files` (not Κλειδιά): 319, none failing or copy-only.
+> Phone driver used over adb (uiautomator dump + taps, a Word file made from body XML): rebuild as needed — test files
+> go in `/sdcard/Tetra/Documents/Test-Words`.
+>
+> - **Edit on the page** (item 1): the editor already showed the space between paragraphs (Writer's own look,
+>   `WriterBridge.Display`/`carried`, since 2 Oct) — checked on the phone while typing and after Enter; the docs said
+>   otherwise. **A file's text box edited keeps every run's look** (bold here, red italic there) and each paragraph's
+>   (centred, its style): `PictureXml.boxText`/`boxParas` lay the new lines over the old paragraphs and runs
+>   (`relaid`, `relook`: letters kept keep their run, typed ones the run of the letters they replaced or the one before),
+>   Word's `w:rPr` and LibreOffice's spans alike. **Typing in an equation in place**: an equation chosen shows its linear
+>   form in a bar over the ribbon (`EquationBar`, with piece buttons); the page redraws it 350 ms after typing stops
+>   (a red form: not yet an equation, nothing changed). `TextBoxRunsTest`; both checked in LibreOffice and on the phone.
+>
+> - **.odt content controls** (item 2): LibreOffice's `loext:content-control` (text, rich text, check box, drop-down,
+>   combo box, date) is read as the Word sdtPr the rest of Writer fills (`Forms.fromOdt`) and written back as
+>   LibreOffice's (`Forms.odt`; list items, check states, date format/language/current date, title, tag, id) — so the
+>   form bar fills them and Insert › Content control works in .odt too. Before, an .odt with one was copy-only and lost
+>   its letters. Not kept: LibreOffice's look-only attributes (colour, appearance, lock). A picture control stays
+>   copy-only. `ContentControlTest` (LibreOffice 26.2's own conversion of the six kinds, `test/resources/controls.odt`);
+>   filled on the phone, LibreOffice shows it.
+>
+> - **.odt sections** (item 2): LibreOffice's `text:section` was copy-only (and lost on saving); now each paragraph in
+>   one carries its opening tag(s) as the keep part `odtSection` (`OdtSections`, OfficeBreaks.kt), written round them
+>   again (nested ones too; a list stops at a section's edge). The pages draw a section's columns from where it begins
+>   (`OdtStyles.sections`: the section style's `style:columns`), and a paragraph naming another page style
+>   (`style:master-page-name`, as LibreOffice's conversion of a Word next-page section) starts a page of that style's
+>   size, margins and columns (its headers: the main one's — shortcut). **Layout › Breaks › Section break** works in
+>   .odt: the text from the cursor to the end of its section goes into a new `Tetra_20_sect_N` section (N columns,
+>   ½ in apart, not balanced — LibreOffice's `dont-balance-text-columns`), *next page* with a page break before;
+>   **Layout › Columns** with the cursor in a section sets that section's. Edit names it "Section break".
+>   `OdtSectionsTest` (LibreOffice's own conversion of Breaks_test, `test/resources/sections.odt`); on the phone a
+>   title + continuous break + two columns, and LibreOffice draws the saved file the same.
+>
+> - **.odt groups** (item 2): LibreOffice's `draw:g` is read piece by piece (`DocImage.group`, each piece's box from its
+>   own svg:x/y/size — LibreOffice places a group's pieces from the group's anchor), drawn on the pages, kept as it was.
+>   **Group / Ungroup** work in .odt: `Arrange.odtGroup` makes a `draw:g` (page-placed wrap style, each piece where it
+>   was on the page, its anchor dropped), `odtUngroup` puts each piece back floating on its own; Picture › Position and
+>   Size move/scale the pieces together (`odtGroupMoved`, `odtGroupBox`); every Writer style the pieces name is written
+>   (shape looks, wraps — the writer looked for one only). Rotating a whole .odt group says to ungroup first (ODF has
+>   no turn for a group). `ArrangeTest` (LibreOffice's own group, `test/resources/group.odt`, and Writer's); on the
+>   phone: LibreOffice's group drawn, two shapes grouped (one frame) and ungrouped in place; LibreOffice places them
+>   the same.
+>
+> - **.odt equations** (item 2): LibreOffice Math's objects (`draw:frame` › `draw:object` › `Object N/content.xml`,
+>   MathML) are read into Writer's equation tree (`OfficeMath.fromMathML`: mrow, mi/mn/mo/mtext, mfrac, msup/msub/
+>   msubsup, munder/mover/munderover — ∑ ∫ ∏ with limits take what follows as their body —, msqrt/mroot, fenced rows,
+>   mfenced, mtable, mmultiscripts, accents, bars, function application) and drawn as Word's are (`MathDrawable`); the
+>   file's objects are kept as they were. **Insert › Equation and Edit equation work in .odt**: a new or rewritten
+>   equation is written as a new LibreOffice Math object (`OfficeMath.mathml`, display "block" as LibreOffice's own,
+>   in the line, `Tetra_20_formula` style: centred on the text) and listed in the manifest; an edited one's old object
+>   is left in the package unused. `MathMLTest` (LibreOffice's own conversion, `test/resources/equations.odt`; tree →
+>   MathML → tree); on the phone both of LibreOffice's drawn and a quadratic formula inserted — LibreOffice draws it.
+>
+> - **WordArt glow in .odt: not possible** (item 2's condition). LibreOffice 26.2 has a shape glow
+>   (`loext:glow-radius/-color/-transparency`, kept on a round trip) but it glows the shape's fill and line — a WordArt
+>   has neither, so nothing shows; its "text glow" tokens (`loext:glow-text-*`) are dropped when a Writer document is
+>   read, and Word's `w14:glow` is dropped when LibreOffice opens a .docx. So Glow stays offered in Word files only.
+>
+> - **.doc and .rtf** (item 3): Writer's own readers, `LegacyDocs.kt` (no library): **Word 97–2003** — the OLE
+>   compound file (`Compound`: FAT, DIFAT, mini stream), the FIB, the piece table (compressed/Unicode pieces), CHPX and
+>   PAPX FKPs, the style sheet (each style's sprms through its bases: Normal's size, a style's alignment/looks, "heading
+>   N" by name), lists (LSTF/LVL/LFO: numbered or bulleted; a numbered list's count carried over the paragraphs between
+>   its items, as Word counts), tables (cell/row marks, TTP), fields (instructions hidden, HYPERLINK as a link), page
+>   breaks, line breaks; Word 6/95 and password-protected files say so. **RTF** — groups, control words, code pages
+>   (`\ansicpg`, a font's `\fcharset` — Greek 161 → 1253), `\u` with `\uc`, font/colour/style tables, letters'
+>   looks, paragraphs (`\pard`, `\q*`, `\sb/\sa/\li/\fi`, `\pagebb`, `\page`), `\intbl`/`\cell`/`\row`
+>   tables, `\fldrslt` links, PNG/JPEG `\pict`; headers, footers, footnotes, objects skipped (said). Both open from
+>   Files and the Office list; the banner says "An older DOC file: saving makes name.docx beside it"; Save writes
+>   `name.docx` (then "(copy)") and goes on as it — never over the .doc. `LegacyDocsTest` (LibreOffice's .doc and .rtf
+>   of one Word file, Greek code page and \u); the sweep reads the user's two .doc (321 documents); on the phone the
+>   recruitment .doc looked as LibreOffice shows it (justified, bold/underlined, numbers 1–15), saved as .docx —
+>   LibreOffice the same. Not read: a .doc's pictures, headers/footers, footnotes, comments (said in the banner list).
+>
+> - **Phone extras** (item 4, `WriterPhoneBar.kt`): with the screen's keyboard up on a phone the ribbon gives way to
+>   Word's **keyboard bar** — B · I · U · highlighter (its colours) · mic · ⋯ · hide keyboard; ⋯ brings the whole
+>   ribbon back over the keyboard (⋯ at its tabs' start returns to the bar; closing the keyboard resets it). The tabs and
+>   pages are now inside their own Column lambda (keeps WriterScreen under the method limit). **Dictation**: the mic
+>   opens Android's voice typing (`RecognizerIntent`, the phone's language), what was said goes in at the cursor with a
+>   space either side as needed. **Read aloud** (Review): `TextToSpeech` from the cursor's paragraph on, each paragraph
+>   in Greek or English (`languageOf`), equations said in words in that language (`OfficeMath.spoken`: "x ίσον a συν b
+>   διά 2", "the sum from i equals 1 to n of x sub i"), a "Reading aloud" bar with Stop. `ReadAloudTest`; all three on
+>   the phone (the user heard it read, and asked for the equations — added).
+>   **Read aloud speed** (asked 15 Oct): Settings › Office, 0.75× · 1× · 1.25× · 1.5× · 2×
+>   (`TextEditorStore.readAloudSpeed`, `setSpeechRate` at each start).
+> - OFFICE_FEATURES' leftover "[ ]" items that were done are ticked: view-only opening as pages, the pages showing what
+>   the file sets, tablet view, headers/page numbers/tables on the pages, built on the PDF layout, the Picture tab, line
+>   numbers and hyphenation, Tetra's own spelling dictionaries (Hunspell, Greek and English, in the app's assets).
+>
+> - **Citation styles** (item 5): References › Style (the button that said "APA 7") — APA 7, **MLA 9**, **Chicago
+>   author-date (17th)** (`CitationStyles.kt`: `CiteStyle`, `Mla`, `ChicagoAD`). MLA: (Kurlansky 47), Works Cited
+>   (heading plain), "Smith, John, and Ann Jones. “Title.” *Journal*, vol. 12, no. 3, 2019, pp. 45–67, doi.org/…".
+>   Chicago: (Kurlansky 2018, 47), (Lee, Kim, and Park 2020), References, "Smith, John, and Ann Jones. 2019. “Title.”
+>   *Journal* 12 (3): 45–67. https://doi.org/…". Choosing one rewrites every citation and the list. Kept: a Word file's
+>   sources part `StyleName`/`SelectedStyle` (Word's own names — Word stays in the style when it updates its fields);
+>   an .odt's style is told by its list's heading ("Works Cited") and its citations' shape ("Name 2020" → Chicago);
+>   `OfficeDoc.citeStyle`. Dialog previews still show APA's form (shortcut). `CitationStylesTest`; on the phone MLA then
+>   Chicago on a copy of Phase2_test, saved — LibreOffice the same.
+>
+> - **APA professional paper** (item 5): Design › APA 7 paper › *Professional paper (a running head on every page)* —
+>   a short title (≤ 50 letters; the title when left empty) written in capitals flush left in the header, the page
+>   number flush right, on every page including the title page (`ApaPaper.file(…, runningHead)`, the existing header
+>   writer's zones); its title page leaves out course, instructor and due date. `ApaPaperTest` (both formats); on the
+>   phone "PARAGRAPH SPACING … 1" in the header; LibreOffice the same.
+>
+> - **Headers: several lines, odd and even pages** (item 5): Insert › Header & footer takes several lines each
+>   (Enter; the first carries the page number's zones) and *Different odd and even pages* — even pages get their own
+>   header and footer, left and right swapped (the number on the outer edge). Word: `headerReference/footerReference
+>   w:type="even"` + `<w:evenAndOddHeaders/>` in settings.xml (in the schema's place); LibreOffice: `style:header-left` /
+>   `footer-left` in the main page style (read back as "even"; `OdtStyles.evenAndOdd`). `HeaderFooter.of(section,
+>   evenAndOdd)` reads them back for the dialog; only pictures/tables in a header still count as "rich" (replaced).
+>   `OfficeFormatsTest` (both formats round-trip); on the **tablet** (971f6b37): two-line header right, even page's own
+>   left; LibreOffice shows the .docx and the .odt as meant. Not done: pictures in headers.
+>
+> - **Shapes: the full gallery and Shape options** (item 5). `tools/shape-presets.py` turns LibreOffice's
+>   `oox-drawingml-cs-presets` (Word's 187 presets as formulas + paths, MPL 2.0 — noted in THIRD_PARTY_NOTICES) into
+>   `resources/shapes/presets.txt` (125 KB). `ShapeGeometry` evaluates them: ODF's formula language (`?n`, `$n`,
+>   width/height/logwidth, abs sqrt sin cos tan atan2 min max if), the path's commands (move, line, cubic, quadratic,
+>   Word's arcTo — visual angles made parametric —, ODF's angle-ellipse / arc / quadrants, no-fill, no-stroke, the shades
+>   of a can's or cube's faces), sub-paths' own sizes; arcs become Bézier curves, so the result is plain and tested on
+>   the JVM. It draws: every Word preset (from a file, with its `a:avLst` adjustments; colours from `wps:style`'s
+>   theme refs — Office's default theme, shade/tint/lumMod/lumOff — when spPr names none: Word's own shapes were drawn
+>   unfilled), and any LibreOffice custom shape with its own `draw:enhanced-path` (equations, modifiers, view box,
+>   `drawooo:sub-view-size`). New shapes in an .odt are written as LibreOffice writes Word's: `draw:type="ooxml-<name>"`
+>   with the path and equations (**LibreOffice draws nothing from the name alone** — checked), the equations over ODF's
+>   width/height (LibreOffice's logwidth in a text document is in twips: shapes came out at 57%). Insert › Shapes: Word's
+>   groups, recently used first (`SHAPE_GROUPS`, prefs "recentShapes"), long ones 1½ × ¾ in. **Picture › Shape
+>   options** (`ShapeOptionsDialog`): fill, outline, its width, size in cm/in with locked proportions, rotation, alt text
+>   (`PictureXml.shapeLook`, `altOf/withAlt`: Word's spPr fill + a:ln and docPr descr; LibreOffice's Writer shape style
+>   and svg:desc). `ShapeGeometryTest` (all 187 drawn in bounds — `build/shapes.svg` is a sheet of them, they look as
+>   Word's; adjustments; LibreOffice paths; preset → ODF → back identical; restyle + alt round trips both formats; theme
+>   colours). On the tablet: the gallery, a sun put in and restyled; LibreOffice draws the .docx (turned 15°) and .odts.
+>   **Found on the way**: letters typed over a chosen picture took its place-holder's size (a 127 pt "j" replaced the sun
+>   when the user typed by mistake) — a picture's place-holder size is now marked (`pictureSp`, fraction .371) and never
+>   given to letters; a place-holder left without its picture (half undone) is not written. `WriterBridgeTest`.
+>
+> - **SmartArt shown** (item 5): a `dgm:relIds` drawing is read from the drawing Word saves beside its data (the data
+>   part's `dsp:dataModelExt relId` → `word/diagrams/drawing*.xml`): each `dsp:sp` becomes a group piece (its spPr/style
+>   read as a Word shape — any preset, theme colours) with its words (`dsp:txBody`: alignment, size, bold/italic, colour
+>   or the style's font colour) — drawn as a group on the pages and in the editor; the SmartArt and its five parts are
+>   written back untouched. Text boxes now honour `bodyPr anchor` (centred/bottom words), and shapes' fills given as
+>   theme colours inside spPr are read (were blank). None of the user's files has SmartArt: `smartart.docx` (made as Word
+>   saves one; LibreOffice opens it) — `SmartArtTest`; on the tablet the chevrons Plan → Write → Submit, white words on
+>   blue. Not done: editing SmartArt (Word's own data model); one without a saved drawing stays a grey box.
+>   **After the user's eye** ("isn't the S a bit outside?"): a SmartArt shape's words go in their own rectangle
+>   (`dsp:txXfrm`, inside a chevron's body — they ran over the next one's notch) as a piece of their own, shrunk to fit
+>   when a word is wider (Word's shrink-on-overflow); text boxes take their insets from `bodyPr lIns/tIns`.
+>
+> - **WordArt bends** (item 5): Insert › WordArt › Straight / Arch up / Arch down / Circle / Wave / Slant up / Slant down
+>   (`TextWarp`, OfficeTextEffects.kt): Word's `<a:prstTxWarp prst="textArchUp">` in the WordArt's bodyPr with
+>   `fromWordArt="1"`; LibreOffice's fontwork shape (`draw:type="fontwork-arch-up-curve"`, `draw:text-path`), which it
+>   draws by name (checked). Drawn along the bend (`drawTextOnPath` in `TextBoxDrawable`) with the letters sized to the
+>   bend and fitted to its length, **inside the box** (the first try ran out of it — the user: "the rectangle should
+>   contain the letters"), clipped to it. Edit text keeps the bend. `TextEffectsTest`; on the tablet an arch;
+>   LibreOffice draws the saved .docx as an arch.
+>   **After the user's eye** ("the T at the beginning is cut off"): the arches stop short of the box's corners.
+>
+> - **Charts: Word's Edit Data** (item 5): every chart Writer writes into a .docx (new, or a file's whose data was
+>   changed) now carries an embedded Excel workbook (`word/embeddings/Microsoft_Excel_Worksheet_tetraN.xlsx`, made by
+>   `ChartWriter.workbook`: Sheet1, A1 empty, series names along row 1, categories down A, inline strings) and the chart
+>   points at its cells (`c:strRef`/`c:numRef` with `Sheet1!$B$2:$B$4` and the values cached, `c:externalData r:id`, the
+>   chart part's rels, the xlsx content type) — what Word does, so Word's Edit Data opens the same numbers.
+>   `ChartsTest`; LibreOffice draws the chart and opens the embedded workbook with the numbers. Not checked on a
+>   device (the tablet was busy with the Files session); not checked in Word (no Word here).
+>
+> - **Design › Colours, Fonts, more style sets** (item 5, `DesignThemes.kt`): Colours — Word's palettes (Office,
+>   Office 2007–2010, Blue, Green, Red, Violet, Grayscale) written into the file's theme (`a:clrScheme`; a Word file
+>   without a theme — Writer's own new ones — gets Office's whole theme part, rels and content type); every `w:color`
+>   that names a theme colour gets its new value (themeShade/themeTint, rounded as Word: accent1 549E39 shaded BF →
+>   3F762B), so the pages and Word agree; Word files only (LibreOffice text documents' theme is its newer loext:theme —
+>   not done). Shapes, SmartArt and charts now take **the open document's theme colours** (`ShapePicture.theme`, set
+>   when its styles are read) rather than always Office's. Fonts — seven pairs written as the theme's major/minor fonts
+>   (Word) and as the Title/Headings/Normal styles' fonts (both formats; .odt has no theme). Style sets: + Word 2010,
+>   Word 2003, Centred, Casual, Minimalist. `DesignThemesTest`; LibreOffice draws the theme-shaded heading #3F762B;
+>   on the tablet Colours › Green turned the SmartArt green.
+>
+> - **Galleries in the ribbon's place, Standards** (asked 15 Oct, the user's direction: *a touch-first app changes its
+>   UI to the task — the iPhone's idea; nothing on top of the page; no ribbon when it is not needed*). Design › Style set,
+>   Colours and Fonts are no longer drop-down lists or windows: the gallery **replaces the ribbon** — a strip of picture
+>   cards (each style set as a small page in its own faces and colours, palettes as colour bars, font pairs written in
+>   themselves) scrolling sideways, Cancel and OK on it (`DesignGalleryStrip`, WriterDesignGallery.kt). A card tapped
+>   is **applied to the page at once** (a live preview: `openGallery` takes a snapshot; picking another first puts it
+>   back; OK keeps the last as one undo step; Cancel shows the snapshot again and drops the steps). Design's APA 7 paper,
+>   APA level 4 and 5 are gathered in **Design › Standards** (`StandardsDialog`: the APA paper's window, the run-in
+>   headings, the citation style APA/MLA/Chicago). While Standards, Shape options or the Shapes gallery are open the
+>   ribbon steps aside. **On the phone** (asked: the keyboard is in the way) the strip is one thin row — cards at 70%,
+>   ✕ and ✓ at its ends instead of the title row — and the keyboard goes away when a gallery opens.
+>
+> - **Handles on a chosen object** (asked 15 Oct: "no resize and rotate buttons on the box"): a picture, shape,
+>   text box or WordArt chosen in the editor has handles drawn beside it in the page's frame (`ObjectHandles`,
+>   WriterHandles.kt): the corner stretches it (a photo keeps its proportions), the right and bottom sides one way, and
+>   one that is not in line has a knob on a stem above that turns it (measured from its middle, snapping near each 45°).
+>   All follow the finger live (`stretch`/`turning` in the editor); on lifting, one step: `PictureXml.resized` or
+>   `rotate`. A non-in-line object is now shown turned in the editor too (only In front/Behind were). **Held** (long
+>   press), one that is not in line opens Position, where it follows the finger. `HandlesTest`; checked on the tablet
+>   (WordArt stretched 186×49 → 243×78 pt, turned 55°). The object's tab is named for what is chosen (asked 15 Oct: "Picture should be Image;
+>   if it is WordArt, why not say so"): Image, WordArt, Shape, Text box, Chart, SmartArt, Equation (`PictureXml.kind`;
+>   WordArt: a bent text box, LibreOffice fontwork, Writer's art style, or Word's `wrap="none"` text box). The user
+>   will ask for a Greek UI after Word: keep labels short (Greek words run longer; the ribbon scrolls).
+>
+> - **More strips in the ribbon's place** (asked 15 Oct): **Insert › WordArt** (looks: five colours plain, outline,
+>   shadow, glow — Word files only — and the bends; a tap puts "Your text here" in that look on the page, OK opens
+>   Edit text with it chosen, as Word), **Insert › Page numbers** (a small page per place, no words — the user: the
+>   picture says it; Page 1 of 3, 1 / 3, **i ii iii**, None, Your own… = the old window), **Insert › Header & footer**
+>   (layouts filled with the file's name: title centred / left with page right / right / above with page below /
+>   book's outer edges / None; Your own…), **Home › Multilevel** (1. 1. 1., 1. a. i., 1.1.1., **I. A. 1.**,
+>   **i. a. 1.**). Page numbers and headers show the **pages** while choosing (the editor shows no footer), laid out
+>   again on each tap and scrolled to where it went (`PagesView` `covered`, a page as -(n+1) = its foot). Card names
+>   sit above the cards in white on the strip (the user: better contrast). The ribbon and a strip **slide** down and
+>   up as they swap (`SLIDE_IN`/`SLIDE_OUT`, 180/140 ms). **Roman page numbers**: `HeaderFooter.roman` — Word's
+>   `pgNumType w:fmt="lowerRoman"` (its start kept), LibreOffice's page layout `style:num-format="i"`, both read back
+>   (`DocSection.pageFormat`); LibreOffice shows i, ii, iii for both (`roman.docx/.odt`). `GalleriesTest`,
+>   `OfficeFormatsTest` (header cases). Not done: 3-D WordArt (the user: skip it for now).
+>   **Seen, not fixed:** in the editor a numbered paragraph that starts with floating pictures (Gallery_test: the WordArt
+>   and the sun before "Page 1 text.") shows its first letter apart ("P" … "age 1 text."); the file is right.
+>   **Fixed (15 Oct, night):** the library draws a list item's number in its first letter's look
+>   (`ListMarkerStyleBehavior.InheritFromText`), and that letter was the picture's place-holder (~100 sp, its width as
+>   letter spacing): the number was as wide as the line and the word broke. `WriterBridge.plainMarkersIfPictureFirst`
+>   (run on every text change) draws numbers in the text's look while an item starts with a picture, and the picture's
+>   letter is no longer given twice its spacing there (the number, not the picture, starts the line). `WriterBridgeTest`;
+>   on the tablet "1. [WordArt] Page 1". **Still:** "text." goes to the next line with the sun after it — the editor's
+>   picture letter (U+FFFD) is a letter to Android's line breaker, so no line breaks between a picture and the word it
+>   touches ("text.☀" is one word). Not list-only; the pages are right.
+>   **Fixed (15 Oct, late night):** Writer's display layer (`WriterBridge.Display`) lays each picture letter as U+FFFC
+>   (`breakablePictures`: same length and marks, so every offset holds; the editor's own text keeps U+FFFD — it is
+>   Compose's inline-content letter, the library's choice). Android breaks a line before and after U+FFFC (line-break
+>   class CB), so only the picture moves, as in Word; `pictureGlyph` is measured on U+FFFC. The pictures drawn over the text are found in
+>   the laid-out text by either letter. While the library's own
+>   look shows (a keystroke, before Writer's comes back) the picture is U+FFFD again for that moment. `WriterBridgeTest`;
+>   on the tablet "1. [WordArt] Page 1 text." on one line, the sun on the next. Next (agreed): the same strips for WordArt, page numbers,
+>   lists, headers & footers.
+>
+> **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
+> one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
+> yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user
+> (208c8192, Print layout, Mobile view off). `WriterScreen` is at the JVM's 64 KB method limit ("Method too large"): put new UI in
+> its own composable (as `CitationBar`), not inline.
+>
+> **Phone walk, 15 Oct morning** (`TEST_TREE.md`, new documents Phase2_test / Group_test / Forms_test / Breaks_test in
+> Test-Words, plus Art_test): **all ten pass on the phone**. Item 8's pages match LibreOffice's for the same file (title
+> across, continuous break into two columns, column break, next-page section) once a column break at a column's top
+> is honoured too (Writer skipped it; Word and LibreOffice do not). WordArt's outline, shadow and glow draw in Edit and on
+> the pages and survive Edit text. Fixed on the way: an equation's brackets round a fraction's top showed; a leading minus was
+> spaced; the preview cut long equations; the field capitalised letters; Insert › Equation on an empty line went in the
+> line, not centred (the editor's empty line is not blank letters — judged by the document's paragraph now); ∑/∫ bigger;
+> a page border on some sides ran to the page's edges (Word keeps the 24 pt inset); the border and rotate dialogs' rows
+> overflowed the phone (wrap now); **Group/Ungroup scrambled the editor** (pictures taken out of the map before the
+> document was read back); a new content control left the cursor inside it; Edit named a continuous section break
+> "next page"; **Page setup and Columns changed only the last section** of a Word file with section breaks — Page setup
+> now sets every section, Columns the cursor's section (Word's "This section", `setColumns`).
+>
+> **Fields over paragraphs (15 Oct afternoon): no document is copy-only any more** (all 318 of the user's read and
+> write; 04_Academic_References was the last). A contents list or reference list written as a field in one paragraph
+> (lines broken inside it) is kept like any other field (the TOC/BIBLIOGRAPHY refusal is gone). A field that runs on
+> over paragraphs (a bare contents list with its PAGEREF fields and links; Zotero's and Mendeley's bibliographies) is
+> kept as its paragraphs' own XML from its first to its last paragraph and written back as it was while their words
+> are unchanged — the content-control mechanism (`SDT_BLOCK`/`SDT_PART`, built in `block`); edited, they are written as
+> plain paragraphs (the field goes, as with content controls). One that never ends, or runs round a table, still makes
+> a copy. `LongFieldsTest`; 04 saves with every field and the same text in LibreOffice; checked on the phone (no
+> banner).
+>
+> **Done 15 Oct:**
+> - **A citation tapped** (item 1): with the cursor inside a citation, a bar over the ribbon — *Edit Smith, 2020* for
+>   each of its sources (opens the source form; a tag with no source opens a new one) and *Change…* (the citation dialog
+>   with its sources and page ticked; replaces it in place). `CitationBar` (CitationsUi.kt), `citesShown`/`hereCite`.
+> - **Reading mode** (item 2): View › Reading mode, or the book in the pages' top bar — no ribbon, the text reflowed
+>   (as Mobile view) at 140 % (− / + in the top bar, 100–260 %, remembered as `readingZoom`), read only (words can still
+>   be chosen and copied); a tablet reads in a 720 dp column. *Close reading* or Back returns to Edit. `reading` in
+>   WriterScreen; the dialogs moved into a local `Dialogs()` to stay under the method limit.
+> - **Equations** (item 3): Word's OMML read into a small tree (`OfficeMath.kt`: `MathNode`, `OfficeMath.read/parse`),
+>   laid out (`MathBox`: fractions, scripts, roots, ∑/∫ with limits, brackets stretched, functions, lim, accents, bars,
+>   matrices, equation arrays) and drawn by `MathDrawable` (Caladea = Cambria's metrics) in the editor, the pages and the
+>   PDF, as an inline object (`DocImage.math`, its XML in `raw`, written back untouched beside the runs — never inside a
+>   `w:r`). A display equation (`m:oMathPara`) centres its paragraph. Equations are **no longer a copy-only cause**
+>   (04_Academic_References: read, saved, identical in LibreOffice; it stays copy-only for its fields).
+>   **Insert › Equation** (Word files): Word's linear form typed (x^2, a/b, sqrt(x), root(3,x), ∑_(i=1)^n, ∫_a^b,
+>   lim_(x→0), hat(x), vec(x), matrix(a&b@c&d), \alpha…) with a live preview and piece buttons; an empty paragraph gets a
+>   display equation, else one in the line. **Picture › Edit equation** rewrites one (a file's own styling of it — fonts,
+>   colours — is not kept then). Not done: ODT's equations (MathML objects), typing inside the equation in place.
+>   `OfficeMathTest`.
+> - **Rotate, Group, Ungroup** (item 4), Picture tab › Arrange, for floating pictures, shapes and text boxes:
+>   **Rotate** any angle (slider, ±1/15/90°, typed) about the middle — Word's `a:xfrm rot`, LibreOffice's
+>   `draw:transform` (rotate + translate, the same numbers LibreOffice writes; `PictureXml.odt` keeps the transform when it
+>   re-wraps or moves one); drawn turned on the pages (`LaidPage.Floating.turn`, `drawTurned`) and in Edit (in front of /
+>   behind ones). **Group** (Word files): tap Group, then the other one — both must float on the same page; one Word
+>   `wpg:wgp` anchored on the page at their box's corner, each piece keeping its place, size and angle
+>   (`Arrange.group`). **Ungroup** puts each piece back as its own floating drawing where it was. Files' groups are now
+>   drawn piece by piece (`DocImage.group`, `GroupPart`, `GroupDrawable`; only the first piece showed before). Checked in
+>   LibreOffice (PDF of both kinds). Not done: groups in .odt (LibreOffice's draw:g), the wrap around a turned one
+>   (its unturned box), turning by dragging a handle. `ArrangeTest`.
+> - **APA abstract page and run-in headings** (item 5): Design › APA 7 paper › *Add an abstract page* (text with a
+>   word count, keywords): "Abstract" bold and centred on a new page after the title page, the abstract unindented,
+>   *Keywords:* indented (`ApaPaper.abstractPage`). APA's levels 4–5 now **run in**: applying APA turns each Heading 4/5
+>   paragraph followed by text into one indented paragraph starting with the heading bold (5: bold italic) and a period
+>   (`ApaPaper.runIn/runInAll`); Design › *APA level 4* / *APA level 5* does it for the paragraph at the cursor (the chosen
+>   words from its start, else its first sentence, or a heading line joined to the next). Direct bold/italic as APA's
+>   sample papers do, so Word and LibreOffice show it the same (not in a contents list). `ApaPaperTest`. Not done: the
+>   professional paper's running head.
+> - **Page borders** (item 6): Design › Page borders is a dialog — line Solid / Double / Dotted / Dashed, ½–4½ pt,
+>   Word's colours, Box or any of Top / Bottom / Left / Right (`PageBorderDialog`). Written as Word's `w:pgBorders`
+>   (only the sides chosen; a double's `sz` is each line) and LibreOffice's `fo:border-<side>` (+ `style:border-line-width`
+>   for double); read back with their style and sides (`Border.style`, `PageBorder.sides`, also from files' own), drawn
+>   on the pages side by side in their style (`drawBorderLine`). `PageBorderTest`; checked in LibreOffice. Paragraph and
+>   table borders still draw solid (their style is now read, not drawn). Not done: art borders.
+> - **Insert › Content control** (item 7, Word files): Plain text, Rich text, Check box, Drop-down list (choices one per
+>   line), Combo box, Date picker (five formats), an optional title — Word's sdtPr with a random `w:id`, Word's own grey
+>   placeholder (`showingPlcHdr`) or ☐ (`Forms.newControl`, `ContentControlDialog`), put at the cursor with a space after
+>   it outside the control; then filled from the form bar as a file's own forms are. LibreOffice reads all six as its own
+>   content controls. `ContentControlTest`. Not done: .odt (LibreOffice's `loext:content-control` is not read yet),
+>   picture controls, controls round whole paragraphs.
+> - **Column and section breaks** (item 8): Layout › Breaks › *Column break* (both kinds: Word's `w:br type="column"` run
+>   at the start of the paragraph after it — Writer's `COLUMN_BREAK` keep part, never written as pPr; LibreOffice's
+>   `fo:break-before="column"`), *Section break · next page* / *· continuous* (Word files: the paragraph before the
+>   cursor ends a section like the one it was in, the section after it gets `w:type`; the body's own sectPr changed in
+>   the package when it is the one after — `SectionBreaks`). A file's column break inside a multi-column section is
+>   **no longer copy-only**: the paragraph is split there, the part after it marked (a mid-paragraph break becomes two
+>   paragraphs on saving; Word shows them the same). In a one-column Word document a column break stays read as the page
+>   break it looks like (as before). The pages: a column break goes on in the next column (or page); a continuous
+>   section with other columns starts them where it begins on the page (not balanced). Edit names each break on its
+>   dashed line. `BreaksTest`; LibreOffice renders a title + continuous break + two columns + column break + next-page
+>   section as meant. All 318 of the user's documents read and write without error; only `04_Academic_References` is
+>   copy-only (its fields).
+> - **Live word count** (item 9): the phone shows "1,234 words" under the document's name in the top bar, "12 of 1,234
+>   words" while words are chosen; a tap opens About this file (all counts). The tablet's counter beside the name is the
+>   same count. The whole document's count is worked out off the main thread 150 ms after typing stops (a thesis);
+>   the selection's at once. `TextCounts.label`, `TextCountsTest`.
+> - **WordArt effects** (item 10): Insert › WordArt has Outline, Shadow and Glow (Glow in Word files only). Word's
+>   `w14:glow` / `w14:shadow` / `w14:textOutline` in the words' run (each declaring w14, in Word's order); LibreOffice's
+>   `style:text-outline` / `fo:text-shadow` in Writer's art style (`Tetra_20_art_RRGGBB_o_s`). Files' own effects are
+>   drawn too: `TextEffects.of(run.font)` → `EffectSpan` per word (glow, shadow, fill, outline) on the pages and in the
+>   editor's text boxes. Outline black (grey round black letters), glow gold (blue round gold). `TextEffectsTest`.
+>   LibreOffice draws the .odt's outline and shadow; it ignores Word's w14 effects (Word shows them). Not done: warp
+>   (Word's text shapes), effects on ordinary text, changing a WordArt's effects after (Edit text keeps them).
+>
+> **Latest — 14 October 2026, evening.** Branch `writer-library` (commits not pushed yet), all unit tests pass. Newest debug
+> build on the **phone** (208c8192); the tablet (971f6b37) is older — install it. Read this, then the 14 Oct list below.
+>
+> **Done 14 Oct evening (phone, paper view):**
+> - **Typing no longer shakes the page.** Cause: Writer shows the text through its own VisualTransformation (`WriterBridge.Display`:
+>   fonts, the space between paragraphs, tabs); the library puts back its own (no fonts, no spacing) at every keystroke and
+>   Writer's came a frame later — text jumped half a page and back. Now, while composing, if the library's look is in
+>   (`showsWriters`), Writer's last look carried over the edit (`WriterBridge.carried`, `WriterCarriedTest`) goes in before
+>   the frame is drawn; not when the paragraph count changed (Enter: one frame may still flash). The zoomed page follows the
+>   cursor itself (`followCursor` responder + a LaunchedEffect on the styled layout); unstyled layouts are never used.
+>   MainActivity is `adjustResize` (the window slid up under the keyboard) — **other screens with text fields not checked**.
+> - **Writer's own handles** on the phone's scaled page (`PageHandles`: Compose's were placed as if unscaled, far off the
+>   words): dark blue, pointed nose, sized for the zoom, draggable; a **loupe** above the dragged handle (`Modifier.magnifier`).
+>   Selection colour dark blue (`SELECTION_BLUE`). Caret handle on a tap is Writer's too.
+> - **Selection tab** replaces Android's text menu (`WriterTextToolbar` via `LocalTextToolbar`; Compose's new context menu
+>   turned off in `MainActivity.onCreate` — `ComposeFoundationFlags.isNewContextMenuEnabled = false`, app-wide): first in
+>   the ribbon while words are chosen (or the menu is asked for), **never taking the focus** — Home stays (the user's call
+>   after trying both). Cut, Copy, Paste, Paste text only, Select all, Copy/Paste formatting (`paint`, shared with Format
+>   painter); B I U stay in Home only.
+> - **Bold/Italic on headings, as Word:** letters were never drawn bold/italic in Edit (the editor's fonts were single
+>   Typefaces — now `OfficeFonts.family`, four faces); B/I are lit where the style makes words bold/italic, and pressing
+>   them there takes it off for those words — `DocRun.unbold/unitalic` (Word `w:b/w:i w:val="0"`, ODF `normal`; read,
+>   kept, written; `UnboldTest`; editor marks weight 399 / shadow 0x02). Edit's headings now bold as View draws them.
+> - **Ribbon on the phone fits:** Home's Font/size on their own page, Borders apart, References' citations / Claude's sources /
+>   Update fields apart, View › Units labelled; the chosen tab scrolls out of the edge shade; Font is a window (`FontDialog`).
+>   Scrolling dialogs show a shade at the edge (`Modifier.shadedScroll`).
+> - **Sources:** Report, Thesis, Video (APA 7 entries; Word Report/Film, LibreOffice techreport/phdthesis/misc; the form;
+>   `TETRA_SOURCES_FORMAT.md` and the skill updated).
+> - **Files › New** (bottom island: Home / Favorites / Files / New): a dialog — Folder, a copy of each file in the hidden
+>   `<Tetra>/.templates` (none on the phone yet; the PC has `~/Tetra/Files/.templates`), and Writer's own empty Text file /
+>   Word document where `.templates` has none; chips in the kinds' colours (Word blue, text purple, folder amber) with
+>   `ic_file_word`; made in the open folder (never Trash), then opened. `DriveRules.newKinds/create`, `DriveNewTest`.
+> - Logs (memory `office-logging`): unstyled layouts skipped, layout height changes, cursor follows, text menu asks.
+>
+> **Open:** `Test-Words/Tetra test.docx` on the phone is full of test letters and lost a word earlier (cause not found;
+> not Copy) — restore it from File › Versions or the PC. Pressing Enter may still flash one frame. The rest of Phase 2
+> (citation tap-to-edit, reading mode, APA abstract page, page border styles, group/rotate, content controls) is proposed
+> as a separate session. Push `writer-library` when happy.
+>
+> **Earlier — 14 October 2026.** Branch `writer-library` (pushed), all 205 unit tests pass. Newest debug build on the
+> **tablet** (971f6b37); the **phone** (208c8192) is older (no Cross-reference, Make chart, typing shortcut) — install it. Beta 4 is published
+> (desktop + Android, 13 Oct). Read this, then THE PLAN below.
+>
+> **Done 13–14 Oct (Phase 1 is finished except item 6):**
+> - **Item 1, the letterhead report** (`Ιατρικά/…/ΚΑΛΟΤΡΑΠΕΖΗΣ ΘΕΟΛΟΓΟΣ ΑΝΩ.odt`, user's OK given) matches LibreOffice
+>   page for page: an ODT frame's graphic style is read (`DocImage.look`, display only — `placeOf`, `wrapOf`,
+>   `ShapePicture.of(img)`): page-relative and centred placement, run-through wrap, no fill / no line; an ODT header's
+>   height includes its spacing. All 13 medical documents save identically.
+> - **Item 2, copy-only:** none of the user's 273 documents (outside `Κλειδιά`) is copy-only any more (13 were): column
+>   breaks in one-column documents, letter/roman lists (`FileNumbering` in the editor), formatting-free web character
+>   styles, **hidden text** (kept, left off the pages, grey dotted in Edit), **fields in one paragraph** (date, REF,
+>   PAGEREF, SEQ… kept in `DocRun.cite` after `FIELD_CITE`, written back as fields; Citations skip them). Still copy-only:
+>   TOC/BIBLIOGRAPHY written as plain fields over paragraphs, equations, a column break in a real multi-column section.
+> - **Save fidelity harness** (scratchpad scripts, rebuild from this description): read + write each document with
+>   Writer's own code in a throwaway unit test, convert both with LibreOffice, compare page text page by page. Results:
+>   user's .docx **266/267** identical (`Παραμύθι.docx`: joined right-to-left runs lay out a hair differently), .odt
+>   **10/10**, Test-Words **24/26** (the 2 others copy-only). Fixed on the way: Google Docs' `pageBreakBefore w:val="0"`
+>   swallowing breaks, `jc="left"` over a centred style, a page break alone keeping its line, a heading's `numId 0`, no
+>   space before at a page top after a carried break, column breaks' empty line.
+> - **Item 3, Edit vs View:** contents leaders now reach the page number (`EditorTab.widthPx`). The user's verdict on the
+>   paper view (Mobile view off): "now it's correct" — Edit on the page is what they want; see memory `writer-paper-view`.
+> - **Files opens .docx/.odt in Writer** (Settings › Office › "Open Word documents here", on); back returns to Files.
+> - **Phase 2 started:** References › **Caption** (Figure/Table/Equation/Εικόνα/Πίνακας, SEQ field, Word's Caption
+>   style added when missing), **Cross-reference** (entire caption or page; REF/PAGEREF to a `_Ref` bookmark on the
+>   caption) and **Update fields** (renumbers SEQ, refreshes REF/PAGEREF — `Fields.kt`). Checked on the tablet.
+> - **Table › Make chart** (14 Oct): a table's numbers become a chart under it — header row = series, first column =
+>   categories, columns of words skipped, cells placed by the grid (merged cells), Greek and English number forms; the
+>   chart dialog opens prefilled. Totals rows stay in (the user's call). A cell being typed in keeps its table selected,
+>   so the Table tab stays with a physical keyboard. `OfficeCharts.fromTable`, `ChartFromTableTest`.
+> - **Typing shortcut** (14 Oct): `x^2`/`H_2O`/`e^(i+1)` + space → raised/lowered; Backspace on that space restores the
+>   typed word and it is left so. `ScriptShortcut.kt` (+ test), the watcher in `WriterScreen` (`scriptUndo`, `scriptKept`).
+>   Not real equations — Word's equation editor is still a copy-only cause.
+> - **Sources with Claude** (14 Oct): Tetra's own sources file — `TETRA_SOURCES_FORMAT.md`, `SourcesImport.kt` (+ test,
+>   which reads the example in the .md, so the two cannot drift). References tab, after Sources: **Ask Claude** (share
+>   sheet with a request naming the paper and the sources it has) and **Paste sources** (clipboard, JSON found inside a
+>   chat answer); Sources dialog: **Import sources file…**. None added twice; APA list updated at once. The skill:
+>   `skills/tetra-sources/SKILL.md` (also installed in `~/.claude/skills/`, zipped as `skills/tetra-sources.zip` for
+>   the Claude app) — change it together with the .md. Not yet tried on a device (the tablet locked); unit-tested.
+> - **Home › Multilevel** (14 Oct, afternoon): Word's three schemes — 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1. — on the
+>   list at the cursor (the whole list; its file numbering dropped for Writer's own). `OfficeDoc.numbering` holds the
+>   scheme for Writer's lists: saved in the DOCX abstractNum and the ODT list style (`display-levels`), drawn on the pages
+>   (`DocStyles.label`, shared with Word's listLabel), compound levels get a wider hanging indent. **Edit now shows "2.1."**
+>   (it showed "1." before — the theses number their sections so): `FileNumbering` keeps each level's last number (the
+>   editor numbers in document order) and, when a parent is renumbered, `WriterBridge.staleNumbers` + one reflow put the
+>   labels right ("list labels shown again" in the log; only for documents with compound levels). ODT lists' formats now
+>   reach the editor too (`OdtStyles.orderedLevels`). Test: `a multilevel scheme is saved, read back and labelled…`.
+> - **Empty list item fixed** (found on the way, older than Multilevel): Enter in any list showed the new item's number
+>   cut ("." for "3.") under a gap, and every paragraph command said "Put the cursor in a paragraph of text" there —
+>   `blockSpans` found the empty block at its number's start. Now after the number; no paragraph gap drawn after an
+>   item while it is empty. Test: `an empty list item is found after its number, not on it`. Checked on the tablet
+>   (Tetra test.docx, not saved): typing, indent, Enter, Undo, scheme change, View.
+> - **AutoSave** (14 Oct, on by default as in Word): about 3 s after typing stops (1.5 s draft + 1.5 s), Writer saves
+>   over the file — only a named file that is not copy-only, never while a table cell is typed in. The file as opened is
+>   kept in Versions **once per session** (three Versions would not outlast a minute of saves); manual Save keeps one each
+>   time as before. No "Saved" message for it (the title's dot goes). Switch: File › AutoSave and Settings › Office
+>   (`TextEditorStore.autoSave`). `save()` reads the file from `uri` now (`currentFile()`): the long-lived draft effect
+>   must not save to the old file after Save a copy. Checked on the tablet: opening saves nothing; typing → "autosaved"
+>   in the log twice, one Version (the original bytes); Tetra test.docx restored after.
+> - **Picture watermark** (14 Oct): Design › Watermark › Picture watermark… — a phone picture (through `preparePicture`,
+>   so ≤ 2400 px) behind every page, as wide as the text, washed out. Written as each program writes its own: Word's
+>   `WordPictureWatermark` VML shape with `imagedata gain/blacklevel` (Washout) in each header, the picture in
+>   `word/media/tetra-watermark.*` with a relationship per header; LibreOffice's `draw:frame` in each page style's header,
+>   `draw:color-mode="watermark"`. Words and picture replace each other. Read back into `DocSection.watermarkPicture`;
+>   the pages draw it (`washedOut`, a colour matrix ≈ Word's). Neither kind makes a file copy-only (`Watermark.isOne`).
+>   Test: `a picture watermark is set in both kinds…`; LibreOffice renders both; on the tablet set, autosaved, View right.
+> - **Arrange** (14 Oct), Picture tab, for floating pictures/shapes: **Bring to front / Send to back** — Word's
+>   `relativeHeight`, LibreOffice's `draw:z-index` (`PictureXml.zOf/withZ`; below 0 the others go up one); the pages and
+>   Edit draw floats in that order (`Floating.z`, `placed.sortedBy`); a new wrap keeps it. A picture just put in has no
+>   XML until saved ("Save the document first" — AutoSave makes that seconds). **Align** left/centre/right/top/middle/
+>   bottom against the margins, through Position (`PictureXml.placed`, page-relative). Test: `a floating picture's order…`.
+>   Checked on the tablet (two shapes, autosaved, reopened, LibreOffice agrees). Not done: group, free rotation.
+> - **Chart options** (14 Oct): axis titles (`DocChart.catTitle/valTitle`), data labels (`dataLabels`) and a real
+>   **Scatter** (`ChartKind.Scatter`: the categories are the x numbers) — written as Word (`c:title` in the axes,
+>   `c:dLbls` per series, `c:scatterChart` with xVal/yVal and two valAx, markers only) and LibreOffice (axis `chart:title`,
+>   `chart:data-label-number`, `chart:scatter` with a `chart:domain`) keep them, read back, drawn by `ChartDrawable`
+>   (titles beside/under the plot, values by bars/points/slices, x along its own scale). Files' scatters were read as line
+>   charts before. Fixed: the chart's title was read from the first `c:title` anywhere (an axis's, if it had none).
+>   Dialog: two axis-title fields, Data labels next to Stacked. Test: `axis titles, data labels and a scatter…`;
+>   LibreOffice renders all eight (4 kinds × 2 formats); the preview checked on the tablet.
+> - **Cross-reference › Only label and number** (14 Oct): "Figure 2" alone, as Word's — a `_Ref` bookmark from the
+>   caption's start to the end of its first SEQ field (`LABEL_BOOKMARKS`, beside the paragraph's `BOOKMARKS`): written with
+>   its `bookmarkEnd` after the field, read back as that when a file's bookmark ends there, shown by Update fields
+>   (`Fields.labelAndNumber`). LibreOffice reads the same file's bookmark round "Figure 1" exactly. Test in FieldsTest.
+>   General bookmarks round part of a paragraph are still kept on the whole paragraph.
+> - **Home › Font** (14 Oct; the gap list's first item): the button shows the font at the cursor; the menu lists the
+>   document's fonts and Word's everyday five, each in its face. Applied to the chosen letters or the word at the cursor
+>   (`chosenOrWord`, now shared with Aa and Comment) as Word's `rFonts` / ODF's `fo:font-family` (`OfficeFormats.withFont`,
+>   shared with Drop cap; `WriterBridge.restyled`, which Format painter uses now). Typed letters after take it on.
+>   Checked on the tablet (Courier New on a word, autosaved, the XML right); test `a font chosen for some letters…`.
+> - **File › Save as, Rename, Print** (14 Oct): Save as beside the file (a named file keeps its kind; a new one chooses),
+>   Writer goes on with the new one; Rename moves the recovery draft and the versions too; Print hands the Export PDF
+>   pages to Android (`PdfPrintAdapter`). Checked on the tablet: Save as and Rename (then AutoSave to the renamed file);
+>   Print opens the dialog with 27 KB of pages, but the tablet's Konica Minolta print plugin crashes and cancels it — not
+>   Writer; try it on the phone.
+> - **Comments › Edit** (14 Oct): a card's Edit opens its words; `OfficeFormats.withCommentText` keeps Word's comment tag
+>   and its last paragraph's `w14:paraId` (replies and resolved hang on it), LibreOffice's author and date. Test in
+>   CommentThreadsTest; checked on the tablet.
+> - **A live working copy** (14 Oct, the user: "as Word and LibreOffice do — a live copy that goes away on exit"): the
+>   recovery draft (written ~1.5 s after a change) is now also what Writer works from when it holds something new: a picture
+>   just put in gets its XML from it at once (`adopt`, shared with finishSave) — no "Save first" for Arrange/Position.
+>   **This session's history**: the working copy every 2 minutes, the last 10 (`writer-session/<key>/`), listed in
+>   Versions › This session ("Bring back" = one Undo step). Leaving the document (`exit()`: Back, Save, Don't save) clears
+>   it (both the opened and the current name); a killed app leaves the draft for recovery. Checked on the tablet with
+>   AutoSave off (a picture arranged seconds after inserting, the file untouched; Don't save removed the draft) and on.
+> - **Comment lines** (14 Oct, the user's Word screenshot): on the tablet, a line from each comment's words (their end)
+>   under to the page's edge, then to its card — dashed grey, solid blue for the comment at the cursor; the pane reports
+>   where it placed each card (`CommentPane(placed)`). Card buttons tighter (Edit made Delete wrap). Checked on the tablet.
+> - **Versions as pages** (14 Oct, the user): File › Versions is a full screen — this session's copies and the file
+>   before saves, newest first; one opened shows its pages (laid out as View); **Keep this one** makes it the document (one
+>   Undo step; AutoSave then saves it) and deletes every other version, older and newer. The old restore-over-the-file is
+>   gone. Checked on the tablet (two session copies + a saved one; kept the oldest: the others went).
+> - **Comments fold when crowded** (14 Oct, agreed with the user): when a card would sit more than 48 dp below its words,
+>   every card but the one at the cursor folds to a line (initials, first words, +replies); a tap on it, or on its words,
+>   opens it (`CommentPane` is a SubcomposeLayout: measured open first, folded only if crowded). Checked on the tablet.
+>   Initials are the first letters of the name's first two words ("Theologos Kalotrapezis" → TK).
+> - Logging: generous by request (memory `office-logging`); `*.log`/`logs/` are git-ignored.
+>
+> **Open / next, in the user's order (14 Oct: "medical folders, then Word feature parity, then Excel and PowerPoint
+> viewers"):**
+> 1. Phase 2 left: group/rotate for floating objects, and the smaller items of Phase 2's list below (reading mode,
+>    format painter for paragraphs, tapping a citation to edit it, more source kinds, APA abstract page, page border
+>    styles, content controls). Then Phase 3: the Excel and PowerPoint viewers.
+> 2. Phase 3 viewers (a Rust spike — storytold gridcraft/deckcraft — was proposed as a separate session card).
+> 3. Known: `N1599-ΑΥΛΗ.docx` (a form) is 1 page in Writer, 2 in LibreOffice — they disagree on the first column's width
+>    (the file's gridSpan says Writer's); unverified against Word, left. Item 6 (.doc/.rtf): only 2 .doc files — suggest
+>    converting them once on the PC. The phone may hold an unsaved "New document" recovery draft from a caption test
+>    (ends "88"): discard it. The 5 `WriterLayoutDeviceTest`s still need MIUI *Install via USB* on to run.
+
 # THE PLAN (the user, 1 Oct 2026 evening) — read this first
 
 **State.** Branch `writer-library`, all committed, all unit tests pass. Latest build on the **phone** (208c8192) and an
@@ -5,7 +509,7 @@ older one on the tablet (971f6b37, install the latest there first). Test files: 
 suite 01–06, `CV test copy.docx`, `Tetra test.docx`); the user's originals are never edited — copies only, deleted
 after. Writer has a log now: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log` (memory `writer-log`).
 Phone helper used this session: open a document by touching it to the top of Office's Recent, then uiautomator taps by
-text (see the 1 Oct entries below). The phone's Mobile view setting is the user's — leave it on after any test.
+text (see the 1 Oct entries below). The phone's Mobile view is now **off** (13 Oct): the user edits on the paper (Print layout) — "a proper view where I know no matter where I open it, it will look like this". Leave it off after any test.
 
 **The order, in phases (the user's words: "first we fix the compatibility problems, then we finish Word, then we make
 viewers for Excel and PowerPoint so we can ship, and after that we slowly fix the rest"):**
@@ -13,10 +517,9 @@ viewers for Excel and PowerPoint so we can ship, and after that we slowly fix th
 ## Phase 1 — compatibility (Word files open, show and save as Word/LibreOffice do)
 Everything that makes a file **copy-only** or **show differently** from Word/LibreOffice. Check each against LibreOffice
 (convert original and Tetra's saved copy to PDF, compare page by page) and on both devices.
-1. **The letterhead medical report** (the user's screenshot, 30 Sep): huge empty bands top and bottom, the letterhead
-   box too low, blue shapes off the right edge — floating shapes in the header/footer probably counted as in-line and
-   placed from the wrong origin. Ask the user before pulling any such file; work on a copy.
-2. **Copy-only causes** seen in the user's files and the suite: hidden text (01), columns (03), fields — page numbers,
+1. ~~The letterhead medical report~~ — **done 14 Oct** (see the top).
+2. ~~Copy-only causes~~ — **done 13 Oct** for every cause in the user's files (see the top); left: equations, plain
+   multi-paragraph TOC/BIBLIOGRAPHY fields, column breaks in real multi-column sections. Originally: **Copy-only causes** seen in the user's files and the suite: hidden text (01), columns (03), fields — page numbers,
    dates, REF/PAGEREF/SEQ (04), equations (04), content controls around whole paragraphs / table rows / cells, legacy
    form fields. Survey the user's Documents (as done for forms: `unzip -p … word/document.xml | grep`) to rank them by
    how often they occur, then fix the most common first.
@@ -28,10 +531,22 @@ Everything that makes a file **copy-only** or **show differently** from Word/Lib
 6. Opening **.doc and .rtf** (old Word files) — at least to view, saving as .docx.
 
 ## Phase 2 — finish Word
-Captions and cross-references; multilevel lists; reading mode; AutoSave; format painter for paragraphs; tapping a
+~~Captions and cross-references~~ (done 14 Oct); multilevel lists; reading mode; AutoSave; format painter for paragraphs; tapping a
 citation to edit it; more source kinds (report, thesis, video); APA abstract page and run-in level 4–5 headings; picture
 watermark; page border styles; Arrange for floating objects (forward/backward, align, group, rotate), text on both
 sides of a picture, WordArt effects, chart axis titles / data labels / scatter; Insert › content controls (Developer).
+
+**Sources from the PDFs themselves (the user, 2026-10-14).** The user does *not* keep a reference manager — Zotero /
+Mendeley are "confusing and a waste of time"; the way they work: find papers with **Consensus**, download the **PDFs to
+the PC**, write; papers come and go, so **local** is right. So, in order:
+1. **References › Sources › From PDFs:** pick PDFs (or a folder, e.g. a course's `Έρευνα/`) and get a source for each —
+   read the PDF's own metadata and first page: DOI (then title, authors, year, journal, volume/issue/pages from the
+   text, or — only if the user agrees to go online — from doi.org), shown for a quick check before adding. Duplicates
+   by DOI or title + year. Pure extractor with unit tests on the user's own downloaded papers (copies).
+2. **Consensus's export** (RIS/BibTeX/CSV) read the same way, for when a reading list is exported rather than downloaded.
+3. Not planned unless asked: Zotero/Mendeley libraries or APIs. (Documents from others written with their Word add-ins —
+   `ADDIN ZOTERO_ITEM` / `CSL_CITATION` fields — already open and save; their bibliography block over paragraphs is
+   still copy-only.)
 
 ## Phase 3 — viewers, then SHIP
 - **Excel viewer** (the user's wishes, 30 Sep — memory `office-roadmap`): read a sheet comfortably on the phone; fuzzy

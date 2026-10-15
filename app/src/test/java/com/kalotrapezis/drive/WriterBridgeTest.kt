@@ -28,6 +28,22 @@ class WriterBridgeTest {
         assertEquals(WriterBridge.comparable(odd), WriterBridge.comparable(WriterBridge.fromEditor(WriterBridge.toEditor(OfficeDoc(odd, basePt = 11f)), 11f)))
     }
 
+    @Test fun `a picture is laid as a letter a line may break at, nothing else changed`() {
+        val s = androidx.compose.ui.text.buildAnnotatedString {
+            append("Page 1 text.")
+            pushStringAnnotation("androidx.compose.foundation.text.inlineContent", "picture")
+            pushStyle(androidx.compose.ui.text.SpanStyle(letterSpacing = androidx.compose.ui.unit.TextUnit(3f, androidx.compose.ui.unit.TextUnitType.Sp))); append('\uFFFD'); pop()
+            pop()
+            append(" more")
+        }
+        val laid = WriterBridge.breakablePictures(s)
+        assertEquals("Page 1 text.${OBJECT_MARK} more", laid.text)
+        assertEquals(s.spanStyles, laid.spanStyles)
+        assertEquals(s.getStringAnnotations(0, s.length), laid.getStringAnnotations(0, laid.length))
+        val plain = androidx.compose.ui.text.AnnotatedString("no picture")
+        assert(WriterBridge.breakablePictures(plain) === plain)
+    }
+
     @Test fun `a picture goes where the mark was typed, and nothing else moves`() {
         val img = DocImage("k", "word/media/a.png", 10f, 10f)
         val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("ab"))), DocPara(listOf(DocRun("cd$PICTURE_SPOT", bold = true), DocRun("ef"))), DocPara(listOf(DocRun("gh")))))
@@ -35,6 +51,41 @@ class WriterBridgeTest {
         assertEquals(listOf("ab", "cd${OBJECT_MARK}ef", "gh"), put.paras.map { it.text })
         assertEquals(img, put.paras[1].runs[1].image)
         assertEquals(DocRun("ef"), put.paras[1].runs[2])
+    }
+
+    @Test fun `a picture first in a list item is as wide as itself, the number before it`() {
+        // Gallery_test.docx: a WordArt first in "1. Page 1 text." was drawn twice its width, and "Page" broke after its "P".
+        val img = DocImage("k", "word/media/a.png", 100f, 20f)
+        fun spacing(list: DocList?) = WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img),
+            DocRun("Page 1 text.")), list = list)), basePt = 11f)).blocks[0].spans
+            .filterIsInstance<com.mohamedrejeb.richeditor.document.RichTextSpanMark.LetterSpacing>().single().size.value
+        assertEquals(spacing(null), spacing(DocList(true, 0)) * 2, 0.001f)
+        // …and its number is drawn in the text's look, not the picture's (a number ~100 sp wide pushed "age 1 text." down).
+        fun marker(first: List<DocRun>) = com.mohamedrejeb.richeditor.model.RichTextState().apply {
+            setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(first + DocRun("Page 1 text."), list = DocList(true, 0))), basePt = 11f)))
+            WriterBridge.plainMarkersIfPictureFirst(this)
+        }.config.listMarkerStyleBehavior
+        val plain = com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.AlwaysDefault
+        assertEquals(plain, marker(listOf(DocRun(OBJECT_MARK.toString(), image = img))))
+        assertEquals(com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.InheritFromText, marker(emptyList()))
+    }
+
+    @Test fun `letters typed over a chosen picture are the text's size, not the picture's`() {
+        val img = DocImage("k", "word/media/a.png", 113f, 113f)
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Text."), DocRun(OBJECT_MARK.toString(), image = img)))), basePt = 11f)
+        val pictures = HashMap<String, DocImage>()
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, pictures))
+        val at = state.annotatedString.text.indexOf('\uFFFD')
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        state.replaceSelectedText("j")
+        val back = WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt, pictures)
+        assertEquals("Text.j", back[0].text)
+        assertEquals(listOf<Float?>(null), back[0].runs.map { it.sizePt }.distinct())
+        // Half undone: the picture's letter without its picture is not written as a letter.
+        val bare = com.mohamedrejeb.richeditor.model.RichTextState()
+        bare.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("a\uFFFDb")))), basePt = 11f)))
+        assertEquals("ab", WriterBridge.fromEditor(bare.toRichTextDocument(), 11f)[0].text)
     }
 
     @Test fun `table cell edits and new rows keep the existing look`() {
@@ -87,6 +138,40 @@ class WriterBridgeTest {
         assertEquals(setOf(5), at("end"))
         assertEquals(setOf(1, 2, 3), at("one", "x"))
         assertEquals(setOf(0), WriterBridge.paragraphsAt(text, rich, 1, 1))
+    }
+
+    @Test fun `a font chosen for some letters is saved on those letters alone and read back`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("plain "), DocRun("bold here", bold = true)))))
+            // "ain bo": the end of the first run and the start of the second, each keeping its own look.
+            val set = WriterBridge.restyled(doc, listOf(Triple(0, 2, 8))) { OfficeFormats.withFont(it, kind, "Cambria") }
+            val again = WriterBridge.restyled(set, listOf(Triple(0, 2, 8))) { OfficeFormats.withFont(it, kind, "Arial") } // replaced, not added
+            val bytes = OfficeFormats.write(again, kind)
+            val back = OfficeFormats.read(bytes, kind).paras.single()
+            val styles = DocStyles.of(kind, bytes)
+            val shown = back.runs.map { it.text to (it.font?.let { f -> styles.fontName(f) }) }
+            assertEquals("$kind", listOf("pl" to null, "ain " to "Arial", "bo" to "Arial", "ld here" to null), shown)
+            assertEquals("$kind", listOf(false, false, true, true), back.runs.map { it.bold })
+        }
+    }
+
+    @Test fun `an empty list item is found after its number, not on it`() {
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), list = DocList(true, 0)),
+            DocPara(emptyList(), list = DocList(true, 0)), DocPara(emptyList(), list = DocList(false, 0)), DocPara(listOf(DocRun("end")))))))
+        val text = state.annotatedString.text
+        val rich = state.toRichTextDocument()
+        // "1. one 2.  •  end": each empty item's place is just before its separator, where the cursor stands.
+        assertEquals(listOf(3, 10, 13, 14), WriterBridge.blockPlaces(text, rich).map { it.from })
+        assertEquals(setOf(1), WriterBridge.paragraphsAt(text, rich, 10, 10))
+        assertEquals(setOf(2), WriterBridge.paragraphsAt(text, rich, 13, 13))
+        // Writer's own numbers have no space of their own ("1.one 2. end"), as the editor shows a file's lists.
+        state.config.orderedListStyleType = FileNumbering(object : DocStyles() { override fun look(p: DocPara) = ParaLook() }) { (0..8).map { "decimal" to "%${it + 1}." } }
+        state.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("one")), list = DocList(true, 0)),
+            DocPara(emptyList(), list = DocList(true, 0)), DocPara(listOf(DocRun("end")))))))
+        val own = state.annotatedString.text
+        assertEquals("1.one 2. end", own.trimEnd())
+        assertEquals(listOf(2, 8, 9), WriterBridge.blockPlaces(own, state.toRichTextDocument()).map { it.from })
     }
 
     @Test fun `clear formatting takes the letters' own looks off and leaves the style's`() {

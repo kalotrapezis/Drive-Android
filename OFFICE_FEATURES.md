@@ -210,21 +210,57 @@ one pass once the tabs' features are done.
 - [x] Keyboard bar like Word's phone bar: B · I · U · highlighter · dictation · ⋯ (the whole ribbon, ⋯ again back) · hide keyboard (15 Oct, evening)
 - [x] Dictation (the keyboard bar's mic: Android's voice typing, put in at the cursor) (15 Oct, evening)
 
-## Excel (Calc) — after Writer and PowerPoint; a viewer first (the user, 30 Sep)
-- [ ] **Viewer first**: an .xlsx / .ods read comfortably on the phone (sheets as tabs, cells, widths, number formats)
-- [ ] **Fuzzy search** across the cells (typos and accents forgiven, Greek and English)
-- [ ] **Filter rows by a column**: a tap on the column's header opens its filter (values to keep), as Excel's does
-- [ ] **Pin columns side by side**: choose columns (e.g. A, J, ST) — they come to the start one after the other, in the
-  order pinned, the rest scrolling beside them, to compare them
-- Then, later: the editing items below
+## Excel (Calc) — a viewer first (the user, 30 Sep); started 15 Oct, night ("start with the viewer and let's complete it like we did with Word")
 
-- [ ] Open .xlsx / .ods: sheets as tabs, cells, column widths, number formats
+Code: `Sheets.kt` (readers), `SheetFormat.kt` (Excel's number formats), `SheetTools.kt` (layout, filter, sort, search,
+stats), `SheetScreen.kt` (the screen and the painter). Tests: `SheetsTest`, `SheetToolsTest` (`TETRA_SWEEP=1` reads all
+of the user's spreadsheets: 13, none failing). Logged to writer.log with a "Sheets:" prefix (open, read and draw times,
+slow frames, taps, filters, searches — never a cell's words).
+
+### Viewer — done 15–16 Oct (checked on the phone)
+- [x] Open .xlsx / .xlsm / .ods / .csv from Files and the Office home (green, a table icon; Settings › Office's switch)
+- [x] Sheets as tabs at the bottom (hidden ones left out, the one the file was left on first); each sheet read when
+      opened, the last two kept; parts read from the zip when needed (the user's 46-sheet workbook: 66 MB of heap)
+- [x] Cells as the file draws them: widths, heights, hidden rows/columns, fills, borders (thin…double, dashed, dotted),
+      fonts (Carlito/Liberation for Calibri/Arial/Times, Arial Narrow condensed), bold/italic/underline/strike,
+      colours (theme + tint, indexed), alignment, wrap, indent, rotation, merged cells, frozen panes, gridlines off
+- [x] Words running into empty neighbours (left, right, centred), #### for a number that does not fit
+- [x] Excel's number formats: General, 0.00, #,##0, %, E+00, fractions, currency, sections and conditions, [Red],
+      dates/times (elapsed [h], Greek month names with [$-408]); the phone's decimal and thousands separators
+- [x] .ods: the shown text as LibreOffice wrote it; styles with their parents; number styles' colours; view settings
+- [x] .csv: separator found (, ; tab |), UTF-8 or Windows Greek
+- [x] Excel Tables: the file's own table styles (Google Sheets' alternating colours) and the built-in Light/Medium/Dark
+      (Medium 2 as Excel; the rest close — shortcut noted in `builtInTable`)
+- [x] Pictures, charts (Writer's chart drawing; numbers from the cells when the file keeps none) and text boxes
+- [x] Comments (notes, threaded comments, LibreOffice's annotations): red corner, shown in the cell bar
+- [x] Links: a cell's hyperlink, HYPERLINK(), LibreOffice's — open, or go to the sheet and cell
+- [x] Cell bar: the cell's name, its formula or all its words (tap to open it whole)
+- [x] Pinch to zoom (25–400 %), fling; a sheet keeps its place when its tab is left
+- [x] ⋯: Open in another app (to change it), Share, About this file, Send log
+
+### The viewer's own tools (asked 30 Sep) — done 16 Oct
+- [x] **Fuzzy search** across the cells: accents, case and ς/σ forgiven; a word of 4+ letters one letter off (7+: two),
+      a word's start; numbers by their digits; finds in yellow, the current one framed in orange, next/previous
+- [x] **Filter rows by a column**: a tap on its letter › Filter… — its values with counts, a search among them; the
+      header row from the file's AutoFilter, frozen rows, or the first full row; rows numbered as in the file (blue)
+- [x] **Sort** A→Z / Z→A (numbers by value, words in the phone's language, empty last) — the file is not changed
+- [x] **Pin columns side by side**: Pin to the start, in the order pinned, the rest scrolling beside them
+- [x] Chips say what is on (Pinned, Filter, Sorted), each with ✕
+- [x] Choose cells (long press, drag; Select column/row): Sum, Average, Count (tap: Min, Max, Numbers)
+- [x] Keep rows at the top: a tap on a row's number (Freeze Panes, chosen here)
+
+### Next (viewer)
+- [ ] Conditional formatting (colour scales, data bars, highlight rules) — none in the user's files
+- [ ] Charts in more kinds (radar, bubble, combo); shapes' geometry (ShapeGeometry) for Excel's shapes
+- [ ] Print / Export PDF of a sheet
+- [ ] Tablet: two panes? (check the layout on the tablet)
+- [ ] .xls (Excel 97–2003) — none in the user's files
+
+### Then, later: editing
 - [ ] Edit cells; formula bar; insert/delete rows and columns
 - [ ] Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, VLOOKUP, dates, text; recalculation
 - [ ] Cell formatting: bold, colour, fill, borders, alignment, number/currency/date/percent
-- [ ] Sort and filter (by value, by colour); freeze panes
-- [ ] Charts: column, bar, line, pie, scatter (OfficeCharts.kt reads and draws DrawingML charts: Excel's are the same)
-- [ ] New sheet, rename, reorder; Find
+- [ ] New sheet, rename, reorder
 - [ ] Save back into the original package (same rule as Writer: copy when something would be lost)
 
 ## PowerPoint (Presentation) — after Excel
@@ -242,7 +278,7 @@ one pass once the tabs' features are done.
 
 Each is done on the emulator; tick when checked on the real phone.
 - [ ] Home: orange Office group (icon, New document, Documents), purple Text editor group, their Settings cards
-- [ ] Office home: header icon; Word blue, Excel green, PowerPoint deep orange; the documents list
+- [ ] Office home: header icon; Word blue, Excel green, PowerPoint deep orange; the documents list (spreadsheets listed in green, 16 Oct)
 - [ ] Open a .docx and an .odt of his own; nothing looks different from Word/LibreOffice (bold, lists, headings)
 - [ ] Edit + Save over a file with no banner; open it on the computer in LibreOffice/Word
 - [ ] A file with tables or images: orange banner, Save makes "(copy)", the original untouched

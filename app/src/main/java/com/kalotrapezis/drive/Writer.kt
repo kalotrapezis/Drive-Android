@@ -2458,6 +2458,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var rotating by remember { mutableStateOf<String?>(null) }
     var shapeOptions by remember { mutableStateOf<String?>(null) } // Picture › Shape options: the shape's key
     var designGallery by remember { mutableStateOf<DesignGallery?>(null) } // Design › Style set / Colours / Fonts
+    var galleryChosen by remember { mutableStateOf<Any?>(null) } // the choice being previewed on the page
+    var galleryStart by remember { mutableStateOf<WriterSnapshot?>(null) } // the document as it was when the gallery opened
+    var galleryUndo by remember { mutableIntStateOf(0) }
+    fun openGallery(g: DesignGallery) { galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g }
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
@@ -3803,9 +3807,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("APA level 4", w, enabled = loaded) { apaRunIn(4) }
                     RibbonButton("APA level 5", w, enabled = loaded) { apaRunIn(5) }
                     // Word's Document Formatting gallery, Colours and Fonts (its theme): windows of pictures of the choices.
-                    RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { designGallery = DesignGallery.StyleSets }
-                    RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { designGallery = DesignGallery.Colours }
-                    RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { designGallery = DesignGallery.Fonts }
+                    RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.StyleSets) }
+                    RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { openGallery(DesignGallery.Colours) }
+                    RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.Fonts) }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
                     Box {
@@ -4073,7 +4077,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }
-    designGallery?.let { g -> DesignGalleryDialog(g, { designGallery = null }, { designGallery = null; applyStyleSet(it) }, { designGallery = null; applyTheme(it, null) }, { designGallery = null; applyTheme(null, it) }) }
+    // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
+    designGallery?.let { g -> DesignGalleryDialog(g, galleryChosen,
+        cancel = { galleryStart?.let { show(it); while (undone.size > galleryUndo) undone.removeAt(undone.lastIndex) }; designGallery = null; galleryChosen = null; WriterLog.i("gallery: cancelled") },
+        ok = { while (undone.size > galleryUndo + 1) undone.removeAt(undone.lastIndex); designGallery = null; galleryChosen = null; WriterLog.i("gallery: kept") },
+        pickSet = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyStyleSet(it) },
+        pickColors = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(it, null) },
+        pickFonts = { if (galleryChosen != null) galleryStart?.let(::show); galleryChosen = it; applyTheme(null, it) }) }
     shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
         ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
             shapeOptions = null

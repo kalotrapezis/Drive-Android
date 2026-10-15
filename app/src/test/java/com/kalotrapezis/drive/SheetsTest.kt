@@ -25,6 +25,17 @@ class SheetsTest {
         assertEquals("12345678901", show(12345678901.0, "General"))
     }
 
+    /** General in a narrow column, as Excel fits it (its own results for these widths). */
+    @Test fun `general fitted to a column`() {
+        assertEquals("0.3333", f.general(1 / 3.0, 6))
+        assertEquals("1234.6", f.general(1234.5678, 6))
+        assertEquals("1235", f.general(1234.5678, 4))
+        assertEquals("1.2E+09", f.general(1234567890.0, 7))
+        assertEquals("-0.33", f.general(-1 / 3.0, 5))
+        assertEquals("42", f.general(42.0, 2))
+        assertNull(f.general(1234567890.0, 3))
+    }
+
     @Test fun numbers() {
         assertEquals("3.14", show(3.14159, "0.00"))
         assertEquals("1,234,568", show(1234567.8, "#,##0"))

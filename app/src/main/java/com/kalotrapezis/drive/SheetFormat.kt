@@ -10,6 +10,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.log10
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.roundToLong
 
@@ -133,6 +134,36 @@ internal class SheetFormat(
         val intDigits = bd.abs().toBigInteger().toString().length
         if (bd.scale() > 0 && intDigits + bd.scale() + 1 > 11) bd = bd.setScale(maxOf(0, 10 - intDigits), RoundingMode.HALF_UP).stripTrailingZeros()
         return bd.toPlainString().replace('.', decimal)
+    }
+
+    /**
+     * General in a column [chars] digits wide, as Excel shows it there: fewer decimals until it fits, then scientific
+     * with fewer digits; null when even that does not fit (Excel's ####).
+     */
+    fun general(value: Double, chars: Int): String? {
+        val full = general(value)
+        if (full.length <= chars) return full
+        if (chars <= 0) return null
+        val a = abs(value)
+        val sign = if (value < 0) 1 else 0
+        if (a >= 1e-4 && a < 1e11) {
+            val intDigits = BigDecimal(a).toBigInteger().toString().length
+            val decimals = chars - sign - intDigits - 1
+            if (decimals >= 1 || chars - sign >= intDigits) {
+                val s = BigDecimal(value).setScale(max(0, decimals), RoundingMode.HALF_UP).stripTrailingZeros().toPlainString().replace('.', decimal)
+                if (s.length <= chars && s.trim('-', '0', decimal).isNotEmpty()) return s
+            }
+        }
+        // 1.2E+10: the mantissa's decimals as room allows
+        if (value == 0.0) return "0"
+        var exp = floor(log10(a)).toInt()
+        val tail = if (abs(exp) >= 100) 5 else 4 // E+12
+        val decimals = chars - sign - 1 - tail - 1
+        if (decimals < -1) return null
+        var mant = BigDecimal(value / 10.0.pow(exp)).setScale(max(0, decimals), RoundingMode.HALF_UP)
+        if (mant.abs() >= BigDecimal.TEN) { exp++; mant = BigDecimal(value / 10.0.pow(exp)).setScale(max(0, decimals), RoundingMode.HALF_UP) }
+        val s = mant.stripTrailingZeros().toPlainString().replace('.', decimal) + "E" + (if (exp < 0) "-" else "+") + abs(exp).toString().padStart(2, '0')
+        return s.takeIf { it.length <= chars }
     }
 
     // --- numbers ---

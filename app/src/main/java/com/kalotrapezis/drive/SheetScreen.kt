@@ -701,6 +701,7 @@ internal class SheetPainter(
     private val dash = DashPathEffect(floatArrayOf(3f, 2f), 0f)
     private val dots = DashPathEffect(floatArrayOf(1f, 1f), 0f)
     private val faces = HashMap<String, Typeface>()
+    private val general = java.text.DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) }
     private val wrapped = HashMap<Long, StaticLayout>()
     private val funnel = Path()
     private var lines = FloatArray(4096)
@@ -1148,10 +1149,13 @@ internal class SheetPainter(
         } else {
             var shown = cell.text.substringBefore('\n')
             var tw = text.measureText(shown)
-            // A number that does not fit is ####, never cut.
+            // A number that does not fit is never cut: General drops decimals to fit (Excel's way), else ####.
             if (cell.kind == SheetKind.Number && tw > right - left - 4f) {
+                val fitted = if (st.format.equals("General", true) && cell.value != null)
+                    general.general(cell.value, ((right - left - 4f) / text.measureText("0").coerceAtLeast(1f)).toInt())?.takeIf { text.measureText(it) <= right - left - 4f }
+                else null
                 val hash = text.measureText("#").coerceAtLeast(1f)
-                shown = "#".repeat(max(1, ((right - left - 4f) / hash).toInt())); tw = text.measureText(shown)
+                shown = fitted ?: "#".repeat(max(1, ((right - left - 4f) / hash).toInt())); tw = text.measureText(shown)
             }
             val fm = text.fontMetrics
             val baseline = when (st.valign) {

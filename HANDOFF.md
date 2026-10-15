@@ -195,7 +195,10 @@
 >   All follow the finger live (`stretch`/`turning` in the editor); on lifting, one step: `PictureXml.resized` or
 >   `rotate`. A non-in-line object is now shown turned in the editor too (only In front/Behind were). **Held** (long
 >   press), one that is not in line opens Position, where it follows the finger. `HandlesTest`; checked on the tablet
->   (WordArt stretched 186×49 → 243×78 pt, turned 55°). Next (agreed): the same strips for WordArt, page numbers,
+>   (WordArt stretched 186×49 → 243×78 pt, turned 55°). The object's tab is named for what is chosen (asked 15 Oct: "Picture should be Image;
+>   if it is WordArt, why not say so"): Image, WordArt, Shape, Text box, Chart, SmartArt, Equation (`PictureXml.kind`;
+>   WordArt: a bent text box, LibreOffice fontwork, Writer's art style, or Word's `wrap="none"` text box). The user
+>   will ask for a Greek UI after Word: keep labels short (Greek words run longer; the ribbon scrolls). Next (agreed): the same strips for WordArt, page numbers,
 >   lists, headers & footers.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,

@@ -1070,7 +1070,7 @@ private fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table"), Selection("Selection") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Image"), Table("Table"), Selection("Selection") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -3497,7 +3497,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     var wide by remember { mutableStateOf(0) }
                     val shade = with(LocalDensity.current) { 48.dp.toPx() }
                     LaunchedEffect(tab == t, wide) { if (tab == t && wide > 0) seen.bringIntoView(androidx.compose.ui.geometry.Rect(-shade, 0f, wide + shade, 1f)) }
-                    Text(t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
+                    Text(if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
                             .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
                 }

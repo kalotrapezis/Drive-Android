@@ -131,14 +131,16 @@ internal object PictureXml {
     fun kind(img: DocImage): String {
         if (img.table != null) return "Table"
         if (img.math != null) return "Equation"
-        val raw = img.raw ?: return "Picture"
+        val raw = img.raw ?: return "Image"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
             "diagram" in raw -> "SmartArt"
+            // Words with no box round them, bent or in Writer's WordArt style: Word's and LibreOffice's WordArt (fontwork).
+            "prstTxWarp" in raw || "draw:fontwork" in raw || "Tetra_20_art_" in raw || "txbx" in raw && Regex("""<wps:bodyPr\b[^>]*wrap="none"""").containsMatchIn(raw) -> "WordArt"
             "txbx" in raw || "<draw:text-box" in raw -> "Text box"
             "OLEObject" in raw || "<draw:object" in raw -> "Embedded object"
             "<wps:" in raw || "<v:" in raw || "<draw:custom-shape" in raw || "<draw:rect" in raw || "<draw:line" in raw -> "Shape"
-            else -> "Picture"
+            else -> "Image"
         }
     }
 

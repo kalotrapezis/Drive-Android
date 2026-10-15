@@ -3340,6 +3340,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             // A citation, the cursor in it: each of its sources (a tap edits it), and Change (its sources or page).
             hereCite?.let { (c, r) -> CitationBar(c, meta.sources, w, { s, t -> WriterLog.i("citation: edit source $t"); if (s != null) sourceEdit = s else sourceNew = true }) { WriterLog.i("citation: change $c"); citeChanging = c to r } }
+            // An equation chosen: its linear form, typed into in place (the page redraws it).
+            selectedPicture?.second?.let { k -> pictures[k]?.math?.let { m -> androidx.compose.runtime.key(k) { EquationBar(m, w) { putEquation(k, it) } } } }
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
             hereWord?.let { (r, w, suggestions) ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -322,35 +322,102 @@ internal object PictureXml {
         val effects = TextEffects(outline = if (m.groupValues[2].isNotEmpty()) 0 else null, shadow = m.groupValues[3].isNotEmpty()).odt()
         """<style:style style:name="$name" style:family="text"><style:text-properties fo:font-size="${OdtWriter.fmt(ART_PT)}pt" fo:font-weight="bold" style:font-weight-asian="bold" style:font-weight-complex="bold" fo:color="#${m.groupValues[1]}"$effects/></style:style>""" }
     /**
-     * A text box's words made [lines], a paragraph each, in its first paragraph's style and its first words' look —
-     * or, when it has none yet, WordArt's in [art] (its colour).
+     * A text box's words made [lines], a paragraph each: each line keeps its paragraph's style and each letter its run's
+     * look (a letter typed takes the look of the one before it); a new line takes the look of the one before it. When it
+     * has no words yet, WordArt's in [art] (its colour).
      */
     fun boxText(xml: String, file: OfficeKind, lines: List<String>, art: Int? = null, effects: TextEffects = TextEffects()): String {
         fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        fun unesc(t: String) = t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
         if (file == OfficeKind.Odt) {
-            val style = Regex("""<text:p\b[^>]*?(\stext:style-name="[^"]*")""").find(xml)?.groupValues?.get(1) ?: ""
-            val span = Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1) ?: art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) + effects.odtName() }
-            val paras = lines.joinToString("") { t -> esc(t).replace("\t", "<text:tab/>").let { w -> "<text:p$style>${span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w}</text:p>" } }
-            Regex("""(<draw:text-box\b[^>]*>)[\s\S]*?(</draw:text-box>)""").find(xml)?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[2]) }
+            // Each paragraph: its opening tag's style, its letters as (span style or null, text).
+            val area = Regex("""(<draw:text-box\b[^>]*>)([\s\S]*?)(</draw:text-box>)""").find(xml)
+            val inner = area?.groupValues?.get(2) ?: xml.substring(xml.indexOf('>') + 1, xml.indexOf("<draw:enhanced-geometry").coerceAtLeast(xml.indexOf('>') + 1))
+            val old = Regex("""<text:p\b([^>]*?)(/>|>([\s\S]*?)</text:p>)""").findAll(inner).map { m ->
+                val style = Regex("""\stext:style-name="[^"]*"""").find(m.groupValues[1])?.value ?: ""
+                val runs = Regex("""<text:span\b[^>]*?text:style-name="([^"]*)"[^>]*>([\s\S]*?)</text:span>|([^<]+)|<text:tab/>|<text:s(?: text:c="(\d+)")?/>""").findAll(m.groupValues[3]).map { r -> when {
+                    r.groupValues[1].isNotEmpty() -> r.groupValues[1] to unesc(r.groupValues[2].replace("<text:tab/>", "\t").replace(Regex("<[^>]+>"), ""))
+                    r.groupValues[3].isNotEmpty() -> null to unesc(r.groupValues[3])
+                    r.value == "<text:tab/>" -> null to "\t"
+                    else -> null to " ".repeat(r.groupValues[4].toIntOrNull() ?: 1)
+                } }.toList()
+                style to runs
+            }.toList()
+            val artSpan = art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) + effects.odtName() }
+            val paras = relaid(old, lines, "", artSpan ?: Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1)).joinToString("") { (style, runs) ->
+                "<text:p$style>" + runs.joinToString("") { (span, t) -> esc(t).replace("\t", "<text:tab/>").let { w -> span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w } } + "</text:p>"
+            }
+            area?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[3]) }
             // A shape: its words before its geometry.
             val start = xml.indexOf('>') + 1
             val end = xml.indexOf("<draw:enhanced-geometry").takeIf { it >= 0 } ?: return xml
             val between = xml.substring(start, end).replace(Regex("""<text:(p|list|h)\b[\s\S]*?</text:\1>|<text:p\b[^>]*/>"""), "")
             return xml.substring(0, start) + between + paras + xml.substring(end)
         }
-        // Word: every copy of its words (the older-Word fallback has one too).
+        // Word: every copy of its words (the older-Word fallback has one too), from the first copy's paragraphs and runs.
         val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(xml)?.groupValues?.get(1) ?: return xml
-        val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(first)?.value ?: ""
-        val rPr = Regex("""<w:r>\s*(<w:rPr>[\s\S]*?</w:rPr>)""").find(first)?.groupValues?.get(1)
-            ?: art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
-        val paras = lines.joinToString("") { "<w:p>$pPr<w:r>$rPr<w:t xml:space=\"preserve\">${esc(it)}</w:t></w:r></w:p>" }
+        val old = Regex("""<w:p\b[^>]*?(/>|>([\s\S]*?)</w:p>)""").findAll(first).map { m ->
+            val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(m.groupValues[2])?.value ?: ""
+            val runs = Regex("""<w:r\b[^>]*>([\s\S]*?)</w:r>""").findAll(m.groupValues[2]).mapNotNull { r ->
+                val rPr = Regex("""<w:rPr>[\s\S]*?</w:rPr>""").find(r.groupValues[1])?.value ?: ""
+                val text = Regex("""<w:t\b[^>]*>([^<]*)</w:t>|<w:tab/>""").findAll(r.groupValues[1]).joinToString("") { if (it.value == "<w:tab/>") "\t" else unesc(it.groupValues[1]) }
+                (rPr to text).takeIf { text.isNotEmpty() }
+            }.toList()
+            pPr to runs
+        }.toList()
+        val artPr = art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
+        val paras = relaid(old, lines, "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
+            "<w:p>$pPr" + runs.joinToString("") { (rPr, t) -> "<w:r>${rPr ?: ""}" + t.split('\t').joinToString("<w:tab/>") { "<w:t xml:space=\"preserve\">${esc(it)}</w:t>" } + "</w:r>" } + "</w:p>"
+        }
         return xml.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
     }
-    /** A text box's words for the pages, until the file is read again: [lines] in its first words' look. */
+
+    /**
+     * [lines] laid over the paragraphs a text box had, [old] (each its paragraph look and its runs as (look, letters)):
+     * a line keeps the paragraph it came from (matched as the editor matches paragraphs; a new one takes the one
+     * before it), each letter left as it was its run's look, a typed one the look of the letter before it (at the start,
+     * after it). Lines with nothing to come from take the first paragraph's, [fresh] for their letters.
+     */
+    fun <P, R> relaid(old: List<Pair<P, List<Pair<R?, String>>>>, lines: List<String>, freshPara: P, fresh: R?): List<Pair<P, List<Pair<R?, String>>>> {
+        val from = OfficeFormats.pairParagraphs(old.map { (_, runs) -> DocPara(listOf(DocRun(runs.joinToString("") { it.second }))) }, lines.map { DocPara(listOf(DocRun(it))) })
+        // An empty paragraph's letters: the box's first words' look.
+        val firstLook = old.firstNotNullOfOrNull { it.second.firstOrNull() }?.first ?: fresh
+        var last = 0
+        return lines.mapIndexed { j, line ->
+            val i = from[j].takeIf { it >= 0 } ?: last
+            last = i
+            val (look, runs) = old.getOrNull(i) ?: (freshPara to emptyList())
+            look to relook(runs.ifEmpty { listOf(firstLook to "") }, line)
+        }
+    }
+
+    /** [text] in the looks of [runs] (look, letters): letters kept keep theirs, typed ones the replaced one's or the one before (at the start, after). */
+    fun <R> relook(runs: List<Pair<R?, String>>, text: String): List<Pair<R?, String>> {
+        val was = runs.joinToString("") { it.second }
+        val owner = runs.flatMap { (look, t) -> List(t.length) { look } }
+        var pre = 0
+        while (pre < was.length && pre < text.length && was[pre] == text[pre]) pre++
+        var suf = 0
+        while (suf < was.length - pre && suf < text.length - pre && was[was.length - 1 - suf] == text[text.length - 1 - suf]) suf++
+        // Letters typed over others take the first replaced one's look (as Word's typing over a selection); else the one before.
+        val typed = when { pre + suf < was.length -> owner[pre]; pre > 0 -> owner[pre - 1]; owner.isNotEmpty() -> owner[0]; else -> runs.firstOrNull()?.first }
+        val looks = List(text.length) { k -> when {
+            k < pre -> owner[k]
+            k >= text.length - suf -> owner[was.length - (text.length - k)]
+            else -> typed
+        } }
+        val out = ArrayList<Pair<R?, String>>()
+        text.forEachIndexed { k, c -> if (out.isNotEmpty() && out.last().first == looks[k]) out[out.size - 1] = looks[k] to out.last().second + c else out += looks[k] to c.toString() }
+        return out.ifEmpty { listOf(typed to "") }
+    }
+
+    /** A text box's words for the pages, until the file is read again: [lines] with the looks [boxText] gives them. */
     fun boxParas(img: DocImage, lines: List<String>): List<DocPara> {
-        val p0 = img.box?.firstOrNull()
-        val r0 = p0?.runs?.firstOrNull { it.image == null && it.note == null }
-        return lines.map { t -> p0?.copy(runs = listOf((r0 ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null))) ?: DocPara(listOf(DocRun(t))) }
+        val old = img.box.orEmpty().map { p -> p to p.runs.filter { it.image == null && it.note == null }.map { r -> r to r.text } }
+        return relaid<DocPara?, DocRun>(old, lines, null, null).map { (p, runs) ->
+            p?.copy(runs = runs.filter { it.second.isNotEmpty() }.map { (r, t) -> (r ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null) })
+                ?: DocPara(listOf(DocRun(runs.joinToString("") { it.second })))
+        }
     }
 
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */

@@ -1,3 +1,12 @@
+# Test tree — finishing Word (15 Oct 2026, evening)
+
+Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words/`.
+
+- **11. Edit on the page**
+  - [x] A file with 24 pt after its paragraphs: Edit shows the same gaps as the pages; typing and Enter keep them (Claude, adb)
+  - [x] A text box with bold, red italic and blue underlined words: Picture › Edit text, add words to each line → each keeps its look; saved, LibreOffice the same (Claude)
+  - [x] Tap an equation → an "Equation" bar with x=(a+b)/2; type +sqrt(y^2) → the page shows it a moment later; saved, LibreOffice shows the equation (Claude)
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

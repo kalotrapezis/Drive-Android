@@ -2,6 +2,7 @@ package com.kalotrapezis.drive
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -78,4 +80,36 @@ internal fun EquationDialog(start: MathNode?, dismiss: () -> Unit, done: (MathNo
         confirmButton = { TextButton(enabled = math != null && typed.text.isNotBlank(), onClick = { math?.let(done) }) { Text(if (start == null) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * An equation chosen in the text: its linear form in a bar over the ribbon, typed into in place — each change redraws
+ * the equation on the page a moment after typing stops (as Word's equations switched to Linear). Pieces as the dialog's.
+ */
+@Composable
+internal fun EquationBar(math: MathNode, color: Color, changed: (MathNode) -> Unit) {
+    var typed by remember { mutableStateOf(TextFieldValue(OfficeMath.linear(math))) }
+    val parsed = remember(typed.text) { runCatching { OfficeMath.fromLinear(typed.text) }.getOrNull()?.takeIf { typed.text.isNotBlank() } }
+    androidx.compose.runtime.LaunchedEffect(typed.text) {
+        kotlinx.coroutines.delay(350)
+        if (parsed != null && typed.text != OfficeMath.linear(math)) changed(parsed)
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Equation", color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
+            androidx.compose.foundation.text.BasicTextField(typed, { typed = it }, singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = if (parsed == null && typed.text.isNotBlank()) Color(0xFFE57373) else color),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(color),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None, autoCorrectEnabled = false),
+                modifier = Modifier.weight(1f).background(Color.White.copy(alpha = 0.08f), MaterialTheme.shapes.small).padding(horizontal = 10.dp, vertical = 8.dp))
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("x²" to "^2", "xᵢ" to "_i", "a/b" to "/", "√" to "sqrt(", "∑" to "∑_(i=1)^n ", "∫" to "∫_a^b ", "( )" to "(", ")" to ")",
+                "α" to "α", "β" to "β", "π" to "π", "θ" to "θ", "±" to "±", "×" to "×", "≤" to "≤", "≥" to "≥", "≠" to "≠", "→" to "→", "∞" to "∞").forEach { (label, piece) ->
+                Text(label, color = color, style = MaterialTheme.typography.titleMedium, modifier = Modifier.clip(MaterialTheme.shapes.small)
+                    .clickable { val t = typed.text; val sel = typed.selection; typed = TextFieldValue(t.substring(0, sel.min) + piece + t.substring(sel.max), TextRange(sel.min + piece.length)) }
+                    .padding(horizontal = 10.dp, vertical = 4.dp))
+            }
+        }
+    }
 }

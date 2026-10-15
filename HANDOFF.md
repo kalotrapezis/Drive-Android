@@ -1,3 +1,19 @@
+> **Latest — 15 October 2026, evening: finishing Word** (branch `writer-library`). The task: every item left in Word
+> done or deferred by the user, one commit each, each checked with a unit test, in LibreOffice where Writer writes files,
+> and on the phone (208c8192, Print layout, Mobile view off). `UserDocsSweepTest` (run with `TETRA_SWEEP=1`) reads, writes
+> and reads again every one of the user's documents in `~/Tetra/Files` (not Κλειδιά): 319, none failing or copy-only.
+> Phone driver used over adb (uiautomator dump + taps, a Word file made from body XML): rebuild as needed — test files
+> go in `/sdcard/Tetra/Documents/Test-Words`.
+>
+> - **Edit on the page** (item 1): the editor already showed the space between paragraphs (Writer's own look,
+>   `WriterBridge.Display`/`carried`, since 2 Oct) — checked on the phone while typing and after Enter; the docs said
+>   otherwise. **A file's text box edited keeps every run's look** (bold here, red italic there) and each paragraph's
+>   (centred, its style): `PictureXml.boxText`/`boxParas` lay the new lines over the old paragraphs and runs
+>   (`relaid`, `relook`: letters kept keep their run, typed ones the run of the letters they replaced or the one before),
+>   Word's `w:rPr` and LibreOffice's spans alike. **Typing in an equation in place**: an equation chosen shows its linear
+>   form in a bar over the ribbon (`EquationBar`, with piece buttons); the page redraws it 350 ms after typing stops
+>   (a red form: not yet an equation, nothing changed). `TextBoxRunsTest`; both checked in LibreOffice and on the phone.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

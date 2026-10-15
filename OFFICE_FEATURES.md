@@ -74,7 +74,7 @@ one pass once the tabs' features are done.
 - [x] Multilevel list — Home › Multilevel: 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1.; "2.1." shown in Edit as on the pages (14 Oct)
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)
 - [x] Paragraph formatting kept: spacing, indents, tab stops, borders, page break before, styles such as Title/Quote, one font per paragraph, the file's own lists — carried through edits (a new paragraph takes the one before it), checked pixel-identical in LibreOffice on 6 of his files
-- [ ] Paragraph formatting *shown* on the page and *changed* from the ribbon (spacing, indents) — the editor library has no paragraph spacing
+- [x] Paragraph formatting *shown* on the page and in the editor (the space before/after each paragraph drawn by Writer's own look over the library's) and *changed* from the ribbon (Home's ⋯ page, line spacing buttons)
 - [x] Line break inside a paragraph (Shift+Enter; Insert › Line break) — kept in .docx and .odt
 - [x] Format painter (copy formatting) — Home, and Copy/Paste formatting in the Selection tab
 - [x] More styles: Title, Subtitle, Quote, Heading 4–6 and the document's own (Home › Styles…); Normal, Title, H1–H3 on the ribbon; the editor draws each as the document defines it
@@ -92,8 +92,7 @@ one pass once the tabs' features are done.
 - [x] **Page format**: margins, orientation, paper size (Layout › Page setup)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
 - [x] **Bibliography / citations** (references list, APA 7 — see References)
-- [ ] The editor cannot show space between paragraphs (library limit); what is set is saved and shows in Word,
-      LibreOffice and Export PDF
+- [x] The editor shows the space between paragraphs (Writer's own look, `WriterBridge.Display`, carried over each keystroke and Enter), as the pages, Word, LibreOffice and Export PDF do
 
 ### Insert
 - [x] Link
@@ -137,7 +136,7 @@ one pass once the tabs' features are done.
       ; forward/backward, align (14 Oct); rotate any angle, group / ungroup (Word) (15 Oct) — [ ] text on both sides of a picture in the middle, groups in .odt
 - [x] **Text box** (Insert › Text box, Picture › Edit text): Word's wps text box / LibreOffice's rectangle with words;
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
-      editor — [ ] editing a file's text box keeps only its first words' look
+      editor ; editing a file's text box keeps every run's look and each paragraph's (15 Oct)
 - [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame; outline, shadow,
       glow (15 Oct; glow in Word files) — [ ] warp, changing effects after
 - [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
@@ -151,7 +150,7 @@ one pass once the tabs' features are done.
       no spreadsheet) and LibreOffice's chart object; files' charts read and drawn (OfficeCharts.kt) ; scatter as x/y,
       axis titles, data labels (14 Oct) — [ ] Word's own Edit data (it needs the embedded workbook)
 - [x] **Equations** (15 Oct): Word's equations read, drawn and kept (no longer copy-only); Insert › Equation in Word's
-      linear form with a preview, Picture › Edit equation — [ ] LibreOffice's (MathML objects), typing inside one in place
+      linear form with a preview, Picture › Edit equation ; typing in one in place — an equation chosen shows its linear form in a bar over the ribbon, the page redrawing it as you type (15 Oct) — [ ] LibreOffice's (MathML objects)
 - [x] **Content controls** (Insert › Content control, Word files, 15 Oct): plain/rich text, check box, drop-down and combo
       list, date picker, with a title; filled from the form bar — [ ] picture controls, .odt's
 - [ ] Later: SmartArt

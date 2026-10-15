@@ -176,6 +176,28 @@ class SheetsTest {
         assertNull(fill(book, 7, 0))
     }
 
+    /**
+     * Pictures and charts (drawings.py, with openpyxl: a column chart E2 and a picture B9): openpyxl's file keeps no
+     * numbers for the chart, so they come from the cells; LibreOffice's .xlsx keeps them; its .ods has the chart as an
+     * object and the picture in its cell.
+     */
+    @Test fun drawings() {
+        for (name in listOf("drawings.xlsx", "drawings-lo.xlsx", "drawings.ods")) {
+            val s = Sheets.read(resource(name), name).sheet(0)
+            assertEquals(name, 2, s.drawings.size)
+            val chart = s.drawings.first { it.chart != null }
+            assertEquals(name, 1, chart.row); assertEquals(name, 4, chart.col)
+            assertEquals(name, listOf("Jan", "Feb", "Mar", "Apr"), chart.chart!!.categories)
+            assertEquals(name, listOf(120.0, 150.0, 90.0, 180.0), chart.chart.series[0].values)
+            assertEquals(name, "Costs", chart.chart.series[1].name)
+            val picture = s.drawings.first { it.image != null }
+            assertEquals(name, 8, picture.row); assertEquals(name, 1, picture.col)
+            // Its size: its own (one cell's anchor), or as far as the cell it ends in (LibreOffice's two cells).
+            if (picture.toRow < 0) assertEquals(name, 120f, picture.width, 2f) else assertTrue(name, picture.toCol >= 2 && picture.toRow >= 11)
+            assertTrue(name, picture.image!!.invoke()!!.size > 100)
+        }
+    }
+
     @Test fun ods() = checkBook(Sheets.read(resource("sheet.ods"), "sheet.ods"), greek = true)
 
     /** LibreOffice's view settings (a headless conversion leaves them out): frozen rows and columns, the sheet left on. */

@@ -138,7 +138,10 @@ internal object OfficeCharts {
         fun cells(row: Element) = row.all(TABLE, "table-cell").flatMap { c -> List(c.getAttributeNS(TABLE, "number-columns-repeated").toIntOrNull() ?: 1) { c } }
         val header = table.first(TABLE, "table-header-rows")?.first(TABLE, "table-row")?.let { cells(it) }.orEmpty()
         val rows = (table.first(TABLE, "table-rows") ?: table).kids().filter { it.localName == "table-row" }.map { cells(it) }
-        val categories = rows.map { it.firstOrNull()?.textContent?.trim().orEmpty() }
+        // A cell's words are its paragraphs: LibreOffice keeps the cells' range there too, in a draw:g's svg:desc.
+        val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+        fun words(c: Element?) = c?.all(TEXT, "p")?.joinToString("\n") { it.textContent }?.trim().orEmpty()
+        val categories = rows.map { words(it.firstOrNull()) }
         val colors = plot?.kids()?.filter { it.localName == "series" }?.map { s ->
             props(s.getAttributeNS(CHART, "style-name"), "graphic-properties")?.let { g ->
                 (if (kind == ChartKind.Line) g.getAttributeNS(SVG, "stroke-color") else g.getAttributeNS(DRAW, "fill-color")).removePrefix("#").toIntOrNull(16)
@@ -146,7 +149,7 @@ internal object OfficeCharts {
         val count = maxOf(header.size, rows.maxOfOrNull { it.size } ?: 0) - 1
         if (count <= 0) return null
         val series = (1..count).map { k ->
-            ChartSeries(header.getOrNull(k)?.textContent?.trim().orEmpty(), rows.map { r -> r.getOrNull(k)?.let { it.getAttributeNS(OFFICE, "value").toDoubleOrNull() ?: it.textContent.trim().toDoubleOrNull() } },
+            ChartSeries(words(header.getOrNull(k)), rows.map { r -> r.getOrNull(k)?.let { it.getAttributeNS(OFFICE, "value").toDoubleOrNull() ?: words(it).toDoubleOrNull() } },
                 colors.getOrNull(k - 1))
         }
         fun axisTitle(dim: String) = plot?.kids()?.firstOrNull { it.localName == "axis" && it.getAttributeNS(CHART, "dimension") == dim }

@@ -40,6 +40,18 @@ internal data class SheetDxf(
     )
 }
 
+/**
+ * A picture, chart or text box over the cells: from a cell ([row], [col]) and a distance into it, to another cell and a
+ * distance into that ([toRow] -1: then [width] × [height] from the start), in pixels. A picture's bytes are read when
+ * it is first drawn.
+ */
+internal class SheetDrawing(
+    val row: Int, val col: Int, val dx: Float, val dy: Float,
+    val toRow: Int = -1, val toCol: Int = -1, val toDx: Float = 0f, val toDy: Float = 0f,
+    val width: Float = 0f, val height: Float = 0f,
+    val chart: DocChart? = null, val image: (() -> ByteArray?)? = null, val text: String? = null, val fill: Int? = null, val line: Int? = null,
+)
+
 /** A cell's border edge: colour, width in pixels, double or dashed. */
 internal data class SheetLine(val color: Int, val width: Float, val double: Boolean = false, val dashed: Boolean = false, val dots: Boolean = false)
 
@@ -124,6 +136,8 @@ internal class Sheet(
     val autoFilter: SheetRange? = null,
     /** Looks only this sheet's cells have (an Excel Table's stripes): style indices from the workbook's count on. */
     val looks: List<SheetStyle> = emptyList(),
+    /** Pictures, charts and text boxes over the cells. */
+    val drawings: List<SheetDrawing> = emptyList(),
 ) {
     operator fun get(r: Int, c: Int): SheetCell? = cells[key(r, c)]
     fun width(c: Int) = if (c in hiddenCols) 0f else colWidths[c] ?: defaultColWidth
@@ -291,6 +305,13 @@ internal object Sheets {
         return out
     }
     private fun Element.kid(name: String): Element? = kids(name).firstOrNull()
+    private fun Element.elements(): List<Element> {
+        val out = ArrayList<Element>()
+        var n = firstChild
+        while (n != null) { if (n is Element) out += n; n = n.nextSibling }
+        return out
+    }
+    private fun Element.below(name: String): List<Element> = getElementsByTagNameNS("*", name).let { l -> (0 until l.length).map { l.item(it) as Element } }
     private fun Element.attr(name: String): String? = getAttribute(name).takeIf { it.isNotEmpty() }
     private fun Element.flag(name: String): Boolean = kid(name)?.let { it.attr("val")?.let { v -> v != "0" && v != "false" && v != "none" } ?: true } ?: false
 
@@ -471,6 +492,7 @@ internal object Sheets {
             val merges = ArrayList<SheetRange>()
             val links = HashMap<Long, String>()
             val tableParts = ArrayList<String>()
+            var drawingPart: String? = null
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
@@ -529,6 +551,7 @@ internal object Sheets {
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
                         "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
                         "tablePart" -> at.a("id")?.let { rels[it] }?.let { tableParts += it }
+                        "drawing" -> drawingPart = at.a("id")?.let { rels[it] }
                         "hyperlink" -> {
                             val range = at.a("ref")?.let(::rangeRef) ?: return
                             val target = at.a("id")?.let { rels[it] }?.removePrefix("ext:") ?: at.a("location")?.let { "#$it" } ?: return
@@ -586,7 +609,73 @@ internal object Sheets {
             maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
-                merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks)
+                merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
+                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty())
+        }
+
+        /** The sheet's drawing part: each anchor's picture, chart or text box, where it sits. */
+        fun drawings(path: String, sheetName: String, cells: CellMap): List<SheetDrawing> {
+            val bytes = parts(path) ?: return emptyList()
+            val rels = rels(path)
+            val emu = 9525f // EMUs in a pixel
+            val out = ArrayList<SheetDrawing>()
+            for (a in OfficeFormats.parse(bytes).documentElement.elements()) {
+                if (a.localName !in setOf("twoCellAnchor", "oneCellAnchor", "absoluteAnchor")) continue
+                fun at(e: Element?, name: String) = e?.kid(name)?.textContent?.trim()?.toLongOrNull() ?: 0L
+                val from = a.kid("from"); val to = a.kid("to"); val ext = a.kid("ext"); val pos = a.kid("pos")
+                val body = a.elements().firstOrNull { it.localName in setOf("pic", "graphicFrame", "sp") } ?: continue
+                val chart = if (body.localName == "graphicFrame") body.below("chart").firstOrNull()?.let { c ->
+                    val id = c.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id")
+                    rels[id]?.let(parts)?.let { b -> OfficeCharts.readDrawingml(b)?.let { ch -> withValues(ch, b, sheetName, cells) } }
+                } ?: continue else null
+                val image = if (body.localName == "pic") body.below("blip").firstOrNull()?.let { b ->
+                    val p = rels[b.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed")] ?: return@let null
+                    { parts(p) }
+                } ?: continue else null
+                val text = if (body.localName == "sp") body.below("p").joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }.trim() else null
+                fun solid(e: Element?) = e?.kid("solidFill")?.let { f ->
+                    f.kid("srgbClr")?.attr("val")?.toLongOrNull(16)?.toInt()?.or(0xFF000000.toInt())
+                        ?: f.kid("schemeClr")?.attr("val")?.removePrefix("accent")?.toIntOrNull()?.let { theme.getOrNull(3 + it) }
+                }
+                val spPr = body.kid("spPr")
+                if (body.localName == "sp" && text.isNullOrEmpty() && solid(spPr) == null) continue
+                val x = at(from, "colOff") / emu; val y = at(from, "rowOff") / emu
+                out += if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
+                    width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+                else if (to != null) SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, at(to, "row").toInt(), at(to, "col").toInt(), at(to, "colOff") / emu, at(to, "rowOff") / emu,
+                    chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+                else SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu,
+                    chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+            }
+            if (out.isNotEmpty()) WriterLog.i("Sheets: ${out.size} drawings (${out.count { it.chart != null }} charts, ${out.count { it.image != null }} pictures)")
+            return out
+        }
+
+        /**
+         * A chart whose file keeps no numbers of its own (Excel and LibreOffice keep them; some programs only name the
+         * cells): its series read from this sheet's cells.
+         */
+        fun withValues(chart: DocChart, bytes: ByteArray, sheetName: String, cells: CellMap): DocChart {
+            if (chart.series.any { s -> s.values.any { it != null } }) return chart
+            fun range(f: String?): SheetRange? {
+                val ref = f?.trim() ?: return null
+                val sheet = ref.substringBeforeLast('!', "").trim('\'')
+                if (sheet.isNotEmpty() && sheet != sheetName) return null
+                return rangeRef(ref.substringAfterLast('!').replace("$", ""))
+            }
+            fun cellsOf(g: SheetRange) = (g.r1..g.r2).flatMap { r -> (g.c1..g.c2).map { c -> cells[Sheet.key(r, c)] } }
+            val sers = OfficeFormats.parse(bytes).documentElement.below("ser")
+            var categories = chart.categories
+            val series = chart.series.mapIndexed { i, s ->
+                val e = sers.getOrNull(i) ?: return@mapIndexed s
+                val values = range(e.kid("val")?.below("f")?.firstOrNull()?.textContent ?: e.kid("yVal")?.below("f")?.firstOrNull()?.textContent)
+                    ?.let(::cellsOf)?.map { it?.value } ?: return@mapIndexed s
+                range((e.kid("cat") ?: e.kid("xVal"))?.below("f")?.firstOrNull()?.textContent)?.let(::cellsOf)?.map { it?.text.orEmpty() }?.let { if (it.size >= categories.size) categories = it }
+                val name = range(e.kid("tx")?.below("f")?.firstOrNull()?.textContent)?.let(::cellsOf)?.firstOrNull()?.text
+                s.copy(values = values, name = name ?: s.name)
+            }
+            if (categories.size < (series.maxOfOrNull { it.values.size } ?: 0)) categories = (1..series.maxOf { it.values.size }).map { "$it" }
+            return chart.copy(categories = categories, series = series)
         }
 
         /**
@@ -883,11 +972,19 @@ internal object Sheets {
                 val text = StringBuilder(); var paras = 0; var skip = 0; var inP = false; var link: String? = null
                 // a cell's annotation: its author and words
                 var inNote = false; var inNoteP = false; var inCreator = false; val note = StringBuilder(); val author = StringBuilder()
+                // a picture or chart: where it is, and what it holds
+                var frameDepth = 0; var frame: SheetDrawing? = null; var frameObject: String? = null; var frameImage: String? = null
+                var drawings = ArrayList<SheetDrawing>()
 
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                     if (local == "automatic-styles") inStyles = true
                     if (inStyles) return
                     if (skip > 0) { skip++; return }
+                    if (frameDepth > 0) {
+                        frameDepth++
+                        when (local) { "object" -> frameObject = frameObject ?: at.a("href"); "image" -> frameImage = frameImage ?: at.a("href") }
+                        return
+                    }
                     when (local) {
                         "table" -> {
                             tableIndex++
@@ -895,7 +992,7 @@ internal object Sheets {
                             name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name")
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
-                            col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent()
+                            col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList()
                         }
                         "table-column" -> {
                             val n = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
@@ -925,7 +1022,13 @@ internal object Sheets {
                         }
                         "annotation" -> if (inCell) inNote = true else skip = 1
                         "creator" -> if (inNote) inCreator = true
-                        "frame", "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
+                        // In a cell, its place is from the cell's corner; in the sheet's shapes, from the sheet's.
+                        "frame" -> {
+                            frameDepth = 1; frameObject = null; frameImage = null
+                            frame = SheetDrawing(if (inCell) row else 0, if (inCell) col else 0, odfPx(at.a("x")) ?: 0f, odfPx(at.a("y")) ?: 0f,
+                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
+                        }
+                        "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
                         "p", "h" -> if (inNote) { if (note.isNotEmpty()) note.append('\n'); inNoteP = true } else if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
                         "s" -> if (inP) repeat(at.a("c")?.toIntOrNull() ?: 1) { text.append(' ') }
                         "tab" -> if (inP) text.append('\t')
@@ -938,6 +1041,7 @@ internal object Sheets {
                 override fun endElement(uri: String?, local: String, q: String?) {
                     if (inStyles) { if (local == "automatic-styles") inStyles = false; return }
                     if (skip > 0) { skip--; return }
+                    if (frameDepth > 0) { frameDepth--; if (frameDepth == 0) endFrame(); return }
                     when (local) {
                         "p", "h" -> { inP = false; inNoteP = false }
                         "annotation" -> inNote = false
@@ -948,8 +1052,16 @@ internal object Sheets {
                     }
                 }
 
+                fun endFrame() {
+                    val f = frame ?: return
+                    // A chart is LibreOffice's object ("./Object 1"); a picture its file; a chart we cannot read is left out.
+                    val chart = frameObject?.removePrefix("./")?.let { parts("$it/content.xml") }?.let { OfficeCharts.readOdf(it) }
+                    val image = frameImage?.removePrefix("./")?.takeIf { chart == null && frameObject == null }?.let { p -> { parts(p) } }
+                    if (chart != null || image != null) drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, chart = chart, image = image)
+                }
+
                 override fun characters(ch: CharArray, start: Int, length: Int) {
-                    if (skip > 0) return
+                    if (skip > 0 || frameDepth > 0) return
                     when { inCreator -> author.appendRange(ch, start, start + length); inNoteP -> note.appendRange(ch, start, start + length); inP -> text.appendRange(ch, start, start + length) }
                 }
 
@@ -1021,7 +1133,7 @@ internal object Sheets {
                         frozenCols = if (view["HorizontalSplitMode"] == "2") view["HorizontalSplitPosition"]?.toIntOrNull() ?: 0 else 0,
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
-                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false",
+                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings,
                     )
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                 }

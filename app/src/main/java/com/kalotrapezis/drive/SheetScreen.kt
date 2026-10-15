@@ -528,6 +528,18 @@ internal class SheetPainter(
         SheetRange(rs.min(), cs.min(), rs.max(), cs.max()).also { d -> for (r in d.r1..d.r2) for (c in d.c1..d.c2) mergeAt[Sheet.key(r, c)] = d }
     }
     private fun merge(r: Int, c: Int) = mergeAt[Sheet.key(r, c)]
+
+    /** Each picture, chart and text box where it is drawn (one whose cells a filter hid is not). */
+    private val drawn = sheet.drawings.mapNotNull { d ->
+        val r = layout.row(d.row); val k = layout.col(d.col)
+        if (r < 0 || k < 0) return@mapNotNull null
+        val left = colX[k] + d.dx; val top = rowY[r] + d.dy
+        if (d.toRow < 0) return@mapNotNull d to android.graphics.RectF(left, top, left + d.width, top + d.height)
+        val r2 = layout.row(d.toRow); val k2 = layout.col(d.toCol)
+        if (r2 < 0 || k2 < 0) null else d to android.graphics.RectF(left, top, colX[k2] + d.toDx, rowY[r2] + d.toDy)
+    }
+    private val pictures = HashMap<SheetDrawing, android.graphics.Bitmap?>()
+    private val charts = HashMap<SheetDrawing, ChartDrawable>()
     private fun at(r: Int, c: Int) = sheet[rAt[r], cAt[c]]
 
     private val headerH = 24 * density
@@ -851,6 +863,9 @@ internal class SheetPainter(
             cellText(c, cell, styleOf(g.r1, g.c1, cell), colX[g.c1], rowY[g.r1], colX[g.c2 + 1], rowY[g.r2 + 1], colX[g.c1], colX[g.c2 + 1], g.r1, g.c1)
         }
 
+        // Pictures, charts and text boxes over the cells.
+        for ((d, box) in drawn) if (box.right >= sx0 && box.left <= sx1 && box.bottom >= sy0 && box.top <= sy1) drawing(c, d, box, s)
+
         // The chosen cell in Excel's green, search's current find in orange over it.
         line.pathEffect = null
         if (sel != null) {
@@ -866,6 +881,38 @@ internal class SheetPainter(
             }
         }
         c.restore()
+    }
+
+    private fun drawing(c: android.graphics.Canvas, d: SheetDrawing, box: android.graphics.RectF, s: Float) {
+        when {
+            d.chart != null -> charts.getOrPut(d) { ChartDrawable(d.chart) }.apply { setBounds(box.left.toInt(), box.top.toInt(), box.right.toInt(), box.bottom.toInt()) }.draw(c)
+            d.image != null -> {
+                // shortcut: decoded on the drawing thread the first time it shows (pictures in sheets are small); upgrade to a background decode if one is slow.
+                val bmp = pictures.getOrPut(d) {
+                    WriterLog.timed("Sheets: picture decoded") {
+                        runCatching {
+                            val bytes = d.image.invoke() ?: return@runCatching null
+                            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+                            val want = max(1f, box.width() * density * 2)
+                            var sample = 1; while (o.outWidth / (sample * 2) >= want) sample *= 2
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                        }.onFailure { WriterLog.w("Sheets: a picture could not be read", it) }.getOrNull()
+                    }
+                }
+                if (bmp != null) c.drawBitmap(bmp, null, box, fill.apply { color = 0xFFFFFFFF.toInt(); isFilterBitmap = true })
+            }
+            else -> {
+                d.fill?.let { fill.color = it; c.drawRect(box, fill) }
+                line.color = d.line ?: 0xFF7F7F7F.toInt(); line.strokeWidth = 1f / s; line.pathEffect = null
+                if (d.line != null || d.fill == null) c.drawRect(box, line)
+                d.text?.takeIf { it.isNotEmpty() }?.let { t ->
+                    text.typeface = Typeface.SANS_SERIF; text.textSize = 11 * 4 / 3f; text.color = 0xFF000000.toInt(); text.isUnderlineText = false; text.isStrikeThruText = false
+                    val l = StaticLayout.Builder.obtain(t, 0, t.length, TextPaint(text), max(1, (box.width() - 8).toInt())).setIncludePad(false).build()
+                    c.save(); c.clipRect(box); c.translate(box.left + 4, box.top + 4); l.draw(c); c.restore()
+                }
+            }
+        }
     }
 
     private fun edge(c: android.graphics.Canvas, e: SheetLine, x1: Float, y1: Float, x2: Float, y2: Float, s: Float) {

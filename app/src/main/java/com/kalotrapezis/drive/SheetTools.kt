@@ -32,8 +32,11 @@ internal class SheetLayout(
         const val MORE_COLS = 12
 
         fun of(sheet: Sheet, pins: List<Int> = emptyList(), filters: Map<Int, Set<String>> = emptyMap(), sort: SheetSort? = null): SheetLayout {
-            val totalCols = max(sheet.cols, sheet.frozenCols) + MORE_COLS
-            val totalRows = max(sheet.rows, sheet.frozenRows) + MORE_ROWS
+            // As far as the cells and the drawings over them go.
+            val drawnCols = sheet.drawings.maxOfOrNull { max(it.col, it.toCol) + 1 + (it.width / sheet.defaultColWidth).toInt() } ?: 0
+            val drawnRows = sheet.drawings.maxOfOrNull { max(it.row, it.toRow) + 1 + (it.height / sheet.defaultRowHeight).toInt() } ?: 0
+            val totalCols = maxOf(sheet.cols, sheet.frozenCols, drawnCols) + MORE_COLS
+            val totalRows = maxOf(sheet.rows, sheet.frozenRows, drawnRows) + MORE_ROWS
             // Columns: the pinned ones in the order pinned, then the file's frozen ones, then the rest.
             val pinned = pins.filter { it in 0 until totalCols }.distinct()
             val frozen = (0 until sheet.frozenCols).filter { it !in pinned }

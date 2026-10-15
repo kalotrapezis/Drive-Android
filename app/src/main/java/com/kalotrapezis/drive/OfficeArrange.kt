@@ -46,6 +46,7 @@ internal object Arrange {
     fun rotated(img: DocImage, degrees: Float): DocImage? {
         val raw = img.raw ?: return null
         val d = normal(degrees).let { if (it > 359.95f) 0f else it }
+        if (raw.startsWith("<draw:g")) return null // LibreOffice turns a group's pieces each; ungroup first
         if (raw.startsWith("<draw:")) return img.with(raw = odtTurned(raw, d, img.widthPt, img.heightPt))
         val m = Regex("""<a:xfrm\b([^>]*?)(/?)>""").find(raw) ?: return null
         val attrs = m.groupValues[1].replace(Regex("""\srot="[^"]*""""), "") + if (d == 0f) "" else " rot=\"${(d * 60000).roundToLong()}\""
@@ -85,6 +86,95 @@ internal object Arrange {
         return normal((-a * 180 / PI).toFloat()) to ((cx - w / 2).toFloat() to (cy - h / 2).toFloat())
     }
     private fun odtCorner(head: String, w: Float, h: Float) = odtTransform(head)?.second ?: ((odfLength(attr(head, "svg:x")) ?: 0f) to (odfLength(attr(head, "svg:y")) ?: 0f))
+
+    // ---- groups (LibreOffice's draw:g)
+
+    private fun xmlOf(raw: String) = runCatching {
+        // Not namespace-aware: a piece cut out of content.xml uses prefixes it does not declare.
+        javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(org.xml.sax.InputSource(java.io.StringReader(raw))).documentElement
+    }.getOrNull()
+    private fun drawKids(e: org.w3c.dom.Element) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? org.w3c.dom.Element }.filter { it.tagName.startsWith("draw:") }
+    private fun headOf(e: org.w3c.dom.Element) = "<" + e.tagName + (0 until e.attributes.length).joinToString("") { val a = e.attributes.item(it); " ${a.nodeName}=\"${a.nodeValue}\"" }
+
+    /** A drawing's box (x, y, width, height in points, where its anchor puts it): a group's, round all its pieces. */
+    fun odtGroupBox(raw: String): FloatArray? {
+        val e = xmlOf(raw) ?: return null
+        fun box(e: org.w3c.dom.Element): FloatArray? {
+            if (e.tagName == "draw:g") {
+                val all = drawKids(e).mapNotNull(::box).ifEmpty { return null }
+                val x = all.minOf { it[0] }; val y = all.minOf { it[1] }
+                return floatArrayOf(x, y, all.maxOf { it[0] + it[2] } - x, all.maxOf { it[1] + it[3] } - y)
+            }
+            val head = headOf(e)
+            val w = odfLength(attr(head, "svg:width")) ?: return null; val h = odfLength(attr(head, "svg:height")) ?: return null
+            val (x, y) = odtCorner(head, w, h)
+            return floatArrayOf(x, y, w, h)
+        }
+        return box(e)
+    }
+
+    /**
+     * A group's pieces moved together, its box's corner to [to] (pt; null: where it is), and grown to [w] × [h] (each
+     * piece's place and size scaled from the box's corner; null: as they are).
+     */
+    fun odtGroupMoved(raw: String, to: Pair<Float, Float>?, w: Float? = null, h: Float? = null): String {
+        val b = odtGroupBox(raw) ?: return raw
+        val sx = w?.let { it / b[2].coerceAtLeast(0.1f) } ?: 1f; val sy = h?.let { it / b[3].coerceAtLeast(0.1f) } ?: 1f
+        val tx = to?.first ?: b[0]; val ty = to?.second ?: b[1]
+        // Every piece's opening tag, wherever it stands in the group (in a group inside it too).
+        return Regex("""<draw:(frame|custom-shape|rect|ellipse|line|polygon|polyline|path|circle|connector|measure|control)\b[^>]*>""").replace(raw) { m ->
+            val head = m.value.removeSuffix(">").removeSuffix("/")
+            val pw = odfLength(attr(head, "svg:width")); val ph = odfLength(attr(head, "svg:height"))
+            if (pw == null || ph == null) return@replace m.value
+            val turn = rotationOf(head + ">")
+            val (x, y) = odtCorner(head, pw, ph)
+            val nw = pw * sx; val nh = ph * sy
+            val placed = head.replace(Regex("""\s(svg:x|svg:y|draw:transform)="[^"]*""""), "")
+                .replace(Regex("""svg:width="[^"]*""""), "svg:width=\"${cm(nw.toDouble())}cm\"").replace(Regex("""svg:height="[^"]*""""), "svg:height=\"${cm(nh.toDouble())}cm\"") +
+                " svg:x=\"${cm((tx + (x - b[0]) * sx).toDouble())}cm\" svg:y=\"${cm((ty + (y - b[1]) * sy).toDouble())}cm\""
+            val end = if (m.value.endsWith("/>")) "/>" else ">"
+            if (turn == 0f) placed + end else odtTurned(placed + end, turn, nw, nh)
+        }
+    }
+
+    /** LibreOffice's group of [pieces] (each its drawing and its box on the page, pt), placed on that page. */
+    fun odtGroup(pieces: List<Pair<DocImage, FloatArray>>, wrap: PictureWrap, z: Long, key: String): DocImage? {
+        if (pieces.size < 2) return null
+        val gx = pieces.minOf { it.second[0] }; val gy = pieces.minOf { it.second[1] }
+        val gw = pieces.maxOf { it.second[0] + it.second[2] } - gx; val gh = pieces.maxOf { it.second[1] + it.second[3] } - gy
+        if (pieces.any { it.first.raw?.startsWith("<draw:") != true }) return null
+        val inner = pieces.joinToString("") { (img, b) ->
+            val raw = img.raw!!
+            // Its anchor is the group's now; its place, as on the page (the group's style places it from the page).
+            val e = raw.indexOf('>')
+            val head = raw.substring(0, e).replace(Regex("""\s(text:anchor-type|draw:z-index)="[^"]*""""), "")
+            if (raw.startsWith("<draw:g")) odtGroupMoved(head + raw.substring(e), b[0] to b[1])
+            else Regex("""^<draw:g\b[^>]*>([\s\S]*)</draw:g>$""").find(odtGroupMoved("<draw:g>" + head + raw.substring(e) + "</draw:g>", b[0] to b[1]))!!.groupValues[1]
+        }
+        val n = System.nanoTime() % 900000 + 100000
+        val raw = """<draw:g draw:name="Group $n" draw:z-index="$z" text:anchor-type="char">$inner</draw:g>"""
+        val parts = pieces.map { (img, b) -> GroupPart(b[0] - gx, b[1] - gy, b[2], b[3], img) }
+        return DocImage(key, null, gw, gh, PictureXml.odt(raw, wrap, gx to gy), wrap = wrap, onPage = gx to gy, group = parts)
+    }
+
+    /** A LibreOffice group taken apart: each piece floating on its own where it was (the group's box at [x], [y] on its page). */
+    fun odtUngroup(img: DocImage, x: Float, y: Float, wrap: PictureWrap, z: Long): List<DocImage>? {
+        val root = img.raw?.takeIf { it.startsWith("<draw:g") }?.let(::xmlOf) ?: return null
+        val gb = odtGroupBox(img.raw) ?: return null
+        val out = ArrayList<DocImage>()
+        for (k in drawKids(root)) {
+            val xml = OfficeFormats.xml(k)
+            val b = odtGroupBox(xml) ?: continue
+            val part = img.group?.getOrNull(out.size)?.img
+            val at = (x + b[0] - gb[0]) to (y + b[1] - gb[1])
+            val head = xml.substring(0, xml.indexOf('>')).replace(Regex("""\sdraw:z-index="[^"]*""""), "") + " draw:z-index=\"${z + out.size}\""
+            val placed = PictureXml.odt(if (xml.startsWith("<draw:g")) head + xml.substring(xml.indexOf('>')) else odtGroupMoved("<draw:g>" + head + xml.substring(xml.indexOf('>')) + "</draw:g>", at)
+                .let { Regex("""^<draw:g>([\s\S]*)</draw:g>$""").find(it)!!.groupValues[1] }, wrap, at)
+            out += DocImage("u" + java.util.UUID.randomUUID(), part?.part, b[2], b[3], placed, bytes = part?.bytes, extension = part?.extension ?: "png",
+                wrap = wrap, onPage = at, box = part?.box, chart = part?.chart, group = part?.group, look = part?.look)
+        }
+        return out.takeIf { it.size >= 2 }
+    }
 
     // ---- groups (Word)
 

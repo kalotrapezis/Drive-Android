@@ -34,6 +34,16 @@
 >   `OdtSectionsTest` (LibreOffice's own conversion of Breaks_test, `test/resources/sections.odt`); on the phone a
 >   title + continuous break + two columns, and LibreOffice draws the saved file the same.
 >
+> - **.odt groups** (item 2): LibreOffice's `draw:g` is read piece by piece (`DocImage.group`, each piece's box from its
+>   own svg:x/y/size — LibreOffice places a group's pieces from the group's anchor), drawn on the pages, kept as it was.
+>   **Group / Ungroup** work in .odt: `Arrange.odtGroup` makes a `draw:g` (page-placed wrap style, each piece where it
+>   was on the page, its anchor dropped), `odtUngroup` puts each piece back floating on its own; Picture › Position and
+>   Size move/scale the pieces together (`odtGroupMoved`, `odtGroupBox`); every Writer style the pieces name is written
+>   (shape looks, wraps — the writer looked for one only). Rotating a whole .odt group says to ungroup first (ODF has
+>   no turn for a group). `ArrangeTest` (LibreOffice's own group, `test/resources/group.odt`, and Writer's); on the
+>   phone: LibreOffice's group drawn, two shapes grouped (one frame) and ungrouped in place; LibreOffice places them
+>   the same.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

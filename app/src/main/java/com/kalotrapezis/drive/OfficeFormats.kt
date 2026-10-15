@@ -122,7 +122,7 @@ internal object PictureXml {
     /** A picture Writer can resize and re-wrap: a new one, or a file's picture — not a chart, shape or old VML drawing. */
     fun editable(img: DocImage): Boolean {
         val raw = img.raw ?: return img.bytes != null || img.chart != null
-        if (raw.startsWith("<draw:custom-shape")) return true
+        if (raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return true
         return if (raw.startsWith("<draw:frame")) "<draw:image" in raw || "<draw:text-box" in raw || img.chart != null
             else ("<pic:pic" in raw || "<wps:wsp" in raw || img.chart != null) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
@@ -153,8 +153,9 @@ internal object PictureXml {
         if (wrap == PictureWrap.InLine) return null
         // A new one: where it was drawn on its page, or (as it is written) at its paragraph's top left.
         val raw = img.raw ?: return img.onPage?.let { (x, y) -> Place("page", x, null, "page", y, null, wrap) } ?: Place("margin", 0f, null, "paragraph", 0f, null, wrap)
-        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) {
             val head = raw.substring(0, raw.indexOf('>'))
+            val group = if (raw.startsWith("<draw:g")) Arrange.odtGroupBox(raw) else null // a group stands where its pieces are
             fun attr(n: String) = Regex("""\s$n="([^"]*)"""").find(head)?.groupValues?.get(1)
             // Its style may place it on the page (a letterhead "from the top of the page, centred" — asked 2026-10-13: the
             // box came down to its paragraph): style:vertical-rel / horizontal-rel / horizontal-pos.
@@ -164,7 +165,7 @@ internal object PictureXml {
             val from = if (attr("text:anchor-type") == "page" || ODT_PAGE_REL in head || pageV) "page" else "paragraph"
             val alignH = styled("style:horizontal-pos")?.takeIf { it in setOf("center", "left", "right") }
             val turned = Arrange.odtTransform(head)?.second // turned: its place is in the transform
-            return Place(if (from == "page" || pageH) "page" else "margin", turned?.first ?: odfLength(attr("svg:x")) ?: 0f, alignH, from, turned?.second ?: odfLength(attr("svg:y")) ?: 0f, null, wrap)
+            return Place(if (from == "page" || pageH) "page" else "margin", group?.get(0) ?: turned?.first ?: odfLength(attr("svg:x")) ?: 0f, alignH, from, group?.get(1) ?: turned?.second ?: odfLength(attr("svg:y")) ?: 0f, null, wrap)
         }
         if ("<wp:anchor" !in raw) return null
         fun axis(tag: String): Triple<String, Float?, String?> {
@@ -188,7 +189,7 @@ internal object PictureXml {
     fun wrapOf(img: DocImage): PictureWrap? {
         img.wrap?.let { return it }
         val raw = img.raw ?: return PictureWrap.InLine
-        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) return if ("text:anchor-type=\"as-char\"" in raw) PictureWrap.InLine
+        if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return if ("text:anchor-type=\"as-char\"" in raw.substring(0, raw.indexOf('>'))) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             // Another's frame: its style's wrap (a letterhead the text runs through no longer pushed the text down).
@@ -205,7 +206,7 @@ internal object PictureXml {
 
     fun resized(img: DocImage, widthPt: Float, heightPt: Float): DocImage {
         val raw = img.raw ?: return img.with(widthPt = widthPt, heightPt = heightPt)
-        val out = if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
+        val out = if (raw.startsWith("<draw:g")) Arrange.odtGroupMoved(raw, null, widthPt, heightPt) else if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape")) {
             val end = raw.indexOf('>')
             raw.substring(0, end).replace(Regex("""svg:width="[^"]*""""), "svg:width=\"${OdtWriter.fmt(widthPt)}pt\"")
                 .replace(Regex("""svg:height="[^"]*""""), "svg:height=\"${OdtWriter.fmt(heightPt)}pt\"") + raw.substring(end)
@@ -241,6 +242,13 @@ internal object PictureXml {
         // Turned (Arrange › Rotate): its place is in its draw:transform — set straight, placed, turned again.
         val turn = Arrange.odtTransform(xml.substring(0, xml.indexOf('>').coerceAtLeast(0)))?.first
         if (turn != null) return Arrange.odtTurned(odt(Arrange.odtTurned(xml, 0f), wrap, onPage), turn)
+        // A group (LibreOffice's draw:g): its anchor and wrap on it, its place in its pieces (moved together).
+        if (xml.startsWith("<draw:g")) {
+            val moved = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { Arrange.odtGroupMoved(xml, it) } ?: xml
+            val e = moved.indexOf('>')
+            val head = moved.substring(0, e).replace(Regex("""\s(text:anchor-type|draw:style-name)="[^"]*""""), "")
+            return head + " draw:style-name=\"${odtStyleName(wrap, onPage != null && wrap != PictureWrap.InLine)}\" text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + moved.substring(e)
+        }
         val end = xml.indexOf('>')
         val at = onPage?.takeIf { wrap != PictureWrap.InLine }?.let { (x, y) -> " svg:x=\"${OdtWriter.fmt(x)}pt\" svg:y=\"${OdtWriter.fmt(y)}pt\"" } ?: ""
         // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
@@ -2585,6 +2593,16 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
         val look = generateSequence(e.getAttributeNS(DRAW, "style-name").takeIf { it.isNotEmpty() }?.let { styles["graphic/$it"] }) { s -> s.parent?.let { styles["graphic/$it"] } }
             .take(10).toList().asReversed().mapNotNull { it.graphic }.joinToString("") { g -> (0 until g.attributes.length).joinToString("") { i -> g.attributes.item(i).let { a -> " ${a.nodeName}=\"${a.nodeValue}\"" } } }
             .takeIf { it.isNotEmpty() }
+        // A group: each piece read as one, in the group's box (LibreOffice's pieces stand where its anchor puts them).
+        if (e.localName == "g") {
+            val raw = OfficeFormats.xml(e)
+            val gb = Arrange.odtGroupBox(raw) ?: floatArrayOf(0f, 0f, 144f, 96f)
+            val parts = e.kids().filter { it.namespaceURI == DRAW }.mapNotNull { k ->
+                val pb = Arrange.odtGroupBox(OfficeFormats.xml(k)) ?: return@mapNotNull null
+                GroupPart(pb[0] - gb[0], pb[1] - gb[1], pb[2], pb[3], frame(k))
+            }
+            return DocImage("f${imageCount++}", null, gb[2], gb[3], raw, look = look, group = parts.ifEmpty { null })
+        }
         return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart, look = look)
     }
     var imageCount = 0
@@ -2819,8 +2837,12 @@ private object OdtWriter {
             """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         }).let { x -> img.wrap?.let { w -> val page = img.onPage != null && w != PictureWrap.InLine
             if (wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)); PictureXml.odt(x, w, img.onPage.takeIf { page }) } ?: x }
-            .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } }
-            .also { x -> Regex("""text:style-name="(Tetra_20_art_[^"]+)"""").find(x)?.groupValues?.get(1)?.let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtArtStyle(n)?.let(auto::append) } }
+            .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").findAll(x).forEach { m -> m.groupValues[1].let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } } }
+            .also { x -> Regex("""text:style-name="(Tetra_20_art_[^"]+)"""").findAll(x).forEach { m -> m.groupValues[1].let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtArtStyle(n)?.let(auto::append) } } }
+            // A group's pieces may name Writer's wrap styles of their own (a picture's).
+            .also { x -> Regex("""draw:style-name="Tetra_20_wrap_20_(\w+?)(${PictureXml.ODT_PAGE_REL})?"""").findAll(x).forEach { m ->
+                PictureWrap.entries.firstOrNull { it.name == m.groupValues[1] }?.let { w -> val page = m.groupValues[2].isNotEmpty()
+                    if (PictureXml.odtStyleName(w, page) !in usedNames && wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)) } } }
 
         // Comments: an annotation where one starts (its contents as the file had them, or written out), its end where it ends.
         val live = doc.liveComments.associateBy { it.id }

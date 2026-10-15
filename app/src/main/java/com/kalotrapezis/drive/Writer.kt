@@ -2437,7 +2437,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
-        val turned = Arrange.rotated(img, deg) ?: run { message = "Just put in: a moment, then it can be rotated."; return }
+        val turned = Arrange.rotated(img, deg) ?: run { message = if (img.raw?.startsWith("<draw:g") == true) "A LibreOffice group turns piece by piece: Ungroup it first." else "Just put in: a moment, then it can be rotated."; return }
         changePicture(key, turned)
         WriterLog.i("rotate $key to $deg°")
     }
@@ -2458,7 +2458,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (pa < 0 || pb < 0) { message = "Both must float on the pages (Wrap text: not in line)"; return@launch }
         if (pa != pb) { message = "Both must be on the same page"; return@launch }
         fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
-        val g = Arrange.group(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
+        val g = (if (kind == OfficeKind.Odt) Arrange::odtGroup else Arrange::group)(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
             ?: run { message = "Writer cannot group these (an older kind of drawing?)"; return@launch }
         // The document read from the editor first (it finds its pictures by their keys), then the map changed.
         swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
@@ -2470,7 +2470,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val img = pictures[key] ?: return@launch
         val (laid, _) = laidOut(current()) ?: return@launch
         val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
-        val pieces = Arrange.ungroup(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
+        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
         swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
         pictures.remove(key); pieces.forEach { pictures[it.key] = it }
         message = "Ungrouped into ${pieces.size}"
@@ -3647,8 +3647,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
                         RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
                         RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
-                        if (img?.group != null) RibbonButton("Ungroup", w, R.drawable.ic_group_objects, enabled = floating && kind == OfficeKind.Docx) { ungroup(key) }
-                        else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating && kind == OfficeKind.Docx, on = grouping == key) {
+                        if (img?.group != null) RibbonButton("Ungroup", w, R.drawable.ic_group_objects, enabled = floating) { ungroup(key) }
+                        else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating, on = grouping == key) {
                             grouping = if (grouping == key) null else key.also { message = "Now tap the other picture or shape to group with it" }
                         }
                         Box {

@@ -12,6 +12,8 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [ ] An .odt: Insert › Content control › Drop-down → open in LibreOffice: a real drop-down
   - [x] `Section_test.odt`: cursor at the first body line → Layout › Breaks › Section break · continuous → a dashed "Section break"; Columns › Two → the pages: title across, text in two columns; LibreOffice the same (Claude)
   - [ ] An .odt: Breaks › Section break · next page at the end → a new page; Backspace at its line
+  - [x] `Group_lo.odt` (LibreOffice's group): red and blue drawn where LibreOffice draws them (Claude)
+  - [x] `Shapes_test.odt`: tap red → Picture › Group → tap blue → one frame; Ungroup → two, where they were; LibreOffice the same (Claude)
 
 # Test tree — Writer's Word gaps (15 Oct 2026)
 

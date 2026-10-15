@@ -10,7 +10,7 @@ import java.io.File
 
 /** Excel's number formats, each against what Excel itself shows; and the readers on LibreOffice's own files. */
 class SheetsTest {
-    private val f = SheetFormat()
+    private val f = SheetFormat(language = java.util.Locale.ENGLISH)
     private fun show(v: Double, code: String) = f.format(v, code).text
 
     @Test fun general() {
@@ -81,6 +81,12 @@ class SheetsTest {
         assertEquals("15/10/2026", show(46310.0, "d/m/yyyy"))
         assertEquals("15 Μαρτίου 2023", show(45000.0, "[$-408]dd mmmm yyyy"))
         assertEquals("12:00:00.5", show(0.5 + 0.5 / 86400, "hh:mm:ss.0"))
+        // Seconds are cut as Excel and LibreOffice cut them, after a rounding to the millisecond.
+        assertEquals("23:23:23", show(45990.974580532406, "hh:mm:ss"))
+        assertEquals("12:00:00", show(0.49999999999, "hh:mm:ss"))
+        // A format that names no language takes the phone's; [$-409] keeps English.
+        assertEquals("27-Σεπ", SheetFormat(language = java.util.Locale.forLanguageTag("el")).format(45562.0, "d-mmm").text)
+        assertEquals("27-Sep", SheetFormat(language = java.util.Locale.forLanguageTag("el")).format(45562.0, "[$-409]d-mmm").text)
         assertTrue(f.isDate("dd/mm/yyyy")); assertTrue(f.isDate("[h]:mm")); assertFalse(f.isDate("#,##0.00 \"days\"")); assertFalse(f.isDate("0.00E+00"))
     }
 
@@ -249,6 +255,42 @@ class SheetsTest {
         assertEquals("say \"hi\"", s[2, 0]?.text); assertEquals(3, s.rows); assertEquals(2, s.cols)
         // A CSV Excel saved here: Windows Greek, not UTF-8.
         assertEquals("Όνομα", Sheets.read("Όνομα,1".toByteArray(charset("windows-1253")), "g.csv").sheets[0][0, 0]?.text)
+    }
+
+    /**
+     * Every cell of the user's spreadsheets as LibreOffice shows it: TETRA_SHOWN names a folder of folders, each with
+     * source.txt (the spreadsheet's path) and LibreOffice's CSV of each sheet "as shown" (made with the Greek locale, so
+     * compared with Greek separators). The differences are listed with their format codes. Made with, in each folder:
+     * soffice --headless --convert-to 'csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1' file.xlsx
+     * (16 Oct: the user's 13 spreadsheets, 63 sheets, 3,924,268 cells — none differ).
+     */
+    @Test fun `numbers as LibreOffice shows them`() {
+        val dir = System.getenv("TETRA_SHOWN")?.let(::File)
+        assumeTrue(dir?.isDirectory == true)
+        var compared = 0; var numbers = 0
+        val wrong = ArrayList<String>()
+        dir!!.listFiles()!!.filter { it.isDirectory }.sortedBy { it.name }.forEach { d ->
+            val source = File(File(d, "source.txt").readText().trim())
+            val book = Sheets.read(source, ',', '.')
+            d.listFiles()!!.filter { it.extension == "csv" }.forEach { csv ->
+                val name = csv.nameWithoutExtension.removePrefix(source.nameWithoutExtension + "-")
+                val i = book.tabs.indexOfFirst { it.name == name }.takeIf { it >= 0 } ?: if (book.tabs.size == 1) 0 else return@forEach
+                val sheet = book.sheet(i)
+                val shown = Sheets.read(csv.readBytes(), "x.csv").sheet(0)
+                for (r in 0 until maxOf(sheet.rows, shown.rows)) for (c in 0 until maxOf(sheet.cols, shown.cols)) {
+                    val mine = sheet[r, c]; val lo = shown[r, c]?.text.orEmpty()
+                    val text = mine?.text.orEmpty()
+                    if (text.isEmpty() && lo.isEmpty()) continue
+                    compared++
+                    if (mine?.kind == SheetKind.Number) numbers++
+                    if (text.trim() != lo.trim()) wrong += "${source.name.take(25)} › $name › ${Sheets.colName(c)}${r + 1}: mine \"$text\", LibreOffice \"$lo\"" +
+                        (mine?.style?.let { sheet.look(it, book.styles)?.format }?.let { " [$it]" } ?: "") + (mine?.value?.let { " value $it" } ?: "")
+                }
+            }
+        }
+        println("Shown: $compared cells compared ($numbers numbers), ${wrong.size} differ")
+        wrong.groupBy { it.substringAfter(" [", "").substringBefore("]") }.forEach { (code, list) -> println("— [$code] ${list.size}"); list.take(8).forEach { println("   $it") } }
+        assertTrue("${wrong.size} cells differ", wrong.isEmpty())
     }
 
     /** Every one of the user's spreadsheets (~/Tetra/Files, not Κλειδιά) reads. Only with TETRA_SWEEP=1. */

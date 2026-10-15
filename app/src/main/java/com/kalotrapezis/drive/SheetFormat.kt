@@ -19,7 +19,11 @@ import kotlin.math.roundToLong
  * (positive;negative;zero), [Red] colours and [>100] conditions. [decimal] and [group] are the phone's separators, as
  * Excel uses the computer's.
  */
-internal class SheetFormat(private val decimal: Char = '.', private val group: Char = ',', private val date1904: Boolean = false) {
+internal class SheetFormat(
+    private val decimal: Char = '.', private val group: Char = ',', private val date1904: Boolean = false,
+    /** Month and day names when the format names no language ("d-mmm" shows "27-Σεπ" on a Greek phone, as Excel there). */
+    private val language: Locale = Locale.getDefault(),
+) {
     /** A formatted number, and the colour the format asks for ([Red]), if any. */
     data class Shown(val text: String, val color: Int? = null)
 
@@ -307,8 +311,18 @@ internal class SheetFormat(private val decimal: Char = '.', private val group: C
 
     private fun date(value: Double, code: String, locale: String?): String {
         if (value < 0) return "#".repeat(8)
-        val greek = locale == "408" || locale == "el-gr" || locale == "el"
-        val names = if (greek) Locale.forLanguageTag("el") else Locale.ENGLISH
+        // [$-409] and its kind name the language; else the phone's.
+        val names = when (locale?.removePrefix("x-")) {
+            null, "", "f800", "f400", "sysdate", "systime" -> language
+            "408", "el", "el-gr" -> Locale.forLanguageTag("el")
+            "409", "809", "c09", "1009", "en", "en-us", "en-gb" -> Locale.ENGLISH
+            "407", "de", "de-de" -> Locale.GERMAN
+            "40c", "fr", "fr-fr" -> Locale.FRENCH
+            "410", "it", "it-it" -> Locale.ITALIAN
+            "40a", "c0a", "es", "es-es" -> Locale.forLanguageTag("es")
+            else -> locale.toIntOrNull(16)?.let { language } ?: runCatching { Locale.forLanguageTag(locale) }.getOrDefault(language)
+        }
+        val greek = names.language == "el"
         // Tokens, so "m" can be read as minutes after an hour or before seconds.
         data class T(val kind: Char, val n: Int, val lit: String = "")
         val t = ArrayList<T>()
@@ -345,10 +359,12 @@ internal class SheetFormat(private val decimal: Char = '.', private val group: C
             if (prev == 'h' || prev == 'H' || next == 's' || next == 'S') minute[k] = true
         }
         // Rounded to the shown precision (a whole second unless fractions are asked).
+        // Seconds cut, not rounded, past what is shown (23:23:23.76 is 23:23:23, as Excel and LibreOffice show it) —
+        // after a rounding to the millisecond, so a time stored as 11:59:59.9999… is still 12:00:00.
         val unit = 86_400.0 * 10.0.pow(fracDigits)
-        val v = (value * unit).let { kotlin.math.round(it) } / unit
+        val v = floor(kotlin.math.round(value * 86_400_000.0) / 86_400_000.0 * unit + 1e-9) / unit
         val dt = dateTime(v)
-        val totalSeconds = (v * 86_400).let { kotlin.math.round(it * 10.0.pow(fracDigits)) / 10.0.pow(fracDigits) }
+        val totalSeconds = (v * 86_400).let { floor(it * 10.0.pow(fracDigits) + 1e-6) / 10.0.pow(fracDigits) }
         return buildString {
             t.forEachIndexed { k, tok ->
                 when (tok.kind) {

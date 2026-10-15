@@ -249,10 +249,21 @@ slow frames, taps, filters, searches — never a cell's words).
 - [x] Choose cells (long press, drag; Select column/row): Sum, Average, Count (tap: Min, Max, Numbers)
 - [x] Keep rows at the top: a tap on a row's number (Freeze Panes, chosen here)
 
+### More, 16 Oct (night)
+- [x] **Numbers checked against LibreOffice**: every cell of the user's 13 spreadsheets (and LibreOffice's .ods of
+      each) as LibreOffice shows it — 7,848,540 cells, none differ (`SheetsTest`, TETRA_SHOWN; how to make its CSVs is
+      in the test). Fixed on the way: seconds cut, not rounded; month names in the phone's language
+- [x] General numbers fitted to narrow columns as Excel (fewer decimals, then scientific), #### only when nothing fits
+- [x] Conditional formatting: highlight rules, top/bottom, average, duplicates, simple formulas, colour scales, data
+      bars (Excel's and LibreOffice's) — [ ] icon sets
+- [x] Copy the chosen cells (tab-separated) or a cell's words; Go To a cell by its name in search; Show formulas
+- [x] A file opens where it was left (sheet, place, zoom, cell)
+- [x] Export PDF (beside the file) and Print: the file's page setup, print area, rows on every page, as drawn
+- [x] Big files: parts streamed from the zip (.ods content.xml of 360 MB opens with 31 MB of heap — but ~9 s to list
+      its sheets, shortcut noted); the school timetable's 168,039 cells read in 0.85 s
+
 ### Next (viewer)
-- [ ] Conditional formatting (colour scales, data bars, highlight rules) — none in the user's files
 - [ ] Charts in more kinds (radar, bubble, combo); shapes' geometry (ShapeGeometry) for Excel's shapes
-- [ ] Print / Export PDF of a sheet
 - [ ] Tablet: two panes? (check the layout on the tablet)
 - [ ] .xls (Excel 97–2003) — none in the user's files
 

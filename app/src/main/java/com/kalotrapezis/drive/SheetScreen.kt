@@ -78,7 +78,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -126,6 +128,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var found by remember { mutableStateOf<List<Long>>(emptyList()) }
     var current by remember { mutableIntStateOf(0) }
     var columnMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the sheet column, and where its letter was tapped
+    var rowMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the row as drawn, and where its number was tapped
     var filtering by remember { mutableStateOf<Int?>(null) }
     var menu by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
@@ -183,10 +186,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // Kept with the sheet it was made for, so a new sheet is never drawn in the last one's order.
     var laid by remember { mutableStateOf<Pair<Sheet, SheetLayout>?>(null) }
     val layout = laid?.takeIf { it.first === sheet }?.second
-    val pins = view.pins.toList(); val filters = view.filters.toMap(); val sort = view.sort
-    LaunchedEffect(sheet, pins, filters, sort) {
+    val pins = view.pins.toList(); val filters = view.filters.toMap(); val sort = view.sort; val freeze = view.freeze
+    LaunchedEffect(sheet, pins, filters, sort, freeze) {
         val s = sheet ?: return@LaunchedEffect
-        laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null})") { SheetLayout.of(s, pins, filters, sort) } }
+        laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null}, frozen ${freeze ?: "as the file"})") { SheetLayout.of(s, pins, filters, sort, freeze) } }
+        view.range = null
     }
     LaunchedEffect(sheet, query, searching, layout) {
         val s = sheet; val l = layout
@@ -239,8 +243,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             when {
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L)) { col, x -> columnMenu = col to x }
-                    columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, { columnMenu = null }, { filtering = col }) }
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L),
+                        column = { col, x -> columnMenu = col to x }, row = { r, y -> rowMenu = r to y })
+                    columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col }) }
+                    rowMenu?.let { (r, y) -> RowMenu(r, y, view, l) { rowMenu = null } }
+                    view.range?.let { g -> RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter)) { view.range = null } }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
             }
@@ -286,6 +293,8 @@ internal class SheetView {
     val pins = mutableStateListOf<Int>()
     val filters = mutableStateMapOf<Int, Set<String>>()
     var sort by mutableStateOf<SheetSort?>(null)
+    var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
+    var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
 }
 
 /** What search found, to be drawn: the cells, and the one shown now. */
@@ -328,11 +337,14 @@ private fun ToolChips(view: SheetView) {
 
 /** A tap on a column's letter: its filter, sort and pin, as Excel's header menu. */
 @Composable
-private fun ColumnMenu(col: Int, x: Float, view: SheetView, dismiss: () -> Unit, filter: () -> Unit) {
+private fun ColumnMenu(col: Int, x: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit, filter: () -> Unit) {
     val density = LocalDensity.current
     Box(Modifier.offset { IntOffset(x.roundToInt(), (28 * density.density).roundToInt()) }) {
         DropdownMenu(expanded = true, onDismissRequest = dismiss) {
             Text("Column ${Sheets.colName(col)}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            DropdownMenuItem(text = { Text("Select column") }, leadingIcon = { Icon(painterResource(R.drawable.ic_check_box_outline_blank), null) }, onClick = {
+                dismiss(); val c = layout.col(col); if (c >= 0) view.range = SheetRange(0, c, layout.rows.lastIndex, c); WriterLog.i("Sheets: column chosen")
+            })
             DropdownMenuItem(text = { Text(if (col in view.filters) "Change filter…" else "Filter…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_filter), null) },
                 onClick = { dismiss(); filter() })
             if (col in view.filters) DropdownMenuItem(text = { Text("Clear filter") }, onClick = { dismiss(); WriterLog.i("Sheets: filter cleared"); view.filters.remove(col) })
@@ -344,6 +356,43 @@ private fun ColumnMenu(col: Int, x: Float, view: SheetView, dismiss: () -> Unit,
                 onClick = { dismiss(); WriterLog.i("Sheets: unpinned"); view.pins.remove(col) })
             else DropdownMenuItem(text = { Text("Pin to the start") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) },
                 onClick = { dismiss(); view.pins.add(col); WriterLog.i("Sheets: pinned, ${view.pins.size} now"); view.x = 0f })
+        }
+    }
+}
+
+/** A tap on a row's number: keep the rows down to it at the top while scrolling (Excel's Freeze Panes), or choose the row. */
+@Composable
+private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit) {
+    Box(Modifier.offset { IntOffset(0, y.roundToInt()) }) {
+        DropdownMenu(expanded = true, onDismissRequest = dismiss) {
+            Text("Row ${layout.rows[row] + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            DropdownMenuItem(text = { Text("Keep rows up to here at the top") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) }, onClick = {
+                dismiss(); view.freeze = row + 1; view.y = 0f; WriterLog.i("Sheets: ${row + 1} rows frozen")
+            })
+            if (layout.frozenRows > 0) DropdownMenuItem(text = { Text("Let the top rows scroll") }, onClick = { dismiss(); view.freeze = 0; WriterLog.i("Sheets: rows unfrozen") })
+            DropdownMenuItem(text = { Text("Select row") }, leadingIcon = { Icon(painterResource(R.drawable.ic_check_box_outline_blank), null) }, onClick = {
+                dismiss(); view.range = SheetRange(row, 0, row, layout.cols.lastIndex); WriterLog.i("Sheets: row chosen")
+            })
+        }
+    }
+}
+
+/** Excel's status bar for the chosen cells: Sum, Average and Count; a tap shows the least and the most too. */
+@Composable
+private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, close: () -> Unit) {
+    val stats = remember(sheet, layout, range) { SheetStats.of(sheet, layout, range) }
+    val f = remember { DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) } }
+    var more by remember { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(16.dp), color = islandColor(), contentColor = islandContentColor(), modifier = modifier.padding(12.dp).clickable { more = !more }) {
+        Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f, fill = false)) {
+                Text(buildString {
+                    if (stats.numbers > 0) append("Sum ${f.general(stats.sum)}   Average ${f.general(stats.average)}   ")
+                    append("Count ${stats.count}")
+                }, style = MaterialTheme.typography.labelLarge)
+                if (more && stats.numbers > 0) Text("Min ${f.general(stats.min)}   Max ${f.general(stats.max)}   Numbers ${stats.numbers}", style = MaterialTheme.typography.labelMedium)
+            }
+            IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear the choice", modifier = Modifier.size(18.dp)) }
         }
     }
 }
@@ -456,8 +505,9 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> U
 }
 
 @Composable
-private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, column: (Int, Float) -> Unit) {
+private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, column: (Int, Float) -> Unit, row: (Int, Float) -> Unit) {
     val density = LocalDensity.current.density
+    val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort) }
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -472,10 +522,24 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                     fling?.cancel()
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
-                    var moved = false; var pinched = false; var travel = Offset.Zero
-                    while (true) {
+                    var moved = false; var pinched = false; var travel = Offset.Zero; var released = false
+                    // Held still a moment: a long press, which chooses cells as the finger then moves.
+                    val held = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            if (e.changes.none { it.pressed }) { released = true; return@withTimeoutOrNull false }
+                            if (e.changes.size > 1) return@withTimeoutOrNull false
+                            travel += e.calculatePan()
+                            if (travel.getDistance() > viewConfiguration.touchSlop) { moved = true; return@withTimeoutOrNull false }
+                        }
+                        @Suppress("UNREACHABLE_CODE") false
+                    } == null
+                    val choosing = held && painter.startRange(view, down.position)
+                    if (choosing) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    while (!released) {
                         val e = awaitPointerEvent()
                         if (e.changes.none { it.pressed }) break
+                        if (choosing) { e.changes.firstOrNull { it.pressed }?.let { painter.extendRange(view, it.position) }; e.changes.forEach { it.consume() }; continue }
                         val zoom = e.calculateZoom(); val pan = e.calculatePan()
                         if (!moved) { travel += pan; if (travel.getDistance() > viewConfiguration.touchSlop || zoom != 1f) moved = true }
                         if (moved) {
@@ -485,7 +549,8 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         }
                         e.changes.firstOrNull { it.id == down.id && it.pressed }?.let { tracker.addPosition(it.uptimeMillis, it.position) }
                     }
-                    if (!moved) painter.tap(view, down.position)?.let { col -> column(col, down.position.x) }
+                    if (choosing) WriterLog.i("Sheets: range chosen")
+                    else if (!moved) painter.tap(view, down.position)?.let { (kind, k) -> if (kind == 'c') column(k, down.position.x) else row(k, down.position.y) }
                     else if (!pinched) {
                         val v = tracker.calculateVelocity()
                         fling = scope.launch {
@@ -499,8 +564,8 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
             },
     ) {
         // Read here, so a scroll or a zoom redraws without recomposing.
-        val x = view.x; val y = view.y; val zoom = view.zoom; val row = view.row; val col = view.col
-        drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, row, col, marks) }
+        val x = view.x; val y = view.y; val zoom = view.zoom; val r = view.row; val col = view.col; val range = view.range
+        drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, r, col, marks, range) }
     }
 }
 
@@ -613,12 +678,11 @@ internal class SheetPainter(
      * The cell under a tap (a merged one's first cell) is chosen; a tap on a row's number chooses that row's cell. A
      * tap on a column's letter returns that (sheet) column, for its menu.
      */
-    fun tap(view: SheetView, at: Offset): Int? {
-        val s = scale(view.zoom)
-        val sx = if (at.x < headerW + colX[fc] * s) (at.x - headerW) / s else colX[fc] + view.x + (at.x - headerW - colX[fc] * s) / s
-        val sy = if (at.y < headerH + rowY[fr] * s) (at.y - headerH) / s else rowY[fr] + view.y + (at.y - headerH - rowY[fr] * s) / s
-        val c = find(colX, max(0f, sx), cols); val r = find(rowY, max(0f, sy), rows)
-        if (at.y < headerH && at.x > headerW) { view.col = cAt[c]; WriterLog.i("Sheets: column ${Sheets.colName(cAt[c])} menu"); return cAt[c] }
+    fun tap(view: SheetView, at: Offset): Pair<Char, Int>? {
+        val (r, c) = cellAt(view, at)
+        view.range = null
+        if (at.y < headerH && at.x > headerW) { view.col = cAt[c]; WriterLog.i("Sheets: column ${Sheets.colName(cAt[c])} menu"); return 'c' to cAt[c] }
+        if (at.x < headerW && at.y > headerH) { view.row = rAt[r]; WriterLog.i("Sheets: row menu"); return 'r' to r }
         val g = merge(r, c)
         view.row = rAt[g?.r1 ?: r]; view.col = cAt[g?.c1 ?: c]; view.opened = false
         val cell = sheet[view.row, view.col]
@@ -626,18 +690,42 @@ internal class SheetPainter(
         return null
     }
 
-    fun draw(c: android.graphics.Canvas, w: Float, h: Float, x: Float, y: Float, zoom: Float, row: Int, col: Int, marks: SheetMarks) {
+    /** The cell (as drawn) under a point of the screen. */
+    private fun cellAt(view: SheetView, at: Offset): Pair<Int, Int> {
+        val s = scale(view.zoom)
+        val sx = if (at.x < headerW + colX[fc] * s) (at.x - headerW) / s else colX[fc] + view.x + (at.x - headerW - colX[fc] * s) / s
+        val sy = if (at.y < headerH + rowY[fr] * s) (at.y - headerH) / s else rowY[fr] + view.y + (at.y - headerH - rowY[fr] * s) / s
+        return find(rowY, max(0f, sy), rows) to find(colX, max(0f, sx), cols)
+    }
+
+    private var anchor = 0 to 0
+
+    /** A long press on a cell starts a range there (not on the letters or numbers). */
+    fun startRange(view: SheetView, at: Offset): Boolean {
+        if (at.x < headerW || at.y < headerH) return false
+        anchor = cellAt(view, at)
+        val (r, c) = anchor
+        view.range = SheetRange(r, c, r, c); view.row = rAt[r]; view.col = cAt[c]
+        return true
+    }
+
+    fun extendRange(view: SheetView, at: Offset) {
+        val (r, c) = cellAt(view, at)
+        view.range = SheetRange(min(anchor.first, r), min(anchor.second, c), max(anchor.first, r), max(anchor.second, c))
+    }
+
+    fun draw(c: android.graphics.Canvas, w: Float, h: Float, x: Float, y: Float, zoom: Float, row: Int, col: Int, marks: SheetMarks, range: SheetRange? = null) {
         val start = System.nanoTime()
         val s = scale(zoom)
         val fw = colX[fc] * s; val fh = rowY[fr] * s
         val bx = headerW + fw; val by = headerH + fh
         // The chosen cell as drawn (a merged one's whole range).
         val dr = layout.row(row); val dc = layout.col(col)
-        val sel = if (dr < 0 || dc < 0) null else merge(dr, dc) ?: SheetRange(dr, dc, dr, dc)
-        pane(c, bx, by, w - bx, h - by, colX[fc] + x, rowY[fr] + y, s, sel, marks)
-        if (fr > 0) pane(c, bx, headerH, w - bx, fh, colX[fc] + x, 0f, s, sel, marks)
-        if (fc > 0) pane(c, headerW, by, fw, h - by, 0f, rowY[fr] + y, s, sel, marks)
-        if (fr > 0 && fc > 0) pane(c, headerW, headerH, fw, fh, 0f, 0f, s, sel, marks)
+        val sel = range ?: if (dr < 0 || dc < 0) null else merge(dr, dc) ?: SheetRange(dr, dc, dr, dc)
+        pane(c, bx, by, w - bx, h - by, colX[fc] + x, rowY[fr] + y, s, sel, marks, range != null)
+        if (fr > 0) pane(c, bx, headerH, w - bx, fh, colX[fc] + x, 0f, s, sel, marks, range != null)
+        if (fc > 0) pane(c, headerW, by, fw, h - by, 0f, rowY[fr] + y, s, sel, marks, range != null)
+        if (fr > 0 && fc > 0) pane(c, headerW, headerH, fw, fh, 0f, 0f, s, sel, marks, range != null)
         headers(c, w, h, x, y, s, sel)
         // The frozen panes' edges, as Excel draws them (green when the viewer pinned the columns).
         line.strokeWidth = 1.5f * density; line.pathEffect = null
@@ -741,7 +829,7 @@ internal class SheetPainter(
     }
 
     /** One pane: the sheet from ([sx0], [sy0]) drawn at ([ox], [oy]) on the screen, [w]×[h] of it, [s] screen pixels a sheet pixel. */
-    private fun pane(c: android.graphics.Canvas, ox: Float, oy: Float, w: Float, h: Float, sx0: Float, sy0: Float, s: Float, sel: SheetRange?, marks: SheetMarks) {
+    private fun pane(c: android.graphics.Canvas, ox: Float, oy: Float, w: Float, h: Float, sx0: Float, sy0: Float, s: Float, sel: SheetRange?, marks: SheetMarks, ranged: Boolean) {
         if (w <= 0 || h <= 0) return
         c.save()
         c.clipRect(ox, oy, ox + w, oy + h)
@@ -869,6 +957,8 @@ internal class SheetPainter(
         // The chosen cell in Excel's green, search's current find in orange over it.
         line.pathEffect = null
         if (sel != null) {
+            // A chosen range is shaded, as Excel's.
+            if (ranged) { fill.color = 0x2E107C41; c.drawRect(colX[sel.c1], rowY[sel.r1], colX[min(sel.c2 + 1, cols)], rowY[min(sel.r2 + 1, rows)], fill) }
             line.color = EXCEL_GREEN_ARGB; line.strokeWidth = 2.5f * density / s
             c.drawRect(colX[sel.c1], rowY[sel.r1], colX[min(sel.c2 + 1, cols)], rowY[min(sel.r2 + 1, rows)], line)
         }

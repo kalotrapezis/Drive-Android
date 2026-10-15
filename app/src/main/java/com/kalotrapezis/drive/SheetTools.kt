@@ -31,7 +31,9 @@ internal class SheetLayout(
         const val MORE_ROWS = 60
         const val MORE_COLS = 12
 
-        fun of(sheet: Sheet, pins: List<Int> = emptyList(), filters: Map<Int, Set<String>> = emptyMap(), sort: SheetSort? = null): SheetLayout {
+        /** [freeze]: the rows kept at the top, as the viewer chose them (null: the file's frozen rows). */
+        fun of(sheet: Sheet, pins: List<Int> = emptyList(), filters: Map<Int, Set<String>> = emptyMap(), sort: SheetSort? = null, freeze: Int? = null): SheetLayout {
+            val frozenRows = freeze ?: sheet.frozenRows
             // As far as the cells and the drawings over them go.
             val drawnCols = sheet.drawings.maxOfOrNull { max(it.col, it.toCol) + 1 + (it.width / sheet.defaultColWidth).toInt() } ?: 0
             val drawnRows = sheet.drawings.maxOfOrNull { max(it.row, it.toRow) + 1 + (it.height / sheet.defaultRowHeight).toInt() } ?: 0
@@ -42,14 +44,14 @@ internal class SheetLayout(
             val frozen = (0 until sheet.frozenCols).filter { it !in pinned }
             val cols = (pinned + frozen + (sheet.frozenCols until totalCols).filter { it !in pinned }).toIntArray()
             val frozenCols = pinned.size + frozen.size
-            if (filters.isEmpty() && sort == null) return SheetLayout(IntArray(totalRows) { it }, cols, sheet.frozenRows, frozenCols)
+            if (filters.isEmpty() && sort == null) return SheetLayout(IntArray(totalRows) { it }, cols, frozenRows, frozenCols)
             // Rows: the header and what is above it stay; the table's rows below it are filtered, then sorted.
             val header = header(sheet)
             val end = sheet.autoFilter?.r2?.plus(1)?.coerceAtMost(totalRows) ?: sheet.rows
             val data = (header + 1 until end).filter { r -> filters.all { (c, keep) -> value(sheet[r, c]) in keep } }
             val sorted = sort?.let { s -> data.sortedWith(order(sheet, s)) } ?: data
             val rows = ((0..header).toList() + sorted + (end until totalRows)).toIntArray()
-            return SheetLayout(rows, cols, sheet.frozenRows, frozenCols)
+            return SheetLayout(rows, cols, min(frozenRows, rows.size), frozenCols)
         }
 
         /**
@@ -95,6 +97,25 @@ internal class SheetLayout(
             for (r in header + 1 until end) { val v = value(sheet[r, col]); counts[v] = (counts[v] ?: 0) + 1; first.putIfAbsent(v, r) }
             val byRow = order(sheet, SheetSort(col, true))
             return counts.entries.sortedWith { a, b -> byRow.compare(first.getValue(a.key), first.getValue(b.key)) }.map { it.key to it.value }
+        }
+    }
+}
+
+/** What Excel's status bar says of the chosen cells: how many have something, and of the numbers their sum, average, least and most. */
+internal data class SheetStats(val count: Int, val numbers: Int, val sum: Double, val min: Double, val max: Double) {
+    val average get() = if (numbers == 0) 0.0 else sum / numbers
+
+    companion object {
+        /** The cells of a range as drawn ([layout]'s rows and columns: a filter's hidden rows are not counted). */
+        fun of(sheet: Sheet, layout: SheetLayout, range: SheetRange): SheetStats {
+            var count = 0; var numbers = 0; var sum = 0.0; var lo = Double.MAX_VALUE; var hi = -Double.MAX_VALUE
+            for (r in range.r1..min(range.r2, layout.rows.lastIndex)) for (c in range.c1..min(range.c2, layout.cols.lastIndex)) {
+                val cell = sheet[layout.rows[r], layout.cols[c]] ?: continue
+                if (cell.text.isEmpty()) continue
+                count++
+                if (cell.kind == SheetKind.Number) cell.value?.let { numbers++; sum += it; lo = min(lo, it); hi = max(hi, it) }
+            }
+            return SheetStats(count, numbers, sum, if (numbers > 0) lo else 0.0, if (numbers > 0) hi else 0.0)
         }
     }
 }

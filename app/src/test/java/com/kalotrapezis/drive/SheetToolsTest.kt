@@ -62,6 +62,22 @@ class SheetToolsTest {
         assertEquals(listOf(5, 3, 4, 6), SheetLayout.of(sheet, sort = SheetSort(1, false)).rows.slice(3..6))
     }
 
+    @Test fun `the status bar's sum, average and count`() {
+        val all = SheetLayout.of(sheet)
+        val grades = SheetStats.of(sheet, all, SheetRange(2, 1, 6, 1)) // the header, three numbers, an empty cell
+        assertEquals(4, grades.count); assertEquals(3, grades.numbers)
+        assertEquals(36.75, grades.sum, 1e-9); assertEquals(12.25, grades.average, 1e-9); assertEquals(9.0, grades.min, 0.0); assertEquals(15.25, grades.max, 0.0)
+        // Rows a filter hides are not counted (Excel's status bar counts what it shows).
+        val athens = SheetLayout.of(sheet, filters = mapOf(2 to setOf("Αθήνα")))
+        assertEquals(27.75, SheetStats.of(sheet, athens, SheetRange(3, 1, 4, 1)).sum, 1e-9)
+    }
+
+    @Test fun `rows kept at the top`() {
+        assertEquals(3, SheetLayout.of(sheet, freeze = 3).frozenRows)
+        assertEquals(0, SheetLayout.of(sheet, freeze = 0).frozenRows)
+        assertEquals(3, SheetLayout.of(sheet, sort = SheetSort(1, true), freeze = 3).frozenRows)
+    }
+
     @Test fun `pinned columns come first, in the order pinned`() {
         val l = SheetLayout.of(sheet, pins = listOf(2, 0))
         assertEquals(listOf(2, 0, 1, 3), l.cols.take(4))

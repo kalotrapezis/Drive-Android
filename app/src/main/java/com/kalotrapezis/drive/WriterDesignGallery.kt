@@ -14,6 +14,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -48,20 +55,27 @@ internal enum class DesignGallery(val title: String) { StyleSets("Style sets"), 
 internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () -> Unit, ok: () -> Unit, pickSet: (StyleSet) -> Unit, pickColors: (ThemeColors) -> Unit,
     pickFonts: (ThemeFonts) -> Unit, modifier: Modifier = Modifier) {
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
-    @Composable fun card(selected: Boolean, click: () -> Unit, content: @Composable () -> Unit) = Box(Modifier.width(150.dp).height(104.dp).clip(RoundedCornerShape(12.dp))
+    // The phone (asked 15 Oct): one thin row — smaller cards, Cancel and OK at its ends — and no keyboard over it.
+    val phone = LocalConfiguration.current.screenWidthDp < 700
+    val k = if (phone) 0.7f else 1f
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(what) { keyboard?.hide() }
+    @Composable fun card(selected: Boolean, click: () -> Unit, content: @Composable () -> Unit) = Box(Modifier.width(150.dp * k).height(104.dp * k).clip(RoundedCornerShape(12.dp))
         .background(Color.White).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color(0x33888888), RoundedCornerShape(12.dp))
-        .clickable(onClick = click).padding(10.dp)) { content() }
+        .clickable(onClick = click).padding(10.dp * k)) { content() }
     @Composable fun face(name: String?, size: Int, weight: FontWeight = FontWeight.Normal, italic: Boolean = false, color: Color = Color(0xFF222222)) =
-        TextStyle(fontFamily = OfficeFonts.family(name), fontSize = size.sp, fontWeight = weight, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal, color = color)
+        TextStyle(fontFamily = OfficeFonts.family(name), fontSize = (size * k).sp, fontWeight = weight, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal, color = color)
     val w = Color.White
-    Column(modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    Column(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
+        if (!phone) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             TextButton(onClick = cancel) { Text("Cancel", color = w) }
             TextButton(onClick = ok, enabled = chosen != null) { Text("OK", color = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }
         val scroll = androidx.compose.foundation.rememberScrollState()
-        Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        if (phone) IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), "Cancel", tint = w) }
+        Row(Modifier.weight(1f).scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = if (phone) 0.dp else 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(if (phone) 8.dp else 10.dp)) {
             when (what) {
                 // Each set as a small page: its title, a heading, a line of text, in their own looks.
                 DesignGallery.StyleSets -> StyleSet.entries.forEach { set -> card(chosen == set, click = { pickSet(set) }) {
@@ -75,9 +89,9 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                 } }
                 // Each palette: its six accents as blocks, the dark and light beside them.
                 DesignGallery.Colours -> ThemeColors.entries.forEach { set -> card(chosen == set, click = { pickColors(set) }) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row { set.accents.forEach { a -> Box(Modifier.size(21.dp, 30.dp).background(c(a))) } }
-                        Row { listOf(set.dk2, set.lt2, set.link).forEach { a -> Box(Modifier.size(21.dp, 10.dp).background(c(a))) } }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp * k)) {
+                        Row { set.accents.forEach { a -> Box(Modifier.size(21.dp * k, 30.dp * k).background(c(a))) } }
+                        Row { listOf(set.dk2, set.lt2, set.link).forEach { a -> Box(Modifier.size(21.dp * k, 10.dp * k).background(c(a))) } }
                         Text(set.label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } }
@@ -90,6 +104,8 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     }
                 } }
             }
+        }
+        if (phone) IconButton(onClick = ok, enabled = chosen != null) { Icon(painterResource(R.drawable.ic_check), "OK", tint = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }
     }
 }

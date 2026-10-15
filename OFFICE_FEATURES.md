@@ -115,7 +115,7 @@ one pass once the tabs' features are done.
 - [x] Header and footer; page numbers (Insert › Header & footer / Page numbers; Word and ODT; a line each, number as 1 / Page 1 of 3 / 1 / 3, different first page; a file's own "Σελίδα 1 από 3" is kept) ; several lines each, different odd and even pages (even pages their own words, mirrored; Word's even headers + evenAndOddHeaders, LibreOffice's left pages) (15 Oct, evening) — [ ] pictures in headers
 - [x] Comment (Insert: on the chosen words or the word at the cursor, your name remembered); comments read and kept in Word and ODT, tinted in the editor, following typing; tablet: cards in a pane beside the page (as Word), phone: View › Comments sidebar + a bar above the ribbon for the one at the cursor; delete, undo — [ ] reply, resolve (Review tab); show them on the pages view
 - [x] Symbol (Ω: punctuation, money, signs, maths, arrows), date and time (today in the phone's language and in English, numeric and ISO; typed at the cursor)
-- [ ] **Shapes** (Insert, as OnlyOffice/Word/LibreOffice — the user's screenshots, 29 Sep): a gallery by group —
+- [x] **Shapes** (Insert, as OnlyOffice/Word/LibreOffice — the user's screenshots, 29 Sep): a gallery by group —
       recently used; basic (rectangle, ellipse, triangle, right triangle, parallelogram, trapezoid, diamond, pentagon,
       hexagon, heptagon/octagon/decagon/dodecagon, pie, chord, frame, L-shape, plus, cylinder, cube, donut, smiley,
       heart, lightning, sun, moon, cloud, arc, braces/brackets); block arrows; maths (+ − × ÷ = ≠); flowchart; stars and
@@ -128,6 +128,12 @@ one pass once the tabs' features are done.
       and PDF; the Picture tab sizes, wraps, replaces… it (wrapping now shows on the pages at once). Shapes in a file
       of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,
       changing fill/outline after.
+      **15 Oct, evening: the full gallery** — all 187 of Word's preset shapes, in Word's groups (recently used, lines,
+      rectangles, basic shapes, block arrows, equation shapes, flowchart, stars and banners, callouts), drawn from their
+      real geometry (DrawingML's presetShapeDefinitions via LibreOffice's copy: `ShapeGeometry`), written as Word's prst
+      and as LibreOffice's enhanced geometry; files' shapes of any preset (with their adjustments and theme colours) and
+      LibreOffice's own custom shapes drawn; **Picture › Shape options**: fill, outline and its width, size (locked or
+      not), rotation, alt text — [ ] lines with arrows and connectors, freeform, a shape's text
 - [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
 - [x] **Floating objects** (1 Oct): Picture › **Position** drags a floating picture, shape, text box or chart on its page
       (the page as laid out, the text re-flowing on letting go), saved from the page's corner (Word positionH/V

@@ -114,6 +114,28 @@
 >   `OfficeFormatsTest` (both formats round-trip); on the **tablet** (971f6b37): two-line header right, even page's own
 >   left; LibreOffice shows the .docx and the .odt as meant. Not done: pictures in headers.
 >
+> - **Shapes: the full gallery and Shape options** (item 5). `tools/shape-presets.py` turns LibreOffice's
+>   `oox-drawingml-cs-presets` (Word's 187 presets as formulas + paths, MPL 2.0 — noted in THIRD_PARTY_NOTICES) into
+>   `resources/shapes/presets.txt` (125 KB). `ShapeGeometry` evaluates them: ODF's formula language (`?n`, `$n`,
+>   width/height/logwidth, abs sqrt sin cos tan atan2 min max if), the path's commands (move, line, cubic, quadratic,
+>   Word's arcTo — visual angles made parametric —, ODF's angle-ellipse / arc / quadrants, no-fill, no-stroke, the shades
+>   of a can's or cube's faces), sub-paths' own sizes; arcs become Bézier curves, so the result is plain and tested on
+>   the JVM. It draws: every Word preset (from a file, with its `a:avLst` adjustments; colours from `wps:style`'s
+>   theme refs — Office's default theme, shade/tint/lumMod/lumOff — when spPr names none: Word's own shapes were drawn
+>   unfilled), and any LibreOffice custom shape with its own `draw:enhanced-path` (equations, modifiers, view box,
+>   `drawooo:sub-view-size`). New shapes in an .odt are written as LibreOffice writes Word's: `draw:type="ooxml-<name>"`
+>   with the path and equations (**LibreOffice draws nothing from the name alone** — checked), the equations over ODF's
+>   width/height (LibreOffice's logwidth in a text document is in twips: shapes came out at 57%). Insert › Shapes: Word's
+>   groups, recently used first (`SHAPE_GROUPS`, prefs "recentShapes"), long ones 1½ × ¾ in. **Picture › Shape
+>   options** (`ShapeOptionsDialog`): fill, outline, its width, size in cm/in with locked proportions, rotation, alt text
+>   (`PictureXml.shapeLook`, `altOf/withAlt`: Word's spPr fill + a:ln and docPr descr; LibreOffice's Writer shape style
+>   and svg:desc). `ShapeGeometryTest` (all 187 drawn in bounds — `build/shapes.svg` is a sheet of them, they look as
+>   Word's; adjustments; LibreOffice paths; preset → ODF → back identical; restyle + alt round trips both formats; theme
+>   colours). On the tablet: the gallery, a sun put in and restyled; LibreOffice draws the .docx (turned 15°) and .odts.
+>   **Found on the way**: letters typed over a chosen picture took its place-holder's size (a 127 pt "j" replaced the sun
+>   when the user typed by mistake) — a picture's place-holder size is now marked (`pictureSp`, fraction .371) and never
+>   given to letters; a place-holder left without its picture (half undone) is not written. `WriterBridgeTest`.
+>
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,
 > one commit each, 248 unit tests pass, each checked in LibreOffice where it writes files. **None checked on the phone
 > yet, and the build is not on it** (the phone was unplugged): install it, then walk `TEST_TREE.md` with the user

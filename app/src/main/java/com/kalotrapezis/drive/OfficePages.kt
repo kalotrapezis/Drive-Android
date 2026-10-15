@@ -1587,7 +1587,7 @@ internal object OfficePages {
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
                 val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
-                    ?: ShapePicture.of(img)?.let { ShapePicture(it.geometry, it.fill, it.line, it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
+                    ?: ShapePicture.of(img)?.let { it.withLine(it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
                 continue
@@ -1777,13 +1777,39 @@ internal object OfficeFonts {
  * see-through) and outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey
  * boxes; Insert › Shapes makes them). A shape of another kind is still a grey box.
  */
-internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float) : android.graphics.drawable.Drawable() {
+internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float,
+    /** Its own geometry (a LibreOffice shape's enhanced path); else Word's preset [geometry]'s. */
+    val custom: ShapeGeometry? = null, /** Word's adjustments (avLst), by name. */ val adjust: Map<String, Double> = emptyMap()) : android.graphics.drawable.Drawable() {
+    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust)
     fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.strokeJoin = android.graphics.Paint.Join.ROUND
+        // Drawn from its geometry (Word's 187 presets, LibreOffice's paths): each sub-path filled (shaded) and stroked as it says.
+        val geo = custom ?: ShapeGeometry.presets[geometry]
+        if (geo != null && geometry !in LINES) {
+            for (sub in geo.paths(w, h, adjust)) {
+                val path = android.graphics.Path()
+                for (op in sub.ops) when (op) {
+                    is ShapeGeometry.Op.Move -> path.moveTo(x + op.x, y + op.y)
+                    is ShapeGeometry.Op.Line -> path.lineTo(x + op.x, y + op.y)
+                    is ShapeGeometry.Op.Cubic -> path.cubicTo(x + op.x1, y + op.y1, x + op.x2, y + op.y2, x + op.x, y + op.y)
+                    is ShapeGeometry.Op.Quad -> path.quadTo(x + op.x1, y + op.y1, x + op.x, y + op.y)
+                    ShapeGeometry.Op.Close -> path.close()
+                }
+                if (sub.fill) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = shaded(it, sub.shade); canvas.drawPath(path, paint) }
+                if (sub.stroke) line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+            }
+            return
+        }
         val path = path(geometry, w, h).apply { offset(x, y) }
         if (geometry !in LINES) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; canvas.drawPath(path, paint) }
         line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+    }
+    /** A face darker (−) or lighter (+): a can's top, a cube's sides. */
+    private fun shaded(c: Int, k: Float): Int {
+        if (k == 0f) return c
+        fun ch(v: Int) = (if (k < 0) v * (1 + k) else v + (255 - v) * k).toInt().coerceIn(0, 255)
+        return (c and 0xFF000000.toInt()) or (ch((c shr 16) and 0xFF) shl 16) or (ch((c shr 8) and 0xFF) shl 8) or ch(c and 0xFF)
     }
     override fun draw(canvas: Canvas) { val b = bounds; drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat()) }
     override fun setAlpha(alpha: Int) = Unit
@@ -1800,6 +1826,8 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             "star5" to "star5", "right-arrow" to "rightArrow", "left-arrow" to "leftArrow", "up-arrow" to "upArrow", "down-arrow" to "downArrow",
             "cross" to "plus", "heart" to "heart", "mso-spt20" to "line")
         fun odfType(kind: String) = ODF.entries.firstOrNull { it.value == kind }?.key ?: "rectangle"
+        /** A LibreOffice shape type as Word's preset name: its own names, or "ooxml-<preset>". */
+        fun presetOf(odfType: String) = ODF[odfType] ?: odfType.removePrefix("ooxml-").takeIf { odfType.startsWith("ooxml-") && it in ShapeGeometry.presets }
 
         /** The shape's outline in a [w]×[h] box from 0,0. */
         fun path(kind: String, w: Float, h: Float): android.graphics.Path = android.graphics.Path().apply {
@@ -1829,6 +1857,25 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             }
         }
 
+        /** Office's theme colours (its default theme), for Word shapes that name them. */
+        private val THEME = mapOf("accent1" to 0x4472C4, "accent2" to 0xED7D31, "accent3" to 0xA5A5A5, "accent4" to 0xFFC000, "accent5" to 0x5B9BD5,
+            "accent6" to 0x70AD47, "dk1" to 0x000000, "lt1" to 0xFFFFFF, "dk2" to 0x44546A, "lt2" to 0xE7E6E6, "tx1" to 0x000000, "bg1" to 0xFFFFFF, "tx2" to 0x44546A, "bg2" to 0xE7E6E6)
+        /** A colour as DrawingML gives it (srgbClr or a theme's schemeClr), with its shade, lumMod/lumOff and alpha. */
+        fun themeColor(xml: String?): Int? {
+            xml ?: return null
+            val m = Regex("""<a:(srgbClr|schemeClr)\s+val="(\w+)"(?:\s*/>|>([\s\S]*?)</a:\1>)""").find(xml) ?: return null
+            var rgb = if (m.groupValues[1] == "srgbClr") m.groupValues[2].toIntOrNull(16) ?: return null else THEME[m.groupValues[2]] ?: return null
+            val mods = m.groupValues[3]
+            fun mod(n: String) = Regex("""<a:$n val="(\d+)"""").find(mods)?.groupValues?.get(1)?.toFloatOrNull()?.div(100000f)
+            fun each(f: (Float) -> Float) { rgb = (f(((rgb shr 16) and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() shl 16 or ((f(((rgb shr 8) and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() shl 8) or (f((rgb and 0xFF) / 255f).coerceIn(0f, 1f) * 255).toInt() }
+            mod("shade")?.let { k -> each { it * k } }
+            mod("tint")?.let { k -> each { 1 - (1 - it) * k } }
+            val lm = mod("lumMod"); val lo = mod("lumOff")
+            if (lm != null || lo != null) each { it * (lm ?: 1f) + (lo ?: 0f) }
+            val alpha = mod("alpha")?.let { Math.round(it * 255) } ?: 255
+            return (alpha shl 24) or rgb
+        }
+
         /** A LibreOffice shape in its style's colours (draw:fill / draw:stroke, none for none), else LibreOffice's default blue. */
         private fun styledShape(kind: String, look: String?): ShapePicture {
             fun v(n: String) = look?.let { Regex("""\s$n="([^"]*)"""").findAll(it).lastOrNull()?.groupValues?.get(1) }
@@ -1844,15 +1891,22 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
         fun of(raw: String?, look: String? = null): ShapePicture? {
             if (raw == null) return null
             if (raw.startsWith("<draw:custom-shape")) {
-                val kind = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)?.let { ODF[it] } ?: return null
+                // Its own path when it has one (any LibreOffice shape); else its type, if Word has it.
+                val own = ShapeGeometry.ofOdf(raw)
+                val type = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)
+                val kind = type?.let(::presetOf) ?: if (own != null) "custom" else return null
+                fun sized(p: ShapePicture) = if (own != null) ShapePicture(kind, p.fill, p.line, p.lineWidth, own) else p
                 // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>_<wrap>.
                 val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_""").find(raw)
                 fun hex(v: String?) = v?.takeIf { it != "none" }?.let { t -> t.toLongOrNull(16)?.let { if (t.length == 8) it.toInt() else (0xFF000000 or it).toInt() } }
-                return if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
-                    else styledShape(kind, look) // its style's fill and line, else LibreOffice's own default look
+                return sized(if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
+                    else styledShape(kind, look)) // its style's fill and line, else LibreOffice's own default look
             }
             val sp = Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(raw)?.groupValues?.get(1) ?: return null
-            val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in KINDS || it in LINES } ?: return null
+            val geometry = Regex("""<a:prstGeom prst="(\w+)"""").find(sp)?.groupValues?.get(1)?.takeIf { it in KINDS || it in LINES || it in ShapeGeometry.presets } ?: return null
+            // Its adjustments (a rounded corner's size, an arrow's head…): Word's "val n".
+            val adjust = Regex("""<a:gd name="(\w+)" fmla="val (-?\d+)"""").findAll(Regex("""<a:avLst>([\s\S]*?)</a:avLst>""").find(sp)?.groupValues?.get(1).orEmpty())
+                .associate { it.groupValues[1] to it.groupValues[2].toDouble() }
             fun color(xml: String?): Int? {
                 if (xml == null || "<a:noFill" in xml) return null
                 val m = Regex("""<a:srgbClr val="([0-9A-Fa-f]{6})"(?:\s*/>|>([\s\S]*?)</a:srgbClr>)""").find(xml) ?: return null
@@ -1860,10 +1914,16 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                 return (alpha shl 24) or m.groupValues[1].toInt(16)
             }
             val ln = Regex("""<a:ln\b([^>]*)>([\s\S]*?)</a:ln>""").find(sp)
-            // What is before the outline is the fill (spPr's order: geometry, fill, outline).
-            val fill = color(sp.substringBefore("<a:ln").substringAfter("</a:prstGeom>", ""))
+            // What is before the outline is the fill (spPr's order: geometry, fill, outline); none said there: the
+            // shape style's (Word's own shapes take the theme's accent, its outline darker).
+            val fillPart = sp.substringBefore("<a:ln").substringAfter("</a:prstGeom>", "").ifEmpty { sp.substringBefore("<a:ln").substringAfter("<a:avLst/>", "") }
+            val styleXml = Regex("""<wps:style>([\s\S]*?)</wps:style>""").find(raw)?.groupValues?.get(1)
+            val saysFill = Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill)\b""").containsMatchIn(fillPart)
+            val fill = if (saysFill) color(fillPart) else styleXml?.let { themeColor(Regex("""<a:fillRef\b[^>]*>([\s\S]*?)</a:fillRef>""").find(it)?.groupValues?.get(1)) }
+            val styleLine = if (ln != null && Regex("""<a:(noFill|solidFill|gradFill)\b""").containsMatchIn(ln.groupValues[2])) null
+                else styleXml?.let { themeColor(Regex("""<a:lnRef\b[^>]*>([\s\S]*?)</a:lnRef>""").find(it)?.groupValues?.get(1)) }
             val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
-            return ShapePicture(geometry, fill, color(ln?.groupValues?.get(2)), width)
+            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust)
         }
     }
 }

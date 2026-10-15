@@ -303,7 +303,7 @@ internal object PictureXml {
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (file == OfficeKind.Odt) {
             val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${PictureWrap.InLine.name}"
-            return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/></draw:custom-shape>"""
+            return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/>${ShapeGeometry.odfGeometry(kind, widthPt, heightPt)?.takeIf { kind != "line" } ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/>"""}</draw:custom-shape>"""
         }
         val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
         val id = (System.nanoTime() % 900000 + 100000)
@@ -426,6 +426,51 @@ internal object PictureXml {
             p?.copy(runs = runs.filter { it.second.isNotEmpty() }.map { (r, t) -> (r ?: DocRun("")).copy(text = t, comments = emptyList(), change = null, cite = null, control = null) })
                 ?: DocPara(listOf(DocRun(runs.joinToString("") { it.second })))
         }
+    }
+
+    /**
+     * Picture › Shape settings: a shape's fill (null: none) and outline (null: none) and its width — Word's spPr (its
+     * fill and a:ln replaced, the geometry kept); in an .odt Writer's own shape style named for them (and its wrap, as
+     * placed). Null: not a shape.
+     */
+    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float): DocImage? {
+        val raw = img.raw ?: return null
+        fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+        if (raw.startsWith("<draw:custom-shape")) {
+            val end = raw.indexOf('>')
+            val wrap = wrapOf(img) ?: PictureWrap.InLine
+            val page = placeOf(img)?.fromV == "page"
+            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+            val head = raw.substring(0, end).replace(Regex("""\sdraw:style-name="[^"]*""""), "") + " draw:style-name=\"$style\""
+            return img.with(raw = head + raw.substring(end))
+        }
+        val sp = Regex("""<wps:spPr\b[^>]*>([\s\S]*?)</wps:spPr>""").find(raw) ?: return null
+        var inner = sp.groupValues[1]
+        inner = inner.replace(Regex("""<a:ln\b[^>]*?(?:/>|>[\s\S]*?</a:ln>)"""), "")
+            .replace(Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill|grpFill)\b[^>]*?(?:/>|>[\s\S]*?</a:\1>)"""), "")
+        val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
+        // In spPr's order: the transform, the geometry, then the fill, then the outline.
+        val at = Regex("""</a:prstGeom>|</a:custGeom>|<a:prstGeom\b[^>]*/>""").find(inner)?.range?.last?.plus(1) ?: Regex("""</a:xfrm>""").find(inner)?.range?.last?.plus(1) ?: 0
+        inner = inner.substring(0, at) + fillXml + lineXml + inner.substring(at)
+        val open = Regex("""<wps:spPr\b[^>]*>""").find(sp.value)!!.value
+        return img.with(raw = raw.replaceRange(sp.range, "$open$inner</wps:spPr>"))
+    }
+    /** Its description for screen readers (Word's docPr descr, LibreOffice's svg:desc). */
+    fun altOf(img: DocImage): String = img.raw?.let { r -> Regex("""<wp:docPr\b[^>]*\bdescr="([^"]*)"""").find(r)?.groupValues?.get(1)
+        ?: Regex("""<svg:desc>([^<]*)</svg:desc>""").find(r)?.groupValues?.get(1) }
+        ?.replace("&quot;", "\"")?.replace("&lt;", "<")?.replace("&gt;", ">")?.replace("&amp;", "&").orEmpty()
+    fun withAlt(img: DocImage, alt: String): DocImage? {
+        val raw = img.raw ?: return null
+        val e = OfficeFormats.esc(alt).replace("\"", "&quot;")
+        if (raw.startsWith("<draw:")) {
+            val bare = raw.replace(Regex("""<svg:desc>[^<]*</svg:desc>"""), "")
+            val end = bare.indexOf('>') + 1
+            return img.with(raw = if (alt.isBlank()) bare else bare.substring(0, end) + "<svg:desc>$e</svg:desc>" + bare.substring(end))
+        }
+        val doc = Regex("""<wp:docPr\b[^>]*?(/?)>""").find(raw) ?: return null
+        val head = doc.value.replace(Regex("""\sdescr="[^"]*""""), "").let { h -> if (alt.isBlank()) h else h.replace(Regex("""(/?)>$"""), " descr=\"$e\"$1>") }
+        return img.with(raw = raw.replaceRange(doc.range, head))
     }
 
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */

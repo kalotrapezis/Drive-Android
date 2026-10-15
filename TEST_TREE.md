@@ -42,6 +42,13 @@ Same rules: phone 208c8192, Print layout, Mobile view off, copies in `Test-Words
   - [x] `Header_test.docx` (3 pages): header "Chapter 1⏎Introduction" right, footer, number at the bottom right, Different odd and even pages, even header "My thesis" → page 1 two lines right, page 2 "My thesis" left, number left; LibreOffice the same (Claude, tablet)
   - [ ] The same on an .odt; reopen the dialog → both headers come back as set
 
+- **18. Shapes** (Insert › Shapes, Picture › Shape options) — tablet
+  - [x] The gallery: Word's groups, each shape drawn; a sun put in (Claude)
+  - [x] Shape options: yellow fill, orange 3 pt outline, 4 cm (proportions locked), 15°, alt text → shown; LibreOffice the same, turned (Claude)
+  - [x] Typing over a chosen shape by mistake, then Undo twice → the shape is back (you did it); now the letters are the text's size
+  - [ ] Open one of your Word files with shapes drawn in Word (theme colours): they show filled as in Word
+  - [ ] An .odt: put in a cloud and a flowchart decision → open in LibreOffice on the PC: the same shapes
+
 # Test tree — Writer's Word gaps (15 Oct 2026)
 
 On the phone (208c8192), Print layout, Mobile view off. Use copies in `Test-Words/`, never the originals.

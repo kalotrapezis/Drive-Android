@@ -37,6 +37,24 @@ class WriterBridgeTest {
         assertEquals(DocRun("ef"), put.paras[1].runs[2])
     }
 
+    @Test fun `letters typed over a chosen picture are the text's size, not the picture's`() {
+        val img = DocImage("k", "word/media/a.png", 113f, 113f)
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Text."), DocRun(OBJECT_MARK.toString(), image = img)))), basePt = 11f)
+        val pictures = HashMap<String, DocImage>()
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc, pictures))
+        val at = state.annotatedString.text.indexOf('\uFFFD')
+        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+        state.replaceSelectedText("j")
+        val back = WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt, pictures)
+        assertEquals("Text.j", back[0].text)
+        assertEquals(listOf<Float?>(null), back[0].runs.map { it.sizePt }.distinct())
+        // Half undone: the picture's letter without its picture is not written as a letter.
+        val bare = com.mohamedrejeb.richeditor.model.RichTextState()
+        bare.setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun("a\uFFFDb")))), basePt = 11f)))
+        assertEquals("ab", WriterBridge.fromEditor(bare.toRichTextDocument(), 11f)[0].text)
+    }
+
     @Test fun `table cell edits and new rows keep the existing look`() {
         val keep = DocKeep(style = "CellText")
         val first = DocPara(listOf(DocRun("old", bold = true, font = "<w:rFonts w:ascii=\"Arial\"/>")), heading = 2, keep = keep)

@@ -517,7 +517,7 @@ internal object WriterBridge {
                     // ponytail: the space the editor puts after each paragraph keeps the editor's own text size, so in Mobile
                     // view (tables shrunk to the screen) a short table's line stays a text line tall; a mark cannot reach it
                     // (the library refuses a range past the block). Print layout has no gap.
-                    marks += RichTextSpanMark.FontSize(range, size.sp)
+                    marks += RichTextSpanMark.FontSize(range, pictureSp(size).sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
                     // half the spacing before a letter and half after, and none before the first of a line: there, twice.
@@ -634,7 +634,9 @@ internal object WriterBridge {
                     is RichTextSpanMark.Italic -> if (styleSlant) r else r.copy(italic = true)
                     is RichTextSpanMark.Underline -> r.copy(underline = true)
                     is RichTextSpanMark.Strikethrough -> r.copy(strike = true)
-                    is RichTextSpanMark.FontSize -> r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
+                    // A picture's place-holder size is no letter's (typed over a chosen picture, the letters took it: a 127 pt "j").
+                    is RichTextSpanMark.FontSize -> if (spOf(m.size)?.let(::isPictureSp) == true) r
+                        else r.copy(sizePt = spOf(m.size)?.let { it / scale }?.takeIf { !isStyleSize(it) }) // the style's: none of its own; rounded below
                     is RichTextSpanMark.BaselineShift -> r.copy(script = if (m.multiplier > 0) 1 else if (m.multiplier < 0) -1 else 0)
                     is RichTextSpanMark.TextColor -> if ((m.argb ushr 24).let { it == STYLE_ALPHA || it == CHANGE_ALPHA }) r else r.copy(color = (m.argb and 0xFFFFFF).toInt())
                     is RichTextSpanMark.Highlight -> r.copy(highlight = (m.argb and 0xFFFFFF).toInt())
@@ -655,7 +657,9 @@ internal object WriterBridge {
             val list = (b.type as? RichTextBlockType.ListItem)?.let { DocList(it.ordered, it.indent.coerceIn(0, 8), it.startNumber.takeIf { _ -> it.ordered }) }
             val align = if (b.textDirection == STYLE_ALIGNED) DocAlign.Start // its style's
                 else when (b.textAlign) { TextAlign.Center -> DocAlign.Center; TextAlign.End, TextAlign.Right -> DocAlign.End; TextAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
-            DocPara(OfficeFormats.tidy(runs), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
+            // A picture's place-holder letter without its picture (half undone): not a letter of the document.
+            val letters = runs.map { if (it.image == null && EDITOR_PICTURE_CHAR in it.text) it.copy(text = it.text.replace(EDITOR_PICTURE_CHAR.toString(), "")) else it }
+            DocPara(OfficeFormats.tidy(letters), b.headingLevel.coerceIn(0, 6), list, align) to b.isLineBreak
         }.fold(ArrayList<DocPara>()) { paras, (p, afterBreak) ->
             val prev = paras.lastOrNull()
             if (afterBreak && prev != null) paras[paras.size - 1] = prev.copy(runs = OfficeFormats.tidy(prev.runs + breakRun(prev.runs, p.runs) + p.runs))
@@ -835,6 +839,10 @@ internal object WriterBridge {
         }
     }
 
+    /** The size (sp) a picture's place-holder letter is drawn at: its own, marked by its fraction (.371) as no letter's. */
+    fun pictureSp(size: Float) = kotlin.math.floor(size) + PICTURE_FRACTION
+    fun isPictureSp(sp: Float) = kotlin.math.abs(sp - kotlin.math.floor(sp) - PICTURE_FRACTION) < 0.0005f
+    private const val PICTURE_FRACTION = 0.371f
     /** A size (pt) drawn for a paragraph's style: a few hundredths over half points. */
     fun isStyleSize(pt: Float) = ((pt - STYLE_SIZE) * 2).let { kotlin.math.abs(it - it.roundToInt()) < 0.01f }
     /** Whether a look has a paragraph style's drawn marks in it, and those marks alone (to take them off). */
@@ -2448,6 +2456,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     // Arrange › Rotate, Group, Ungroup (Phase 2): any angle; two floating ones on a page made one (Word's group), and back.
     var rotating by remember { mutableStateOf<String?>(null) }
+    var shapeOptions by remember { mutableStateOf<String?>(null) } // Picture › Shape options: the shape's key
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
@@ -3659,6 +3668,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
                         img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
                         img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
+                        // A shape (or a text box's frame): its fill, outline, size, angle and alt text in one page.
+                        if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton("Shape options", w, R.drawable.ic_tune, enabled = editable) { shapeOptions = key }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
@@ -4038,6 +4049,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (pageBordering) PageBorderDialog(sheet.border, { pageBordering = false }) { b, sides ->
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }
+    shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
+        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
+            shapeOptions = null
+            var next = PictureXml.shapeLook(img, o.fill, o.line, o.lineWidth) ?: img
+            if (o.widthPt != img.widthPt || o.heightPt != img.heightPt) next = PictureXml.resized(next, o.widthPt, o.heightPt)
+            if (o.degrees != Arrange.rotationOf(img)) next = Arrange.rotated(next, o.degrees) ?: next
+            if (o.alt != PictureXml.altOf(img)) next = PictureXml.withAlt(next, o.alt) ?: next
+            changePicture(key, next)
+            WriterLog.i("shape options $key: fill ${o.fill?.let { "%08X".format(it) }} line ${o.line?.let { "%06X".format(it and 0xFFFFFF) }} ${o.lineWidth}pt ${o.widthPt.toInt()}×${o.heightPt.toInt()} ${o.degrees}°")
+        } } } }
     rotating?.let { key -> RotateDialog(pictures[key]?.let { Arrange.rotationOf(it) } ?: 0f, { rotating = null }) { deg -> rotating = null; rotate(key, deg) } }
     equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }
     if (naming) {
@@ -4311,7 +4332,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false
         // An inch square (a line: two inches across); its picture tab sizes, wraps and places it after.
-        val (w, h) = if (shape == "line") 144f to 0.75f else 72f to 72f
+        // Long ones (sideways arrows, banners, scrolls, waves) half as tall as they are wide.
+        val (w, h) = if (shape == "line") 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(shape)) 108f to 54f else 72f to 72f
         val img = DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, kind, fill, line, 1f, w, h))
         pictures[img.key] = img
         val at = placePicture(img)

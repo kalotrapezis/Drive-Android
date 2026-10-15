@@ -739,17 +739,48 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
     }
 }
 
+/** Word's Insert › Shapes gallery, its groups in its order (DrawingML's preset names). */
+internal val SHAPE_GROUPS = listOf(
+    "Lines" to listOf("line"),
+    "Rectangles" to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
+    "Basic shapes" to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
+        "dodecagon", "pie", "chord", "teardrop", "frame", "halfFrame", "corner", "diagStripe", "plus", "plaque", "can", "cube", "bevel", "donut", "noSmoking",
+        "blockArc", "foldedCorner", "smileyFace", "heart", "lightningBolt", "sun", "moon", "cloud", "arc", "bracketPair", "bracePair", "leftBracket", "rightBracket",
+        "leftBrace", "rightBrace"),
+    "Block arrows" to listOf("rightArrow", "leftArrow", "upArrow", "downArrow", "leftRightArrow", "upDownArrow", "quadArrow", "leftRightUpArrow", "bentArrow",
+        "uturnArrow", "leftUpArrow", "bentUpArrow", "curvedRightArrow", "curvedLeftArrow", "curvedUpArrow", "curvedDownArrow", "stripedRightArrow",
+        "notchedRightArrow", "homePlate", "chevron", "rightArrowCallout", "downArrowCallout", "leftArrowCallout", "upArrowCallout", "leftRightArrowCallout",
+        "quadArrowCallout", "circularArrow"),
+    "Equation shapes" to listOf("mathPlus", "mathMinus", "mathMultiply", "mathDivide", "mathEqual", "mathNotEqual"),
+    "Flowchart" to listOf("flowChartProcess", "flowChartAlternateProcess", "flowChartDecision", "flowChartInputOutput", "flowChartPredefinedProcess",
+        "flowChartInternalStorage", "flowChartDocument", "flowChartMultidocument", "flowChartTerminator", "flowChartPreparation", "flowChartManualInput",
+        "flowChartManualOperation", "flowChartConnector", "flowChartOffpageConnector", "flowChartPunchedCard", "flowChartPunchedTape", "flowChartSummingJunction",
+        "flowChartOr", "flowChartCollate", "flowChartSort", "flowChartExtract", "flowChartMerge", "flowChartOnlineStorage", "flowChartDelay",
+        "flowChartMagneticTape", "flowChartMagneticDisk", "flowChartMagneticDrum", "flowChartDisplay"),
+    "Stars and banners" to listOf("irregularSeal1", "irregularSeal2", "star4", "star5", "star6", "star7", "star8", "star10", "star12", "star16", "star24", "star32",
+        "ribbon2", "ribbon", "ellipseRibbon2", "ellipseRibbon", "verticalScroll", "horizontalScroll", "wave", "doubleWave"),
+    "Callouts" to listOf("wedgeRectCallout", "wedgeRoundRectCallout", "wedgeEllipseCallout", "cloudCallout", "borderCallout1", "borderCallout2", "borderCallout3",
+        "accentCallout1", "accentCallout2", "accentCallout3", "callout1", "callout2", "callout3", "accentBorderCallout1", "accentBorderCallout2", "accentBorderCallout3"),
+)
+
 /**
- * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): each kind drawn as it will be, in the colours
- * chosen above it — a fill (or none, for a circle around a word) and an outline. A tap puts it at the cursor.
+ * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
+ * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
  */
 @Composable
 internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: String, fill: Int?, line: Int?) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
+    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" } }
     val colors = listOf(0xFF4472C4, 0xFFFFC114, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFF000000).map { it.toInt() }
     var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
     var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
+    fun put(kind: String) {
+        prefs.edit().putString("recentShapes", (listOf(kind) + recent.filter { it != kind }).take(10).joinToString(",")).apply()
+        insert(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null)
+    }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+        Surface(Modifier.widthIn(max = 720.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Shapes", style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -761,18 +792,79 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                     }
                     swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
                     swatches("Outline", line) { line = it }
-                    Section("Shape") {
-                        ShapePicture.KINDS.filter { !odt || it != "line" }.forEach { kind ->
-                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { insert(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null) }.padding(8.dp)) {
-                                val preview = ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 2f)
-                                androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                                    drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, if (kind == "line") size.height - 4f else size.height - 4f) }
+                    (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
+                        val shown = kinds.filter { !odt || it != "line" }
+                        if (shown.isNotEmpty()) Section(title) {
+                            shown.forEach { kind ->
+                                Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
+                                    val preview = remember(kind, fill, line) { ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 1.5f) }
+                                    androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) }
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+            }
+        }
+    }
+}
+
+/** What Picture › Shape options sets: fill and outline (null: none), the outline's width, size, angle, alt text. */
+internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String)
+
+/**
+ * Picture › Shape options (OnlyOffice's "Advanced settings", Word's Format Shape): the shape's fill and outline, the
+ * outline's width, its size (proportions locked or not) in the document's units, its angle, its text for screen readers.
+ */
+@Composable
+internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply: (ShapeOptions) -> Unit) {
+    var o by remember { mutableStateOf(start) }
+    var locked by remember { mutableStateOf(true) }
+    val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFFE53935, 0xFF8E24AA, 0xFF000000, 0xFFFFFFFF).map { it.toInt() }
+    val unit = WriterUnits.pt
+    val unitName = WriterUnits.name
+    fun shown(pt: Float) = "%.2f".format(java.util.Locale.ROOT, pt / unit).trimEnd('0').trimEnd('.')
+    var wText by remember { mutableStateOf(shown(start.widthPt)) }
+    var hText by remember { mutableStateOf(shown(start.heightPt)) }
+    var degText by remember { mutableStateOf(start.degrees.toInt().toString()) }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Shape options", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
+                        Choice("None", chosen == null) { set(null) }
+                        colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c)).border(1.dp, Color(0x55888888), CircleShape)
+                            .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                            .clickable { set(c) }) }
+                    }
+                    swatches("Fill", o.fill) { o = o.copy(fill = it) }
+                    swatches("Outline", o.line) { o = o.copy(line = it) }
+                    if (o.line != null) Section("Outline width") {
+                        listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2.25f, 3f, 4.5f, 6f).forEach { w -> Choice("${if (w % 1f == 0f) w.toInt() else w} pt", o.lineWidth == w) { o = o.copy(lineWidth = w) } }
+                    }
+                    Section("Size ($unitName)") {
+                        OutlinedTextField(wText, { v -> wText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
+                            val w = n * unit; o = if (locked) { val h = o.heightPt * w / o.widthPt.coerceAtLeast(0.1f); hText = shown(h); o.copy(widthPt = w, heightPt = h) } else o.copy(widthPt = w) } },
+                            label = { Text("Width") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                        OutlinedTextField(hText, { v -> hText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
+                            val h = n * unit; o = if (locked) { val w = o.widthPt * h / o.heightPt.coerceAtLeast(0.1f); wText = shown(w); o.copy(widthPt = w, heightPt = h) } else o.copy(heightPt = h) } },
+                            label = { Text("Height") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                        Choice("Lock proportions", locked) { locked = !locked }
+                    }
+                    Section("Rotation") {
+                        OutlinedTextField(degText, { v -> degText = v; v.toFloatOrNull()?.let { o = o.copy(degrees = ((it % 360f) + 360f) % 360f) } }, label = { Text("Degrees") }, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.widthIn(max = 130.dp))
+                    }
+                    OutlinedTextField(o.alt, { o = o.copy(alt = it) }, label = { Text("Alt text (what it shows, for screen readers)") }, maxLines = 3, modifier = Modifier.fillMaxWidth())
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(o) }) { Text("OK") }
+                }
             }
         }
     }

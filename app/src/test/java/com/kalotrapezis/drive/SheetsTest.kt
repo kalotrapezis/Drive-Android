@@ -157,7 +157,7 @@ class SheetsTest {
         edit("xl/worksheets/sheet1.xml") { it.replace("</worksheet>", """<tableParts count="1"><tablePart r:id="rIdT"/></tableParts></worksheet>""") }
         parts["xl/worksheets/_rels/sheet1.xml.rels"] = """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdT" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/></Relationships>""".toByteArray()
         fun table(style: String) { parts["xl/tables/table1.xml"] = """<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ref="A6:B9" name="T" id="1"><tableStyleInfo name="$style" showRowStripes="1" showFirstColumn="0" showLastColumn="0" showColumnStripes="0"/></table>""".toByteArray() }
-        fun fill(book: Workbook, r: Int, c: Int): Int? = book.sheet(0).let { s -> s[r, c]?.style?.let { book.styles.getOrNull(it) ?: s.looks[it - book.styles.size] }?.fill }
+        fun fill(book: Workbook, r: Int, c: Int): Int? = book.sheet(0).let { s -> s[r, c]?.style?.let { s.look(it, book.styles) }?.fill }
 
         table("Φύλλο1-style")
         var book = Sheets.read(OfficeFormats.zip(parts), "t.xlsx")
@@ -171,7 +171,7 @@ class SheetsTest {
         book = Sheets.read(OfficeFormats.zip(parts), "t.xlsx")
         val accent = fill(book, 5, 0)!!
         assertEquals(accent, SheetColors.tint(accent, 0.0))
-        assertTrue(book.styles.getOrNull(book.sheet(0)[5, 0]!!.style)?.bold ?: book.sheet(0).looks.any { it.bold })
+        assertTrue(book.sheet(0).look(book.sheet(0)[5, 0]!!.style, book.styles)!!.bold)
         assertEquals(SheetColors.tint(accent, 0.8), fill(book, 6, 0))
         assertNull(fill(book, 7, 0))
     }
@@ -196,6 +196,37 @@ class SheetsTest {
             if (picture.toRow < 0) assertEquals(name, 120f, picture.width, 2f) else assertTrue(name, picture.toCol >= 2 && picture.toRow >= 11)
             assertTrue(name, picture.image!!.invoke()!!.size > 100)
         }
+    }
+
+    /**
+     * Conditional formatting (rules.py, with openpyxl; LibreOffice's .ods of it): greater than and between, text that
+     * contains, a colour scale, data bars, a formula's stripes — in both formats.
+     */
+    @Test fun rules() {
+        for (name in listOf("rules.xlsx", "rules.ods")) {
+            val book = Sheets.read(resource(name), name); val s = book.sheet(0)
+            fun look(r: Int, c: Int) = s[r, c]?.style?.let { s.look(it, book.styles) }
+            assertEquals(name, 0xFFFFC7CE.toInt(), look(8, 0)?.fill) // 8 > 7
+            assertEquals(name, 0xFFC6EFCE.toInt(), look(2, 0)?.fill) // 2 is between 2 and 3
+            assertNull(name, look(5, 0)?.fill) // 5: neither
+            assertEquals(name, 0xFFC6EFCE.toInt(), look(4, 1)?.fill) // "apple" (A4: the second apple)
+            assertEquals(name, 0xFFC6EFCE.toInt(), look(10, 1)?.fill) // "Apple pie": without case
+            assertNull(name, look(2, 1)?.fill) // "Banana"
+            assertEquals(name, 0xFFF8696B.toInt(), look(1, 2)?.fill) // the scale's least
+            assertEquals(name, 0xFF63BE7B.toInt(), look(10, 2)?.fill) // and its most
+            assertTrue(name, look(5, 2)?.fill.let { it != null && it != 0xFFF8696B.toInt() && it != 0xFF63BE7B.toInt() })
+            assertEquals(name, 1f, s.bars.getValue(Sheet.key(10, 3)).fraction, 0.01f)
+            assertTrue(name, s.bars.getValue(Sheet.key(1, 3)).fraction < 0.2f)
+            assertEquals(name, 0xFFC6EFCE.toInt(), look(1, 4)?.fill) // row 2: even
+            assertNull(name, look(2, 4)?.fill)
+        }
+        // A rule's formula, as far as a viewer works one out.
+        val cells = CellMap().apply { set(Sheet.key(0, 0), SheetCell("5", SheetKind.Number, 5.0)); set(Sheet.key(0, 1), SheetCell("Yes", SheetKind.Text)) }
+        val at = SheetRange(0, 0, 0, 0)
+        assertEquals(true, SheetRules.formula("=AND(\$A1>3,B1=\"yes\")", 0, 0, at, cells))
+        assertEquals(false, SheetRules.formula("OR(A1<3;ISBLANK(B1))", 0, 0, at, cells))
+        assertEquals(true, SheetRules.formula("NOT(ISBLANK(B1))", 0, 0, at, cells))
+        assertNull(SheetRules.formula("VLOOKUP(A1,X:Y,2,0)>1", 0, 0, at, cells))
     }
 
     @Test fun ods() = checkBook(Sheets.read(resource("sheet.ods"), "sheet.ods"), greek = true)

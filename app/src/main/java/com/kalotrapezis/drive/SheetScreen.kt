@@ -810,7 +810,7 @@ internal class SheetPainter(
         look(cell?.style ?: sheet.rowStyles[rAt[r]] ?: sheet.colStyles[cAt[c]] ?: 0) ?: SheetStyle()
 
     /** A style by its index: the workbook's, then the sheet's own (an Excel Table's). */
-    private fun look(i: Int): SheetStyle? = styles.getOrNull(i) ?: sheet.looks.getOrNull(i - styles.size)
+    private fun look(i: Int): SheetStyle? = sheet.look(i, styles)
 
     private fun face(st: SheetStyle): Typeface {
         val key = "${st.font}|${st.bold}|${st.italic}"
@@ -888,6 +888,16 @@ internal class SheetPainter(
             fill.color = f; c.drawRect(colX[k], rowY[r], colX[k + 1], rowY[r + 1], fill)
         }
         for (g in shown) styleOf(g.r1, g.c1, at(g.r1, g.c1)).fill?.let { fill.color = it; c.drawRect(colX[g.c1], rowY[g.r1], colX[g.c2 + 1], rowY[g.r2 + 1], fill) }
+        // Conditional formatting's data bars: from the cell's left, Excel's colour fading out.
+        if (sheet.bars.isNotEmpty()) for (r in r0..r1) for (k in c0..c1) {
+            val b = sheet.bars[Sheet.key(rAt[r], cAt[k])] ?: continue
+            val l = colX[k] + 2f; val rt = l + (colX[k + 1] - colX[k] - 4f) * b.fraction
+            fill.shader = android.graphics.LinearGradient(l, 0f, rt, 0f, b.color, (b.color and 0xFFFFFF) or 0x33000000, android.graphics.Shader.TileMode.CLAMP)
+            c.drawRect(l, rowY[r] + 2f, rt, rowY[r + 1] - 2f, fill)
+            fill.shader = null
+            line.color = b.color; line.strokeWidth = 1f / s; line.pathEffect = null
+            c.drawRect(l, rowY[r] + 2f, rt, rowY[r + 1] - 2f, line)
+        }
         if (marks.found.isNotEmpty()) {
             fill.color = 0xFFFFE97A.toInt()
             for (r in r0..r1) for (k in c0..c1) if (Sheet.key(rAt[r], cAt[k]) in marks.found) {

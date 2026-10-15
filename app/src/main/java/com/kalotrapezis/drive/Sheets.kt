@@ -134,11 +134,16 @@ internal class Sheet(
     val tab: Int? = null, val hidden: Boolean = false,
     /** The file's AutoFilter: the table its header buttons filter. */
     val autoFilter: SheetRange? = null,
-    /** Looks only this sheet's cells have (an Excel Table's stripes): style indices from the workbook's count on. */
+    /** Looks only this sheet's cells have (an Excel Table's stripes, a rule's colour): style indices from [LOOKS] on. */
     val looks: List<SheetStyle> = emptyList(),
     /** Pictures, charts and text boxes over the cells. */
     val drawings: List<SheetDrawing> = emptyList(),
+    /** Conditional formatting's data bars, by cell. */
+    val bars: Map<Long, SheetBar> = emptyMap(),
 ) {
+    /** A cell's look: the workbook's [styles], or this sheet's own [looks]. */
+    fun look(i: Int, styles: List<SheetStyle>): SheetStyle? = if (i >= LOOKS) looks.getOrNull(i - LOOKS) else styles.getOrNull(i)
+
     operator fun get(r: Int, c: Int): SheetCell? = cells[key(r, c)]
     fun width(c: Int) = if (c in hiddenCols) 0f else colWidths[c] ?: defaultColWidth
     fun height(r: Int) = if (r in hiddenRows) 0f else rowHeights[r] ?: defaultRowHeight
@@ -149,6 +154,8 @@ internal class Sheet(
     }
 
     companion object {
+        /** Where a sheet's own looks are numbered from: past any workbook's styles, which an .ods adds to as it reads. */
+        const val LOOKS = 1 shl 24
         fun key(r: Int, c: Int) = (r.toLong() shl 16) or c.toLong()
         fun row(key: Long) = (key shr 16).toInt()
         fun col(key: Long) = (key and 0xFFFF).toInt()
@@ -493,6 +500,7 @@ internal object Sheets {
             val links = HashMap<Long, String>()
             val tableParts = ArrayList<String>()
             var drawingPart: String? = null
+            val rules = ArrayList<SheetRule>()
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
@@ -505,8 +513,23 @@ internal object Sheets {
                 val v = StringBuilder(); val f = StringBuilder(); val inline = StringBuilder()
                 var into: StringBuilder? = null
                 var hasV = false; var fAttrs: Triple<String?, String?, String?>? = null; var inIs = false; var phonetic = 0
+                // conditional formatting: the ranges, the rule being read, its formulas and its scale's or bar's points
+                var ext = 0; var cfRanges = emptyList<SheetRange>(); var rule: Map<String, String>? = null
+                val formula = StringBuilder(); val formulas = ArrayList<String>(); val cfvos = ArrayList<SheetCfvo>(); val colors = ArrayList<Int>()
+                fun color(at: Attributes): Int? {
+                    val base = at.a("rgb")?.let { (it.takeLast(6).toLongOrNull(16)?.toInt() ?: return null) or 0xFF000000.toInt() }
+                        ?: at.a("theme")?.toIntOrNull()?.let { theme.getOrNull(it) } ?: at.a("indexed")?.toIntOrNull()?.let { SheetColors.indexed(it, customIndexed) } ?: return null
+                    return SheetColors.tint(base, at.a("tint")?.toDoubleOrNull() ?: 0.0)
+                }
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                    if (local == "extLst") ext++
+                    if (ext > 0) return // Excel 2010's copies of rules (and other extensions) are left out
                     when (local) {
+                        "conditionalFormatting" -> cfRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef)
+                        "cfRule" -> { rule = (0 until at.length).associate { at.getLocalName(it) to at.getValue(it) }; formulas.clear(); cfvos.clear(); colors.clear() }
+                        "formula" -> if (rule != null) { formula.setLength(0); into = formula }
+                        "cfvo" -> if (rule != null) cfvos += SheetCfvo(at.a("type") ?: "min", at.a("val"))
+                        "color" -> if (rule != null) color(at)?.let { colors += it }
                         "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false }
                         "pane" -> if (views == 1 && at.a("state")?.startsWith("frozen") == true) {
                             frozenCols = at.a("xSplit")?.toDoubleOrNull()?.toInt() ?: 0
@@ -560,7 +583,20 @@ internal object Sheets {
                     }
                 }
                 override fun endElement(uri: String?, local: String, q: String?) {
+                    if (local == "extLst") { ext--; return }
+                    if (ext > 0) return
                     when (local) {
+                        "formula" -> if (rule != null) { formulas += formula.toString(); into = null }
+                        "cfRule" -> rule?.let { a ->
+                            val type = a["type"] ?: return@let
+                            fun flag(n: String, default: Boolean) = a[n]?.let { it == "1" || it == "true" } ?: default
+                            rules += SheetRule(cfRanges, a["priority"]?.toIntOrNull() ?: 1000, type, a["operator"], formulas.toList(),
+                                a["dxfId"]?.toIntOrNull()?.let { dxfs.getOrNull(it) }, a["text"], a["rank"]?.toIntOrNull() ?: 10,
+                                flag("percent", false), flag("bottom", false), flag("aboveAverage", true), flag("equalAverage", false), flag("stopIfTrue", false),
+                                scale = if (type == "colorScale") cfvos.zip(colors) else emptyList(),
+                                bar = colors.firstOrNull().takeIf { type == "dataBar" }, barEnds = if (type == "dataBar") cfvos.toList() else emptyList())
+                            rule = null
+                        }
                         "v", "f", "t" -> into = null
                         "is" -> inIs = false
                         "rPh" -> phonetic--
@@ -605,12 +641,15 @@ internal object Sheets {
                 .onFailure { WriterLog.w("Sheets: comments could not be read", it) }
             val looks = ArrayList<SheetStyle>()
             tableParts.forEach { p -> runCatching { parts(p)?.let { table(it, cells, looks) } }.onFailure { WriterLog.w("Sheets: a table could not be read", it) } }
+            val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks) }
+                .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
+            if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
             maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
-                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty())
+                drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars)
         }
 
         /** The sheet's drawing part: each anchor's picture, chart or text box, where it sits. */
@@ -751,13 +790,13 @@ internal object Sheets {
                 if (d == SheetDxf()) continue
                 val k = Sheet.key(r, c)
                 val cell = cells[k] ?: SheetCell("", SheetKind.Empty)
-                val own = styles.getOrNull(cell.style) ?: SheetStyle()
+                val own = (if (cell.style >= Sheet.LOOKS) looks.getOrNull(cell.style - Sheet.LOOKS) else styles.getOrNull(cell.style)) ?: SheetStyle()
                 val look = own.copy(
                     fill = own.fill ?: d.fill, color = own.color ?: d.color, bold = own.bold || d.bold == true, italic = own.italic || d.italic == true,
                     left = own.left ?: d.left, right = own.right ?: d.right, top = own.top ?: d.top, bottom = own.bottom ?: d.bottom,
                 )
                 if (look == own) continue
-                cells[k] = cell.copy(style = styles.size + index.getOrPut(look) { looks += look; looks.lastIndex })
+                cells[k] = cell.copy(style = Sheet.LOOKS + index.getOrPut(look) { looks += look; looks.lastIndex })
             }
         }
 
@@ -831,6 +870,8 @@ internal object Sheets {
         /** Every style:style by name: its family, parent, and the properties ("c.", "t.", "p.", "col.", "row.", "tab." + name). */
         class Raw(val family: String, val parent: String?, val props: HashMap<String, String> = HashMap())
         val raw = HashMap<String, Raw>()
+        /** A style's name by the name people see ("ConditionalStyle_1" for "ConditionalStyle_5f_1"): conditions use it. */
+        val shown = HashMap<String, String>()
         var defaultCell: Raw? = null
         val styles = ArrayList<SheetStyle>()
         val styleIndex = HashMap<String, Int>()
@@ -867,7 +908,7 @@ internal object Sheets {
             override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                 when (local) {
                     "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s ->
-                        at.a("name")?.let { raw[it] = s }
+                        at.a("name")?.let { raw[it] = s; at.a("display-name")?.let { d -> shown[d] = it } }
                         at.a("data-style-name")?.let { s.props["data-style"] = it }
                     }
                     "number-style", "currency-style", "percentage-style", "date-style", "time-style", "boolean-style", "text-style" ->
@@ -975,6 +1016,9 @@ internal object Sheets {
                 // a picture or chart: where it is, and what it holds
                 var frameDepth = 0; var frame: SheetDrawing? = null; var frameObject: String? = null; var frameImage: String? = null
                 var drawings = ArrayList<SheetDrawing>()
+                // LibreOffice's conditional formats (calcext:), in the order they come: the first wins
+                var rules = ArrayList<SheetRule>(); var cfRanges = emptyList<SheetRange>(); val entries = ArrayList<Pair<SheetCfvo, Int?>>(); var barColor: Int? = null
+                fun ranges(address: String?) = address.orEmpty().split(' ').mapNotNull { a -> rangeRef(a.split(':').joinToString(":") { it.substringAfterLast('.').replace("$", "") }) }
 
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
                     if (local == "automatic-styles") inStyles = true
@@ -992,7 +1036,7 @@ internal object Sheets {
                             name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name")
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
-                            col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList()
+                            col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList(); rules = ArrayList()
                         }
                         "table-column" -> {
                             val n = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
@@ -1029,6 +1073,10 @@ internal object Sheets {
                                 width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
                         }
                         "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
+                        "conditional-format" -> cfRanges = ranges(at.a("target-range-address"))
+                        "condition" -> odsRule(at.a("value").orEmpty(), at.a("apply-style-name"), rules.size)?.let { rules += it }
+                        "color-scale", "data-bar" -> { entries.clear(); barColor = if (local == "data-bar") hex(at.a("positive-color")) ?: 0xFF638EC6.toInt() else null }
+                        "color-scale-entry", "formatting-entry" -> entries += SheetCfvo(at.a("type") ?: "minimum", at.a("value")) to hex(at.a("color"))
                         "p", "h" -> if (inNote) { if (note.isNotEmpty()) note.append('\n'); inNoteP = true } else if (inCell) { if (paras > 0) text.append('\n'); paras++; inP = true }
                         "s" -> if (inP) repeat(at.a("c")?.toIntOrNull() ?: 1) { text.append(' ') }
                         "tab" -> if (inP) text.append('\t')
@@ -1043,12 +1091,53 @@ internal object Sheets {
                     if (skip > 0) { skip--; return }
                     if (frameDepth > 0) { frameDepth--; if (frameDepth == 0) endFrame(); return }
                     when (local) {
+                        "color-scale" -> rules += SheetRule(cfRanges, rules.size, "colorScale", scale = entries.mapNotNull { (v, c) -> c?.let { v to it } })
+                        "data-bar" -> rules += SheetRule(cfRanges, rules.size, "dataBar", bar = barColor, barEnds = entries.map { it.first })
+                    }
+                    when (local) {
                         "p", "h" -> { inP = false; inNoteP = false }
                         "annotation" -> inNote = false
                         "creator" -> inCreator = false
                         "table-cell" -> { endCell(); inCell = false }
                         "table-row" -> endRow()
                         "table" -> endTable()
+                    }
+                }
+
+                /** A LibreOffice condition ("cell-content()>5", "cell-content-is-between(1;5)", "is-true-formula(…)", "duplicate"…) as Excel's rule. */
+                fun odsRule(value: String, styleName: String?, priority: Int): SheetRule? {
+                    val st = styleName?.let { styles[style(if (it in raw) it else shown[it] ?: it)] } ?: return null
+                    val d = SheetDxf(fill = st.fill, color = st.color, bold = st.bold.takeIf { it }, italic = st.italic.takeIf { it },
+                        left = st.left, right = st.right, top = st.top, bottom = st.bottom)
+                    fun inner(name: String) = value.removePrefix(name).removePrefix("(").removeSuffix(")")
+                    fun quoted(x: String) = x.trim().removeSurrounding("\"")
+                    fun rule(type: String, operator: String? = null, formulas: List<String> = emptyList(), text: String? = null, rank: Int = 10, percent: Boolean = false, bottom: Boolean = false, above: Boolean = true, equal: Boolean = false) =
+                        SheetRule(cfRanges, priority, type, operator, formulas.map { odfFormula(it).removePrefix("=") }, d, text, rank, percent, bottom, above, equal)
+                    // calcext's ">7", "between(2,3)", "formula-is(…)"; the older style:map's "cell-content()>7", "is-true-formula(…)".
+                    Regex("""^(?:cell-content\(\)\s*)?(<=|>=|!=|<|>|=)\s*(.+)$""").matchEntire(value)?.let { m ->
+                        val op = mapOf("=" to "equal", "!=" to "notEqual", ">" to "greaterThan", ">=" to "greaterThanOrEqual", "<" to "lessThan", "<=" to "lessThanOrEqual").getValue(m.groupValues[1])
+                        return rule("cellIs", op, listOf(m.groupValues[2]))
+                    }
+                    return when {
+                        value.startsWith("between(") -> rule("cellIs", "between", SheetRules.argsOf(inner("between")))
+                        value.startsWith("not-between(") -> rule("cellIs", "notBetween", SheetRules.argsOf(inner("not-between")))
+                        value.startsWith("cell-content-is-between(") -> rule("cellIs", "between", SheetRules.argsOf(inner("cell-content-is-between")))
+                        value.startsWith("cell-content-is-not-between(") -> rule("cellIs", "notBetween", SheetRules.argsOf(inner("cell-content-is-not-between")))
+                        value.startsWith("formula-is(") -> rule("expression", formulas = listOf(inner("formula-is")))
+                        value.startsWith("is-true-formula(") -> rule("expression", formulas = listOf(inner("is-true-formula")))
+                        value.startsWith("contains-text(") -> rule("containsText", text = quoted(inner("contains-text")))
+                        value.startsWith("not-contains-text(") -> rule("notContainsText", text = quoted(inner("not-contains-text")))
+                        value.startsWith("begins-with(") -> rule("beginsWith", text = quoted(inner("begins-with")))
+                        value.startsWith("ends-with(") -> rule("endsWith", text = quoted(inner("ends-with")))
+                        value == "duplicate" -> rule("duplicateValues"); value == "unique" -> rule("uniqueValues")
+                        value == "is-error" -> rule("containsErrors"); value == "is-no-error" -> rule("notContainsErrors")
+                        value.startsWith("top-elements(") -> rule("top10", rank = inner("top-elements").trim().toIntOrNull() ?: 10)
+                        value.startsWith("bottom-elements(") -> rule("top10", rank = inner("bottom-elements").trim().toIntOrNull() ?: 10, bottom = true)
+                        value.startsWith("top-percent(") -> rule("top10", rank = inner("top-percent").trim().toIntOrNull() ?: 10, percent = true)
+                        value.startsWith("bottom-percent(") -> rule("top10", rank = inner("bottom-percent").trim().toIntOrNull() ?: 10, percent = true, bottom = true)
+                        value == "above-average" -> rule("aboveAverage"); value == "below-average" -> rule("aboveAverage", above = false)
+                        value == "above-equal-average" -> rule("aboveAverage", equal = true); value == "below-equal-average" -> rule("aboveAverage", above = false, equal = true)
+                        else -> { WriterLog.i("Sheets: a LibreOffice condition not known (${value.substringBefore('(').take(30)})"); null }
                     }
                 }
 
@@ -1116,6 +1205,10 @@ internal object Sheets {
                 }
 
                 fun endTable() {
+                    val looks = ArrayList<SheetStyle>()
+                    val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks) }
+                        .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
+                    if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
                     merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
                     maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
                     val rowHeights = HashMap<Int, Float>(); val hiddenRows = HashSet<Int>()
@@ -1133,7 +1226,7 @@ internal object Sheets {
                         frozenCols = if (view["HorizontalSplitMode"] == "2") view["HorizontalSplitPosition"]?.toIntOrNull() ?: 0 else 0,
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
-                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings,
+                        tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars,
                     )
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                 }

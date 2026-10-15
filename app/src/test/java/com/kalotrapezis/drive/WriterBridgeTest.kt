@@ -37,6 +37,23 @@ class WriterBridgeTest {
         assertEquals(DocRun("ef"), put.paras[1].runs[2])
     }
 
+    @Test fun `a picture first in a list item is as wide as itself, the number before it`() {
+        // Gallery_test.docx: a WordArt first in "1. Page 1 text." was drawn twice its width, and "Page" broke after its "P".
+        val img = DocImage("k", "word/media/a.png", 100f, 20f)
+        fun spacing(list: DocList?) = WriterBridge.toEditor(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img),
+            DocRun("Page 1 text.")), list = list)), basePt = 11f)).blocks[0].spans
+            .filterIsInstance<com.mohamedrejeb.richeditor.document.RichTextSpanMark.LetterSpacing>().single().size.value
+        assertEquals(spacing(null), spacing(DocList(true, 0)) * 2, 0.001f)
+        // …and its number is drawn in the text's look, not the picture's (a number ~100 sp wide pushed "age 1 text." down).
+        fun marker(first: List<DocRun>) = com.mohamedrejeb.richeditor.model.RichTextState().apply {
+            setRichTextDocument(WriterBridge.toEditor(OfficeDoc(listOf(DocPara(first + DocRun("Page 1 text."), list = DocList(true, 0))), basePt = 11f)))
+            WriterBridge.plainMarkersIfPictureFirst(this)
+        }.config.listMarkerStyleBehavior
+        val plain = com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.AlwaysDefault
+        assertEquals(plain, marker(listOf(DocRun(OBJECT_MARK.toString(), image = img))))
+        assertEquals(com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.InheritFromText, marker(emptyList()))
+    }
+
     @Test fun `letters typed over a chosen picture are the text's size, not the picture's`() {
         val img = DocImage("k", "word/media/a.png", 113f, 113f)
         val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Text."), DocRun(OBJECT_MARK.toString(), image = img)))), basePt = 11f)

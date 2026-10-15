@@ -214,7 +214,15 @@
 >   (`DocSection.pageFormat`); LibreOffice shows i, ii, iii for both (`roman.docx/.odt`). `GalleriesTest`,
 >   `OfficeFormatsTest` (header cases). Not done: 3-D WordArt (the user: skip it for now).
 >   **Seen, not fixed:** in the editor a numbered paragraph that starts with floating pictures (Gallery_test: the WordArt
->   and the sun before "Page 1 text.") shows its first letter apart ("P" … "age 1 text."); the file is right. Next (agreed): the same strips for WordArt, page numbers,
+>   and the sun before "Page 1 text.") shows its first letter apart ("P" … "age 1 text."); the file is right.
+>   **Fixed (15 Oct, night):** the library draws a list item's number in its first letter's look
+>   (`ListMarkerStyleBehavior.InheritFromText`), and that letter was the picture's place-holder (~100 sp, its width as
+>   letter spacing): the number was as wide as the line and the word broke. `WriterBridge.plainMarkersIfPictureFirst`
+>   (run on every text change) draws numbers in the text's look while an item starts with a picture, and the picture's
+>   letter is no longer given twice its spacing there (the number, not the picture, starts the line). `WriterBridgeTest`;
+>   on the tablet "1. [WordArt] Page 1". **Still:** "text." goes to the next line with the sun after it — the editor's
+>   picture letter (U+FFFD) is a letter to Android's line breaker, so no line breaks between a picture and the word it
+>   touches ("text.☀" is one word). Not list-only; the pages are right. Next (agreed): the same strips for WordArt, page numbers,
 >   lists, headers & footers.
 >
 > **Latest — 15 October 2026, night.** Branch `writer-library`, not pushed. **All ten of Phase 2's Word gaps are done**,

@@ -437,6 +437,23 @@ internal object WriterBridge {
         }.onFailure { WriterLog.w("editor numbers", it) }.getOrDefault(false)
     }
 
+    /**
+     * A list item's number is drawn in its first letter's look (a numbered heading's number as big as the heading) —
+     * but when that letter is a picture's, the number took the picture's size and width and pushed the words onto the
+     * next line ("P" alone by a WordArt). While an item starts with a picture, numbers are drawn in the text's own look.
+     */
+    fun plainMarkersIfPictureFirst(state: RichTextState) {
+        val paras = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }
+            .onFailure { WriterLog.w("editor markers", it) }.getOrNull() ?: return
+        val pictureFirst = runCatching { paras.any { p ->
+            p!!.javaClass.getMethod("getType").invoke(p).javaClass.simpleName.endsWith("List") &&
+                (p.javaClass.getMethod("getStartTextSpanStyle").invoke(p) as SpanStyle).fontSize.let { it.isSp && isPictureSp(it.value) }
+        } }.onFailure { WriterLog.w("editor markers", it) }.getOrDefault(false)
+        val want = if (pictureFirst) com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.AlwaysDefault
+            else com.mohamedrejeb.richeditor.paragraph.type.ListMarkerStyleBehavior.InheritFromText
+        if (state.config.listMarkerStyleBehavior != want) state.config.listMarkerStyleBehavior = want
+    }
+
     /** Replace only the displayed geometry; setRichTextDocument also clears typing Undo/Redo. */
     fun reflow(state: RichTextState, doc: OfficeDoc, pictures: MutableMap<String, DocImage>, styles: DocStyles) {
         val rich = toEditor(doc, pictures, styles)
@@ -521,11 +538,13 @@ internal object WriterBridge {
                     marks += RichTextSpanMark.FontSize(range, pictureSp(size).sp)
                     marks += RichTextSpanMark.TextColor(range, 0L)
                     // …and exactly as wide as the picture, so the text after it starts where the picture ends. Android gives
-                    // half the spacing before a letter and half after, and none before the first of a line: there, twice.
+                    // half the spacing before a letter and half after, and none before the first of a line: there, twice —
+                    // but not in a list item, whose number the editor puts first (twice there, the picture was a line and a
+                    // half wide and "Page" broke after its "P").
                     // A table's a hair narrower than the line: exactly as wide, the paragraph's closing space sometimes went on to
                     // a line of its own — a text line's gap under the table (the user's CV: "gaps between tables").
                     val room = if (img.table != null) w - 1.5f else w
-                    marks += RichTextSpanMark.LetterSpacing(range, ((room - pictureGlyph * size) * (if (at == 0) 2 else 1)).sp)
+                    marks += RichTextSpanMark.LetterSpacing(range, ((room - pictureGlyph * size) * (if (at == 0 && (p.list == null || afterBreak)) 2 else 1)).sp)
                 }
                 at += r.text.length
             }
@@ -1279,6 +1298,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     LaunchedEffect(Unit) {
         var relabeled: String? = null
         snapshotFlow { state.annotatedString.text }.collect { text ->
+            WriterBridge.plainMarkersIfPictureFirst(state)
             val n = state.config.orderedListStyleType as? FileNumbering ?: return@collect
             if (text == relabeled || !n.compound || !WriterBridge.staleNumbers(state, n)) return@collect
             n.counts.fill(0)

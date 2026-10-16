@@ -1461,7 +1461,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     LaunchedEffect(viewing, loaded, if (galleryViewing != null) styleEdits else 0) {
         if (!viewing || !loaded) return@LaunchedEffect
         if (galleryViewing == null) pages = null
-        val doc = current()
+        // the commented words tinted on the pages, as in the editor (asked: comments on the pages view) — on the screen only:
+        // Export PDF and Print lay the document out by themselves, without it, as Word leaves comments out of its PDF
+        val doc = current().let { d ->
+            val open = d.comments.filter { !it.done }.map { it.id }.toSet()
+            fun tint(x: DocPara): DocPara = x.copy(runs = x.runs.map { r -> if (r.highlight == null && r.comments.any { it in open }) r.copy(highlight = 0xFFF2CC) else r },
+                table = x.table?.let { t -> t.copy(rows = t.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = c.paras.map(::tint)) }) }) })
+            if (open.isEmpty()) d else d.copy(paras = d.paras.map(::tint))
+        }
         val parts = packageParts
         val index = IntArray(doc.paras.size) { -1 }
         pages = withContext(Dispatchers.Default) { runCatching { WriterLog.timed("laid out the pages") { OfficePages.layout(doc, documentStyles, pageIndexOf = index) { img -> img.bytes ?: img.part?.let { parts[it] } } } }.onFailure { WriterLog.e("pages", it) }.getOrNull() }

@@ -398,7 +398,8 @@ LibreOffice works them out).
       LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left); emphasis — Pulse, Spin, Grow — read,
       played (about the item's or group's middle; a grown one stays grown), chosen and saved (PowerPoint's animRot and
       animScale, LibreOffice's animateTransform) — [ ] other kinds of effect (changing a slide's animations writes them
-      as their nearest: a fade, a pulse); Start — on a click, with the one before, after it
+      as their nearest: a fade, a pulse; slides whose animations are not changed keep theirs. The user's 25 decks use only
+      fade, fly and appear — 16 Oct); Start — on a click, with the one before, after it
       (Options; the label counts clicks), in both formats (LibreOffice's "by itself" read in its .pptx too); Delay (none,
       0.5–5 s, from its click, the one it starts with, or the end of the one before); Next slide: on a click or by itself
       after 3–20 s (PowerPoint's advTm, LibreOffice's automatic transition; the time runs once the slide's effects are

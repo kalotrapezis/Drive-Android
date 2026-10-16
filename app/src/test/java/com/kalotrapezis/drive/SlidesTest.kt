@@ -243,6 +243,28 @@ class SlidesTest {
         check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
     }
 
+    /** Wipe from a side and zoom, in and out — both formats, and through LibreOffice each way. */
+    @Test fun `wipe and zoom saved`() {
+        fun lo(file: File, to: String): File? {
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
+            return dir.listFiles()!!.single { it.extension == to }
+        }
+        fun check(d: Deck) = assertEquals(listOf("wipe l in", "zoom d in", "wipe u out", "zoom d out"),
+            SlidesEdit.flat(d.slides[2].steps).map { f -> "${f.kind} ${if (f.kind == "zoom") 'd' else f.from} ${if (f.exit) "out" else "in"}" })
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.anim!!
+        val list = listOf(SlideEffect(box, "wipe", 'l', 0, 500), SlideEffect("9100", "zoom", 'd', 0, 500),
+            SlideEffect(box, "wipe", 'u', 0, 500, exit = true), SlideEffect("9100", "zoom", 'd', 0, 500, exit = true))
+        val star = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5")))
+        val out = File.createTempFile("wipe", ".pptx"); SlidesEdit.save(src, deck, SlidesEdit.start(deck).copy(added = star, anims = mapOf(2 to list)), out)
+        check(Slides.read(out)); lo(out, "odp")?.let { check(Slides.read(it)) }
+        val osrc = File("src/test/resources/slides.odp"); val odeck = Slides.read(osrc)
+        val oout = File.createTempFile("wipe", ".odp"); SlidesOdpEdit.save(osrc, odeck, SlidesEdit.start(odeck).copy(added = star, anims = mapOf(2 to list.map { if (it.target == box) it.copy(target = "o0") else it })), oout)
+        check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
+    }
+
     /** Delay and "next slide after": an effect waiting after its click, one after the one before with a wait; slides going on by themselves — both formats, and LibreOffice. */
     @Test fun `delays and slides going on by themselves`() {
         fun lo(file: File, to: String): File? {

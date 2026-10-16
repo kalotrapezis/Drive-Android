@@ -333,9 +333,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         IconButton(onClick = { effectKinds = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         Column {
                             for ((which, name, kinds) in listOf(
-                                Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly" to "fly")),
+                                Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly" to "fly", "Wipe" to "wipe", "Zoom" to "zoom")),
                                 Triple('m', "Emphasis", listOf("None" to null, "Pulse" to "pulse", "Spin" to "spin", "Grow" to "grow")),
-                                Triple('o', "Out", listOf("None" to null, "Disappear" to "appear", "Fade" to "fade", "Fly" to "fly")))) {
+                                Triple('o', "Out", listOf("None" to null, "Disappear" to "appear", "Fade" to "fade", "Fly" to "fly", "Wipe" to "wipe", "Zoom" to "zoom")))) {
                                 val k = when (which) { 'o' -> outK; 'm' -> emK; else -> inK }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(name, style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.width(72.dp).padding(start = 6.dp))
@@ -349,8 +349,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         // the side a fly comes from (or goes to), and how long each of the item's effects takes
                         fun all(f: (SlideEffect) -> SlideEffect) = set(list.map { if (it.target == id) f(it) else it })
                         val mineNow = list.filter { it.target == id }
-                        if (mineNow.any { it.kind == "fly" }) for ((label, d) in listOf("Bottom" to 'd', "Top" to 'u', "Left" to 'l', "Right" to 'r'))
-                            RibbonButton(label, w, on = mineNow.first { it.kind == "fly" }.from == d) { all { if (it.kind == "fly") it.copy(from = d) else it } }
+                        val sided = setOf("fly", "wipe")
+                        if (mineNow.any { it.kind in sided }) for ((label, d) in listOf("Bottom" to 'd', "Top" to 'u', "Left" to 'l', "Right" to 'r'))
+                            RibbonButton(label, w, on = mineNow.first { it.kind in sided }.from == d) { all { if (it.kind in sided) it.copy(from = d) else it } }
                         for ((label, ms) in listOf("Fast" to 500, "Medium" to 1000, "Slow" to 2000)) RibbonButton(label, w, on = mineNow.first().ms == ms) { all { it.copy(ms = ms) } }
                         // when its first effect starts (PowerPoint's Start)
                         val k = list.indexOfFirst { it.target == id }
@@ -721,6 +722,12 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                                 "spin" -> emph(1f, 360f * ease)
                                 "grow" -> emph(1f + 0.5f * ease, 0f)
                                 "appear" -> if (e.exit) null else shown
+                                "zoom" -> (1 - away).let { s -> floatArrayOf(s, 0f, 0f, s.coerceAtLeast(0.01f), 0f, cx, cy) }
+                                "wipe" -> {
+                                    val f = if (e.exit) 1 - k else k; val (l, t, rr, b) = listOf(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4)
+                                    when (e.from) { 'u' -> floatArrayOf(1f, 0f, 0f, 1f, 0f, cx, cy, l, t, rr, t + (b - t) * f); 'l' -> floatArrayOf(1f, 0f, 0f, 1f, 0f, cx, cy, l, t, l + (rr - l) * f, b)
+                                        'r' -> floatArrayOf(1f, 0f, 0f, 1f, 0f, cx, cy, rr - (rr - l) * f, t, rr, b); else -> floatArrayOf(1f, 0f, 0f, 1f, 0f, cx, cy, l, b - (b - t) * f, rr, b) }
+                                }
                                 "fly" -> when (e.from) {
                                     'l' -> floatArrayOf(1f, -(item.x + item.w) * away, 0f); 'r' -> floatArrayOf(1f, (deck.width - item.x) * away, 0f)
                                     'u' -> floatArrayOf(1f, 0f, -(item.y + item.h) * away); else -> floatArrayOf(1f, 0f, (deck.height - item.y) * away)

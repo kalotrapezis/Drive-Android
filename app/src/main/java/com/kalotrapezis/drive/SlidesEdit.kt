@@ -306,7 +306,8 @@ internal object SlidesEdit {
                     last = fx
                     val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
                     val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
-                    val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }
+                    val side = when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }
+                    val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to side; "wipe" -> 22 to side; "zoom" -> 53 to 16
                         "spin" -> 8 to 0; "grow" -> 6 to 0; "pulse" -> 26 to 0; else -> 10 to 0 }
                     val c = id()
                     // shown at the start of an entrance; hidden at the end of an exit (at once for disappear)
@@ -327,6 +328,13 @@ internal object SlidesEdit {
                                 """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="$v0"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="$v1"/></p:val></p:tav></p:tavLst></p:anim>"""
                             }
                         }
+                        // PowerPoint's wipe names the way it goes: from the bottom it wipes up
+                        "wipe" -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="wipe(${when (fx.from) { 'u' -> "down"; 'l' -> "right"; 'r' -> "left"; else -> "up" }})"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
+                        // zoom: from nothing to its size (or back), fading as it goes
+                        "zoom" -> listOf("ppt_w", "ppt_h").joinToString("") { attr ->
+                            val (v0, v1) = if (fx.exit) "#$attr" to "0" else "0" to "#$attr"
+                            """<p:anim calcmode="lin" valueType="num"><p:cBhvr><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="$v0"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="$v1"/></p:val></p:tav></p:tavLst></p:anim>"""
+                        } + """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
                         else -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
                     }
                     """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.emphasis) "emph" else if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="$node"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>"""

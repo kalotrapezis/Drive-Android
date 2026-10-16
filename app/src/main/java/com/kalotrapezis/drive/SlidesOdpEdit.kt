@@ -208,10 +208,10 @@ internal object SlidesOdpEdit {
         fun secs(ms: Int) = String.format(Locale.ROOT, "%.3fs", ms / 1000f)
         /** [fx] on [target], in LibreOffice's presets, starting [node] (on-click, with-previous, after-previous). */
         fun effect(fx: SlideEffect, target: String, node: String): String {
-            val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"
+            val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"; "wipe" -> "wipe"; "zoom" -> "zoom"
                 "spin" -> "spin"; "grow" -> "grow-and-shrink"; "pulse" -> "flash-bulb"; else -> if (fx.exit) "fade-out" else "fade-in" }
             val cls = if (fx.emphasis) "emphasis" else if (fx.exit) "exit" else "entrance"
-            val sub = if (fx.kind == "fly") """ presentation:preset-sub-type="${OdpEffects.subtype(fx.from)}"""" else ""
+            val sub = when (fx.kind) { "fly", "wipe" -> """ presentation:preset-sub-type="${OdpEffects.subtype(fx.from)}""""; "zoom" -> """ presentation:preset-sub-type="${if (fx.exit) "out" else "in"}""""; else -> "" }
             val begin = if (fx.exit && fx.kind != "appear") secs(fx.ms - 1) else "0s"
             val set = if (fx.emphasis) "" else """<anim:set smil:begin="$begin" smil:dur="0.001s" smil:fill="hold" smil:targetElement="$target" smil:attributeName="visibility" smil:to="${if (fx.exit) "hidden" else "visible"}"/>"""
             fun transform(type: String, by: String, back: Boolean = false) =
@@ -228,6 +228,11 @@ internal object SlidesOdpEdit {
                         val there = if (at == edge.first) edge.second else at
                         """<anim:animate smil:dur="${secs(fx.ms)}" smil:fill="hold" smil:targetElement="$target" smil:attributeName="$at" smil:values="${if (fx.exit) "$at;$there" else "$there;$at"}" smil:keyTimes="0;1"/>"""
                     }
+                }
+                // LibreOffice's bar wipe: top to bottom (reversed: from the bottom), left to right (reversed: from the right)
+                "wipe" -> """<anim:transitionFilter smil:dur="${secs(fx.ms)}" smil:targetElement="$target" smil:type="barWipe" smil:subtype="${if (fx.from == 'l' || fx.from == 'r') "leftToRight" else "topToBottom"}"${if (fx.from == 'd' || fx.from == 'r') " smil:direction=\"reverse\"" else ""}${if (fx.exit) " smil:mode=\"out\"" else ""}/>"""
+                "zoom" -> listOf("width", "height").joinToString("") { at ->
+                    """<anim:animate smil:dur="${secs(fx.ms)}" smil:fill="hold" smil:targetElement="$target" smil:attributeName="$at" smil:values="${if (fx.exit) "$at;0" else "0;$at"}" smil:keyTimes="0;1"/>"""
                 }
                 else -> """<anim:transitionFilter smil:dur="${secs(fx.ms)}" smil:targetElement="$target" smil:type="fade" smil:subtype="crossfade"${if (fx.exit) " smil:mode=\"out\"" else ""}/>"""
             }

@@ -380,7 +380,7 @@ LibreOffice works them out).
       place, or deleted (its animation with it); a group chosen as a whole (moved, sized, coloured, animated, deleted; a
       second tap types into its shape)
 - [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Options: its side and speed; Apply to
-      all; Play) and an item's entrance and exit (Appear/Disappear, Fade in/out, Fly in/out; Options: the fly's side,
+      all; Play) and an item's entrance and exit (Appear/Disappear, Fade in/out, Fly in/out, Wipe and Zoom in/out — 16 Oct; Options: the fly's or wipe's side,
       Fast/Medium/Slow; Earlier/Later in the clicks; Play), saved as PowerPoint's XML; files' exits read and played —
       LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left); emphasis — Pulse, Spin, Grow — read,
       played (about the item's or group's middle; a grown one stays grown), chosen and saved (PowerPoint's animRot and

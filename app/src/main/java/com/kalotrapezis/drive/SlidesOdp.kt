@@ -262,7 +262,7 @@ internal object SlidesOdp {
                         // when it starts within its click: its par's begin (LibreOffice groups effects by it)
                         val at = secs((fx.parentNode as? Element)?.a(SMIL, "begin"))?.let { (it * 1000).toInt() } ?: 0
                         val kind = if (fx.a(PRES, "preset-class") == "emphasis") (if ("spin" in id) "spin" else if ("grow" in id) "grow" else "pulse")
-                            else if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade"
+                            else if ("appear" in id) "appear" else if ("fly" in id) "fly" else if ("wipe" in id) "wipe" else if ("zoom" in id) "zoom" else "fade"
                         val start = when (fx.a(PRES, "node-type")) { "with-previous" -> 'w'; "after-previous" -> 'a'; else -> 'c' }
                         SlideEffect(target, kind, OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit", start = start)
                     }

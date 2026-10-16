@@ -259,7 +259,7 @@ internal object Slides {
                         // a behaviour played there and back (autoRev) lasts twice its length
                         val ms = e.below("cTn").mapNotNull { c -> c.attr("dur")?.toIntOrNull()?.let { if (c.attr("autoRev") == "1") it * 2 else it } }.filter { it > 1 }.maxOrNull() ?: 500
                         val kind = if (e.attr("presetClass") == "emph") when (e.attr("presetID")) { "8" -> "spin"; "6" -> "grow"; else -> "pulse" }
-                            else when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; else -> "fade" }
+                            else when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; "22" -> "wipe"; "23", "53" -> "zoom"; else -> "fade" }
                         val from = when (e.attr("presetSubtype")) { "1" -> 'u'; "2" -> 'r'; "4" -> 'd'; "8" -> 'l'; else -> 'd' }
                         val start = when (e.attr("nodeType")) { "withEffect" -> 'w'; "afterEffect" -> 'a'; else -> 'c' }
                         SlideEffect(target, kind, from, at + delay(e), ms, exit = e.attr("presetClass") == "exit", start = start)
@@ -500,6 +500,7 @@ internal object Slides {
             if (state != null) {
                 c.translate(state[1], state[2])
                 if (state.size >= 7) { c.rotate(state[4], state[5], state[6]); c.scale(state[3], state[3], state[5], state[6]) }
+                if (state.size >= 11) c.clipRect(state[7], state[8], state[9], state[10]) // a wipe: the part shown so far
                 if (state[0] < 1f) c.saveLayerAlpha(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4, (state[0] * 255).toInt().coerceIn(0, 255))
             }
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)

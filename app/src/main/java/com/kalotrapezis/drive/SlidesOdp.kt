@@ -136,7 +136,8 @@ internal object SlidesOdp {
             if (paras.none { p -> p.runs.any { it.text.isNotBlank() } }) return null
             fun g(key: String) = shapeProp("g.$key")
             val anchor = when (g("textarea-vertical-align")) { "middle" -> 'c'; "bottom" -> 'b'; else -> 't' }
-            return SlideText(paras, anchor, floatArrayOf(pt(g("padding-left")) ?: 7.2f, pt(g("padding-top")) ?: 3.6f, pt(g("padding-right")) ?: 7.2f, pt(g("padding-bottom")) ?: 3.6f))
+            return SlideText(paras, anchor, floatArrayOf(pt(g("padding-left")) ?: 7.2f, pt(g("padding-top")) ?: 3.6f, pt(g("padding-right")) ?: 7.2f, pt(g("padding-bottom")) ?: 3.6f),
+                shrink = g("shrink-to-fit") == "true" || g("fit-to-size") == "shrink-to-fit")
         }
 
         fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean) {

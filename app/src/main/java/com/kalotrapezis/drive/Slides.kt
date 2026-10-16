@@ -18,7 +18,8 @@ import kotlin.math.max
 internal class SlideRun(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: Int, val font: String?)
 internal class SlidePara(val runs: List<SlideRun>, val align: Char, val level: Int, val bullet: String?, val bulletColor: Int?,
     val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float)
-internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true)
+/** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box. */
+internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false)
 
 /**
  * A shape's own outline (DrawingML's custGeom): its moves (0), lines (1), curves (2) and closes (4), the points from 0 to 1
@@ -301,9 +302,15 @@ internal object Slides {
             val cols = t.kid("tblGrid")?.kids("gridCol").orEmpty().map { (it.attr("w")?.toFloatOrNull() ?: 0f) / EMU }
             val trs = t.kids("tr")
             val pr = t.kid("tblPr")
-            val styled = pr?.kid("tableStyleId") != null || t.ownerDocument.documentElement.below("tableStyleId").isNotEmpty()
+            // PowerPoint's Medium Style 2 (its default, banded in an accent) by its id; any other style: plain, with grid lines
+            val id = pr?.kid("tableStyleId")?.textContent?.trim()?.uppercase()
+            val medium = mapOf("{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}" to "dk1", "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}" to "accent1",
+                "{21E4AEA4-8DFA-4A89-87EB-49C32662AFE8}" to "accent2", "{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}" to "accent3",
+                "{00A15C55-8517-42AA-B614-E9B94910E393}" to "accent4", "{7DF18680-E054-41AD-8BC1-D1AEF772440D}" to "accent5",
+                "{93296810-A885-4BE3-A3E7-6D5BEEA58F35}" to "accent6")[id]
+            val styled = medium != null
             val first = pr?.attr("firstRow") == "1"; val banded = pr?.attr("bandRow") == "1"
-            val accent = scheme["accent1"] ?: 0x4472C4
+            val accent = scheme[medium ?: "accent1"] ?: 0x4472C4
             val cells = trs.mapIndexed { r, tr -> tr.kids("tc").map { tc ->
                 val own = fill(tc.kid("tcPr"))
                 val look = when { own != null -> own; !styled -> null; first && r == 0 -> accent or 0xFF000000.toInt()
@@ -355,7 +362,8 @@ internal object Slides {
                 SlidePara(runs, when (pAttr("algn")) { "ctr" -> 'c'; "r" -> 'r'; "just" -> 'j'; else -> 'l' }, lvl, bullet,
                     pKid("buClr")?.let(::color), pt("marL"), pt("indent"), spacing("spcBef") * scale, spacing("spcAft") * scale, line * (1 - (1 - scale) / 5))
             }
-            return SlideText(out, anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none")
+            return SlideText(out, anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
+                bodyPr.any { it.kid("normAutofit") != null })
         }
     }
 
@@ -461,7 +469,7 @@ internal object Slides {
         }
     }
 
-    private fun layouts(t: SlideText, w: Float): List<Pair<SlidePara, StaticLayout>> {
+    private fun layouts(t: SlideText, w: Float, k: Float = 1f): List<Pair<SlidePara, StaticLayout>> {
         val width = max(1f, w - t.insets[0] - t.insets[2])
         return t.paras.map { p ->
             val sb = SpannableStringBuilder()
@@ -470,7 +478,7 @@ internal object Slides {
             for (r in p.runs) {
                 val s = sb.length; sb.append(r.text); val e = sb.length
                 if (e == s) continue
-                sb.setSpan(android.text.style.AbsoluteSizeSpan(r.size.toInt().coerceAtLeast(1)), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sb.setSpan(android.text.style.AbsoluteSizeSpan((r.size * k).toInt().coerceAtLeast(1)), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sb.setSpan(android.text.style.ForegroundColorSpan(r.color), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 val style = (if (r.bold) android.graphics.Typeface.BOLD else 0) or (if (r.italic) android.graphics.Typeface.ITALIC else 0)
                 if (style != 0) sb.setSpan(android.text.style.StyleSpan(style), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -479,7 +487,7 @@ internal object Slides {
             }
             // the first line from marL + indent (a bullet hanging), the rest from marL
             if (sb.isNotEmpty()) sb.setSpan(android.text.style.LeadingMarginSpan.Standard(lead.toInt().coerceAtLeast(0), p.marL.toInt().coerceAtLeast(0)), 0, sb.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-            val size = p.runs.firstOrNull()?.size ?: 18f
+            val size = (p.runs.firstOrNull()?.size ?: 18f) * k
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = size; color = p.runs.firstOrNull()?.color ?: 0xFF000000.toInt() }
             val align = when (p.align) { 'c' -> Layout.Alignment.ALIGN_CENTER; 'r' -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
             val text: CharSequence = if (sb.isEmpty()) " " else sb
@@ -492,9 +500,13 @@ internal object Slides {
 
     /** A text body in its box: its paragraphs one under the other, from the top, the middle or the bottom. */
     fun text(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
-        val laid = layouts(t, w)
-        val total = laid.sumOf { (p, l) -> (p.before + l.height + p.after).toDouble() }.toFloat()
         val room = h - t.insets[1] - t.insets[3]
+        fun height(l: List<Pair<SlidePara, StaticLayout>>) = l.sumOf { (p, s) -> (p.before + s.height + p.after).toDouble() }.toFloat()
+        // shrink on overflow: a size a twentieth smaller each time, until the words fit (no smaller than a third)
+        var k = 1f
+        var laid = layouts(t, w)
+        while (t.shrink && height(laid) > room && k > 0.35f) { k -= 0.05f; laid = layouts(t, w, k) }
+        val total = height(laid)
         var top = y + t.insets[1] + when (t.anchor) { 'c' -> (room - total) / 2; 'b' -> room - total; else -> 0f }
         for ((p, l) in laid) {
             top += p.before

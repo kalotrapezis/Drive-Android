@@ -222,6 +222,7 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
         val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
+        DriveRules.chosenFolders = getSharedPreferences("drive", MODE_PRIVATE).getStringSet("systemFolders", null).orEmpty().toSet()
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
         setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office) } }
     }
@@ -1747,6 +1748,7 @@ private fun DriveTab(
     var grid by remember { mutableStateOf(false) }
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
+    var systemFoldersOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
     var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
@@ -1893,9 +1895,16 @@ private fun DriveTab(
         setSort = { sort = it },
         openTags = { toolsOpen = false; tagsOpen = true },
         openTrash = { selectedTag = null; searchQuery = ""; setPane(DrivePane.Files); toolsOpen = false; openFolder("Trash") },
+        openSystemFolders = { toolsOpen = false; systemFoldersOpen = true },
         usage = spaceUsage,
         dismiss = { toolsOpen = false },
     )
+    if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
+        DriveRules.chosenFolders = chosen
+        context.getSharedPreferences("drive", android.content.Context.MODE_PRIVATE).edit().putStringSet("systemFolders", chosen).apply()
+        systemFoldersOpen = false
+        refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+    }
     if (tagsOpen) DriveTagsSheet(
         tags = metadata.allTags(root),
         selectedTag = selectedTag,
@@ -2366,6 +2375,7 @@ private fun driveItemIcon(item: DriveItem): Int = when {
     // System folders carry their emblem in the folder itself, so they read as different at a glance.
     item.relativePath == "Documents" -> R.drawable.ic_folder_documents
     item.relativePath == "Documents/Scanned Documents" -> R.drawable.ic_folder_scans
+    DriveRules.isSystem(item.relativePath) -> systemFolderLook(item.relativePath)?.first ?: R.drawable.ic_folder
     item.isDirectory -> R.drawable.ic_folder
     else -> R.drawable.ic_file
 }
@@ -2408,7 +2418,64 @@ private fun driveItemIconDescription(item: DriveItem): String = if (item.relativ
 
 private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
-@Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
+@Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = when {
+    item.relativePath == "Trash" -> DriveTrashAccent
+    folderColor == null && DriveRules.isSystem(item.relativePath) -> systemFolderLook(item.relativePath)?.second ?: driveItemColor(item, null)
+    else -> driveItemColor(item, folderColor)
+}
+
+/** A chosen system folder's emblem and colour, told apart at a glance (asked 16 Oct). */
+private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
+    "Music" -> R.drawable.ic_folder_music to Color(0xFFE5739D)
+    "Videos" -> R.drawable.ic_folder_videos to Color(0xFFE3685F)
+    "Finance" -> R.drawable.ic_folder_finance to Color(0xFF55A96B)
+    "Work" -> R.drawable.ic_folder_work to Color(0xFFA1887F)
+    "Education" -> R.drawable.ic_folder_education to Color(0xFF4F86E8)
+    "Games" -> R.drawable.ic_folder_games to Color(0xFF9C7BE0)
+    "Development" -> R.drawable.ic_folder_development to Color(0xFF4DB6AC)
+    "AI" -> R.drawable.ic_folder_ai to Color(0xFFD08CE8)
+    "Health" -> R.drawable.ic_folder_health to Color(0xFFEF5350)
+    "Travel" -> R.drawable.ic_folder_travel to Color(0xFF29B6F6)
+    "Family" -> R.drawable.ic_folder_family to Color(0xFFE0A030)
+    "Books" -> R.drawable.ic_folder_books to Color(0xFFC0884F)
+    "Others" -> R.drawable.ic_folder_others to Color(0xFF9AA3A4)
+    else -> null
+}
+
+/** Files tools › System folders: every folder's emblem, tap to choose or leave it, OK to keep the choice (asked 16 Oct). */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable private fun SystemFoldersSheet(dismiss: () -> Unit, save: (Set<String>) -> Unit) {
+    var chosen by remember { mutableStateOf(DriveRules.chosenFolders) }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("System folders", style = MaterialTheme.typography.titleLarge)
+            Text("Folders Tetra keeps in Files for sorting things into, each with its own picture. Documents is always there. " +
+                "A folder left out later stays, as an ordinary folder, with everything in it.", style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DriveRules.OPTIONAL_FOLDERS.forEach { name ->
+                    val (icon, tint) = systemFolderLook(name) ?: (R.drawable.ic_folder to Color.Gray)
+                    val on = name in chosen
+                    Surface(color = if (on) tint.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f), shape = MaterialTheme.shapes.large,
+                        border = androidx.compose.foundation.BorderStroke(if (on) 2.dp else 1.dp, if (on) tint else Color.White.copy(alpha = 0.15f)),
+                        modifier = Modifier.width(96.dp).clickable { chosen = if (on) chosen - name else chosen + name }) {
+                        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box {
+                                Icon(painterResource(icon), null, tint = tint, modifier = Modifier.size(44.dp))
+                                if (on) Icon(painterResource(R.drawable.ic_check), "Chosen", tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd).size(18.dp).background(tint, CircleShape).padding(2.dp))
+                            }
+                            Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = dismiss) { Text("Cancel", color = islandContentColor()) }
+                TextButton(onClick = { save(chosen) }) { Text("OK", color = islandContentColor()) }
+            }
+        }
+    }
+}
 
 @Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, new: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
     IslandBottomBar(expand, visible, modifier) {
@@ -2464,6 +2531,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
     setSort: (DriveSort) -> Unit,
     openTags: () -> Unit,
     openTrash: () -> Unit,
+    openSystemFolders: () -> Unit,
     usage: DriveSpaceUsage?,
     dismiss: () -> Unit,
 ) {
@@ -2474,6 +2542,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DriveActionTile(R.drawable.ic_tag, "Tags") { openTags() }
                 DriveActionTile(R.drawable.ic_delete, "Trash") { openTrash() }
+                DriveActionTile(R.drawable.ic_folder_others, "System folders") { openSystemFolders() }
             } }
             item { Text("Sort Files", style = MaterialTheme.typography.titleMedium) }
             item { DriveWideAction(R.drawable.ic_sort_name, if (sort == DriveSort.Name) "Name ✓" else "Name") { setSort(DriveSort.Name); dismiss() } }

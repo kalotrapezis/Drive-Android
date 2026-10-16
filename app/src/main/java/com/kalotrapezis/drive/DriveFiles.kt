@@ -49,7 +49,15 @@ object DriveRules {
      * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
      * are always there, marked with an emblem, and cannot be renamed, moved or put in the Trash — their contents can.
      */
-    val SYSTEM_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    private val REQUIRED_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    /**
+     * Folders to sort things into, each with its own emblem (asked 16 Oct), chosen in Files tools › System folders.
+     * A chosen one is a system folder like Documents; one no longer chosen stays, as an ordinary folder.
+     */
+    val OPTIONAL_FOLDERS = listOf("Music", "Videos", "Finance", "Work", "Education", "Games", "Development", "AI",
+        "Health", "Travel", "Family", "Books", "Others")
+    @Volatile var chosenFolders: Set<String> = emptySet()
+    val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
     fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
     private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }

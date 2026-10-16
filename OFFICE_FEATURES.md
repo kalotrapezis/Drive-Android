@@ -142,7 +142,9 @@ one pass once the tabs' features are done.
       and as LibreOffice's enhanced geometry; files' shapes of any preset (with their adjustments and theme colours) and
       LibreOffice's own custom shapes drawn; **Picture › Shape options**: fill, outline and its width, size (locked or
       not), rotation, alt text; lines with an arrow at one or both ends (16 Oct; .docx only, kept when restyled) —
-      [ ] connectors, freeform
+      files' connectors (straight with their arrowheads; bent and curved from Word's presets) and freeforms drawn —
+      [ ] inserting connectors joined to shapes, freeform drawing as a shape, arrowheads on bent/curved connectors (none of
+      the user's 322 .docx files have them, 16 Oct)
 - [x] A shape's own words (16 Oct): Shape › Add text, in its middle, centred (Word's txbx in the wps:wsp, LibreOffice's
       words in the custom shape; LibreOffice shows them); Edit text after
 - [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor

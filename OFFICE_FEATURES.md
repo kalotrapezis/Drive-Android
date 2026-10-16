@@ -334,7 +334,10 @@ LibreOffice works them out).
       saved into the file (LibreOffice opens it)
 - [x] Insert table on a slide (2×2 to 5×4, PowerPoint's default banded style; a cell tapped is typed into); GIFs play on
       the TV too; the words' box takes the keyboard at once (16 Oct)
-- [ ] Transitions and animations (show; later edit)
+- [x] Transitions and animations shown when presenting (16 Oct): push, gallery, cover, pull, wipe, cut, fade (any other
+      as a fade), each its own length; click animations — appear, fade, fly in from its side (others as a fade), the
+      clicks in turn, those that start by themselves too, a click during one ends it; on the TV the same frames
+- [ ] Choosing a slide's transition and an object's animation (the ribbon's Transitions and Animations tabs)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
       the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)

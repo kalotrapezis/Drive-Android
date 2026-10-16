@@ -92,4 +92,18 @@ class SlidesTest {
             assertTrue(lo.slides[1].items.any { words(it) == "Tetra Slides, edited" })
         }
     }
+
+    /** Transitions and click animations (effects.py's deck: PowerPoint's own XML in python-pptx's slides). */
+    @Test fun `transitions and click animations read`() {
+        val d = Slides.read(File("src/test/resources/effects.pptx"))
+        assertEquals(null, d.slides[0].transition)
+        d.slides[1].transition!!.let { assertEquals("push", it.kind); assertEquals("u", it.dir); assertEquals(1000, it.ms) }
+        assertEquals("fade", d.slides[2].transition!!.kind)
+        val steps = d.slides[2].steps
+        assertEquals(2, steps.size); assertTrue(steps.none { it.auto })
+        val box = d.slides[2].items.first { words(it) == "Fades in" }
+        val star = d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }
+        assertEquals(box.anim, steps[0].effects.single().target); assertEquals("fade", steps[0].effects.single().kind)
+        steps[1].effects.single().let { assertEquals(star.anim, it.target); assertEquals("fly", it.kind); assertEquals('l', it.from); assertEquals(1000, it.ms) }
+    }
 }

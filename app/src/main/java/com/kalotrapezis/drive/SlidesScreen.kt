@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -439,15 +440,100 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
 }
 
 /**
- * Present: the slides full screen and sideways on black, one at a time — swiped, or tapped on the right (next) and the
- * left (back); the shown slides only (hidden ones skipped); back to the list with Back.
+ * Present: the slides full screen and sideways on black, one at a time; a tap on the right or a swipe to the left goes on
+ * (the next click's effects, else the next slide with its transition), on the left or the other way back (the slide
+ * before, shown whole); the shown slides only (hidden ones skipped); back to the list with Back.
  */
 @Composable
 private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
     val context = LocalContext.current
     val shown = remember(deck) { deck.slides.indices.filter { !deck.slides[it].hidden || it == start } }
-    val pager = rememberPagerState(initialPage = shown.indexOf(start).coerceAtLeast(0)) { shown.size }
-    val scope = rememberCoroutineScope()
+    var page by remember { mutableStateOf(shown.indexOf(start).coerceAtLeast(0)) }
+    // the slide's clicks done; the one playing (and when it began); the slide it came from, and when, for its transition
+    var step by remember { mutableStateOf(0) }
+    var playing by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    var from by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    val now by androidx.compose.runtime.produceState(System.nanoTime()) { while (true) androidx.compose.runtime.withFrameNanos { value = System.nanoTime() } }
+    fun slide(p: Int) = deck.slides[shown[p]]
+    fun ms(t: Long) = (now - t) / 1_000_000
+    // a group of effects lasts as long as its latest one
+    fun length(g: SlideStep) = g.effects.maxOfOrNull { it.delay + it.ms } ?: 0
+    fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}") }
+    // the groups that start by themselves: one after the other, at the slide's start and after a click
+    LaunchedEffect(page, step, playing, from) {
+        val steps = slide(page).steps
+        playing?.let { (g, t) -> val left = length(steps[g]) - (System.nanoTime() - t) / 1_000_000; if (left > 0) kotlinx.coroutines.delay(left); step = g + 1; playing = null; return@LaunchedEffect }
+        from?.let { (_, t) -> val left = (slide(page).transition?.ms ?: 0) - (System.nanoTime() - t) / 1_000_000; if (left > 0) kotlinx.coroutines.delay(left); from = null; return@LaunchedEffect }
+        if (step < steps.size && steps[step].auto) play(step)
+    }
+    fun next() {
+        val steps = slide(page).steps
+        when {
+            playing != null -> { step = playing!!.first + 1; playing = null } // a click while it plays: it ends at once, as PowerPoint's
+            from != null -> from = null
+            step < steps.size -> play(step)
+            page < shown.lastIndex -> { from = page to System.nanoTime(); page++; step = 0; playing = null; WriterLog.i("Slides: slide ${page + 1}${slide(page).transition?.let { ", ${it.kind}" } ?: ""}") }
+            else -> close()
+        }
+    }
+    fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
+    /** An item's look now: hidden until its click, then appearing, fading in or flying in from its side. */
+    fun look(sl: Slide, p: Int): (SlideItem) -> FloatArray? {
+        val targets = HashMap<String, Pair<Int, SlideEffect>>()
+        sl.steps.forEachIndexed { g, st -> st.effects.forEach { e -> targets.putIfAbsent(e.target, g to e) } }
+        val done = if (p == page) step else sl.steps.size
+        val play = if (p == page) playing else null
+        return { item ->
+            val (g, e) = item.anim?.let(targets::get) ?: (null to null)
+            when {
+                g == null || e == null || g < done -> floatArrayOf(1f, 0f, 0f)
+                play?.first == g -> {
+                    val t = ((ms(play.second) - e.delay).toFloat() / e.ms.coerceAtLeast(1))
+                    if (t < 0f) null else {
+                        val k = t.coerceAtMost(1f); val ease = 1 - (1 - k) * (1 - k)
+                        when (e.kind) {
+                            "appear" -> floatArrayOf(1f, 0f, 0f)
+                            "fly" -> when (e.from) {
+                                'l' -> floatArrayOf(1f, -(item.x + item.w) * (1 - ease), 0f); 'r' -> floatArrayOf(1f, (deck.width - item.x) * (1 - ease), 0f)
+                                'u' -> floatArrayOf(1f, 0f, -(item.y + item.h) * (1 - ease)); else -> floatArrayOf(1f, 0f, (deck.height - item.y) * (1 - ease))
+                            }
+                            else -> floatArrayOf(k, 0f, 0f)
+                        }
+                    }
+                }
+                else -> null
+            }
+        }
+    }
+    /** The slide now, in a [w]×[h] box: the one before under it while its transition plays. */
+    fun render(c: android.graphics.Canvas, w: Float, h: Float) {
+        val k = minOf(w / deck.width, h / deck.height)
+        val sw = deck.width * k; val sh = deck.height * k
+        c.save(); c.translate((w - sw) / 2, (h - sh) / 2); c.clipRect(0f, 0f, sw, sh)
+        val cur = slide(page)
+        val tr = cur.transition
+        val f = from
+        val t = if (f != null && tr != null) (ms(f.second).toFloat() / tr.ms.coerceAtLeast(1)).coerceIn(0f, 1f) else 1f
+        val e = 1 - (1 - t) * (1 - t)
+        if (f != null && tr != null && t < 1f) {
+            val old = slide(f.first)
+            fun drawOld(dx: Float = 0f, dy: Float = 0f) { c.save(); c.translate(dx, dy); Slides.draw(c, deck, old, k, look = look(old, f.first)); c.restore() }
+            fun drawNew(dx: Float = 0f, dy: Float = 0f) { c.save(); c.translate(dx, dy); Slides.draw(c, deck, cur, k, look = look(cur, page)); c.restore() }
+            // push and gallery: both move; cover: the new one over; pull: the old one away; wipe: the new one uncovered; the rest fade
+            val (ux, uy) = when (tr.dir) { "r" -> 1f to 0f; "u" -> 0f to -1f; "d" -> 0f to 1f; else -> -1f to 0f }
+            when (tr.kind) {
+                "push", "gallery", "conveyor", "pan" -> { drawOld(ux * sw * e, uy * sh * e); drawNew(-ux * sw * (1 - e), -uy * sh * (1 - e)) }
+                "cover" -> { drawOld(); drawNew(-ux * sw * (1 - e), -uy * sh * (1 - e)) }
+                "pull" -> { drawNew(); drawOld(ux * sw * e, uy * sh * e) }
+                "wipe" -> { drawOld(); c.save()
+                    if (ux != 0f) { if (ux < 0) c.clipRect(sw * (1 - e), 0f, sw, sh) else c.clipRect(0f, 0f, sw * e, sh) } else { if (uy < 0) c.clipRect(0f, sh * (1 - e), sw, sh) else c.clipRect(0f, 0f, sw, sh * e) }
+                    drawNew(); c.restore() }
+                "cut" -> drawNew()
+                else -> { drawOld(); c.saveLayerAlpha(0f, 0f, sw, sh, (e * 255).toInt()); drawNew(); c.restore() }
+            }
+        } else Slides.draw(c, deck, cur, k, look = look(cur, page))
+        c.restore()
+    }
     // PowerPoint's presenting tools: the pen (ink kept per slide while presenting), the laser (a red dot under the finger), a black screen
     var tool by remember { mutableStateOf<String?>(null) }
     var black by remember { mutableStateOf(false) }
@@ -488,44 +574,46 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
             }
             onDispose { }
         }
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
-            HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = tool == null) { page ->
-                val s = deck.slides[shown[page]]
-                Box(Modifier.fillMaxSize().pointerInput(page, tool) {
-                    if (tool == null) detectTapGestures { o -> scope.launch { if (o.x > size.width / 2) { if (page < shown.lastIndex) pager.animateScrollToPage(page + 1) else close() } else if (page > 0) pager.animateScrollToPage(page - 1) } }
-                }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true).pointerInput(page, tool) {
-                        // the pen draws (points as parts of the slide, so the ink stays put); the laser follows the finger
-                        if (tool != null) detectDragGestures(
-                            onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)))
-                                else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height) },
-                            onDragEnd = { laser = null }, onDragCancel = { laser = null },
-                        ) { change, _ ->
-                            val o = change.position
-                            if (tool == "pen") ink[page] = ink[page].orEmpty().let { strokes -> strokes.dropLast(1) + listOf(strokes.last() + androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)) }
-                            else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)
-                        }
-                    }) {
-                        SlideCanvas(deck, s, Modifier.fillMaxSize())
-                        Canvas(Modifier.fillMaxSize()) {
-                            for (stroke in ink[page].orEmpty()) for (i in 1 until stroke.size)
-                                drawLine(Color(0xFFE53935), androidx.compose.ui.geometry.Offset(stroke[i - 1].x * size.width, stroke[i - 1].y * size.height),
-                                    androidx.compose.ui.geometry.Offset(stroke[i].x * size.width, stroke[i].y * size.height), strokeWidth = size.width / 250, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                            if (pager.currentPage == page) laser?.let { l -> val p = androidx.compose.ui.geometry.Offset(l.x * size.width, l.y * size.height)
-                                drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
-                        }
-                    }
-                    if ((notes || tv != null) && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = if (tv != null) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
-                        maxLines = if (tv != null) 8 else 3, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(8.dp))
+        Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(tool) {
+            // a tap: on the right on, on the left back; a swipe: to the left on, to the right back
+            if (tool == null) awaitEachGesture {
+                val down = awaitFirstDown()
+                var moved = 0f; var end = down
+                while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; moved = ch.position.x - down.position.x; end = ch; if (!ch.pressed) break }
+                if (kotlin.math.abs(moved) > 60.dp.toPx()) { if (moved < 0) next() else back() } else if (end.position.x > size.width / 2) next() else back()
+            }
+        }, contentAlignment = Alignment.Center) {
+            val s = slide(page)
+            Box(Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true).pointerInput(page, tool) {
+                // the pen draws (points as parts of the slide, so the ink stays put); the laser follows the finger
+                if (tool != null) detectDragGestures(
+                    onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)))
+                        else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height) },
+                    onDragEnd = { laser = null }, onDragCancel = { laser = null },
+                ) { change, _ ->
+                    val o = change.position
+                    if (tool == "pen") ink[page] = ink[page].orEmpty().let { strokes -> strokes.dropLast(1) + listOf(strokes.last() + androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)) }
+                    else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)
+                }
+            }) {
+                Canvas(Modifier.fillMaxSize().background(Color.White)) {
+                    now // a new frame: the effects move on
+                    drawIntoCanvas { render(it.nativeCanvas, size.width, size.height) }
+                    for (stroke in ink[page].orEmpty()) for (i in 1 until stroke.size)
+                        drawLine(Color(0xFFE53935), androidx.compose.ui.geometry.Offset(stroke[i - 1].x * size.width, stroke[i - 1].y * size.height),
+                            androidx.compose.ui.geometry.Offset(stroke[i].x * size.width, stroke[i].y * size.height), strokeWidth = size.width / 250, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    laser?.let { l -> val p = androidx.compose.ui.geometry.Offset(l.x * size.width, l.y * size.height)
+                        drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
                 }
             }
-            Text("${pager.currentPage + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium,
+            if ((notes || tv != null) && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = if (tv != null) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
+                maxLines = if (tv != null) 8 else 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(8.dp))
+            Text("${page + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
-            // the TV shows what the phone does: the slide (black when the phone's is), its ink, the laser
-            LaunchedEffect(tv, pager.currentPage, black, ink.toMap(), laser) {
-                tv?.apply { slide = if (black) null else deck.slides[shown[pager.currentPage]]; strokes = ink[pager.currentPage].orEmpty(); dot = laser; update() }
-            }
+            // the TV shows what the phone does, frame by frame: the slide (black when the phone's is), its effects, ink and laser
+            LaunchedEffect(tv) { tv?.render = { c, w, h -> if (!black) render(c, w, h) } }
+            SideEffect { tv?.apply { strokes = ink[page].orEmpty(); dot = laser; frame = now; update() } }
             if (tv != null) Text("On the second screen", color = Color(0xFF6FCF97), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.align(Alignment.TopCenter).padding(12.dp))
             // the tools, faint in a corner: Pen, Laser, Black screen (a tap on the black brings the slide back)
@@ -535,7 +623,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                 }
                 tool("Pen", R.drawable.ic_ink_pen, tool == "pen") { tool = if (tool == "pen") null else "pen"; WriterLog.i("Slides: pen ${tool != null}") }
                 tool("Laser", R.drawable.ic_highlighter, tool == "laser") { tool = if (tool == "laser") null else "laser" }
-                if (ink[pager.currentPage].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(pager.currentPage) }
+                if (ink[page].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(page) }
                 tool("Black screen", R.drawable.ic_visibility_off, black) { black = true }
             }
             if (black) Box(Modifier.fillMaxSize().background(Color.Black).clickable { black = false })
@@ -543,25 +631,24 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
     }
 }
 
-/** The slides on a second screen (a TV by HDMI or a cast): drawn as the phone shows them, with the pen's ink and the laser. */
+/** The slides on a second screen (a TV by HDMI or a cast): drawn as the phone shows them, frame by frame, with the pen's ink and the laser. */
 private class TvSlides(context: android.content.Context, display: android.view.Display, val deck: Deck) : android.app.Presentation(context, display) {
-    var slide: Slide? = null
+    var render: ((android.graphics.Canvas, Float, Float) -> Unit)? = null
     var strokes: List<List<androidx.compose.ui.geometry.Offset>> = emptyList()
     var dot: androidx.compose.ui.geometry.Offset? = null
+    var frame = 0L
     private val view = object : android.view.View(context) {
         val red = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt(); strokeCap = android.graphics.Paint.Cap.ROUND }
         override fun onDraw(c: android.graphics.Canvas) {
             c.drawColor(android.graphics.Color.BLACK)
-            val s = slide ?: return
+            render?.invoke(c, width.toFloat(), height.toFloat())
             val k = minOf(width / deck.width, height / deck.height)
             val w = deck.width * k; val h = deck.height * k
             c.save(); c.translate((width - w) / 2, (height - h) / 2)
-            Slides.draw(c, deck, s, k)
             red.strokeWidth = w / 250; red.alpha = 255
             for (st in strokes) for (i in 1 until st.size) c.drawLine(st[i - 1].x * w, st[i - 1].y * h, st[i].x * w, st[i].y * h, red)
             dot?.let { d -> red.alpha = 0x55; c.drawCircle(d.x * w, d.y * h, w / 60, red); red.alpha = 255; c.drawCircle(d.x * w, d.y * h, w / 140, red) }
             c.restore()
-            if (Slides.moves(s)) postInvalidateOnAnimation() // a GIF plays on the TV too
         }
     }
     override fun onCreate(savedInstanceState: android.os.Bundle?) { super.onCreate(savedInstanceState); setContentView(view) }

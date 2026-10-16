@@ -31,6 +31,8 @@ internal class SlidePath(val ops: List<FloatArray>, val fill: Boolean, val strok
 internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val angle: Float)
 
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
+    /** The id of the shape, picture or group it belongs to on the slide (cNvPr id): what an animation names. */
+    var anim: String? = null
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -42,8 +44,16 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
         val line: Int?) : SlideItem(x, y, w, h, 0f)
 }
 
+/** How a slide comes in when presenting (PowerPoint's transition): [kind] fade, push, wipe, cover…; [dir] l, r, u, d; [ms] how long. */
+internal class SlideTransition(val kind: String, val dir: String?, val ms: Int)
+/** An entrance effect on a click: [target] the shape's id; [kind] appear, fade, fly; [from] fly's side (l, r, u, d); its delay and length. */
+internal class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int)
+/** One click's effects ([auto]: they start by themselves, with the slide or after the step before). */
+internal class SlideStep(val auto: Boolean, val effects: List<SlideEffect>)
+
 /** [part]: the slide's part in the file (ppt/slides/slide3.xml), for saving into. */
-internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false, val part: String = "")
+internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false, val part: String = "",
+    val transition: SlideTransition? = null, val steps: List<SlideStep> = emptyList())
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList())
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
@@ -206,7 +216,41 @@ internal object Slides {
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
             val notes = (if (own != null) null else relType(xml, path, "notesSlide"))?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
                 ?.below("p")?.joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }?.trim().orEmpty()
-            return Slide(items, bg, notes, s.attr("show") == "0", path)
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s))
+        }
+
+        /** The slide's transition (PowerPoint 2010's own, in AlternateContent, or the plain one). */
+        fun transition(s: Element): SlideTransition? {
+            val t = s.kid("transition") ?: s.kid("AlternateContent")?.let { a -> a.kid("Choice")?.kid("transition") ?: a.kid("Fallback")?.kid("transition") } ?: return null
+            val kind = t.kids().firstOrNull()?.localName ?: return null
+            val ms = t.attributes.let { a -> (0 until a.length).map { a.item(it) }.firstOrNull { it.localName == "dur" }?.nodeValue?.toIntOrNull() }
+                ?: when (t.attr("spd")) { "fast" -> 500; "slow" -> 1000; else -> 750 }
+            return SlideTransition(kind, t.kids().first().attr("dir"), ms)
+        }
+
+        /**
+         * The slide's click animations: its main sequence's groups, each a click (or starting by itself), each effect an
+         * entrance — appear (1), fly in (2, its subtype the side: 1 top, 2 right, 4 bottom, 8 left), the rest as a fade.
+         */
+        // shortcut: entrances only (emphasis and exits are left out, the shapes simply show); paragraph by paragraph builds animate the whole box
+        fun steps(s: Element): List<SlideStep> {
+            val main = s.kid("timing")?.below("cTn")?.firstOrNull { it.attr("nodeType") == "mainSeq" } ?: return emptyList()
+            fun delay(c: Element?) = c?.kid("stCondLst")?.kids("cond")?.firstNotNullOfOrNull { it.attr("delay")?.toIntOrNull() } ?: 0
+            return main.kid("childTnLst")?.kids("par").orEmpty().mapNotNull { g ->
+                val gc = g.kid("cTn") ?: return@mapNotNull null
+                val auto = gc.kid("stCondLst")?.kids("cond")?.any { it.attr("evt") == "onBegin" } == true
+                val effects = gc.kid("childTnLst")?.kids("par").orEmpty().flatMap { inner ->
+                    val ic = inner.kid("cTn"); val at = delay(ic)
+                    ic?.below("cTn").orEmpty().filter { it.attr("presetClass") == "entr" }.mapNotNull { e ->
+                        val target = e.below("spTgt").firstOrNull()?.attr("spid") ?: return@mapNotNull null
+                        val ms = e.below("cTn").mapNotNull { it.attr("dur")?.toIntOrNull() }.filter { it > 1 }.maxOrNull() ?: 500
+                        val kind = when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; else -> "fade" }
+                        val from = when (e.attr("presetSubtype")) { "1" -> 'u'; "2" -> 'r'; "4" -> 'd'; "8" -> 'l'; else -> 'd' }
+                        SlideEffect(target, kind, from, at + delay(e), ms)
+                    }
+                }
+                if (effects.isEmpty()) null else SlideStep(auto, effects)
+            }
         }
 
         fun theme(t: Element) {
@@ -244,8 +288,10 @@ internal object Slides {
         }
 
         /** The shapes of a tree, [group] placing a group's children in its box. */
-        fun shapes(tree: Element, rels: Map<String, String>, ctx: Placeholders?, out: MutableList<SlideItem>, group: ((FloatArray) -> FloatArray)?) {
+        fun shapes(tree: Element, rels: Map<String, String>, ctx: Placeholders?, out: MutableList<SlideItem>, group: ((FloatArray) -> FloatArray)?, groupId: String? = null) {
             for (e in tree.kids()) runCatching {
+                val before = out.size
+                val ownId = groupId ?: e.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("cNvPr")?.attr("id")
                 // a placeholder on the master or layout shows its words only on slides that fill it: left out there
                 if (ctx == null && e.localName == "sp" && e.below("ph").isNotEmpty()) return@runCatching
                 val chain = if (ctx != null && e.localName == "sp") ctx.chain(e) else emptyList()
@@ -294,10 +340,11 @@ internal object Slides {
                         val cw = ((che?.attr("cx")?.toFloatOrNull() ?: 0f) / EMU).takeIf { it > 0 } ?: box[2]; val chh = ((che?.attr("cy")?.toFloatOrNull() ?: 0f) / EMU).takeIf { it > 0 } ?: box[3]
                         val kx = if (cw > 0) box[2] / cw else 1f; val ky = if (chh > 0) box[3] / chh else 1f
                         val g0 = box
-                        shapes(e, rels, ctx, out) { b -> floatArrayOf(g0[0] + (b[0] - cx) * kx, g0[1] + (b[1] - cy) * ky, b[2] * kx, b[3] * ky) }
+                        shapes(e, rels, ctx, out, { b -> floatArrayOf(g0[0] + (b[0] - cx) * kx, g0[1] + (b[1] - cy) * ky, b[2] * kx, b[3] * ky) }, ownId)
                     }
-                    "AlternateContent" -> e.kid("Fallback")?.let { shapes(it, rels, ctx, out, group) }
+                    "AlternateContent" -> e.kid("Fallback")?.let { shapes(it, rels, ctx, out, group, groupId) }
                 }
+                if (ctx != null) for (k in before until out.size) if (out[k].anim == null) out[k].anim = ownId
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 
@@ -423,14 +470,20 @@ internal object Slides {
     fun moves(slide: Slide) = slide.items.any { it is SlideItem.Picture && isGif(it) }
 
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
-    fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false) {
+    /** [look]: an item's state in an animation — null hidden, else its opacity and how far it is moved (points). */
+    fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false, look: ((SlideItem) -> FloatArray?)? = null) {
         c.save(); c.scale(k, k)
         c.clipRect(0f, 0f, deck.width, deck.height)
         c.drawColor(slide.background)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         for (item in slide.items) {
             if (item is SlideItem.Shape && item.hint && !hints) continue
-            c.save()
+            val state = if (look != null) look(item) ?: continue else null
+            val saved = c.save()
+            if (state != null) {
+                c.translate(state[1], state[2])
+                if (state[0] < 1f) c.saveLayerAlpha(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4, (state[0] * 255).toInt().coerceIn(0, 255))
+            }
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)
             when (item) {
                 is SlideItem.Shape -> {
@@ -446,7 +499,7 @@ internal object Slides {
                     if (gif != null) {
                         c.save(); c.translate(item.x, item.y); c.scale(item.w / gif.intrinsicWidth.coerceAtLeast(1), item.h / gif.intrinsicHeight.coerceAtLeast(1))
                         gif.setBounds(0, 0, gif.intrinsicWidth, gif.intrinsicHeight); gif.draw(c); c.restore()
-                        c.restore(); continue
+                        c.restoreToCount(saved); continue
                     }
                     val bmp = pictures.get(item) ?: runCatching { item.bytes()?.let { b ->
                         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -459,7 +512,7 @@ internal object Slides {
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)
             }
-            c.restore()
+            c.restoreToCount(saved)
         }
         c.restore()
     }

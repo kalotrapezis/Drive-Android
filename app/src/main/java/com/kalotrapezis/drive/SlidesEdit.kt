@@ -47,7 +47,7 @@ internal object SlidesEdit {
             if (a.prst == "table") table(a) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { pictureIds[it] = a.id }
             else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)
         }
-        return Slide(items + added, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part)
+        return Slide(items + added, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, s.transition, s.steps)
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
     fun table(a: Added): SlideItem.Table {

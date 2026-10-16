@@ -445,7 +445,10 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] PowerPoint: present to a real TV (HDMI or cast) — the slide on the TV, the notes on the phone (the emulator's second display works)
 - [x] Tablet (the emulator's 1280×800, 16 Oct): the Office home's wide cards, Words, Tables, Slides open and edit; a slide
       no wider than fits the screen's height, so a whole one shows (it was taller than the screen)
-- [ ] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
+- [x] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
+      (16 Oct, on a copy: a new line after its first paragraph, saved; LibreOffice shows the same page — headings, bullets,
+      two columns, spacing — the text one line lower. UserDocsSweepTest "one of the user's documents edited and saved",
+      TETRA_FILE and TETRA_OUT; the sweep: 349 documents and 29 decks, none failed, none copy-only)
 
 ## Sources
 

@@ -34,6 +34,23 @@ class UserDocsSweepTest {
         assertTrue((failed + copyOnly).joinToString("\n"), failed.isEmpty() && copyOnly.isEmpty())
     }
 
+    /**
+     * One of the user's documents as the test list has it (TETRA_FILE, its path): opened, a new empty line after its first
+     * paragraph (Enter), saved into TETRA_OUT — never over it — for LibreOffice to show beside the original.
+     */
+    @Test fun `one of the user's documents edited and saved`() {
+        val path = System.getenv("TETRA_FILE"); val out = System.getenv("TETRA_OUT")
+        assumeTrue(path != null && out != null)
+        val f = File(path!!); val kind = OfficeKind.of(f.name)!!
+        val bytes = f.readBytes()
+        val doc = OfficeFormats.read(bytes, kind)
+        val at = doc.paras.indexOfFirst { it.table == null && it.text.isNotBlank() }.coerceAtLeast(0)
+        val edited = doc.copy(paras = doc.paras.toMutableList().apply { add(at + 1, DocPara(emptyList())) })
+        File(out!!).writeBytes(OfficeFormats.write(edited, kind, bytes))
+        val again = OfficeFormats.read(File(out).readBytes(), kind)
+        assertTrue("the new line is there", again.paras.size == doc.paras.size + 1)
+    }
+
     /** Every one of the user's decks read, saved unchanged into a temporary file (never beside it) and read again: the same slides and words. */
     @Test fun `the user's decks read and save`() {
         assumeTrue(System.getenv("TETRA_SWEEP") == "1")

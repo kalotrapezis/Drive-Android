@@ -567,6 +567,25 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Lines with arrowheads (Insert › Shapes › Lines): Word's line ends, read back, kept when the line is recoloured, and LibreOffice draws them. */
+    @Test fun `arrows keep their heads`() {
+        for ((kind, ends) in listOf("lineArrow" to 2, "lineArrows" to 3)) {
+            val img = DocImage("a1", null, 144f, 0.75f, PictureXml.newShape(kind, OfficeKind.Docx, null, 0xFF000000.toInt(), 1.5f, 144f, 0.75f))
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))))), OfficeKind.Docx)
+            val back = OfficeFormats.read(bytes, OfficeKind.Docx).paras.flatMap { it.runs }.mapNotNull { it.image }.single()
+            assertEquals(kind, "line", ShapePicture.of(back)!!.geometry); assertEquals(kind, ends, ShapePicture.of(back)!!.ends)
+            // recoloured red: the heads stay
+            assertEquals(kind, ends, ShapePicture.of(PictureXml.shapeLook(back, null, 0xFFC00000.toInt(), 2f)!!)!!.ends)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "a.docx").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val odt = java.util.zip.ZipFile(java.io.File(dir, "a.odt")).use { z -> listOf("content.xml", "styles.xml").joinToString("") { String(z.getInputStream(z.getEntry(it)).readBytes()) } }
+                assertEquals(kind, if (ends == 3) 2 else 1, Regex("""draw:marker-(start|end)="""").findAll(odt).count())
+            }
+        }
+    }
+
     /** An optional hyphen (Word's Ctrl + -, a soft hyphen): kept in both kinds, Word's softHyphen, and LibreOffice keeps it too. */
     @Test fun `an optional hyphen is kept`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {

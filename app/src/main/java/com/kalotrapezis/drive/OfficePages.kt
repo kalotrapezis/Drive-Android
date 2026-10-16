@@ -1820,8 +1820,9 @@ internal object OfficeFonts {
  */
 internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float,
     /** Its own geometry (a LibreOffice shape's enhanced path); else Word's preset [geometry]'s. */
-    val custom: ShapeGeometry? = null, /** Word's adjustments (avLst), by name. */ val adjust: Map<String, Double> = emptyMap()) : android.graphics.drawable.Drawable() {
-    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust)
+    val custom: ShapeGeometry? = null, /** Word's adjustments (avLst), by name. */ val adjust: Map<String, Double> = emptyMap(),
+    /** a line's arrowheads: 1 at its start, 2 at its end (Word's headEnd, tailEnd) */ val ends: Int = 0) : android.graphics.drawable.Drawable() {
+    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust, ends)
     fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.strokeJoin = android.graphics.Paint.Join.ROUND
@@ -1845,6 +1846,19 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
         val path = path(geometry, w, h).apply { offset(x, y) }
         if (geometry !in LINES) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; canvas.drawPath(path, paint) }
         line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+        // a line's arrowheads: a filled triangle at each end that has one, along the line
+        val heads = ends or when (geometry) { "lineArrow" -> 2; "lineArrows" -> 3; else -> 0 }
+        if (geometry in LINES && heads != 0) line?.let { c ->
+            val len = kotlin.math.hypot(w.toDouble(), h.toDouble()).toFloat().takeIf { it > 0f } ?: return@let
+            val ux = w / len; val uy = h / len; val size = maxOf(lineWidth * 3.5f, 6f)
+            fun head(px: Float, py: Float, dx: Float, dy: Float) {
+                val p = android.graphics.Path().apply { moveTo(px, py); lineTo(px - dx * size - dy * size * 0.5f, py - dy * size + dx * size * 0.5f)
+                    lineTo(px - dx * size + dy * size * 0.5f, py - dy * size - dx * size * 0.5f); close() }
+                paint.style = android.graphics.Paint.Style.FILL; paint.color = c; canvas.drawPath(p, paint)
+            }
+            if (heads and 2 != 0) head(x + w, y + h, ux, uy)
+            if (heads and 1 != 0) head(x, y, -ux, -uy)
+        }
     }
     /** A face darker (−) or lighter (+): a can's top, a cube's sides. */
     private fun shaded(c: Int, k: Float): Int {
@@ -1861,7 +1875,7 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
         /** Word's preset names; LibreOffice's draw:type names map to them. */
         val KINDS = listOf("rect", "roundRect", "ellipse", "triangle", "rtTriangle", "diamond", "pentagon", "hexagon", "octagon", "star5",
             "rightArrow", "leftArrow", "upArrow", "downArrow", "plus", "heart", "line")
-        private val LINES = setOf("line", "straightConnector1")
+        private val LINES = setOf("line", "straightConnector1", "lineArrow", "lineArrows")
         private val ODF = mapOf("rectangle" to "rect", "round-rectangle" to "roundRect", "ellipse" to "ellipse", "isosceles-triangle" to "triangle",
             "right-triangle" to "rtTriangle", "diamond" to "diamond", "pentagon" to "pentagon", "hexagon" to "hexagon", "octagon" to "octagon",
             "star5" to "star5", "right-arrow" to "rightArrow", "left-arrow" to "leftArrow", "up-arrow" to "upArrow", "down-arrow" to "downArrow",
@@ -1893,7 +1907,7 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                 "plus" -> poly(0.35f, 0f, 0.65f, 0f, 0.65f, 0.35f, 1f, 0.35f, 1f, 0.65f, 0.65f, 0.65f, 0.65f, 1f, 0.35f, 1f, 0.35f, 0.65f, 0f, 0.65f, 0f, 0.35f, 0.35f, 0.35f)
                 "heart" -> { moveTo(0.5f * w, h); cubicTo(-0.1f * w, 0.55f * h, 0.05f * w, -0.05f * h, 0.5f * w, 0.25f * h)
                     cubicTo(0.95f * w, -0.05f * h, 1.1f * w, 0.55f * h, 0.5f * w, h); close() }
-                "line", "straightConnector1" -> { moveTo(0f, 0f); lineTo(w, h) }
+                "line", "straightConnector1", "lineArrow", "lineArrows" -> { moveTo(0f, 0f); lineTo(w, h) }
                 else -> addRect(0f, 0f, w, h, android.graphics.Path.Direction.CW)
             }
         }
@@ -1966,7 +1980,9 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val styleLine = if (ln != null && Regex("""<a:(noFill|solidFill|gradFill)\b""").containsMatchIn(ln.groupValues[2])) null
                 else styleXml?.let { themeColor(Regex("""<a:lnRef\b[^>]*>([\s\S]*?)</a:lnRef>""").find(it)?.groupValues?.get(1)) }
             val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
-            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust)
+            // its arrowheads (Word's line ends that are not "none")
+            fun end(tag: String) = Regex("""<a:$tag\b[^>]*\btype="(\w+)"""").find(ln?.groupValues?.get(2).orEmpty())?.groupValues?.get(1)?.let { it != "none" } == true
+            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust, ends = (if (end("headEnd")) 1 else 0) or (if (end("tailEnd")) 2 else 0))
         }
     }
 }

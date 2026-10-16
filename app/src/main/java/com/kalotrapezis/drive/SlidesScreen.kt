@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -153,7 +154,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var ribbonTab by remember { mutableStateOf("Slide") }
     var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
-    LaunchedEffect(ribbonTab, item) { effectOptions = false }
+    var effectKinds by remember { mutableStateOf(false) } // Animations › Effect: the catalog of entrances, emphases and exits, a line each
+    LaunchedEffect(ribbonTab, item) { effectOptions = false; effectKinds = false }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
     LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Slide", "Insert")) ribbonTab = "Selection" }
     /** [a] put on the chosen slide, then chosen. */
@@ -268,6 +270,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
+            "File" -> {
+                // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
+                RibbonButton("Save", w, R.drawable.ic_save, enabled = changed && !saving) { save() }
+                file?.let { f ->
+                    RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
+                    RibbonButton("Open in another app", w, R.drawable.ic_open_with) { if (changed) save { openElsewhere(context, f) } else openElsewhere(context, f) }
+                }
+                RibbonButton("Present", w, R.drawable.ic_play) { presenting = c }
+            }
             "Design" -> {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
                 RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
@@ -317,6 +328,22 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                         RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
                     }
+                    effectKinds -> {
+                        // a catalog: the same kind of choice, so a line each for in, emphasis and out (asked 16 Oct)
+                        IconButton(onClick = { effectKinds = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                        Column {
+                            for ((which, name, kinds) in listOf(
+                                Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly")),
+                                Triple('m', "Emphasis", listOf("None" to null, "Pulse" to "pulse", "Spin" to "spin", "Grow" to "grow")),
+                                Triple('o', "Out", listOf("None" to null, "Disappear" to "appear", "Fade out" to "fade", "Fly out" to "fly")))) {
+                                val k = when (which) { 'o' -> outK; 'm' -> emK; else -> inK }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(name, style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.width(72.dp).padding(start = 6.dp))
+                                    for ((label, kind) in kinds) RibbonButton(label, w, on = if (k < 0) kind == null else list[k].kind == kind) { choose(which, kind) }
+                                }
+                            }
+                        }
+                    }
                     effectOptions && (inK >= 0 || outK >= 0 || emK >= 0) -> {
                         IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         // the side a fly comes from (or goes to), and how long each of the item's effects takes
@@ -340,15 +367,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val groups = SlidesEdit.group(list); val g = groups.indexOfFirst { st -> st.effects.any { it.target == id } }
                         Text(when { first < 0 -> "No animation"; groups[g].auto -> "By itself"; else -> "Click ${groups.take(g + 1).count { !it.auto }} of ${groups.count { !it.auto }}" },
                             style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                        Text("In", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
-                        for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
-                            RibbonButton(label, w, on = if (inK < 0) kind == null else list[inK].kind == kind) { choose('i', kind) }
-                        Text("Emphasis", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
-                        for ((label, kind) in listOf("None" to null, "Pulse" to "pulse", "Spin" to "spin", "Grow" to "grow"))
-                            RibbonButton(label, w, on = if (emK < 0) kind == null else list[emK].kind == kind) { choose('m', kind) }
-                        Text("Out", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
-                        for ((label, kind) in listOf("None" to null, "Disappear" to "appear", "Fade out" to "fade", "Fly out" to "fly"))
-                            RibbonButton(label, w, on = if (outK < 0) kind == null else list[outK].kind == kind) { choose('o', kind) }
+                        RibbonButton("Effect", w, R.drawable.ic_motion) { effectKinds = true }
                         RibbonButton("Options", w, R.drawable.ic_tune, enabled = first >= 0) { effectOptions = true }
                         if (first >= 0) {
                             RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = first > 0) { set(list.toMutableList().apply { add(first - 1, removeAt(first)) }) }
@@ -479,7 +498,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Design", "Transitions", "Animations")
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Column(Modifier.navigationBarsPadding()) {
@@ -493,10 +512,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         }
                                     }
                                 }
-                                // the tab's tools all in sight, on as many lines as they take (asked 16 Oct: no scrolling through a long row)
-                                androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                    itemVerticalAlignment = Alignment.CenterVertically) {
-                                    if (e != null) SlideRibbon(shown, c, e, w)
+                                // the tab's tools on one sliding line, as Words' and Tables' (only catalogs, as colours or effects, take 2–3 lines)
+                                key(shown) {
+                                    Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (e != null) SlideRibbon(shown, c, e, w)
+                                    }
                                 }
                             }
                         }

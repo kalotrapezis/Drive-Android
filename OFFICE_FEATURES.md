@@ -138,7 +138,8 @@ one pass once the tabs' features are done.
       real geometry (DrawingML's presetShapeDefinitions via LibreOffice's copy: `ShapeGeometry`), written as Word's prst
       and as LibreOffice's enhanced geometry; files' shapes of any preset (with their adjustments and theme colours) and
       LibreOffice's own custom shapes drawn; **Picture › Shape options**: fill, outline and its width, size (locked or
-      not), rotation, alt text — [ ] lines with arrows and connectors, freeform
+      not), rotation, alt text; lines with an arrow at one or both ends (16 Oct; .docx only, kept when restyled) —
+      [ ] connectors, freeform
 - [x] A shape's own words (16 Oct): Shape › Add text, in its middle, centred (Word's txbx in the wps:wsp, LibreOffice's
       words in the custom shape; LibreOffice shows them); Edit text after
 - [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
@@ -364,8 +365,10 @@ LibreOffice works them out).
 - [x] Transitions and animations shown when presenting (16 Oct): push, gallery, cover, pull, wipe, cut, fade (any other
       as a fade), each its own length; click animations — appear, fade, fly in from its side (others as a fade), the
       clicks in turn, those that start by themselves too, a click during one ends it; on the TV the same frames
-- [x] The ribbon with tabs, as Tables' (asked 16 Oct): Selection (what is chosen on the slide), Slide, Insert,
-      Transitions, Animations; a tap chooses a text box, shape or picture, a second tap types in it
+- [x] The ribbon with tabs, as Tables' (asked 16 Oct): Selection (what is chosen on the slide), File (Save, Share, Open
+      in another app, Present), Slide, Insert, Design, Transitions, Animations; a tap chooses a text box, shape or
+      picture, a second tap types in it. Tools on one sliding line; Animations › Effect is a catalog strip with a line
+      each for In, Emphasis and Out
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard
       colours, or none), a table's (its first row, the others in its tints) — the file's own shapes too
 - [x] The file's own text boxes, shapes, pictures, charts and tables moved and sized (finger or arrows), saved in their

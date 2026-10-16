@@ -853,7 +853,7 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
 
 /** Word's Insert › Shapes gallery, its groups in its order (DrawingML's preset names). */
 internal val SHAPE_GROUPS = listOf(
-    "Lines" to listOf("line"),
+    "Lines" to listOf("line", "lineArrow", "lineArrows"),
     "Rectangles" to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
     "Basic shapes" to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
         "dodecagon", "pie", "chord", "teardrop", "frame", "halfFrame", "corner", "diagStripe", "plus", "plaque", "can", "cube", "bevel", "donut", "noSmoking",
@@ -921,7 +921,7 @@ internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) 
 internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: String, fill: Int?, line: Int?) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
-    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" } }
+    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" || it.startsWith("lineArrow") } }
     val colors = SHAPE_COLOURS
     var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
     var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
@@ -944,7 +944,7 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                     swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
                     swatches("Outline", line) { line = it }
                     (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
-                        val shown = kinds.filter { !odt || it != "line" }
+                        val shown = kinds.filter { !odt || (it != "line" && !it.startsWith("lineArrow")) }
                         if (shown.isNotEmpty()) Section(title) {
                             shown.forEach { kind ->
                                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {

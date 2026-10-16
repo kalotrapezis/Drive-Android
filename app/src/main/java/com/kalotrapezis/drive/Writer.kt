@@ -4552,7 +4552,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         shapesPage = false
         // An inch square (a line: two inches across); its picture tab sizes, wraps and places it after.
         // Long ones (sideways arrows, banners, scrolls, waves) half as tall as they are wide.
-        val (w, h) = if (shape == "line") 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(shape)) 108f to 54f else 72f to 72f
+        val (w, h) = if (shape == "line" || shape.startsWith("lineArrow")) 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(shape)) 108f to 54f else 72f to 72f
         val img = DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, kind, fill, line, 1f, w, h))
         pictures[img.key] = img
         val at = placePicture(img)

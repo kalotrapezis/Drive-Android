@@ -310,8 +310,10 @@ internal object PictureXml {
         val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
         val id = (System.nanoTime() % 900000 + 100000)
         val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
-        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
-        return """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Shape $id"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="$kind"><a:avLst/></a:prstGeom>$fillXml$lineXml</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>"""
+        // an arrow: Word's line with a triangle at its end (both ends: a double arrow)
+        val arrows = when (kind) { "lineArrow" -> """<a:tailEnd type="triangle"/>"""; "lineArrows" -> """<a:headEnd type="triangle"/><a:tailEnd type="triangle"/>"""; else -> "" }
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}$arrows</a:ln>"""
+        return """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="$id" name="Shape $id"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="${if (kind.startsWith("lineArrow")) "line" else kind}"><a:avLst/></a:prstGeom>$fillXml$lineXml</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>"""
     }
     /**
      * Insert › Text box (the plan, 2026-10-01): Word's text box (a rectangle shape holding paragraphs: white, a thin black
@@ -458,7 +460,9 @@ internal object PictureXml {
         inner = inner.replace(Regex("""<a:ln\b[^>]*?(?:/>|>[\s\S]*?</a:ln>)"""), "")
             .replace(Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill|grpFill)\b[^>]*?(?:/>|>[\s\S]*?</a:\1>)"""), "")
         val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
-        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}</a:ln>"""
+        // the old outline's dash and arrowheads kept (only its colour and width are chosen here)
+        val kept = Regex("""<a:ln\b[^>]*>([\s\S]*?)</a:ln>""").find(sp.groupValues[1])?.groupValues?.get(1)?.let { o -> Regex("""<a:(prstDash|headEnd|tailEnd)\b[^>]*/>""").findAll(o).joinToString("") { it.value } }.orEmpty()
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}$kept</a:ln>"""
         // In spPr's order: the transform, the geometry, then the fill, then the outline.
         val at = Regex("""</a:prstGeom>|</a:custGeom>|<a:prstGeom\b[^>]*/>""").find(inner)?.range?.last?.plus(1) ?: Regex("""</a:xfrm>""").find(inner)?.range?.last?.plus(1) ?: 0
         inner = inner.substring(0, at) + fillXml + lineXml + inner.substring(at)

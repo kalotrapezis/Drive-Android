@@ -365,7 +365,9 @@ LibreOffice works them out).
       done) — [ ] LibreOffice's .pptx import drops a time on a slide with no transition (PowerPoint's own way of writing it)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
-      the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)
+      the phone the presenter's (the notes large) — tried 16 Oct on the emulator's second display (a presentation
+      display, as HDMI or a cast screen is): the slide there, transitions and effects moving there every frame (they
+      had stood still until then); **a real TV still to try with the user**
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 
 ## To test on the phone, with the user
@@ -383,7 +385,9 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Text size −/+ and zoom; undo/redo
 - [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
 - [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer
-- [ ] PowerPoint: present to a TV (HDMI or cast) — the slide on the TV, the notes on the phone
+- [ ] PowerPoint: present to a real TV (HDMI or cast) — the slide on the TV, the notes on the phone (the emulator's second display works)
+- [x] Tablet (the emulator's 1280×800, 16 Oct): the Office home's wide cards, Words, Tables, Slides open and edit; a slide
+      no wider than fits the screen's height, so a whole one shows (it was taller than the screen)
 - [ ] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
 
 ## Sources

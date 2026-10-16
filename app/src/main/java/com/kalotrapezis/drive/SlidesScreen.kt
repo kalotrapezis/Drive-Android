@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -43,7 +45,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -371,9 +372,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 else -> {
                     val list = rememberLazyListState()
                     val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
+                    // a wide screen (a tablet held sideways): each slide no wider than fits the screen's height, so a whole slide shows
+                    val fit = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 200).coerceAtLeast(200).dp * (d.width / d.height)
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
-                            Column {
+                            Column(Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = fit)) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
                                 Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
@@ -799,7 +802,8 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
             // the TV shows what the phone does, frame by frame: the slide (black when the phone's is), its effects, ink and laser
             LaunchedEffect(tv) { tv?.render = { c, w, h -> if (!black) render(c, w, h) } }
-            SideEffect { tv?.apply { strokes = ink[page].orEmpty(); dot = laser; frame = now; update() } }
+            // the TV drawn again every frame (transitions and effects move there too), with the pen's ink and the laser
+            LaunchedEffect(tv) { if (tv != null) while (true) androidx.compose.runtime.withFrameNanos { tv.apply { strokes = ink[page].orEmpty(); dot = laser; update() } } }
             if (tv != null) Text("On the second screen", color = Color(0xFF6FCF97), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.align(Alignment.TopCenter).padding(12.dp))
             // the tools, faint in a corner: Pen, Laser, Black screen (a tap on the black brings the slide back)
@@ -822,7 +826,6 @@ private class TvSlides(context: android.content.Context, display: android.view.D
     var render: ((android.graphics.Canvas, Float, Float) -> Unit)? = null
     var strokes: List<List<androidx.compose.ui.geometry.Offset>> = emptyList()
     var dot: androidx.compose.ui.geometry.Offset? = null
-    var frame = 0L
     private val view = object : android.view.View(context) {
         val red = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt(); strokeCap = android.graphics.Paint.Cap.ROUND }
         override fun onDraw(c: android.graphics.Canvas) {

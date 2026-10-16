@@ -508,6 +508,31 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
+    @Test fun `track changes is remembered in a Word file`() {
+        val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)
+        fun set(from: ByteArray, on: Boolean) = OfficeFormats.zip(PageDesign.trackRevisions(OfficeFormats.unzip(from), on), null)
+        assertEquals(false, PageDesign.tracksRevisions(bytes))
+        val on = set(set(bytes, true), true)
+        assertEquals(true, PageDesign.tracksRevisions(on))
+        assertEquals(1, Regex("<w:trackRevisions/>").findAll(String(OfficeFormats.unzip(on).getValue("word/settings.xml"))).count())
+        assertEquals(false, PageDesign.tracksRevisions(set(on, false)))
+        // a hyphenation setting already there: trackRevisions goes before it, as the schema says
+        val both = set(OfficeFormats.zip(PageDesign.hyphenation(OfficeFormats.unzip(bytes), OfficeKind.Docx, true), null), true)
+        val settings = String(OfficeFormats.unzip(both).getValue("word/settings.xml"))
+        assert(settings.indexOf("<w:trackRevisions/>") in 0 until settings.indexOf("<w:autoHyphenation/>")) { settings }
+        assertEquals(listOf("one"), OfficeFormats.read(both, OfficeKind.Docx).paras.map { it.text })
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            for ((name, b) in listOf("on" to both, "off" to bytes)) {
+                java.io.File(dir, "$name.docx").writeBytes(b)
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, java.io.File(dir, "$name.docx").path).redirectErrorStream(true).start().waitFor()
+                val content = String(OfficeFormats.unzip(java.io.File(dir, "$name.odt").readBytes()).getValue("content.xml"))
+                assertEquals(name, name == "on", "text:track-changes=\"true\"" in content)
+            }
+        }
+    }
+
     @Test fun `a table of contents lists the headings with their pages, in the file's contents styles, and updates in place`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Title page"))), DocPara(emptyList()),

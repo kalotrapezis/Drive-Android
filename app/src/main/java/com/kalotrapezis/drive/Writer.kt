@@ -2342,6 +2342,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val prefs = remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE) }
     var tracking by remember { mutableStateOf(false) }
     var askingName by remember { mutableStateOf(false) }
+    // A Word file that says to track changes (Word's trackRevisions) opens with them on, as in Word
+    LaunchedEffect(loaded) {
+        if (!loaded || kind != OfficeKind.Docx || !PageDesign.tracksRevisions(original)) return@LaunchedEffect
+        if (prefs.getString("author", "").isNullOrBlank()) askingName = true else { tracking = true; message = "This document tracks changes — your edits are marked" }
+    }
+    /** Track changes on or off, and remembered in the Word file as Word remembers it. */
+    fun setTracking(on: Boolean) {
+        tracking = on
+        message = if (on) "Track changes on — your edits are marked" else "Track changes off"
+        if (kind != OfficeKind.Docx || PageDesign.tracksRevisions(original) == on) return
+        runCatching { original = OfficeFormats.zip(PageDesign.trackRevisions(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), on), null); dirty = true }
+            .onFailure { WriterLog.e("track changes setting", it) }
+    }
     LaunchedEffect(loaded, tracking) {
         if (!loaded || !tracking) return@LaunchedEffect
         val author = prefs.getString("author", "").orEmpty()
@@ -4180,9 +4193,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
                     RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
-                        if (tracking) { tracking = false; message = "Track changes off" }
+                        if (tracking) setTracking(false)
                         else if (prefs.getString("author", "").isNullOrBlank()) askingName = true
-                        else { tracking = true; message = "Track changes on — your edits are marked" }
+                        else setTracking(true)
                     }
                 }, {
                     // Word's Changes group: go through them, each accepted or rejected, or all at once.
@@ -4553,7 +4566,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     noteEditing?.let { (n, number) -> NoteDialog(n, number, { noteEditing = null }, { saveNote(n, it) }, { saveNote(n, null) }) }
     if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->
         prefs.edit().putString("author", name).apply()
-        askingName = false; tracking = true; message = "Track changes on — your edits are marked"
+        askingName = false; setTracking(true)
     }
     if (commenting) NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { commenting = false }) { author, text ->
         commenting = false

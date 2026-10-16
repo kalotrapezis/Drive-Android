@@ -433,7 +433,8 @@ Each is done on the emulator; tick when checked on the real phone.
       on the next paragraph — the same on the pages
 - [x] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
       (checked on the emulator 16 Oct, AutoSave off: the question, then the typed word back after the app was killed)
-- [ ] Text size −/+ and zoom; undo/redo
+- [x] Text size −/+ and zoom; undo/redo (checked on the emulator 16 Oct: View's zoom − and + by 10% steps, the page with it;
+      Undo takes back a stretch of typing at once, Redo puts it back)
 - [x] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF (checked on the emulator 16 Oct:
       the file before the saves kept, written on Save; the PDF 3 A4 pages as the document)
 - [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer

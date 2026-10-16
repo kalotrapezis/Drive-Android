@@ -15,6 +15,9 @@ internal object SlidesOdp {
     private const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
     private const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
     private const val XLINK = "http://www.w3.org/1999/xlink"
+    private const val XML = "http://www.w3.org/XML/1998/namespace"
+    private const val ANIM = "urn:oasis:names:tc:opendocument:xmlns:animation:1.0"
+    private const val SMIL = "urn:oasis:names:tc:opendocument:xmlns:smil-compatible:1.0"
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
     private fun Element.a(ns: String, n: String): String? = getAttributeNS(ns, n).takeIf { it.isNotEmpty() }
@@ -152,9 +155,11 @@ internal object SlidesOdp {
          * The shapes under [parent]; a page's own named by their place on it ("o3": the page's fourth element, "o3.1" the
          * second in that group) — what editing finds them by again in the file ([top]: the group's, what moves with it).
          */
+        val named = HashMap<String, String>() // a shape's xml:id (what an animation names) → its item's id
         fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean, prefix: String? = null, top: String? = null) {
             for ((k, e) in parent.kids().withIndex()) runCatching {
                 val path = if (master) null else prefix?.let { "$it.$k" } ?: "o$k"
+                if (path != null) (e.a(XML, "id") ?: e.a(DRAW, "id"))?.let { named[it] = top ?: path }
                 val before = out.size
                 // a master's placeholders (title, outline, numbers): their words show only on pages that fill them
                 if (master && (e.a(PRES, "class") != null || e.a(PRES, "placeholder") == "true")) return@runCatching
@@ -206,8 +211,63 @@ internal object SlidesOdp {
             val background = bg(dp) ?: bg(master?.a(DRAW, "style-name")) ?: 0xFFFFFFFF.toInt()
             val notes = page.kids().firstOrNull { it.localName == "notes" }?.kids()?.firstOrNull { it.a(PRES, "class") == "notes" }
                 ?.getElementsByTagNameNS(TEXT, "p")?.let { l -> (0 until l.length).joinToString("\n") { l.item(it).textContent } }?.trim().orEmpty()
-            Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden")
+            // the transition: the page style's (LibreOffice's names), its length from the timing's own filter
+            val root = page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }
+            fun secs(v: String?) = v?.let { if (it.endsWith("ms")) it.removeSuffix("ms").toFloatOrNull()?.div(1000) else it.removeSuffix("s").toFloatOrNull() }
+            val filter = root?.kids()?.firstNotNullOfOrNull { p -> p.kids().firstOrNull { it.localName == "transitionFilter" && it.a(SMIL, "targetElement") == null } }
+            val transition = prop("drawing-page", dp, "d.type")?.let { type ->
+                OdpEffects.kind(type, prop("drawing-page", dp, "d.subtype"), prop("drawing-page", dp, "d.direction") == "reverse")?.let { (kind, dir) ->
+                    val ms = secs(filter?.a(SMIL, "dur"))?.let { (it * 1000).toInt() } ?: when (prop("drawing-page", dp, "d.transition-speed")) { "slow" -> 1000; "fast" -> 500; else -> 750 }
+                    SlideTransition(kind, dir, ms)
+                }
+            }
+            // the clicks: the main sequence's groups, each its entrances and exits (LibreOffice's presets)
+            val main = root?.getElementsByTagNameNS(ANIM, "seq")?.let { l -> (0 until l.length).map { l.item(it) as Element } }?.firstOrNull { it.a(PRES, "node-type") == "main-sequence" }
+            val steps = main?.kids().orEmpty().mapNotNull { click ->
+                val effects = click.getElementsByTagNameNS(ANIM, "par").let { l -> (0 until l.length).map { l.item(it) as Element } }
+                    .filter { it.a(PRES, "preset-class") == "entrance" || it.a(PRES, "preset-class") == "exit" }.mapNotNull { fx ->
+                        val kids = fx.kids()
+                        val target = kids.firstNotNullOfOrNull { it.a(SMIL, "targetElement") }?.let(named::get) ?: return@mapNotNull null
+                        val ms = kids.mapNotNull { secs(it.a(SMIL, "dur")) }.filter { it > 0.01f }.maxOrNull()?.let { (it * 1000).toInt() } ?: 500
+                        val id = fx.a(PRES, "preset-id").orEmpty()
+                        SlideEffect(target, if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade", OdpEffects.side(fx.a(PRES, "preset-sub-type")), 0, ms, exit = fx.a(PRES, "preset-class") == "exit")
+                    }
+                if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
+            }
+            Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", transition = transition, steps = steps)
         }
         Deck(width, height, slides)
     }
+}
+
+/**
+ * PowerPoint's transitions and effect sides as LibreOffice names them (its own .pptx import's mapping, so a deck keeps
+ * them between the two): push ↔ pushWipe, cover ↔ slideWipe, uncover (pull) ↔ slideWipe reversed, wipe ↔ barWipe, fade.
+ */
+internal object OdpEffects {
+    private fun from(dir: String?) = when (dir) { "r" -> "fromRight"; "u" -> "fromTop"; "d" -> "fromBottom"; else -> "fromLeft" }
+    /** [kind] and [dir] as smil's type, subtype and whether it runs reversed; null: LibreOffice has none (cut). */
+    fun smil(kind: String, dir: String?): Triple<String, String, Boolean>? = when (kind) {
+        "fade" -> Triple("fade", "crossfade", false)
+        "push" -> Triple("pushWipe", when (dir) { "u" -> "fromBottom"; "d" -> "fromTop"; "r" -> "fromLeft"; else -> "fromRight" }, false)
+        "cover" -> Triple("slideWipe", from(dir), false)
+        "pull" -> Triple("slideWipe", from(dir), true)
+        "wipe" -> when (dir) { "u" -> Triple("barWipe", "topToBottom", true); "d" -> Triple("barWipe", "topToBottom", false); "r" -> Triple("barWipe", "leftToRight", false); else -> Triple("barWipe", "leftToRight", true) }
+        else -> null
+    }
+    /** LibreOffice's transition back as PowerPoint's kind and side (another of its own kinds: shown as a fade). */
+    fun kind(type: String, subtype: String?, reverse: Boolean): Pair<String, String?>? {
+        fun dir(s: String?) = when (s) { "fromRight" -> "r"; "fromTop" -> "u"; "fromBottom" -> "d"; else -> "l" }
+        return when (type) {
+            "none" -> null
+            "fade" -> "fade" to null
+            "pushWipe" -> "push" to when (subtype) { "fromBottom" -> "u"; "fromTop" -> "d"; "fromLeft" -> "r"; else -> "l" }
+            "slideWipe" -> (if (reverse) "pull" else "cover") to dir(subtype)
+            "barWipe" -> "wipe" to if (subtype == "topToBottom") (if (reverse) "u" else "d") else (if (reverse) "l" else "r")
+            else -> "fade" to null
+        }
+    }
+    /** An effect's side as LibreOffice's sub-type ("from-left": where a fly comes from, or goes to). */
+    fun subtype(from: Char) = when (from) { 'l' -> "from-left"; 'r' -> "from-right"; 'u' -> "from-top"; else -> "from-bottom" }
+    fun side(subtype: String?) = when (subtype) { "from-left" -> 'l'; "from-right" -> 'r'; "from-top" -> 'u'; else -> 'd' }
 }

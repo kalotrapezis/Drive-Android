@@ -149,7 +149,9 @@ class SlidesTest {
             hidden = mapOf(0 to true), texts = mapOf((0 to "o0") to listOf("Tetra Slides, edited"), (1 to "o1") to listOf("One", "Two")),
             looks = mapOf((2 to "o0") to SlidesEdit.Look(fill = 0xFFC00000.toInt(), text = 0xFFFFFFFF.toInt())), frames = mapOf((2 to "o1") to listOf(100f, 400f, 150f, 60f)),
             removed = setOf(2 to "o3"), added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()),
-                SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path))))
+                SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path))),
+            transitions = mapOf(2 to SlideTransition("push", "u", 1000)),
+            anims = mapOf(2 to listOf(SlideEffect("o0", "fade", 'd', 0, 500), SlideEffect("9100", "fly", 'l', 0, 1000), SlideEffect("o0", "fade", 'd', 0, 500, exit = true))))
         val out = File.createTempFile("edited", ".odp")
         SlidesEdit.view(deck, e) // as it shows while editing (no failure)
         SlidesOdpEdit.save(src, deck, e, out)
@@ -165,6 +167,12 @@ class SlidesTest {
             for (k in 2..3) assertEquals(listOf("One", "Two"), (d.slides[k].items.first { words(it)?.startsWith("One") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
             assertTrue(d.slides.none { s -> s.items.any { it is SlideItem.Chart } })
             if (odp) assertEquals(d.slides[2].items.size, d.slides[3].items.size)
+            // the transition and the clicks (LibreOffice's push from below, its fade in, fly in from the left, fade out)
+            assertEquals("push", d.slides[0].transition!!.kind); assertEquals("u", d.slides[0].transition!!.dir); assertEquals(1000, d.slides[0].transition!!.ms)
+            val st = d.slides[0].steps.map { it.effects.single() }
+            assertEquals(listOf("fade", "fly", "fade"), st.map { it.kind }); assertEquals(listOf(false, false, true), st.map { it.exit })
+            assertEquals(box.anim, st[0].target); assertEquals(box.anim, st[2].target); assertEquals('l', st[1].from); assertEquals(1000, st[1].ms)
+            assertEquals(0xFFFFC000.toInt(), (d.slides[0].items.first { it.anim == st[1].target } as SlideItem.Shape).shape!!.fill) // the star's
         }
         check(Slides.read(out), true)
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {

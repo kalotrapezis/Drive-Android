@@ -250,7 +250,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side and speed; Play shows it from the slide before
                 val now = sl?.transition
-                val kinds = listOf("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", "Cut" to "cut")
+                // LibreOffice has no cut: an .odp leaves it out
+                val kinds = listOfNotNull("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", ("Cut" to "cut").takeIf { !odp })
                 fun set(t: SlideTransition) { change(e.copy(transitions = e.transitions + (uid to t))); WriterLog.i("Slides: transition ${t.kind} ${t.dir} ${t.ms}") }
                 if (effectOptions && now != null) {
                     IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
@@ -427,8 +428,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        // shortcut: an .odp's transitions and animations are not written yet, so its ribbon leaves those tabs out
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions".takeIf { !odp }, "Animations".takeIf { !odp })
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions", "Animations")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Column(Modifier.navigationBarsPadding()) {

@@ -21,6 +21,8 @@ internal object SlidesOdpEdit {
     private const val XLINK = "http://www.w3.org/1999/xlink"
     private const val XML = "http://www.w3.org/XML/1998/namespace"
     private const val MANIFEST = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"
+    private const val ANIM = "urn:oasis:names:tc:opendocument:xmlns:animation:1.0"
+    private const val SMIL = "urn:oasis:names:tc:opendocument:xmlns:smil-compatible:1.0"
     private const val LOEXT = "urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0"
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
@@ -47,7 +49,7 @@ internal object SlidesOdpEdit {
         val pages = pres.kids().filter { it.localName == "page" && it.namespaceURI == DRAW }
         val autos = root.kids().firstOrNull { it.localName == "automatic-styles" }
             ?: doc.createElementNS(OFFICE, "office:automatic-styles").also { a -> root.insertBefore(a, root.kids().firstOrNull { it.localName == "body" }) }
-        val names = root.all().mapNotNull { it.a(STYLE, "name") ?: it.a(DRAW, "name") }.toMutableSet()
+        val names = root.all().flatMap { listOfNotNull(it.a(STYLE, "name"), it.a(DRAW, "name"), it.a(XML, "id"), it.a(DRAW, "id")) }.toMutableSet()
         fun fresh(prefix: String) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in names }.also { names += it }
 
         // a style's properties in the schema's order
@@ -175,6 +177,35 @@ internal object SlidesOdpEdit {
             return doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true) as Element
         }
 
+        /** [el]'s id, what an animation names (one of its own made when it has none). */
+        fun idOf(el: Element): String = el.a(XML, "id") ?: el.a(DRAW, "id") ?: fresh("idT").also { el.setAttributeNS(XML, "xml:id", it); el.setAttributeNS(DRAW, "draw:id", it) }
+        val ans = """xmlns:anim="$ANIM" xmlns:smil="$SMIL" xmlns:presentation="$PRES""""
+        fun secs(ms: Int) = String.format(Locale.ROOT, "%.3fs", ms / 1000f)
+        /** One click's group: [fx] on [target], in LibreOffice's presets. */
+        fun click(fx: SlideEffect, target: String): String {
+            val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"; else -> if (fx.exit) "fade-out" else "fade-in" }
+            val cls = if (fx.exit) "exit" else "entrance"
+            val sub = if (fx.kind == "fly") """ presentation:preset-sub-type="${OdpEffects.subtype(fx.from)}"""" else ""
+            val begin = if (fx.exit && fx.kind != "appear") secs(fx.ms - 1) else "0s"
+            val set = """<anim:set smil:begin="$begin" smil:dur="0.001s" smil:fill="hold" smil:targetElement="$target" smil:attributeName="visibility" smil:to="${if (fx.exit) "hidden" else "visible"}"/>"""
+            val move = when (fx.kind) {
+                "appear" -> ""
+                "fly" -> {
+                    val edge = when (fx.from) { 'l' -> "x" to "0-width/2"; 'r' -> "x" to "1+width/2"; 'u' -> "y" to "0-height/2"; else -> "y" to "1+height/2" }
+                    listOf("x", "y").joinToString("") { at ->
+                        val there = if (at == edge.first) edge.second else at
+                        """<anim:animate smil:dur="${secs(fx.ms)}" smil:fill="hold" smil:targetElement="$target" smil:attributeName="$at" smil:values="${if (fx.exit) "$at;$there" else "$there;$at"}" smil:keyTimes="0;1"/>"""
+                    }
+                }
+                else -> """<anim:transitionFilter smil:dur="${secs(fx.ms)}" smil:targetElement="$target" smil:type="fade" smil:subtype="crossfade"${if (fx.exit) " smil:mode=\"out\"" else ""}/>"""
+            }
+            return """<anim:par smil:begin="next" smil:fill="hold"><anim:par smil:begin="0s" smil:fill="hold"><anim:par smil:begin="0s" smil:fill="hold" presentation:node-type="on-click" presentation:preset-class="$cls" presentation:preset-id="ooo-$cls-$kind"$sub>$set$move</anim:par></anim:par></anim:par>"""
+        }
+        fun fragment(x: String) = doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true) as Element
+        /** The page's timing root, made when it has none (after its shapes, before its notes). */
+        fun timingRoot(page: Element): Element = page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }
+            ?: fragment("""<anim:par $ans smil:dur="indefinite" smil:restart="never" presentation:node-type="timing-root"/>""").also { r -> page.insertBefore(r, page.kids().firstOrNull { it.localName == "notes" }) }
+
         /** Page [page] (slide [src] of the deck, [uid] in the edit) with its edits. */
         fun apply(page: Element, src: Int, uid: Int) {
             fun at(id: String): Element? { var el: Element? = page; for (k in id.removePrefix("o").split('.')) el = el?.kids()?.getOrNull(k.toIntOrNull() ?: return null); return el }
@@ -183,13 +214,41 @@ internal object SlidesOdpEdit {
             val looks = edit.looks.filterKeys { it.first == uid && it.second.startsWith("o") }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
             val frames = edit.frames.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { Triple(it, v, SlidesEdit.box(deck.slides[src], k.second)) } }
             val removed = edit.removed.filter { it.first == uid }.mapNotNull { at(it.second) }
+            val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }
             looks.forEach { (el, l) -> restyle(el, l) }
             frames.forEach { (el, f, box) -> place(el, f, box) }
             removed.forEach { it.parentNode?.removeChild(it) }
             // put on: over the page's own, before its notes and animations
             val before = page.kids().firstOrNull { it.localName in setOf("notes", "par", "seq", "animations") }
-            for (a in edit.added[uid].orEmpty()) added(a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before) }
+            val put = HashMap<String, Element>()
+            for (a in edit.added[uid].orEmpty()) added(a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
+            // the transition: in the page's style and the timing's own filter, as LibreOffice writes it
+            edit.transitions[uid]?.let { t ->
+                val smil = t.kind.takeIf { it.isNotEmpty() }?.let { OdpEffects.smil(it, t.dir) }
+                page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "transition $t") { st ->
+                    val d = props(st, "drawing-page-properties")
+                    for (n in listOf("type", "subtype", "direction", "fadeColor")) d.removeAttributeNS(SMIL, n)
+                    d.removeAttributeNS(PRES, "transition-speed")
+                    if (smil != null) {
+                        d.setAttributeNS(SMIL, "smil:type", smil.first); d.setAttributeNS(SMIL, "smil:subtype", smil.second)
+                        if (smil.third) d.setAttributeNS(SMIL, "smil:direction", "reverse")
+                        d.setAttributeNS(PRES, "presentation:transition-speed", when { t.ms <= 500 -> "fast"; t.ms >= 1000 -> "slow"; else -> "medium" })
+                    }
+                })
+                val r = timingRoot(page)
+                r.kids().filter { p -> p.kids().any { it.localName == "transitionFilter" && it.a(SMIL, "targetElement") == null } }.forEach { r.removeChild(it) }
+                if (smil != null) r.insertBefore(fragment("""<anim:par $ans smil:begin="${idOf(page)}.begin"><anim:transitionFilter smil:dur="${secs(t.ms)}" smil:type="${smil.first}" smil:subtype="${smil.second}"${if (smil.third) " smil:direction=\"reverse\"" else ""}/></anim:par>"""), r.firstChild)
+            }
+            // the clicks: the main sequence written again (what is still on the page)
+            // shortcut: rewrites the whole main sequence, so its emphasis effects (not read here) are lost when its animations are changed
+            if (anims != null) {
+                val r = timingRoot(page)
+                r.kids().filter { it.localName == "seq" && it.a(PRES, "node-type") == "main-sequence" }.forEach { r.removeChild(it) }
+                val clicks = anims.mapNotNull { (fx, el) -> (el?.takeIf { it.parentNode != null } ?: put[fx.target])?.let { click(fx, idOf(it)) } }
+                if (clicks.isNotEmpty()) r.appendChild(fragment("""<anim:seq $ans smil:dur="indefinite" presentation:node-type="main-sequence">${clicks.joinToString("")}</anim:seq>"""))
+            }
+            page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }?.let { if (it.kids().isEmpty()) page.removeChild(it) }
             edit.hidden[uid]?.let { h -> if (h != deck.slides[src].hidden)
                 page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "hidden $h") { props(it, "drawing-page-properties").setAttributeNS(PRES, "presentation:visibility", if (h) "hidden" else "visible") }) }
         }
@@ -202,8 +261,12 @@ internal object SlidesOdpEdit {
                 // a copy: its own name, and ids of its own (its animations follow them)
                 copy.setAttributeNS(DRAW, "draw:name", fresh("page"))
                 val renamed = HashMap<String, String>()
-                for (el in copy.all()) for ((n, a) in listOf(XML to "id", DRAW to "id")) el.a(n, a)?.let { old -> renamed.getOrPut(old) { "${old}c${e.uid}" }.let { el.setAttributeNS(n, if (n == XML) "xml:id" else "draw:id", it) } }
-                for (el in copy.all()) for (i in 0 until el.attributes.length) el.attributes.item(i).let { at -> renamed[at.nodeValue]?.takeIf { at.localName == "targetElement" }?.let { at.nodeValue = it } }
+                val els = listOf(copy) + copy.all()
+                for (el in els) for ((n, a) in listOf(XML to "id", DRAW to "id")) el.a(n, a)?.let { old -> renamed.getOrPut(old) { fresh("${old}c") }.let { el.setAttributeNS(n, if (n == XML) "xml:id" else "draw:id", it) } }
+                for (el in els) for (i in 0 until el.attributes.length) el.attributes.item(i).let { at ->
+                    if (at.localName == "targetElement") renamed[at.nodeValue]?.let { at.nodeValue = it }
+                    if (at.localName == "begin" && at.nodeValue.endsWith(".begin")) renamed[at.nodeValue.removeSuffix(".begin")]?.let { at.nodeValue = "$it.begin" }
+                }
             }
             apply(page, e.src, e.uid)
             ordered += page

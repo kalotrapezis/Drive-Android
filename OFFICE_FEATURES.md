@@ -331,8 +331,9 @@ LibreOffice works them out).
       (not saved); a slide's own empty boxes the same; a new presentation (the Office home's card, Files › New: an empty title
       slide, opened editing); **.odp too** (16 Oct): its pages moved, duplicated, deleted, hidden, words typed, its own items
       moved, sized, coloured (LibreOffice's copy of the fill in the text style too) or deleted, pictures and shapes put
-      on, saved into content.xml (LibreOffice opens it, and its .pptx of it agrees) — [ ] an .odp's tables put on, new
-      slides from its layouts, its transitions and animations
+      on, transitions and entrances/exits read, played, chosen and saved as LibreOffice writes them (its names for
+      push, cover, uncover, wipe, fade — no cut), saved into content.xml (LibreOffice opens it, and its .pptx of it
+      agrees) — [ ] an .odp's tables put on, new slides from its layouts
 - [x] Edit text on a slide (above); layouts and themes from the file (as shown)
 - [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
       everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —

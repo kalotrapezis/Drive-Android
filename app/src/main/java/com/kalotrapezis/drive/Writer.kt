@@ -1833,6 +1833,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
             if (img == null) { message = "Could not use that picture."; return@launch }
             changePicture(key, DocImage(key, null, old.widthPt, old.widthPt * img.heightPt / img.widthPt, null, img.bytes, img.extension, PictureXml.wrapOf(old)))
+            // a picture control's picture: filled now (its placeholder state gone)
+            if (current().paras.any { p -> p.runs.any { it.image?.key == key && it.control != null } }) change<Unit> { meta = Forms.pictureFilled(current(), key); state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection) }
             state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         }
     }
@@ -2330,6 +2332,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun insertControl(newKind: Forms.New, title: String, items: List<String>, format: String) = change {
         val (pr, shown) = Forms.newControl(newKind, title, items, format)
         if (!state.selection.collapsed) state.removeSelectedText()
+        // a picture control: Word's placeholder picture in it, filled from its bar (Choose picture)
+        if (newKind == Forms.New.Picture) {
+            val img = placeholderPicture()
+            pictures[img.key] = img
+            val at = placePicture(img)
+            meta = current().let { d -> d.copy(paras = d.paras.map { p -> if (p.runs.none { it.image?.key == img.key }) p else p.copy(runs = p.runs.map { if (it.image?.key == img.key) it.copy(control = pr) else it }) }) }
+            dirty = true; reshow()
+            state.selection = androidx.compose.ui.text.TextRange(at + 1)
+            WriterLog.i("content control: picture \"$title\"")
+            return@change
+        }
         val start = state.selection.min
         state.addTextAfterSelection("$shown ") // a space after it, outside: what is typed next is not in it
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), start, start + shown.length)
@@ -3668,7 +3681,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             }
             // The form field the cursor is in: its choices, a date, a tick (a text field fills by typing, or Fill in).
-            hereControl?.let { (pr, _, _) -> FormBar(pr, controlsShown.filter { it.first == pr }.joinToString("") { it.second }, w) { newPr, text -> fillControl(pr, newPr, text) } }
+            hereControl?.let { (pr, _, r) -> FormBar(pr, controlsShown.filter { it.first == pr }.joinToString("") { it.second }, w,
+                choosePicture = { state.selection = androidx.compose.ui.text.TextRange(r.first, r.first + 1); replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { newPr, text -> fillControl(pr, newPr, text) } }
             // The tracked change the cursor is in: what, who and when (Review has Accept and Reject).
             hereChange?.let { c ->
                 Row(Modifier.fillMaxWidth().clickable { tab = WriterTab.Review }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4875,6 +4889,19 @@ internal fun decodePicture(bytes: ByteArray, max: Int): android.graphics.Bitmap?
  * A picture from the phone, ready to go into a document: a JPEG or PNG no bigger than 2400 pixels is kept as it is;
  * anything bigger (or of another kind) is made a JPEG of that size. As wide as it is (96 dpi), at most the page's width.
  */
+/** A picture control's placeholder (Word's grey picture of a picture), 1½ inches square. */
+private fun placeholderPicture(): DocImage {
+    val b = android.graphics.Bitmap.createBitmap(216, 216, android.graphics.Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(b)
+    c.drawColor(0xFFF2F2F2.toInt())
+    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFA6A6A6.toInt() }
+    c.drawCircle(140f, 76f, 16f, p) // the sun
+    c.drawPath(android.graphics.Path().apply { moveTo(40f, 160f); lineTo(90f, 96f); lineTo(124f, 136f); lineTo(146f, 112f); lineTo(176f, 160f); close() }, p) // the hills
+    p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 6f
+    c.drawRect(30f, 46f, 186f, 170f, p)
+    val bytes = java.io.ByteArrayOutputStream().also { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    return DocImage("n" + java.util.UUID.randomUUID(), null, 108f, 108f, null, bytes, "png")
+}
 private fun preparePicture(context: Context, uri: Uri): DocImage {
     val raw = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

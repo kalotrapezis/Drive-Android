@@ -35,13 +35,14 @@ import java.util.Locale
  * the bar.
  */
 internal object Forms {
-    enum class Kind { Text, List, Date, Check }
+    enum class Kind { Text, List, Date, Check, Picture }
 
     private fun attr(tag: String, name: String) = Regex("""\b$name="([^"]*)"""").find(tag)?.groupValues?.get(1)?.let(::unesc)
     private fun unesc(s: String) = s.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
     private fun tag(pr: String, name: String) = Regex("""<$name\b[^>]*>""").find(pr)?.value
 
     fun kind(pr: String) = when {
+        tag(pr, "w:picture") != null -> Kind.Picture // its letter is a picture, chosen to fill it
         tag(pr, "w14:checkbox") != null -> Kind.Check
         tag(pr, "w:dropDownList") != null || tag(pr, "w:comboBox") != null -> Kind.List
         tag(pr, "w:date") != null -> Kind.Date
@@ -63,6 +64,11 @@ internal object Forms {
     }
 
     /** The control filled with [text], its sdtPr changed to [pr] (a placeholder's grey goes, as Word's). */
+    /** A picture control filled: the picture in it is [key]'s now, its placeholder state gone. */
+    fun pictureFilled(doc: OfficeDoc, key: String): OfficeDoc = doc.copy(paras = doc.paras.map { p ->
+        if (p.runs.none { it.image?.key == key && it.control != null }) p
+        else p.copy(runs = p.runs.map { r -> if (r.image?.key == key && r.control != null) r.copy(control = r.control.replace(Regex("""<w:showingPlcHdr\s*/>"""), "")) else r })
+    })
     fun fill(doc: OfficeDoc, old: String, pr: String, text: String): OfficeDoc {
         val plain = pr.replace(Regex("""<w:showingPlcHdr\s*/>"""), "")
         val wasPlaceholder = plain != pr
@@ -77,7 +83,7 @@ internal object Forms {
         })
     }
     /** Insert › Content control's kinds, as Word's Developer tab names them. */
-    enum class New(val label: String) { PlainText("Plain text"), RichText("Rich text"), CheckBox("Check box"), DropDown("Drop-down list"), ComboBox("Combo box"), Date("Date picker") }
+    enum class New(val label: String) { PlainText("Plain text"), RichText("Rich text"), CheckBox("Check box"), DropDown("Drop-down list"), ComboBox("Combo box"), Date("Date picker"), Picture("Picture") }
 
     /**
      * A new content control as Word writes one: its sdtPr ([title] as its title and tag; a list's [items]; a date's
@@ -94,6 +100,7 @@ internal object Forms {
             New.DropDown -> "$head<w:showingPlcHdr/>${list("dropDownList")}</w:sdtPr>" to "Choose an item."
             New.ComboBox -> "$head<w:showingPlcHdr/>${list("comboBox")}</w:sdtPr>" to "Choose an item."
             New.Date -> "$head<w:showingPlcHdr/><w:date><w:dateFormat w:val=\"${esc(dateFormat)}\"/><w:lid w:val=\"en-GB\"/><w:storeMappedDataAs w:val=\"dateTime\"/><w:calendar w:val=\"gregorian\"/></w:date></w:sdtPr>" to "Click or tap to enter a date."
+            New.Picture -> "$head<w:showingPlcHdr/><w:picture/></w:sdtPr>" to OBJECT_MARK.toString() // the caller puts its placeholder picture there
             New.CheckBox -> """$head<w14:checkbox xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr>""" to "☐"
         }
     }
@@ -106,11 +113,11 @@ internal object Forms {
     fun fromOdt(attrs: Map<String, String>, items: List<Pair<String, String>>): String? {
         fun esc(v: String) = OfficeFormats.esc(v).replace("\"", "&quot;")
         fun on(name: String) = attrs[name] == "true"
-        if (on("picture")) return null
         val head = listOfNotNull(attrs["alias"]?.let { "<w:alias w:val=\"${esc(it)}\"/>" }, attrs["tag"]?.let { "<w:tag w:val=\"${esc(it)}\"/>" },
             attrs["id"]?.let { "<w:id w:val=\"${esc(it)}\"/>" }, "<w:showingPlcHdr/>".takeIf { on("showing-place-holder") }).joinToString("")
         fun hex(state: String?, or: Int) = "%04X".format(state?.codePointAt(0) ?: or)
         val body = when {
+            on("picture") -> "<w:picture/>"
             on("checkbox") -> """<w14:checkbox xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w14:checked w14:val="${if (on("checked")) 1 else 0}"/><w14:checkedState w14:val="${hex(attrs["checked-state"], 0x2612)}" w14:font="MS Gothic"/><w14:uncheckedState w14:val="${hex(attrs["unchecked-state"], 0x2610)}" w14:font="MS Gothic"/></w14:checkbox>"""
             on("dropdown") || on("combobox") -> (if (on("combobox")) "comboBox" else "dropDownList").let { t ->
                 "<w:$t>" + items.joinToString("") { (shown, value) -> """<w:listItem w:displayText="${esc(shown)}" w:value="${esc(value)}"/>""" } + "</w:$t>" }
@@ -143,6 +150,7 @@ internal object Forms {
                 tag(pr, "w:date")?.let { attr(it, "w:fullDate") }?.let { a.append(" loext:current-date=\"${esc(it)}\"") }
             }
             Kind.Text -> if (tag(pr, "w:text") != null) a.append(" loext:plain-text=\"true\"")
+            Kind.Picture -> a.append(" loext:picture=\"true\"")
         }
         tag(pr, "w:alias")?.let { attr(it, "w:val") }?.let { a.append(" loext:alias=\"${esc(it)}\"") }
         tag(pr, "w:tag")?.let { attr(it, "w:val") }?.let { a.append(" loext:tag=\"${esc(it)}\"") }
@@ -160,12 +168,12 @@ internal object Forms {
 
 /** The form field the cursor is in, above the ribbon: its name, and what fills it — a choice, a date, a tick. */
 @Composable
-internal fun FormBar(pr: String, text: String, w: Color, fill: (pr: String, text: String) -> Unit) {
+internal fun FormBar(pr: String, text: String, w: Color, choosePicture: () -> Unit = {}, fill: (pr: String, text: String) -> Unit) {
     val context = LocalContext.current
     var typing by remember { mutableStateOf(false) }
     val kind = Forms.kind(pr)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(Forms.name(pr) ?: when (kind) { Forms.Kind.Text -> "Text field"; Forms.Kind.List -> "Drop-down"; Forms.Kind.Date -> "Date"; Forms.Kind.Check -> "Check box" },
+        Text(Forms.name(pr) ?: when (kind) { Forms.Kind.Text -> "Text field"; Forms.Kind.List -> "Drop-down"; Forms.Kind.Date -> "Date"; Forms.Kind.Check -> "Check box"; Forms.Kind.Picture -> "Picture" },
             color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 6.dp))
         when (kind) {
             Forms.Kind.Text -> TextButton(onClick = { typing = true }) { Text("Fill in", color = Color.White) }
@@ -177,6 +185,7 @@ internal fun FormBar(pr: String, text: String, w: Color, fill: (pr: String, text
                 android.app.DatePickerDialog(context, { _, y, m, day -> LocalDate.of(y, m + 1, day).let { fill(Forms.dateTo(pr, it), Forms.dateText(pr, it)) } },
                     d.year, d.monthValue - 1, d.dayOfMonth).show()
             }) { Text("Choose date", color = Color.White) }
+            Forms.Kind.Picture -> TextButton(onClick = choosePicture) { Text("Choose picture", color = Color.White) }
             Forms.Kind.Check -> {
                 val on = Forms.checked(pr)
                 TextButton(onClick = { fill(Forms.checkedTo(pr, !on), Forms.box(pr, !on)) }) { Text(if (on) "Untick" else "Tick", color = Color.White) }

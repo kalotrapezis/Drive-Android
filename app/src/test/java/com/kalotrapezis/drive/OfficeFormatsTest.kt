@@ -561,6 +561,33 @@ class OfficeFormatsTest {
         }
     }
 
+    /** A picture content control (Word's w:picture; LibreOffice's loext:picture): kept in both kinds (the file was copy-only), filled with another picture; LibreOffice keeps it each way. */
+    @Test fun `a picture control is kept and filled`() {
+        val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+        val (pr, mark) = Forms.newControl(Forms.New.Picture, "Photo")
+        assertEquals(Forms.Kind.Picture, Forms.kind(pr))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val img = DocImage("p1", null, 108f, 108f, null, png, "png")
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Photo: "), DocRun(mark, image = img, control = pr), DocRun(" end")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, emptySet<String>(), back.blocking)
+            val run = back.paras[0].runs.single { it.image != null }
+            assertEquals(kind.name, Forms.Kind.Picture, run.control?.let(Forms::kind))
+            assertEquals(kind.name, true, "w:showingPlcHdr" in run.control!!)
+            val filled = Forms.pictureFilled(back, run.image!!.key)
+            assertEquals(kind.name, false, "w:showingPlcHdr" in filled.paras[0].runs.single { it.image != null }.control!!)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "p.${kind.extension}").apply { writeBytes(OfficeFormats.write(filled, kind, bytes)) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.read(java.io.File(dir, "out/p.${other.extension}").readBytes(), other)
+                assertEquals(kind.name, Forms.Kind.Picture, lo.paras.flatMap { it.runs }.firstNotNullOfOrNull { it.control }?.let(Forms::kind))
+            }
+        }
+    }
+
     /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
     @Test fun `track changes is remembered in a Word file`() {
         val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)

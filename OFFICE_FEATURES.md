@@ -173,7 +173,7 @@ one pass once the tabs' features are done.
       linear form with a preview, Picture › Edit equation ; typing in one in place — an equation chosen shows its linear form in a bar over the ribbon, the page redrawing it as you type (15 Oct); LibreOffice's formulas (MathML objects) read and drawn, Insert › Equation and Edit equation in .odt write LibreOffice Math objects (15 Oct, evening)
 - [x] **Content controls** (Insert › Content control, 15 Oct): plain/rich text, check box, drop-down and combo
       list, date picker, with a title; filled from the form bar; .odt's too — LibreOffice's loext:content-control read,
-      filled, written and inserted (15 Oct, evening) — [ ] picture controls
+      filled, written and inserted (15 Oct, evening); picture controls (16 Oct: Word's w:picture, LibreOffice's loext:picture — kept, no longer copy-only; Choose picture in their bar fills one; Insert › Content control › Picture puts Word's grey placeholder)
 - [x] SmartArt shown (15 Oct, evening): from the drawing Word saves with it (word/diagrams/drawing*.xml), each shape and its words where they stand, theme colours; kept in the file as it was — [ ] editing SmartArt, an .odt's (LibreOffice turns it into shapes)
 
 ### Draw (Word's Draw tab; OnlyOffice: Select · 2 pens · highlighter · Eraser)

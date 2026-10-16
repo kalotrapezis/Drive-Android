@@ -1948,8 +1948,8 @@ private fun docxStyleLists(parts: Map<String, ByteArray>, dir: String): Map<Stri
 }
 
 /** The order of a paragraph's properties in Word's schema; Word refuses a file with them out of order. */
-/** Content controls Writer does not fill in (a form's own are text, rich text, drop-down, combo box, date, check box). */
-internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "picture", "bibliography", "equation", "group", "citation", "repeatingSection", "repeatingSectionItem")
+/** Content controls Writer does not fill in (a form's own are text, rich text, drop-down, combo box, date, check box, picture). */
+internal val OTHER_CONTROLS = setOf("docPartObj", "docPartList", "bibliography", "equation", "group", "citation", "repeatingSection", "repeatingSectionItem")
 /** A paragraph's kept parts that are not its properties: the building block it begins or goes on, its bookmarks. */
 internal const val SDT_BLOCK = "sdtBlock"
 internal const val SDT_PART = "sdtPart"

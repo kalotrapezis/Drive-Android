@@ -85,25 +85,31 @@ internal object SlidesEdit {
         }
         val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
         val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
-        val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() } ?: s.transition.takeIf { e.uid !in edit.transitions }
+        val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
         return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
     }
-    /** A slide's clicks as a list to edit, each effect with its start (on a click, with the one before, after it). */
+    /** A slide's clicks as a list to edit, each effect with its start (on a click, with the one before, after it) and its wait from then. */
     fun flat(steps: List<SlideStep>): List<SlideEffect> = steps.flatMap { st ->
-        val fx = st.effects.sortedBy { it.delay }
-        fx.mapIndexed { i, e -> e.copy(start = when { i == 0 -> if (st.auto) 'a' else 'c'; e.delay <= fx[i - 1].delay -> 'w'; else -> 'a' }) }
+        // a group's chain: "with" counts from where the effect before began its run, "after" from when everything so far ends
+        var base = 0; var end = 0
+        st.effects.mapIndexed { i, e ->
+            val start = if (i == 0) (if (st.auto) 'a' else 'c') else if (e.start == 'c') 'w' else e.start
+            if (start == 'a' && i > 0) base = end
+            if (start == 'c') base = 0
+            end = maxOf(end, e.delay + e.ms)
+            e.copy(start = start, wait = (e.delay - base).coerceAtLeast(0))
+        }
     }
-    /** The list back as clicks: a click begins a group; with the one before starts as it does, after it when it ends (a first one not on a click: by itself). */
+    /** The list back as clicks: a click begins a group; with the one before starts as it does, after it when it ends (a first one not on a click: by itself); each then waits its own time. */
     fun group(list: List<SlideEffect>): List<SlideStep> {
         val out = ArrayList<Pair<Boolean, MutableList<SlideEffect>>>()
+        var base = 0
         for (fx in list) {
             val cur = out.lastOrNull()
-            when {
-                fx.start == 'c' || cur == null -> out += (fx.start != 'c') to mutableListOf(fx.copy(delay = 0))
-                fx.start == 'w' -> cur.second += fx.copy(delay = cur.second.last().delay)
-                else -> cur.second += fx.copy(delay = cur.second.maxOf { it.delay + it.ms })
-            }
+            if (fx.start == 'c' || cur == null) { base = 0; out += (fx.start != 'c') to mutableListOf(fx.copy(delay = fx.wait)); continue }
+            if (fx.start == 'a') base = cur.second.maxOf { it.delay + it.ms }
+            cur.second += fx.copy(delay = base + fx.wait)
         }
         return out.map { SlideStep(it.first, it.second) }
     }
@@ -258,7 +264,9 @@ internal object SlidesEdit {
             root.kids().filter { it.localName == "transition" || (it.localName == "AlternateContent" && it.getElementsByTagNameNS(P, "transition").length > 0) }.forEach { root.removeChild(it) }
             val spd = when { transition.ms <= 500 -> "fast"; transition.ms >= 1000 -> "slow"; else -> "med" }
             val dir = transition.dir?.takeIf { transition.kind in setOf("push", "wipe", "cover", "pull") }?.let { """ dir="$it"""" }.orEmpty()
-            if (transition.kind.isNotEmpty()) place(OfficeFormats.parse("""<p:transition xmlns:p="$P" spd="$spd"><p:${transition.kind}$dir/></p:transition>""".toByteArray()).documentElement, setOf("timing", "extLst"))
+            val adv = transition.after?.let { """ advTm="$it"""" }.orEmpty()
+            val inner = if (transition.kind.isNotEmpty()) "<p:${transition.kind}$dir/>" else ""
+            if (transition.kind.isNotEmpty() || transition.after != null) place(OfficeFormats.parse("""<p:transition xmlns:p="$P" spd="$spd"$adv>$inner</p:transition>""".toByteArray()).documentElement, setOf("timing", "extLst"))
         }
         if (anims != null) {
             root.kids().filter { it.localName == "timing" }.forEach { root.removeChild(it) }
@@ -291,7 +299,7 @@ internal object SlidesEdit {
             val inner = step.effects.groupBy { it.delay }.toSortedMap().entries.joinToString("") { (delay, effects) ->
                 val b = id()
                 """<p:par><p:cTn id="$b" fill="hold"><p:stCondLst><p:cond delay="$delay"/></p:stCondLst><p:childTnLst>""" + effects.joinToString("") { fx ->
-                    val node = when { last == null -> if (step.auto) "afterEffect" else "clickEffect"; fx.delay == last!!.delay -> "withEffect"; else -> "afterEffect" }
+                    val node = when { last == null -> if (step.auto) "afterEffect" else "clickEffect"; fx.start == 'a' -> "afterEffect"; else -> "withEffect" }
                     last = fx
                     val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
                     val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }

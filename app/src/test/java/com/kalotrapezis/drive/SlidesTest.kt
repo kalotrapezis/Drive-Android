@@ -243,6 +243,35 @@ class SlidesTest {
         check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
     }
 
+    /** Delay and "next slide after": an effect waiting after its click, one after the one before with a wait; slides going on by themselves — both formats, and LibreOffice. */
+    @Test fun `delays and slides going on by themselves`() {
+        fun lo(file: File, to: String): File? {
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
+            return dir.listFiles()!!.single { it.extension == to }
+        }
+        fun check(d: Deck, plain: Boolean = true) {
+            // the box 1 s after the click, the star 2 s after the box has faded in (0.5 s): at 1 s and 3.5 s
+            assertEquals(listOf(1000, 3500), d.slides[2].steps.single().effects.map { it.delay })
+            assertEquals(listOf(1000, 2000), SlidesEdit.flat(d.slides[2].steps).map { it.wait })
+            assertEquals(5000, d.slides[2].transition!!.after); assertEquals("fade", d.slides[2].transition!!.kind)
+            // by itself, no transition (LibreOffice's .pptx import drops a time on a slide without one — PowerPoint's own way of writing it)
+            if (plain) d.slides[1].transition!!.let { assertEquals("", it.kind); assertEquals(3000, it.after) }
+        }
+        val star = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5")))
+        val tr = mapOf(2 to SlideTransition("fade", null, 750, 5000), 1 to SlideTransition("", null, 0, 3000))
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.anim!!
+        val list = listOf(SlideEffect(box, "fade", 'd', 0, 500, wait = 1000), SlideEffect("9100", "fly", 'l', 0, 1000, start = 'a', wait = 2000))
+        val out = File.createTempFile("delay", ".pptx"); SlidesEdit.save(src, deck, SlidesEdit.start(deck).copy(added = star, anims = mapOf(2 to list), transitions = tr), out)
+        check(Slides.read(out)); lo(out, "odp")?.let { check(Slides.read(it), plain = false) }
+        val osrc = File("src/test/resources/slides.odp"); val odeck = Slides.read(osrc)
+        val oout = File.createTempFile("delay", ".odp")
+        SlidesOdpEdit.save(osrc, odeck, SlidesEdit.start(odeck).copy(added = star, anims = mapOf(2 to list.map { if (it.target == box) it.copy(target = "o0") else it }), transitions = tr), oout)
+        check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

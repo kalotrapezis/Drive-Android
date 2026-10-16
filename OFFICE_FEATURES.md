@@ -359,7 +359,10 @@ LibreOffice works them out).
       played (about the item's or group's middle; a grown one stays grown), chosen and saved (PowerPoint's animRot and
       animScale, LibreOffice's animateTransform) — [ ] other kinds of effect (changing a slide's animations writes them
       as their nearest: a fade, a pulse); Start — on a click, with the one before, after it
-      (Options; the label counts clicks), in both formats (LibreOffice's "by itself" read in its .pptx too)
+      (Options; the label counts clicks), in both formats (LibreOffice's "by itself" read in its .pptx too); Delay (none,
+      0.5–5 s, from its click, the one it starts with, or the end of the one before); Next slide: on a click or by itself
+      after 3–20 s (PowerPoint's advTm, LibreOffice's automatic transition; the time runs once the slide's effects are
+      done) — [ ] LibreOffice's .pptx import drops a time on a slide with no transition (PowerPoint's own way of writing it)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
       the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)

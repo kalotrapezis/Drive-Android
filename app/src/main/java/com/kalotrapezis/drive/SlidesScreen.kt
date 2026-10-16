@@ -248,20 +248,24 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
             "Transitions" -> {
-                // how this slide comes in when presenting; Options: its side and speed; Play shows it from the slide before
+                // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
                 val now = sl?.transition
                 // LibreOffice has no cut: an .odp leaves it out
                 val kinds = listOfNotNull("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", ("Cut" to "cut").takeIf { !odp })
                 fun set(t: SlideTransition) { change(e.copy(transitions = e.transitions + (uid to t))); WriterLog.i("Slides: transition ${t.kind} ${t.dir} ${t.ms}") }
-                if (effectOptions && now != null) {
+                if (effectOptions) {
                     IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                    if (now.kind in setOf("push", "wipe", "cover", "pull"))
+                    if (now != null && now.kind in setOf("push", "wipe", "cover", "pull"))
                         for ((label, d) in listOf("From the right" to "l", "From the left" to "r", "From below" to "u", "From above" to "d"))
                             RibbonButton(label, w, on = (now.dir ?: "l") == d) { set(now.copy(dir = d)) }
-                    for ((label, ms) in listOf("Fast" to 500, "Medium" to 750, "Slow" to 1000)) RibbonButton(label, w, on = now.ms == ms) { set(now.copy(ms = ms)) }
+                    if (now != null && now.kind.isNotEmpty()) for ((label, ms) in listOf("Fast" to 500, "Medium" to 750, "Slow" to 1000)) RibbonButton(label, w, on = now.ms == ms) { set(now.copy(ms = ms)) }
+                    // when the next slide comes: on a click, or by itself after a time (PowerPoint's Advance Slide)
+                    Text("Next slide", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
+                    for ((label, after) in listOf("On click" to null, "After 3 s" to 3000, "After 5 s" to 5000, "After 10 s" to 10000, "After 20 s" to 20000))
+                        RibbonButton(label, w, on = now?.after == after) { set((now ?: SlideTransition("", null, 0)).copy(after = after)) }
                 } else {
-                    for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, now?.ms ?: 750)) }
-                    RibbonButton("Options", w, R.drawable.ic_tune, enabled = now != null) { effectOptions = true }
+                    for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, if (kind.isEmpty()) 0 else now?.ms?.takeIf { it > 0 } ?: 750, now?.after)) }
+                    RibbonButton("Options", w, R.drawable.ic_tune) { effectOptions = true }
                     // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
                     RibbonButton("Apply to all", w, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
                     RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
@@ -298,6 +302,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val k = list.indexOfFirst { it.target == id }
                         for ((label, c) in listOf("On click" to 'c', "With previous" to 'w', "After previous" to 'a'))
                             RibbonButton(label, w, on = list[k].start == c) { set(list.toMutableList().also { it[k] = it[k].copy(start = c) }) }
+                        // and how long it waits from then (PowerPoint's Delay)
+                        Text("Delay", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
+                        for ((label, ms) in listOf("None" to 0, "0.5 s" to 500, "1 s" to 1000, "2 s" to 2000, "5 s" to 5000))
+                            RibbonButton(label, w, on = list[k].wait == ms) { set(list.toMutableList().also { it[k] = it[k].copy(wait = ms) }) }
                     }
                     else -> {
                         val first = listOf(inK, emK, outK).filter { it >= 0 }.minOrNull() ?: -1
@@ -626,6 +634,13 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
         }
     }
     fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
+    // a slide that goes on by itself: its time once its effects are done (and its transition in), then the next
+    // shortcut: PowerPoint counts the time from the slide's start; here it runs after its last effect, the same when it has none
+    LaunchedEffect(page, step, playing, from) {
+        val after = slide(page).transition?.after ?: return@LaunchedEffect
+        if (playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
+        kotlinx.coroutines.delay(after.toLong()); next()
+    }
     /**
      * An item's look now: hidden until its entrance's click, then appearing, fading in or flying in from its side; an
      * exit the other way (disappearing, fading out, flying out to its side), hidden after it.
@@ -682,7 +697,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
         val sw = deck.width * k; val sh = deck.height * k
         c.save(); c.translate((w - sw) / 2, (h - sh) / 2); c.clipRect(0f, 0f, sw, sh)
         val cur = slide(page)
-        val tr = cur.transition
+        val tr = cur.transition?.takeIf { it.kind.isNotEmpty() } // going on by itself only: no transition to draw
         val f = from
         val t = if (f != null && tr != null) (ms(f.second).toFloat() / tr.ms.coerceAtLeast(1)).coerceIn(0f, 1f) else 1f
         val e = 1 - (1 - t) * (1 - t)

@@ -238,7 +238,7 @@ internal object SlidesOdpEdit {
             var last: SlideEffect? = null
             """<anim:par smil:begin="${if (step.auto) "0s" else "next"}" smil:fill="hold">""" + step.effects.groupBy { it.delay }.toSortedMap().entries.joinToString("") { (delay, fxs) ->
                 """<anim:par smil:begin="${secs(delay)}" smil:fill="hold">""" + fxs.joinToString("") { fx ->
-                    val node = when { last == null -> if (step.auto) "after-previous" else "on-click"; fx.delay == last!!.delay -> "with-previous"; else -> "after-previous" }
+                    val node = when { last == null -> if (step.auto) "after-previous" else "on-click"; fx.start == 'a' -> "after-previous"; else -> "with-previous" }
                     last = fx
                     effect(fx, ids.getValue(fx.target), node)
                 } + "</anim:par>"
@@ -272,7 +272,9 @@ internal object SlidesOdpEdit {
                 page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "transition $t") { st ->
                     val d = props(st, "drawing-page-properties")
                     for (n in listOf("type", "subtype", "direction", "fadeColor")) d.removeAttributeNS(SMIL, n)
-                    d.removeAttributeNS(PRES, "transition-speed")
+                    d.removeAttributeNS(PRES, "transition-speed"); d.removeAttributeNS(PRES, "transition-type"); d.removeAttributeNS(PRES, "duration")
+                    // going on by itself after its time
+                    t.after?.let { ms -> d.setAttributeNS(PRES, "presentation:transition-type", "automatic"); d.setAttributeNS(PRES, "presentation:duration", String.format(Locale.ROOT, "PT%.3fS", ms / 1000f)) }
                     if (smil != null) {
                         d.setAttributeNS(SMIL, "smil:type", smil.first); d.setAttributeNS(SMIL, "smil:subtype", smil.second)
                         if (smil.third) d.setAttributeNS(SMIL, "smil:direction", "reverse")

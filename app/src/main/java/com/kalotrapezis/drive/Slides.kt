@@ -47,10 +47,12 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
 }
 
 /** How a slide comes in when presenting (PowerPoint's transition): [kind] fade, push, wipe, cover…; [dir] l, r, u, d; [ms] how long. */
-internal data class SlideTransition(val kind: String, val dir: String?, val ms: Int)
+internal data class SlideTransition(val kind: String, val dir: String?, val ms: Int,
+    /** the slide goes on by itself this long after it is shown (its effects done) — PowerPoint's "After"; null: on a click; [kind] "" then: no transition */ val after: Int? = null)
 /** An effect on a click: [target] the shape's id; [kind] appear, fade, fly; [from] fly's side (l, r, u, d); its delay and length; [exit]: it goes (disappear, fade out, fly out to [from]). */
 internal data class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int, val exit: Boolean = false,
-    /** while editing: when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c') {
+    /** when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c',
+    /** while editing: how long it waits from then (PowerPoint's Delay) */ val wait: Int = 0) {
     /** An emphasis (pulse, spin, grow): on something already there, neither bringing it nor taking it away. */
     val emphasis get() = kind in EMPHASES
     companion object { val EMPHASES = setOf("pulse", "spin", "grow") }
@@ -229,10 +231,12 @@ internal object Slides {
         /** The slide's transition (PowerPoint 2010's own, in AlternateContent, or the plain one). */
         fun transition(s: Element): SlideTransition? {
             val t = s.kid("transition") ?: s.kid("AlternateContent")?.let { a -> a.kid("Choice")?.kid("transition") ?: a.kid("Fallback")?.kid("transition") } ?: return null
-            val kind = t.kids().firstOrNull()?.localName ?: return null
+            // going on by itself after a time (advTm), with or without a transition of its own
+            val after = t.attr("advTm")?.toIntOrNull()
+            val kind = t.kids().firstOrNull()?.localName ?: if (after != null) "" else return null
             val ms = t.attributes.let { a -> (0 until a.length).map { a.item(it) }.firstOrNull { it.localName == "dur" }?.nodeValue?.toIntOrNull() }
                 ?: when (t.attr("spd")) { "fast" -> 500; "slow" -> 1000; else -> 750 }
-            return SlideTransition(kind, t.kids().first().attr("dir"), ms)
+            return SlideTransition(kind, t.kids().firstOrNull()?.attr("dir"), if (kind.isEmpty()) 0 else ms, after)
         }
 
         /**
@@ -257,7 +261,8 @@ internal object Slides {
                         val kind = if (e.attr("presetClass") == "emph") when (e.attr("presetID")) { "8" -> "spin"; "6" -> "grow"; else -> "pulse" }
                             else when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; else -> "fade" }
                         val from = when (e.attr("presetSubtype")) { "1" -> 'u'; "2" -> 'r'; "4" -> 'd'; "8" -> 'l'; else -> 'd' }
-                        SlideEffect(target, kind, from, at + delay(e), ms, exit = e.attr("presetClass") == "exit")
+                        val start = when (e.attr("nodeType")) { "withEffect" -> 'w'; "afterEffect" -> 'a'; else -> 'c' }
+                        SlideEffect(target, kind, from, at + delay(e), ms, exit = e.attr("presetClass") == "exit", start = start)
                     }
                 }
                 if (effects.isEmpty()) null else SlideStep(auto, effects)

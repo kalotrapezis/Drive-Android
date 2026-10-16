@@ -239,12 +239,16 @@ internal object SlidesOdp {
             val root = page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }
             fun secs(v: String?) = v?.let { if (it.endsWith("ms")) it.removeSuffix("ms").toFloatOrNull()?.div(1000) else it.removeSuffix("s").toFloatOrNull() }
             val filter = root?.kids()?.firstNotNullOfOrNull { p -> p.kids().firstOrNull { it.localName == "transitionFilter" && it.a(SMIL, "targetElement") == null } }
+            // going on by itself: an automatic transition after its duration (ISO 8601: PT5S, PT00H00M05S)
+            val after = if (prop("drawing-page", dp, "d.transition-type") == "automatic") prop("drawing-page", dp, "d.duration")?.let { d ->
+                Regex("""PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?""").find(d)?.let { m -> val (h, mi, sec) = m.destructured
+                    (((h.toIntOrNull() ?: 0) * 3600 + (mi.toIntOrNull() ?: 0) * 60 + (sec.toFloatOrNull() ?: 0f)) * 1000).toInt() } } ?: 0 else null
             val transition = prop("drawing-page", dp, "d.type")?.let { type ->
                 OdpEffects.kind(type, prop("drawing-page", dp, "d.subtype"), prop("drawing-page", dp, "d.direction") == "reverse")?.let { (kind, dir) ->
                     val ms = secs(filter?.a(SMIL, "dur"))?.let { (it * 1000).toInt() } ?: when (prop("drawing-page", dp, "d.transition-speed")) { "slow" -> 1000; "fast" -> 500; else -> 750 }
-                    SlideTransition(kind, dir, ms)
+                    SlideTransition(kind, dir, ms, after)
                 }
-            }
+            } ?: after?.let { SlideTransition("", null, 0, it) }
             // the clicks: the main sequence's groups, each its entrances and exits (LibreOffice's presets)
             val main = root?.getElementsByTagNameNS(ANIM, "seq")?.let { l -> (0 until l.length).map { l.item(it) as Element } }?.firstOrNull { it.a(PRES, "node-type") == "main-sequence" }
             val steps = main?.kids().orEmpty().mapNotNull { click ->
@@ -259,7 +263,8 @@ internal object SlidesOdp {
                         val at = secs((fx.parentNode as? Element)?.a(SMIL, "begin"))?.let { (it * 1000).toInt() } ?: 0
                         val kind = if (fx.a(PRES, "preset-class") == "emphasis") (if ("spin" in id) "spin" else if ("grow" in id) "grow" else "pulse")
                             else if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade"
-                        SlideEffect(target, kind, OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit")
+                        val start = when (fx.a(PRES, "node-type")) { "with-previous" -> 'w'; "after-previous" -> 'a'; else -> 'c' }
+                        SlideEffect(target, kind, OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit", start = start)
                     }
                 if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
             }

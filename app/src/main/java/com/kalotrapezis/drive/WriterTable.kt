@@ -200,7 +200,7 @@ internal fun plain(v: Float) = if (v % 1f == 0f) v.toInt().toString() else v.toS
  * before and after (pt, as Word counts them) and indents (cm). [apply] gets the new look; what was not touched stays.
  */
 @Composable
-internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLook) -> Unit) {
+internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, style: String? = null, editStyle: (() -> Unit)? = null, apply: (ParaLook) -> Unit) {
     var draft by remember { mutableStateOf(look) }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
@@ -239,7 +239,10 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
                         draft = draft.copy(firstLine = if (draft.firstLine < 0f) -v else v)
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Word's Modify Style from here: the style itself changed, so every paragraph in it follows
+                    if (editStyle != null && style != null) TextButton(onClick = editStyle) { Text("Edit style “$style”", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                    Spacer(Modifier.weight(1f))
                     TextButton(onClick = dismiss) { Text("Cancel") }
                     TextButton(onClick = { apply(draft) }) { Text("OK") }
                 }
@@ -370,6 +373,7 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
             Column(Modifier.padding(20.dp)) {
                 Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
                 Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ParagraphPreview(d, d.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Font") {
                         (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }

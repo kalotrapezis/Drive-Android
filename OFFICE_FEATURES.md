@@ -90,7 +90,7 @@ one pass once the tabs' features are done.
       alignment, line spacing (single · 1.15 · 1.5 · double), space before/after, first-line indent — changes the
       document's own style, so every paragraph with it changes, in Word/LibreOffice too
 - [x] **Line spacing** quick buttons on Home (1 · 1.15 · 1.5 · 2) — shown on the pages and in the file; the editor keeps its own lines
-- [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left, right and first-line/hanging indent for the chosen paragraphs — [ ] "Edit its style" from there
+- [x] **⋯ at the end of Home → Paragraph page**: line spacing, space before/after, left, right and first-line/hanging indent for the chosen paragraphs ; "Edit style “…”" from there (16 Oct: Word's Modify Style, its own panel, with the preview too)
 - [x] **Page format**: margins, orientation, paper size (Layout › Page setup)
 - [x] **Table format**: styles, shading, lines, alignment, row height, header row, column width, cell alignment and direction (Table tab + More… page)
 - [x] **Bibliography / citations** (references list, APA 7 — see References)

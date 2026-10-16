@@ -4592,7 +4592,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         BordersDialog(look, { bordersPage = null }, line = { bordersPage = null; horizontalLine() }) { box -> bordersPage = null; setBorders(at, box) }
     }
     paragraphPage?.let { (at, look) ->
-        ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }
+        // its style, to be edited from here (Word's Modify Style)
+        val entry = remember(at) { at.minOrNull()?.let { current().paras.getOrNull(it) }?.let { documentStyles.styleOf(it) } }
+        ParagraphDialog(look, { paragraphPage = null }, style = entry?.name, editStyle = entry?.let { e -> { paragraphPage = null; editingStyle = e } }) { now -> paragraphPage = null; setSpacing(at, look, now) }
     }
     if (showVersions) {
         // History (the user, 2026-10-14): every version as pages to look at; one kept becomes the document, the rest go.

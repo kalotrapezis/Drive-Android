@@ -223,20 +223,24 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
+                    if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonDivider(w)
                     Swatches(w, R.drawable.ic_format_color_fill, "Fill", SLIDE_COLOURS) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SLIDE_COLOURS) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", SLIDE_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
                 }
                 // moved, made bigger or smaller (the arrows a step a press, for where a finger is not precise); what was put on it here, deleted
                 if (it0 != null) {
+                    if (it0 is SlideItem.Shape || a?.prst == "table") RibbonDivider(w)
                     val step = (deck?.width ?: 720f) / 40
                     RibbonButton("Left", w, R.drawable.ic_chevron_left) { reframe { listOf(it.x - step, it.y, it.w, it.h) } }
                     RibbonButton("Right", w, R.drawable.ic_chevron_right) { reframe { listOf(it.x + step, it.y, it.w, it.h) } }
                     RibbonButton("Up", w, R.drawable.ic_keyboard_arrow_up) { reframe { listOf(it.x, it.y - step, it.w, it.h) } }
                     RibbonButton("Down", w, R.drawable.ic_keyboard_arrow_down) { reframe { listOf(it.x, it.y + step, it.w, it.h) } }
+                    RibbonDivider(w)
                     RibbonButton("Bigger", w, R.drawable.ic_add) { reframe { val k = 1.15f; listOf(it.x - it.w * (k - 1) / 2, it.y - it.h * (k - 1) / 2, it.w * k, it.h * k) } }
                     RibbonButton("Smaller", w, R.drawable.ic_remove) { reframe { val k = 1 / 1.15f; listOf(it.x + it.w * (1 - k) / 2, it.y + it.h * (1 - k) / 2, it.w * k, it.h * k) } }
                 }
+                if (it0 != null) RibbonDivider(w)
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) {
                     val id = item ?: return@RibbonButton
                     // its animation goes with it (the slide's timing then names only what is there)
@@ -259,10 +263,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
                     chosen = c + 1
                 }
+                RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                 RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
+                RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false // a new slide is shown
                 RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
+                RibbonDivider(w)
                 RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
             }
             "Insert" -> {
@@ -274,10 +281,18 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
                 RibbonButton("Save", w, R.drawable.ic_save, enabled = changed && !saving) { save() }
                 file?.let { f ->
+                    RibbonDivider(w)
                     RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
                     RibbonButton("Open in another app", w, R.drawable.ic_open_with) { if (changed) save { openElsewhere(context, f) } else openElsewhere(context, f) }
                 }
-                RibbonButton("Present", w, R.drawable.ic_play) { presenting = c }
+            }
+            "Slide show" -> {
+                // PowerPoint's and LibreOffice's Slide Show tab (asked 16 Oct: where presenting starts)
+                RibbonButton("From the beginning", w, R.drawable.ic_play) { presenting = 0 }
+                RibbonButton("From this slide", w, R.drawable.ic_play) { presenting = c }
+                RibbonDivider(w)
+                val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
+                RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
             }
             "Design" -> {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
@@ -296,16 +311,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (now != null && now.kind in setOf("push", "wipe", "cover", "pull"))
                         for ((label, d) in listOf("From the right" to "l", "From the left" to "r", "From below" to "u", "From above" to "d"))
                             RibbonButton(label, w, on = (now.dir ?: "l") == d) { set(now.copy(dir = d)) }
+                    if (now != null && now.kind in setOf("push", "wipe", "cover", "pull")) RibbonDivider(w)
                     if (now != null && now.kind.isNotEmpty()) for ((label, ms) in listOf("Fast" to 500, "Medium" to 750, "Slow" to 1000)) RibbonButton(label, w, on = now.ms == ms) { set(now.copy(ms = ms)) }
                     // when the next slide comes: on a click, or by itself after a time (PowerPoint's Advance Slide)
+                    if (now != null && now.kind.isNotEmpty()) RibbonDivider(w)
                     Text("Next slide", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
                     for ((label, after) in listOf("On click" to null, "After 3 s" to 3000, "After 5 s" to 5000, "After 10 s" to 10000, "After 20 s" to 20000))
                         RibbonButton(label, w, on = now?.after == after) { set((now ?: SlideTransition("", null, 0)).copy(after = after)) }
                 } else {
                     for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, if (kind.isEmpty()) 0 else now?.ms?.takeIf { it > 0 } ?: 750, now?.after)) }
+                    RibbonDivider(w)
                     RibbonButton("Options", w, R.drawable.ic_tune) { effectOptions = true }
                     // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
                     RibbonButton("Apply to all", w, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
+                    RibbonDivider(w)
                     RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
                 }
             }
@@ -352,12 +371,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val sided = setOf("fly", "wipe")
                         if (mineNow.any { it.kind in sided }) for ((label, d) in listOf("Bottom" to 'd', "Top" to 'u', "Left" to 'l', "Right" to 'r'))
                             RibbonButton(label, w, on = mineNow.first { it.kind in sided }.from == d) { all { if (it.kind in sided) it.copy(from = d) else it } }
+                        if (mineNow.any { it.kind in sided }) RibbonDivider(w)
                         for ((label, ms) in listOf("Fast" to 500, "Medium" to 1000, "Slow" to 2000)) RibbonButton(label, w, on = mineNow.first().ms == ms) { all { it.copy(ms = ms) } }
                         // when its first effect starts (PowerPoint's Start)
                         val k = list.indexOfFirst { it.target == id }
+                        RibbonDivider(w)
                         for ((label, c) in listOf("On click" to 'c', "With previous" to 'w', "After previous" to 'a'))
                             RibbonButton(label, w, on = list[k].start == c) { set(list.toMutableList().also { it[k] = it[k].copy(start = c) }) }
                         // and how long it waits from then (PowerPoint's Delay)
+                        RibbonDivider(w)
                         Text("Delay", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
                         for ((label, ms) in listOf("None" to 0, "0.5 s" to 500, "1 s" to 1000, "2 s" to 2000, "5 s" to 5000))
                             RibbonButton(label, w, on = list[k].wait == ms) { set(list.toMutableList().also { it[k] = it[k].copy(wait = ms) }) }
@@ -371,9 +393,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         RibbonButton("Effect", w, R.drawable.ic_motion) { effectKinds = true }
                         RibbonButton("Options", w, R.drawable.ic_tune, enabled = first >= 0) { effectOptions = true }
                         if (first >= 0) {
+                            RibbonDivider(w)
                             RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = first > 0) { set(list.toMutableList().apply { add(first - 1, removeAt(first)) }) }
                             RibbonButton("Later", w, R.drawable.ic_keyboard_arrow_down, enabled = first < list.lastIndex) { set(list.toMutableList().apply { add(first + 1, removeAt(first)) }) }
                         }
+                        RibbonDivider(w)
                         RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
                     }
                 }
@@ -499,7 +523,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations")
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations", "Slide show")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Column(Modifier.navigationBarsPadding()) {
@@ -515,7 +539,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 }
                                 // the tab's tools on one sliding line, as Words' and Tables' (only catalogs, as colours or effects, take 2–3 lines)
                                 key(shown) {
-                                    Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                                         if (e != null) SlideRibbon(shown, c, e, w)
                                     }
                                 }

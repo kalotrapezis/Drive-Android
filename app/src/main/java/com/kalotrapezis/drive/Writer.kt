@@ -3787,7 +3787,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.Insert -> listOf({
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
-                    Divider(w)
+                    RibbonDivider(w)
                     RibbonButton("Table", w, R.drawable.ic_table, enabled = loaded) { insertingTable = true }
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -4210,13 +4210,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (LocalConfiguration.current.screenWidthDp >= 700) Row(
                 rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
-            ) { pages.forEachIndexed { i, page -> if (i > 0) Divider(w); page() } }
+            ) { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } }
             else androidx.compose.runtime.key(tab) {
                 // The tab's tools in one row that scrolls freely, its groups apart by a thin line, faded where there is more
                 // (16 Oct: as Tables' and Slides' rows, in place of pages turned one at a time with dots); a new tab from its start
                 val sc = remember(tab) { androidx.compose.foundation.ScrollState(0) }
                 Row(Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    pages.forEachIndexed { i, group -> if (i > 0) Divider(w); group() }
+                    pages.forEachIndexed { i, group -> if (i > 0) RibbonDivider(w); group() }
                 }
             }
             }
@@ -4835,7 +4835,8 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
     }
 }
 
-@Composable private fun Divider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
+/** A thin line between a ribbon's groups of tools (Words', Slides' and Tables'). */
+@Composable internal fun RibbonDivider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
 
 /** Design › Paragraph spacing: Word's sets — space after (pt) and line spacing of the Normal style. */
 private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("Compact", 4f, 1f), Triple("Tight", 6f, 1.15f),

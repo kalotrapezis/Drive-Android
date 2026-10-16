@@ -371,7 +371,8 @@ LibreOffice works them out).
       as a fade), each its own length; click animations — appear, fade, fly in from its side (others as a fade), the
       clicks in turn, those that start by themselves too, a click during one ends it; on the TV the same frames
 - [x] The ribbon with tabs, as Tables' (asked 16 Oct): Selection (what is chosen on the slide), File (Save, Share, Open
-      in another app, Present), Slide, Insert, Design, Transitions, Animations; a tap chooses a text box, shape or
+      in another app), Slide, Insert, Design, Transitions, Animations, Slide show (From the beginning, From this slide,
+      Hide slide — 16 Oct); a tab's groups apart by a thin line, a short tab's tools centred (Tables' too); a tap chooses a text box, shape or
       picture, a second tap types in it. Tools on one sliding line; Animations › Effect is a catalog strip with a line
       each for In, Emphasis and Out
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard

@@ -33,6 +33,8 @@ internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val an
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
     /** The id of the shape, picture or group it belongs to on the slide (cNvPr id): what an animation names. */
     var anim: String? = null
+    /** In a group: it moves with the group (not chosen to move on its own). */
+    var grouped = false
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -344,7 +346,7 @@ internal object Slides {
                     }
                     "AlternateContent" -> e.kid("Fallback")?.let { shapes(it, rels, ctx, out, group, groupId) }
                 }
-                if (ctx != null) for (k in before until out.size) if (out[k].anim == null) out[k].anim = ownId
+                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 

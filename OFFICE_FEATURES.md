@@ -295,8 +295,10 @@ LibreOffice works them out).
 - [x] Insert/delete rows and columns (every reference, merge, rule, drawing, chart, comment and table moved), Undo/Redo
 - [x] Cell formatting: bold, italic, underline, strike, colours, fill, borders, alignment, wrap, number/currency/date/
       percent/text, decimals, size, font, Clear formatting (.xlsx and .ods; LibreOffice shows them)
-- [x] The ribbon as Word's (asked 16 Oct: "Tabs? home insert and so on"): File, Home, Insert, Formulas, Data, View while
-      editing, and a tab for what is chosen (Column, Row, Sheet, Selection) that comes by itself, in view mode too
+- [x] The ribbon as Word's (asked 16 Oct: "Tabs? home insert and so on"): Selection, File, Home, Insert, Formulas, Data,
+      View while editing, and a tab for what is chosen (Column, Row, Sheet) that comes by itself, in view mode too;
+      Selection first as Words' (Cut, Copy, Paste, Clear, Select all, the chosen cells' sum; asked 16 Oct: Home was crowded)
+- [x] Ribbon rows shaded at an edge while there is more that way, as Words' (asked 16 Oct)
 - [x] Formulas › AutoSum, Average, Count, Max, Min: the numbers above (or to the left) in the cell bar, Enter puts it in
 - [x] New spreadsheet (the Office home's Excel card, named on its first save); new sheet, rename, move, delete (names
       and formulas follow; LibreOffice agrees), each one step to undo
@@ -337,7 +339,16 @@ LibreOffice works them out).
 - [x] Transitions and animations shown when presenting (16 Oct): push, gallery, cover, pull, wipe, cut, fade (any other
       as a fade), each its own length; click animations — appear, fade, fly in from its side (others as a fade), the
       clicks in turn, those that start by themselves too, a click during one ends it; on the TV the same frames
-- [ ] Choosing a slide's transition and an object's animation (the ribbon's Transitions and Animations tabs)
+- [x] The ribbon with tabs, as Tables' (asked 16 Oct): Selection (what is chosen on the slide), Slide, Insert,
+      Transitions, Animations; a tap chooses a text box, shape or picture, a second tap types in it
+- [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard
+      colours, or none), a table's (its first row, the others in its tints) — the file's own shapes too
+- [x] The file's own text boxes, shapes, pictures, charts and tables moved and sized (finger or arrows), saved in their
+      place — [ ] one in a group (it moves with the group), deleting the file's own items
+- [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Apply to all; Play) and an item's
+      entrance (None, Appear, Fade, Fly in; Earlier/Later in the clicks; Play), saved as PowerPoint's XML — LibreOffice
+      reads them (its wipe, its clicks) — [ ] emphasis and exit effects, a direction or length to choose (changing a
+      slide's animations rewrites its timing, so effects not read here are dropped)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
       the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)

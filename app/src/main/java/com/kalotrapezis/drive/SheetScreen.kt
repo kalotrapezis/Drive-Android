@@ -659,7 +659,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in base } ?: "Home" }
         val shown = tab.takeIf { it in tabs } ?: tabs.first()
         // A group with choices of its own (Borders, Number) takes the ribbon's place, ‹ back (asked 16 Oct, as Page numbers).
-        @Composable fun Strip(name: String) = Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
+        @Composable fun Strip(name: String) = Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             IconButton(onClick = { group = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
             Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
@@ -679,7 +679,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                     tabs.forEach { t ->
                         val on = t == shown
@@ -690,7 +690,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     }
                 }
                 val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }
-                Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
                     val thin = SheetLine(0xFF000000.toInt(), 1f)
                     @Composable fun copyClear() {
@@ -1310,7 +1310,7 @@ private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit, cop
 private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit)? = null, tools: (() -> Unit)? = null, pick: (Int) -> Unit) {
     if (book.tabs.count { !it.hidden } < 2 && add == null) return
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.navigationBarsPadding().fillMaxWidth().shadedRow().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             book.tabs.forEachIndexed { i, tab ->
                 if (tab.hidden) return@forEachIndexed
                 val on = i == index

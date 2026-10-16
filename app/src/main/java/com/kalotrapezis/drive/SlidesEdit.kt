@@ -15,13 +15,38 @@ internal object SlidesEdit {
     data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
         /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList())
+    /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
+    data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null)
+    const val NONE = 0
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
-        val added: Map<Int, List<Added>> = emptyMap()) {
+        val added: Map<Int, List<Added>> = emptyMap(),
+        /** (slide uid, shape id) → its looks */ val looks: Map<Pair<Int, String>, Look> = emptyMap(),
+        /** a slide's transition as chosen: "" none, else PowerPoint's name (fade, push, wipe, cover, pull, cut) */ val transitions: Map<Int, String> = emptyMap(),
+        /** a slide's click animations as chosen, in their order: each item's id and its entrance (appear, fade, fly) */ val anims: Map<Int, List<Pair<String, String>>> = emptyMap(),
+        /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         fun newId(uid: Int) = "${9000 + (added[uid]?.size ?: 0) + added.values.sumOf { it.size }}"
     }
     fun start(deck: Deck) = Edit(deck.slides.indices.map { Entry(it, it) })
+    /** [edit] with item [id] of slide [uid] at [x], [y], [w] × [h]: one put on it here, or the file's own. */
+    fun framed(edit: Edit, uid: Int, id: String, x: Float, y: Float, w: Float, h: Float): Edit {
+        val added = edit.added[uid].orEmpty()
+        return if (added.any { it.id == id }) edit.copy(added = edit.added + (uid to added.map { if (it.id == id) it.copy(x = x, y = y, w = w, h = h) else it }))
+        else edit.copy(frames = edit.frames + ((uid to id) to listOf(x, y, w, h)))
+    }
+    /** [item] moved or sized to [f] (x, y, w, h). */
+    private fun moved(item: SlideItem, f: List<Float>?): SlideItem {
+        if (f == null || item.grouped) return item
+        val (x, y, w, h) = f
+        val kx = if (item.w > 0) w / item.w else 1f; val ky = if (item.h > 0) h / item.h else 1f
+        return when (item) {
+            is SlideItem.Shape -> SlideItem.Shape(x, y, w, h, item.rotation, item.shape, item.text, item.paths, item.flipH, item.flipV, item.gradient, item.id, item.hint)
+            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.bytes)
+            is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
+            is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
+        }.also { it.anim = item.anim }
+    }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
     fun slide(deck: Deck, edit: Edit, e: Entry): Slide {
@@ -40,28 +65,47 @@ internal object SlidesEdit {
                 else SlidePara(listOf(run), p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink) }
-                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id)
+                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped }
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
-            if (a.prst == "table") table(a) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { pictureIds[it] = a.id }
-            else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)
+            (if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
+            else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)).also { it.anim = a.id } // what it is chosen and animated by
         }
-        return Slide(items + added, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, s.transition, s.steps)
+        val all = (items.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
+        val transition = edit.transitions[e.uid]?.let { k -> if (k.isEmpty()) null else SlideTransition(k, null, 750) } ?: s.transition.takeIf { e.uid !in edit.transitions }
+        val steps = edit.anims[e.uid]?.map { (id, kind) -> SlideStep(false, listOf(SlideEffect(id, kind, 'd', 0, 500))) } ?: s.steps
+        return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
+    }
+    /** [item] in the looks chosen for it (a shape: its fill, border, words' colour; anything else as it is). */
+    private fun styled(item: SlideItem, l: Look?): SlideItem {
+        if (l == null || item !is SlideItem.Shape) return item
+        val sp = item.shape
+        fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
+        val shape = if (l.fill == null && l.line == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line), sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap())
+        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.runs.map { r -> SlideRun(r.text, r.size, r.bold, r.italic, r.underline, l.text, r.font) },
+            p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line) }, t.anchor, t.insets, t.scale, t.wrap, t.shrink) }
+        return SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped }
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
-    fun table(a: Added): SlideItem.Table {
+    fun table(a: Added, look: Look? = null): SlideItem.Table {
         fun cell(r: Int, c: Int): Pair<Int?, SlideText?> {
             val head = r == 0
             val words = a.cells.getOrNull(r * a.cols + c).orEmpty()
-            val run = SlideRun(words, 14f, head, false, false, if (head) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(), null)
-            val fill = if (head) 0xFF4472C4.toInt() else if (r % 2 == 1) 0xFFCFD5EA.toInt() else 0xFFE9EBF5.toInt()
+            val run = SlideRun(words, 14f, head, false, false, look?.text ?: if (head) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(), null)
+            val fill = cellFill(look?.fill, r)
             return fill to SlideText(listOf(SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)), 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
         }
         return SlideItem.Table(a.x, a.y, a.w, a.h, List(a.cols) { a.w / a.cols }, List(a.rows) { a.h / a.rows }, List(a.rows) { r -> List(a.cols) { c -> cell(r, c) } }, 0xFFFFFFFF.toInt())
     }
-    /** A picture put on a slide → its id (pictures have none of their own here). */
-    val pictureIds = java.util.WeakHashMap<SlideItem, String>()
+    /** A table's cell colour: the first row in [accent] (PowerPoint's default style's, else the chosen colour), the others banded in its tints. */
+    private fun cellFill(accent: Int?, r: Int): Int {
+        if (accent == null || accent == NONE) return if (r == 0) 0xFF4472C4.toInt() else if (r % 2 == 1) 0xFFCFD5EA.toInt() else 0xFFE9EBF5.toInt()
+        if (r == 0) return accent
+        val k = if (r % 2 == 1) 0.75f else 0.87f // toward white
+        fun ch(s: Int) = ((((accent shr s) and 255) + (255 - ((accent shr s) and 255)) * k).toInt() and 255) shl s
+        return 0xFF000000.toInt() or ch(16) or ch(8) or ch(0)
+    }
     private fun darker(c: Int): Int {
         fun ch(s: Int) = (((c shr s) and 255) * 0.7f).toInt() shl s
         return (c and 0xFF000000.toInt()) or ch(16) or ch(8) or ch(0)
@@ -85,7 +129,8 @@ internal object SlidesEdit {
     }.toByteArray()
 
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
-    fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap()): ByteArray {
+    fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
+        looks: Map<String, Look> = emptyMap(), transition: String? = null, anims: List<Pair<String, String>>? = null, frames: Map<String, List<Float>> = emptyMap()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
@@ -97,7 +142,11 @@ internal object SlidesEdit {
             val x = if (a.prst == "table") """<p:graphicFrame $ns><p:nvGraphicFramePr><p:cNvPr id="${a.id}" name="Table ${a.id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr><a:tblGrid>""" +
                     (0 until a.cols).joinToString("") { """<a:gridCol w="${emu(a.w / a.cols)}"/>""" } + "</a:tblGrid>" +
                     (0 until a.rows).joinToString("") { r -> """<a:tr h="${emu(a.h / a.rows)}">""" + (0 until a.cols).joinToString("") { c ->
-                        """<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>""" + (a.cells.getOrNull(r * a.cols + c)?.takeIf { it.isNotEmpty() }?.let { """<a:r><a:rPr lang="el-GR" sz="1400"/><a:t>${esc(it)}</a:t></a:r>""" } ?: """<a:endParaRPr lang="el-GR" sz="1400"/>""") + "</a:p></a:txBody><a:tcPr/></a:tc>"
+                        val look = looks[a.id]
+                        fun solid(c: Int) = """<a:solidFill><a:srgbClr val="${"%06X".format(c and 0xFFFFFF)}"/></a:solidFill>"""
+                        val rPr = """<a:rPr lang="el-GR" sz="1400"${if (r == 0) " b=\"1\"" else ""}>${look?.text?.let(::solid).orEmpty()}</a:rPr>"""
+                        """<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>""" + (a.cells.getOrNull(r * a.cols + c)?.takeIf { it.isNotEmpty() }?.let { """<a:r>$rPr<a:t>${esc(it)}</a:t></a:r>""" } ?: """<a:endParaRPr lang="el-GR" sz="1400"/>""") +
+                            "</a:p></a:txBody><a:tcPr>${look?.fill?.takeIf { it != NONE }?.let { solid(cellFill(it, r)) }.orEmpty()}</a:tcPr></a:tc>"
                     } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
                 else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
@@ -126,7 +175,91 @@ internal object SlidesEdit {
             }
             paras.drop(lines.size).forEach { body.removeChild(it) }
         }
+        fun idOf(e: Element) = e.kids().firstOrNull { it.localName.startsWith("nv") }?.kids()?.firstOrNull { it.localName == "cNvPr" }?.getAttribute("id")
+        val fills = setOf("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
+        fun fill(c: Int): Element = if (c == NONE) doc.createElementNS(A, "a:noFill") else doc.createElementNS(A, "a:solidFill").also { f ->
+            f.appendChild(doc.createElementNS(A, "a:srgbClr").also { it.setAttribute("val", "%06X".format(c and 0xFFFFFF)) }) }
+        /** [el]'s fill made [c]: its old one gone, the new one before the first of [after] (the schema's order). */
+        fun refill(el: Element, c: Int, after: Set<String>) {
+            el.kids().filter { it.localName in fills }.forEach { el.removeChild(it) }
+            el.insertBefore(fill(c), el.kids().firstOrNull { it.localName in after })
+        }
+        for ((id, l) in looks) {
+            val sp = shapes.firstOrNull { idOf(it) == id } ?: continue
+            val spPr = sp.kids().firstOrNull { it.localName == "spPr" } ?: continue
+            l.fill?.let { refill(spPr, it, setOf("ln", "effectLst", "effectDag", "scene3d", "sp3d", "extLst")) }
+            l.line?.let { c ->
+                val ln = spPr.kids().firstOrNull { it.localName == "ln" } ?: doc.createElementNS(A, "a:ln").also { n ->
+                    if (c != NONE) n.setAttribute("w", "19050"); spPr.insertBefore(n, spPr.kids().firstOrNull { it.localName in setOf("effectLst", "effectDag", "scene3d", "sp3d", "extLst") }) }
+                refill(ln, c, ln.kids().map { it.localName }.filter { it !in fills }.toSet())
+            }
+            l.text?.let { c ->
+                val body = sp.kids().firstOrNull { it.localName == "txBody" } ?: return@let
+                body.getElementsByTagNameNS(A, "p").let { ps -> (0 until ps.length).map { ps.item(it) as Element } }.forEach { p ->
+                    for (r in p.kids().filter { it.localName in setOf("r", "fld") }) {
+                        val rPr = r.kids().firstOrNull { it.localName == "rPr" } ?: doc.createElementNS(A, "a:rPr").also { r.insertBefore(it, r.firstChild) }
+                        refill(rPr, c, rPr.kids().map { it.localName }.filter { it != "ln" && it !in fills }.toSet())
+                    }
+                    p.kids().firstOrNull { it.localName == "endParaRPr" }?.let { refill(it, c, it.kids().map { k -> k.localName }.filter { k -> k != "ln" && k !in fills }.toSet()) }
+                }
+            }
+        }
+        // moved or sized: the item's own place (one in a group keeps its place in the group)
+        val named = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }
+        for ((id, f) in frames) {
+            val el = named.firstOrNull { it.getAttribute("id") == id }?.parentNode?.parentNode as? Element ?: continue
+            if ((el.parentNode as? Element)?.localName != "spTree") continue
+            val xfrm = if (el.localName == "graphicFrame") el.kids().firstOrNull { it.localName == "xfrm" }
+                else el.kids().firstOrNull { it.localName == "spPr" || it.localName == "grpSpPr" }?.let { sp -> sp.kids().firstOrNull { it.localName == "xfrm" } ?: doc.createElementNS(A, "a:xfrm").also { sp.insertBefore(it, sp.firstChild) } }
+            if (xfrm == null) continue
+            fun put(name: String, a: String, av: Float, b: String, bv: Float) {
+                val n = xfrm.kids().firstOrNull { it.localName == name } ?: doc.createElementNS(A, "a:$name").also { if (name == "off") xfrm.insertBefore(it, xfrm.firstChild) else xfrm.insertBefore(it, xfrm.kids().firstOrNull { k -> k.localName != "off" }) }
+                n.setAttribute(a, "${emu(av)}"); n.setAttribute(b, "${emu(bv)}")
+            }
+            put("off", "x", f[0], "y", f[1]); put("ext", "cx", f[2], "cy", f[3])
+        }
+        fun place(el: Element, before: Set<String>) { root.insertBefore(doc.importNode(el, true), root.kids().firstOrNull { it.localName in before }) }
+        if (transition != null) {
+            root.kids().filter { it.localName == "transition" || (it.localName == "AlternateContent" && it.getElementsByTagNameNS(P, "transition").length > 0) }.forEach { root.removeChild(it) }
+            if (transition.isNotEmpty()) place(OfficeFormats.parse("""<p:transition xmlns:p="$P" spd="med"><p:$transition/></p:transition>""".toByteArray()).documentElement, setOf("timing", "extLst"))
+        }
+        if (anims != null) {
+            root.kids().filter { it.localName == "timing" }.forEach { root.removeChild(it) }
+            // only what is still on the slide (a deleted shape's animation would make PowerPoint call the file damaged)
+            val ids = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { (l.item(it) as Element).getAttribute("id") } }.toSet()
+            val kept = anims.filter { it.first in ids }.distinctBy { it.first }
+            val sps = kept.map { it.first }.filter { id -> shapes.any { idOf(it) == id } }.toSet()
+            if (kept.isNotEmpty()) place(OfficeFormats.parse(timing(kept, sps).toByteArray()).documentElement, setOf("extLst"))
+        }
         return xml(doc)
+    }
+
+    /**
+     * A slide's timing for [anims], PowerPoint's own XML: each an entrance on its own click — appear (preset 1), fade
+     * (10), fly in from the bottom (2, subtype 4); [sps] the targets that are shapes (they take a build entry).
+     */
+    // shortcut: rewrites the slide's whole timing, so its emphasis and exit effects (not read here) are lost when its animations are changed
+    fun timing(anims: List<Pair<String, String>>, sps: Set<String>): String {
+        var n = 2
+        fun id() = ++n
+        fun tgt(s: String) = """<p:tgtEl><p:spTgt spid="$s"/></p:tgtEl>"""
+        val clicks = anims.joinToString("") { (s, kind) ->
+            val (preset, sub) = when (kind) { "appear" -> 1 to 0; "fly" -> 2 to 4; else -> 10 to 0 }
+            val a = id(); val b = id(); val c = id()
+            val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>"""
+            val move = when (kind) {
+                "appear" -> ""
+                "fly" -> listOf("ppt_x" to ("#ppt_x" to "#ppt_x"), "ppt_y" to ("1+#ppt_h/2" to "#ppt_y")).joinToString("") { (attr, v) ->
+                    """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="500" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="${v.first}"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="${v.second}"/></p:val></p:tav></p:tavLst></p:anim>""" }
+                else -> """<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="500"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
+            }
+            """<p:par><p:cTn id="$a" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="$b" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>""" +
+                """<p:par><p:cTn id="$c" presetID="$preset" presetClass="entr" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"0\"" else ""} nodeType="clickEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>""" +
+                "</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>"
+        }
+        val build = sps.takeIf { it.isNotEmpty() }?.joinToString("", "<p:bldLst>", "</p:bldLst>") { """<p:bldP spid="$it" grpId="0" animBg="1"/>""" }.orEmpty()
+        return """<p:timing xmlns:p="$P"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>$clicks</p:childTnLst></p:cTn>""" +
+            """<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst>$build</p:timing>"""
     }
 
     /**
@@ -185,6 +318,9 @@ internal object SlidesEdit {
         }
         for (e in edit.order) {
             val texts = edit.texts.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
+            val looks = edit.looks.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
+            val transition = edit.transitions[e.uid]; val anims = edit.anims[e.uid]
+            val frames = edit.frames.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val hide = edit.hidden[e.uid]
             val added = edit.added[e.uid].orEmpty()
             val source = if (e.layout >= 0) null else deck.slides[e.src]
@@ -197,10 +333,11 @@ internal object SlidesEdit {
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
-                if (texts.isNotEmpty() || added.isNotEmpty() || (hide != null && hide != source!!.hidden)) out[part] = withTexts(base, texts, hide, added, ids)
+                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden))
+                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames)
                 if (ids.isNotEmpty()) out[relsPath(part)] = xml(relsXml)
             } else {
-                out[part] = withTexts(base, texts, hide, added, ids)
+                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames)
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }

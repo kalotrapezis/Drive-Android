@@ -4888,6 +4888,9 @@ internal fun Modifier.scrollShade(state: androidx.compose.foundation.ScrollState
         topLeft = androidx.compose.ui.geometry.Offset(size.width - w, 0f), size = androidx.compose.ui.geometry.Size(w, size.height))
 }
 
+/** A ribbon's row scrolled sideways, shaded at an edge while there is more that way (as Words' tabs; asked 16 Oct). */
+internal fun Modifier.shadedRow(): Modifier = composed { val sc = rememberScrollState(); scrollShade(sc).horizontalScroll(sc) }
+
 /** A dialog's scrolling column: a shade at the top or bottom edge while there is more that way (asked 14 Oct). */
 internal fun Modifier.shadedScroll(): Modifier = composed {
     val sc = rememberScrollState()

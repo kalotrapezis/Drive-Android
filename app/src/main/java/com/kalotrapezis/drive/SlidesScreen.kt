@@ -58,6 +58,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -128,7 +130,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
-    var item by remember { mutableStateOf<String?>(null) } // a picture or shape put on the chosen slide, to move, size or delete
+    var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
+    var ribbonTab by remember { mutableStateOf("Slide") }
+    // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
+    LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Slide", "Insert")) ribbonTab = "Selection" }
     /** [a] put on the chosen slide, then chosen. */
     fun put(a: SlidesEdit.Added) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
@@ -138,6 +143,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun alter(f: (SlidesEdit.Added) -> SlidesEdit.Added?) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid; val id = item ?: return
         change(e.copy(added = e.added + (uid to e.added[uid].orEmpty().mapNotNull { if (it.id == id) f(it) else it })))
+    }
+    /** Item [id] of slide [i] as it is now (a finger's drag starts from it); one in a group: null, it moves with the group. */
+    fun current(e: SlidesEdit.Edit, i: Int, id: String): SlideItem? = deck?.let { d -> SlidesEdit.slide(d, e, e.order[i]).items.lastOrNull { it.anim == id }?.takeIf { !it.grouped } }
+    /** The chosen item moved or sized: [f] gives its x, y, w, h from where it is. */
+    fun reframe(f: (SlideItem) -> List<Float>) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return
+        val it = current(e, c, id) ?: return
+        val (x, y, w, h) = f(it); change(SlidesEdit.framed(e, e.order[c].uid, id, x, y, w, h))
+    }
+    /** The chosen item's looks changed by [f] (fill, border, words' colour), saved with the slide. */
+    fun restyle(f: (SlidesEdit.Look) -> SlidesEdit.Look) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val k = e.order[c].uid to id
+        change(e.copy(looks = e.looks + (k to f(e.looks[k] ?: SlidesEdit.Look())))); WriterLog.i("Slides: a shape's colours changed")
     }
     // Picture: the phone's photo picker; a copy kept on the phone until Save puts it in the file
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -165,9 +183,91 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     fun leave() { if (changed) leaving = true else back() }
+    fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
+    /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
+    @Composable fun SlideRibbon(tab: String, c: Int, e: SlidesEdit.Edit, w: Color) {
+        val entry = e.order[c]; val uid = entry.uid
+        val sl = view?.slides?.getOrNull(c)
+        when (tab) {
+            "Selection" -> {
+                val a = e.added[uid]?.firstOrNull { it.id == item }
+                val it0 = sl?.items?.lastOrNull { it.anim == item }
+                if (a == null && it0 is SlideItem.Shape && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
+                if (it0 is SlideItem.Shape || a?.prst == "table") {
+                    Swatches(w, R.drawable.ic_format_color_fill, "Fill", SLIDE_COLOURS) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
+                    if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SLIDE_COLOURS) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
+                    if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", SLIDE_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
+                }
+                // moved, made bigger or smaller (the arrows a step a press, for where a finger is not precise); what was put on it here, deleted
+                if (it0 != null && !it0.grouped) {
+                    val step = (deck?.width ?: 720f) / 40
+                    RibbonButton("Left", w, R.drawable.ic_chevron_left) { reframe { listOf(it.x - step, it.y, it.w, it.h) } }
+                    RibbonButton("Right", w, R.drawable.ic_chevron_right) { reframe { listOf(it.x + step, it.y, it.w, it.h) } }
+                    RibbonButton("Up", w, R.drawable.ic_keyboard_arrow_up) { reframe { listOf(it.x, it.y - step, it.w, it.h) } }
+                    RibbonButton("Down", w, R.drawable.ic_keyboard_arrow_down) { reframe { listOf(it.x, it.y + step, it.w, it.h) } }
+                    RibbonButton("Bigger", w, R.drawable.ic_add) { reframe { val k = 1.15f; listOf(it.x - it.w * (k - 1) / 2, it.y - it.h * (k - 1) / 2, it.w * k, it.h * k) } }
+                    RibbonButton("Smaller", w, R.drawable.ic_remove) { reframe { val k = 1 / 1.15f; listOf(it.x + it.w * (1 - k) / 2, it.y + it.h * (1 - k) / 2, it.w * k, it.h * k) } }
+                }
+                if (a != null) RibbonButton("Delete", w, R.drawable.ic_delete) { alter { null }; item = null }
+            }
+            "Slide" -> {
+                Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
+                RibbonButton("Duplicate", w, R.drawable.ic_copy) {
+                    // the copy takes the slide's words, what was put on it, its colours, transition and animations
+                    val nu = e.next()
+                    fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
+                    change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames),
+                        added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
+                        anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+                    chosen = c + 1
+                }
+                RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
+                RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
+                val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false // a new slide is shown
+                RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
+                RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
+            }
+            "Insert" -> {
+                RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
+                RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+            }
+            "Transitions" -> {
+                // how this slide comes in when presenting; Play shows it from the slide before
+                val now = sl?.transition?.kind ?: ""
+                val kinds = listOf("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", "Cut" to "cut")
+                for ((label, kind) in kinds) RibbonButton(label, w, on = now == kind) { change(e.copy(transitions = e.transitions + (uid to kind))); WriterLog.i("Slides: transition $kind") }
+                // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
+                RibbonButton("Apply to all", w, enabled = kinds.any { it.second == now }) { change(e.copy(transitions = e.transitions + e.order.associate { it.uid to now })) }
+                RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
+            }
+            "Animations" -> {
+                // the chosen item's entrance, each on its own click, in the slide's order
+                val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { st -> st.effects.map { it.target to it.kind } }
+                val id = item
+                if (id == null) Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                else if (sl?.items?.lastOrNull { it.anim == id }?.grouped == true) Text("In a group: it comes in with its group", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                else {
+                    val k = list.indexOfFirst { it.first == id }
+                    fun set(to: List<Pair<String, String>>) { change(e.copy(anims = e.anims + (uid to to))); WriterLog.i("Slides: ${to.size} animations on a slide") }
+                    Text(if (k >= 0) "Click ${k + 1} of ${list.size}" else "No animation", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                    for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
+                        RibbonButton(label, w, on = if (k < 0) kind == null else list[k].second == kind) {
+                            set(if (kind == null) list.filter { it.first != id } else if (k >= 0) list.toMutableList().also { it[k] = id to kind } else list + (id to kind))
+                        }
+                    if (k >= 0) {
+                        RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = k > 0) { set(list.toMutableList().apply { add(k - 1, removeAt(k)) }) }
+                        RibbonButton("Later", w, R.drawable.ic_keyboard_arrow_down, enabled = k < list.lastIndex) { set(list.toMutableList().apply { add(k + 1, removeAt(k)) }) }
+                    }
+                }
+                RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -211,15 +311,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             Column {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
-                                val chosenAdded = if (editing && chosen == i) edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == item } } else null
                                 Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
-                                    // what was put on the slide, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
+                                    // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
                                     .pointerInput(editing, chosen, i, item) {
                                         if (!editing || chosen != i || item == null) return@pointerInput
                                         awaitEachGesture {
                                             val down = awaitFirstDown(requireUnconsumed = false)
-                                            val ee = edit ?: return@awaitEachGesture; val uid = ee.order[i].uid
-                                            val a = ee.added[uid]?.firstOrNull { it.id == item } ?: return@awaitEachGesture
+                                            val ee = edit ?: return@awaitEachGesture; val uid = ee.order[i].uid; val id = item ?: return@awaitEachGesture
+                                            val a = current(ee, i, id) ?: return@awaitEachGesture
                                             val k = d.width / size.width // points a pixel
                                             val px = down.position.x * k; val py = down.position.y * k
                                             val reach = 28.dp.toPx() * k
@@ -227,15 +326,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             if (!handle && !(px in a.x..(a.x + a.w) && py in a.y..(a.y + a.h))) return@awaitEachGesture
                                             down.consume()
                                             undos += ee; if (undos.size > 100) undos.removeAt(0)
-                                            var cur = a
+                                            var x = a.x; var y = a.y; var w = a.w; var h = a.h
                                             while (true) {
                                                 val ev = awaitPointerEvent()
                                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                                 if (!ch.pressed) break
                                                 val dx = (ch.position.x - ch.previousPosition.x) * k; val dy = (ch.position.y - ch.previousPosition.y) * k
-                                                cur = if (handle) { val nw = maxOf(12f, cur.w + dx); cur.copy(w = nw, h = nw * a.h / a.w) } else cur.copy(x = cur.x + dx, y = cur.y + dy)
+                                                if (handle) { w = maxOf(12f, w + dx); h = w * a.h / a.w.coerceAtLeast(1f) } else { x += dx; y += dy }
                                                 val now = edit ?: break
-                                                edit = now.copy(added = now.added + (uid to now.added[uid].orEmpty().map { if (it.id == cur.id) cur else it }))
+                                                edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
                                                 ch.consume()
                                             }
                                             WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
@@ -248,26 +347,30 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             if (!editing) { presenting = i; return@detectTapGestures }
                                             if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
                                             val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
-                                            // a picture or shape put on it: chosen, to move or size
-                                            edit?.let { ee -> ee.added[ee.order[i].uid].orEmpty().lastOrNull { a -> x in a.x..(a.x + a.w) && y in a.y..(a.y + a.h) } }?.let { a ->
-                                                // a table already chosen: the cell tapped is typed into
-                                                if (a.prst == "table" && item == a.id) {
+                                            // what is tapped is chosen (its tools in the ribbon); tapped again, a text box's words are typed, a table's cell
+                                            val hit = s.items.lastOrNull { it.anim != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
+                                            val a = hit?.anim?.let { id -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == id } } }
+                                            when {
+                                                hit == null -> { item = null; message = "Tap a text box, shape or picture on the slide" }
+                                                a?.prst == "table" && item == a.id -> {
                                                     val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
                                                     val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
                                                     cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
-                                                } else { item = a.id; typing = null }
-                                                return@detectTapGestures }
-                                            val hit = s.items.lastOrNull { it is SlideItem.Shape && it.id != null && it.text != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) } as SlideItem.Shape?
-                                            if (hit != null) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
-                                            else message = "Tap a text box on the slide to change its words"
+                                                }
+                                                a == null && item == hit.anim && hit is SlideItem.Shape && hit.id != null && hit.text != null -> typeInto(hit)
+                                                else -> { item = hit.anim; typing = null }
+                                            }
                                         }
                                     })
-                                // the chosen picture or shape: an outline, and the handle its size is dragged from
-                                chosenAdded?.let { a -> Canvas(Modifier.matchParentSize()) {
+                                // what is chosen: an outline, and (put on it here) the handle its size is dragged from
+                                val sel = if (editing && chosen == i && item != null) s.items.lastOrNull { it.anim == item } else null
+                                sel?.let { a -> Canvas(Modifier.matchParentSize()) {
                                     val k = size.width / d.width
                                     drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
-                                    val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
-                                    drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
+                                    if (!a.grouped) {
+                                        val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
+                                        drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
+                                    }
                                 } }
                                 }
                                 if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
@@ -279,27 +382,28 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
                         Text(if (editing) "Tap a slide to change it" else "Slide ${(at + 1).coerceAtMost(d.slides.size)} of ${d.slides.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
-                    // the chosen slide's tools, in a strip that slides up (as Writer's galleries)
+                    // the chosen slide's ribbon, its tabs as Tables' (asked 16 Oct): what is chosen on it, the slide, Insert, Transitions, Animations
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && !shapes && !tables && item == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions", "Animations")
+                        val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
-                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { chosen = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
-                                Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
-                                if (e != null) {
-                                    val entry = e.order[c]
-                                    if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
-                                    RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                                    RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
-                                    RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
-                                    RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next(), entry.layout)) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
-                                    RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
-                                    RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
-                                    val hidden = e.hidden[entry.uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false // a new slide is shown
-                                    RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (entry.uid to !hidden))) }
-                                    RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
+                            Column(Modifier.navigationBarsPadding()) {
+                                Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                                    tabs.forEach { t ->
+                                        val on = t == shown
+                                        Column(Modifier.clickable { ribbonTab = t }.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
+                                            Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).heightIn(min = 3.dp, max = 3.dp).background(POWERPOINT_ORANGE))
+                                        }
+                                    }
+                                }
+                                val scroll = remember(shown, item) { androidx.compose.foundation.ScrollState(0) }
+                                Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    if (e != null) SlideRibbon(shown, c, e, w)
                                 }
                             }
                         }
@@ -330,7 +434,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.navigationBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { shapes = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
-                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.shadedRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (kind in listOf("rect", "roundRect", "ellipse", "triangle", "rightArrow", "star5", "heart")) {
                                         val shape = remember(kind) { ShapePicture(kind, 0xFF4472C4.toInt(), 0xFF2F5597.toInt(), 1.5f) }
                                         Canvas(Modifier.size(64.dp).background(Color.White, RoundedCornerShape(8.dp)).clickable {
@@ -348,7 +452,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val w = islandContentColor()
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.navigationBarsPadding().fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { tables = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
                                 for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
                                     val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
@@ -356,23 +460,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     put(SlidesEdit.Added(ee.newId(ee.order[c].uid), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
                                     tables = false; message = "Tap a cell to type in it"; WriterLog.i("Slides: a table put on a slide ($rows × $cols)")
                                 }
-                            }
-                        }
-                    }
-                    // a picture or shape put on the slide: moved, made bigger or smaller, deleted
-                    androidx.compose.animation.AnimatedVisibility(editing && item != null && typing == null && cellEdit == null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
-                        val w = islandContentColor(); val dd = deck
-                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { item = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
-                                val step = (dd?.width ?: 720f) / 40
-                                RibbonButton("Left", w, R.drawable.ic_chevron_left) { alter { it.copy(x = it.x - step) } }
-                                RibbonButton("Right", w, R.drawable.ic_chevron_right) { alter { it.copy(x = it.x + step) } }
-                                RibbonButton("Up", w, R.drawable.ic_keyboard_arrow_up) { alter { it.copy(y = it.y - step) } }
-                                RibbonButton("Down", w, R.drawable.ic_keyboard_arrow_down) { alter { it.copy(y = it.y + step) } }
-                                RibbonButton("Bigger", w, R.drawable.ic_add) { alter { val k = 1.15f; it.copy(x = it.x - it.w * (k - 1) / 2, y = it.y - it.h * (k - 1) / 2, w = it.w * k, h = it.h * k) } }
-                                RibbonButton("Smaller", w, R.drawable.ic_remove) { alter { val k = 1 / 1.15f; it.copy(x = it.x + it.w * (1 - k) / 2, y = it.y + it.h * (1 - k) / 2, w = it.w * k, h = it.h * k) } }
-                                RibbonButton("Delete", w, R.drawable.ic_delete) { alter { null }; item = null }
                             }
                         }
                     }
@@ -429,6 +516,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val d = view
     presenting?.let { start -> if (d != null) Present(d, start, notes) { presenting = null } }
 }
+
+/** PowerPoint's standard colours, and white, black and grey. */
+private val SLIDE_COLOURS = listOf(0xFFC00000, 0xFFFF0000, 0xFFFFC000, 0xFFFFFF00, 0xFF92D050, 0xFF00B050, 0xFF00B0F0, 0xFF0070C0, 0xFF002060, 0xFF7030A0,
+    0xFF4472C4, 0xFFFFFFFF, 0xFF7F7F7F, 0xFF000000).map { Color(it) }
 
 /** One slide, as wide as it is given, its own shape. */
 @Composable

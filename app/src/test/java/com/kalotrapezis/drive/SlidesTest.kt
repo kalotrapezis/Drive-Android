@@ -93,6 +93,45 @@ class SlidesTest {
         }
     }
 
+    /** Colours, a transition and click animations chosen, saved into the .pptx, read back here and by LibreOffice. */
+    @Test fun `looks, transitions and animations saved`() {
+        val src = File("src/test/resources/slides.pptx")
+        val deck = Slides.read(src)
+        val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+        var e = SlidesEdit.start(deck)
+        e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5"))),
+            looks = mapOf((2 to box.id!!) to SlidesEdit.Look(fill = 0xFFC00000.toInt(), line = SlidesEdit.NONE, text = 0xFFFFFFFF.toInt()), (2 to "9100") to SlidesEdit.Look(fill = 0xFF00B050.toInt())),
+            transitions = mapOf(2 to "wipe", 0 to ""), anims = mapOf(2 to listOf(box.anim!! to "fade", "9100" to "fly")),
+            frames = mapOf((2 to box.id!!) to listOf(100f, 120f, 200f, 90f))) // the file's own box moved and sized
+        // as it shows while editing
+        SlidesEdit.view(deck, e).slides[2].let { s ->
+            assertEquals("wipe", s.transition!!.kind); assertEquals(listOf("fade", "fly"), s.steps.map { it.effects.single().kind })
+            assertEquals(0xFF00B050.toInt(), s.items.filterIsInstance<SlideItem.Shape>().first { it.id == "9100" }.shape!!.fill)
+        }
+        val out = File.createTempFile("looks", ".pptx")
+        SlidesEdit.save(src, deck, e, out)
+        val back = Slides.read(out)
+        val b = back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+        assertEquals(listOf(100f, 120f, 200f, 90f), listOf(b.x, b.y, b.w, b.h))
+        assertEquals(0xFFC00000.toInt(), b.shape!!.fill); assertEquals(null, b.shape!!.line); assertEquals(0xFFFFFFFF.toInt(), b.text!!.paras[0].runs[0].color)
+        assertEquals(0xFF00B050.toInt(), back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
+        assertEquals("wipe", back.slides[2].transition!!.kind)
+        assertEquals(null, back.slides[0].transition)
+        back.slides[2].steps.let { st -> assertEquals(2, st.size); assertEquals(b.anim, st[0].effects.single().target); assertEquals("fade", st[0].effects.single().kind)
+            st[1].effects.single().let { assertEquals("fly", it.kind); assertEquals('d', it.from) } }
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+            val odp = dir.listFiles()!!.single { it.extension == "odp" }
+            val content = java.util.zip.ZipFile(odp).use { z -> String(z.getInputStream(z.getEntry("content.xml")).readBytes()) + String(z.getInputStream(z.getEntry("styles.xml")).readBytes()) }
+            assertTrue("LibreOffice sees the wipe", Regex("""smil:type="(barWipe|slideWipe)"""").containsMatchIn(content))
+            assertEquals("LibreOffice sees two clicks", 2, Regex("""presentation:node-type="on-click"""").findAll(content).count())
+            assertTrue("and a fade", content.contains("""smil:type="fade""""))
+            val lo = Slides.read(odp)
+            assertEquals(0xFFC00000.toInt(), lo.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.shape!!.fill)
+        }
+    }
+
     /** Transitions and click animations (effects.py's deck: PowerPoint's own XML in python-pptx's slides). */
     @Test fun `transitions and click animations read`() {
         val d = Slides.read(File("src/test/resources/effects.pptx"))

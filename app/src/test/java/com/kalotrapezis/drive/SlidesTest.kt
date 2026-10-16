@@ -41,4 +41,37 @@ class SlidesTest {
         val chart = d.slides[3].items.filterIsInstance<SlideItem.Chart>().single().chart
         assertEquals(listOf(120.0, 90.0, 150.0), chart.series[0].values)
     }
+
+    /** Edits saved into the .pptx (moved, duplicated, deleted, hidden, words changed), read back here and by LibreOffice. */
+    @Test fun `a pptx edited and saved`() {
+        val src = File("src/test/resources/slides.pptx")
+        val deck = Slides.read(src)
+        var e = SlidesEdit.start(deck)
+        // duplicate "Plan", delete "Scores", the shapes' slide first, the title slide hidden and retitled
+        e = e.copy(order = e.order.toMutableList().apply { add(2, SlidesEdit.Entry(1, e.next())) })
+        e = e.copy(order = e.order.filter { it.src != 3 })
+        e = e.copy(order = e.order.toMutableList().apply { val s = first { it.src == 2 }; remove(s); add(0, s) })
+        val title = deck.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Tetra Slides" }
+        e = e.copy(hidden = mapOf(0 to true), texts = mapOf((0 to title.id!!) to listOf("Tetra Slides, edited")))
+        val out = File.createTempFile("edited", ".pptx")
+        SlidesEdit.save(src, deck, e, out)
+        val back = Slides.read(out)
+        assertEquals(4, back.slides.size)
+        assertTrue(back.slides[0].items.any { words(it) == "A rounded box" }) // moved first
+        assertTrue(back.slides[1].hidden)
+        assertEquals("Tetra Slides, edited", back.slides[1].items.firstNotNullOf { words(it)?.takeIf { w -> w.startsWith("Tetra") } })
+        assertEquals(44f, (back.slides[1].items.first { words(it)?.startsWith("Tetra") == true } as SlideItem.Shape).text!!.paras[0].runs[0].size, 0.1f) // its look kept
+        assertEquals(2, back.slides.count { s -> s.items.any { words(it)?.startsWith("Plan") == true } }) // duplicated
+        assertTrue(back.slides.none { s -> s.items.any { it is SlideItem.Chart } }) // deleted
+        assertEquals("Say hello first.", back.slides[1].notes) // its notes went with it
+        // LibreOffice opens it: four pages
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+            val odp = dir.listFiles()!!.single { it.extension == "odp" }
+            val lo = Slides.read(odp)
+            assertEquals(4, lo.slides.size)
+            assertTrue(lo.slides[1].items.any { words(it) == "Tetra Slides, edited" })
+        }
+    }
 }

@@ -323,8 +323,10 @@ LibreOffice works them out).
 - [x] Gradients (their own, the theme's through a shape's style, LibreOffice's named ones), custom outlines (custGeom),
       flipped shapes, text shrunk to fit its box, a one-series chart titled with its name (Office's automatic title) —
       checked with the user's own decks against LibreOffice (20 decks read, 16 Oct)
-- [ ] Slide thumbnails; add, duplicate, reorder, delete slides
-- [ ] Edit text on a slide; layouts and themes from the file
+- [x] Editing a .pptx (16 Oct): Edit → a slide tapped is chosen, its strip at the bottom: Duplicate, Move up/down, Hide/Show,
+      Delete; a text box tapped on it: its words (a line a paragraph, each keeping its look); Undo, Save (the file before
+      kept as a version; LibreOffice opens it) — [ ] a new slide from a layout, .odp saving
+- [x] Edit text on a slide (above); layouts and themes from the file (as shown)
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)

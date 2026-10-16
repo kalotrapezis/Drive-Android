@@ -984,7 +984,7 @@ internal object WriterBridge {
 internal data class OfficeFile(val file: File, val relative: String)
 
 /** How many documents the Office home lists: the newest. */
-private const val OFFICE_RECENT = 50
+private const val OFFICE_RECENT = 20 // of each kind (asked 16 Oct): 20 Word, 20 Excel, 20 PowerPoint, newest first
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
@@ -999,7 +999,9 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
-    LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { total = it.size; files = it.take(OFFICE_RECENT) } }
+    LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { all -> total = all.size
+        // the newest of each kind, one list again by date (the list is newest first)
+        files = all.groupBy { if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.file.lastModified() } } }
     BackHandler { back() }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1013,7 +1015,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
             item {
                 Column(Modifier.padding(top = 14.dp, bottom = 2.dp)) {
                     Text("Recent documents", style = MaterialTheme.typography.titleMedium)
-                    if (total > OFFICE_RECENT) Text("The $OFFICE_RECENT newest of $total — the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+                    if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest documents, spreadsheets and presentations of $total — the rest are in Files.", style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (!hasAccess) item {
@@ -1023,7 +1025,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }
             } else when (val list = files) {
                 null -> item { Text("Looking…", style = MaterialTheme.typography.bodyMedium) }
-                else -> if (list.isEmpty()) item { Text("No Word, Excel or OpenDocument files in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
+                else -> if (list.isEmpty()) item { Text("No Word, Excel, PowerPoint or OpenDocument files in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
                 else items(list, key = { it.relative }) { f ->
                     val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name)
                     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {

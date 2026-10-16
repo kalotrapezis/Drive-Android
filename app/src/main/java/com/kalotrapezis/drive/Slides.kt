@@ -32,7 +32,8 @@ internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val an
 
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
-        val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null) : SlideItem(x, y, w, h, rotation)
+        val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
+        /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null) : SlideItem(x, y, w, h, rotation)
     class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
@@ -40,7 +41,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
         val line: Int?) : SlideItem(x, y, w, h, 0f)
 }
 
-internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false)
+/** [part]: the slide's part in the file (ppt/slides/slide3.xml), for saving into. */
+internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false, val part: String = "")
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>)
 
 internal object Slides {
@@ -168,7 +170,7 @@ internal object Slides {
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
             val notes = relType(xml, path, "notesSlide")?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
                 ?.below("p")?.joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }?.trim().orEmpty()
-            return Slide(items, bg, notes, s.attr("show") == "0")
+            return Slide(items, bg, notes, s.attr("show") == "0", path)
         }
 
         fun theme(t: Element) {
@@ -236,7 +238,8 @@ internal object Slides {
                         val paths = spPr?.kid("custGeom")?.let(::custom).orEmpty()
                         val text = e.kid("txBody")?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor) }
                         if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text, paths,
-                            xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad)
+                            xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad,
+                            id = if (ctx != null && group == null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null)
                     }
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p -> out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { part(p) } }
                     "graphicFrame" -> {

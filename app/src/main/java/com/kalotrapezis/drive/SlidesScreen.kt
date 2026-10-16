@@ -6,6 +6,11 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -67,65 +72,173 @@ import java.io.File
 @Composable
 internal fun SlidesScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
     var deck by remember { mutableStateOf<Deck?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     var notes by remember { mutableStateOf(false) }
     var presenting by remember { mutableStateOf<Int?>(null) }
+    // editing (a .pptx): the edits apart from the deck as read; Undo the edit before; a slide chosen; a text box's words being typed
+    var editing by remember { mutableStateOf(false) }
+    var edit by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
+    val undos = remember { ArrayList<SlidesEdit.Edit>() }
+    var saved by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
+    var chosen by remember { mutableStateOf<Int?>(null) }
+    var typing by remember { mutableStateOf<Pair<SlideItem.Shape, androidx.compose.ui.text.input.TextFieldValue>?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    suspend fun load(f: File) = withContext(Dispatchers.IO) { runCatching { WriterLog.timed("Slides: deck read") { Slides.read(f) } } }
     LaunchedEffect(open) {
         WriterLog.init(context)
         val f = file ?: run { failed = "This file cannot be opened."; return@LaunchedEffect }
         WriterLog.i("Slides: open .${f.extension} of ${f.length() / 1024} KB")
-        withContext(Dispatchers.IO) { runCatching { WriterLog.timed("Slides: deck read") { Slides.read(f) } } }
-            .onSuccess { deck = it; WriterLog.i("Slides: ${it.slides.size} slides, ${it.slides.sumOf { s -> s.items.size }} shapes") }
+        load(f).onSuccess { deck = it; edit = SlidesEdit.start(it); saved = edit; WriterLog.i("Slides: ${it.slides.size} slides, ${it.slides.sumOf { s -> s.items.size }} shapes") }
             .onFailure { WriterLog.e("Slides: could not open", it); failed = "This presentation could not be opened." }
     }
-    BackHandler { back() }
+    val changed = edit != saved
+    fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; edit = to }
+    fun save(then: (() -> Unit)? = null) {
+        val f = file ?: return; val d = deck ?: return; val e = edit ?: return
+        if (saving) return
+        saving = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val temp = File(f.parentFile, ".${f.name}.tetra-saving")
+                try {
+                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { SlidesEdit.save(f, d, e, temp) }
+                    keepPrevious(context, f) // Writer's versions
+                    check(temp.renameTo(f)) { "Could not save ${f.name}." }
+                } finally { temp.delete() }
+                Slides.read(f)
+            } }
+            saving = false
+            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; undos.clear(); chosen = null; message = "Saved"; then?.invoke() }
+                .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
+        }
+    }
+    fun leave() { if (changed) leaving = true else back() }
+    BackHandler { when { typing != null -> typing = null; chosen != null -> chosen = null; else -> leave() } }
+    LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
+    val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
-                    Text(file?.name ?: "Presentation", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    deck?.let { Text("${it.slides.size} slide${if (it.slides.size == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
+                    Text((file?.name ?: "Presentation") + if (changed) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    view?.let { Text(if (editing) "Editing" else "${it.slides.size} slide${if (it.slides.size == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
                 }
-                IconButton(onClick = { notes = !notes }, enabled = deck != null) {
-                    Icon(painterResource(R.drawable.ic_comment), contentDescription = if (notes) "Hide the notes" else "Show the notes", tint = if (notes) POWERPOINT_ORANGE else islandContentColor())
-                }
-                IconButton(onClick = { presenting = 0 }, enabled = deck?.slides?.isNotEmpty() == true) { Icon(painterResource(R.drawable.ic_play), contentDescription = "Present") }
-                file?.let { f ->
-                    IconButton(onClick = { shareDriveFile(context, f) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
-                    IconButton(onClick = { openElsewhere(context, f) }) { Icon(painterResource(R.drawable.ic_open_with), contentDescription = "Open in another app") }
+                if (editing) {
+                    IconButton(onClick = { undos.removeLastOrNull()?.let { edit = it; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = undos.isNotEmpty()) {
+                        Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
+                    IconButton(onClick = { save() }, enabled = changed && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
+                    IconButton(onClick = { editing = false; chosen = null; typing = null }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Done") }
+                } else {
+                    // a deck Tetra can save into: a .pptx of its own, writable
+                    if (deck != null && file?.extension?.lowercase() == "pptx" && file.canWrite()) IconButton(onClick = { editing = true; WriterLog.i("Slides: editing") }) {
+                        Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
+                    IconButton(onClick = { notes = !notes }, enabled = deck != null) {
+                        Icon(painterResource(R.drawable.ic_comment), contentDescription = if (notes) "Hide the notes" else "Show the notes", tint = if (notes) POWERPOINT_ORANGE else islandContentColor())
+                    }
+                    IconButton(onClick = { presenting = 0 }, enabled = view?.slides?.isNotEmpty() == true) { Icon(painterResource(R.drawable.ic_play), contentDescription = "Present") }
+                    file?.let { f ->
+                        IconButton(onClick = { shareDriveFile(context, f) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                        IconButton(onClick = { openElsewhere(context, f) }) { Icon(painterResource(R.drawable.ic_open_with), contentDescription = "Open in another app") }
+                    }
                 }
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            val d = deck
+            val d = view
             when {
                 failed != null -> Text(failed!!, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 d == null -> Text("Opening…", color = Color.LightGray, modifier = Modifier.align(Alignment.Center))
                 else -> {
                     val list = rememberLazyListState()
                     val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 80.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
                             Column {
-                                Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
-                                SlideCanvas(d, s, Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).clickable { presenting = i })
+                                Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
+                                // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
+                                SlideCanvas(d, s, Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+                                    .then(if (chosen == i) Modifier.border(3.dp, POWERPOINT_ORANGE, RoundedCornerShape(4.dp)) else Modifier)
+                                    .pointerInput(editing, chosen, i, s) {
+                                        detectTapGestures { o ->
+                                            if (!editing) { presenting = i; return@detectTapGestures }
+                                            if (chosen != i) { chosen = i; typing = null; return@detectTapGestures }
+                                            val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
+                                            val hit = s.items.lastOrNull { it is SlideItem.Shape && it.id != null && it.text != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) } as SlideItem.Shape?
+                                            if (hit != null) { val t = SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
+                                            else message = "Tap a text box on the slide to change its words"
+                                        }
+                                    })
                                 if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }
                         }
                     }
-                    Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
+                    if (!editing || chosen == null) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
                         modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
-                        Text("Slide ${(at + 1).coerceAtMost(d.slides.size)} of ${d.slides.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+                        Text(if (editing) "Tap a slide to change it" else "Slide ${(at + 1).coerceAtMost(d.slides.size)} of ${d.slides.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
+                    // the chosen slide's tools, in a strip that slides up (as Writer's galleries)
+                    val e = edit
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
+                        val w = islandContentColor()
+                        Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { chosen = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
+                                Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
+                                if (e != null) {
+                                    val entry = e.order[c]
+                                    RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next())) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
+                                    RibbonButton("Move up", w, R.drawable.ic_chevron_left, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
+                                    RibbonButton("Move down", w, R.drawable.ic_chevron_right, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
+                                    val hidden = e.hidden[entry.uid] ?: deck!!.slides[entry.src].hidden
+                                    RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (entry.uid to !hidden))) }
+                                    RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
+                                }
+                            }
+                        }
+                    }
+                    // a text box's words: a line a paragraph, ✕ leaves them, ✓ puts them in (one step of Undo)
+                    androidx.compose.animation.AnimatedVisibility(typing != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val t = typing
+                        Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
+                                if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp),
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), label = { Text("The words (a line a paragraph)") })
+                                IconButton(onClick = {
+                                    val ee = edit; val c = chosen
+                                    if (t != null && ee != null && c != null) {
+                                        val uid = ee.order[c].uid
+                                        change(ee.copy(texts = ee.texts + ((uid to t.first.id!!) to t.second.text.split("\n"))))
+                                        WriterLog.i("Slides: a text box changed")
+                                    }
+                                    typing = null
+                                }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Put them in") }
+                            }
+                        }
+                    }
+                    message?.let { m -> Surface(color = Color.Black.copy(alpha = 0.8f), contentColor = Color.White, shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)) { Text(m, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) } }
                 }
             }
         }
     }
-    val d = deck
+    if (leaving) androidx.compose.material3.AlertDialog(onDismissRequest = { leaving = false },
+        title = { Text("Save the changes?") },
+        text = { Text("${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
+        dismissButton = { Row {
+            androidx.compose.material3.TextButton(onClick = { leaving = false; WriterLog.i("Slides: left without saving"); back() }) { Text("Don't save") }
+            androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text("Cancel") }
+        } })
+    val d = view
     presenting?.let { start -> if (d != null) Present(d, start, notes) { presenting = null } }
 }
 

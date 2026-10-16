@@ -128,7 +128,9 @@ internal object OfficeCharts {
         }
         if (series.isEmpty()) return null
         fun titleOf(e: Element?) = e?.kid(C, "title")?.all(A, "t")?.joinToString("") { it.textContent }?.takeIf { it.isNotBlank() }
+        // its own title; else, a chart of one series is titled with its name (Office's automatic title) unless that is deleted
         val title = root.first(C, "chart")?.kid(C, "title")?.all(A, "t")?.joinToString("") { it.textContent }?.takeIf { it.isNotBlank() }
+            ?: series.singleOrNull()?.name?.takeIf { it.isNotBlank() && root.first(C, "chart")?.kid(C, "title") == null && root.first(C, "autoTitleDeleted")?.getAttribute("val").let { it != "1" && it != "true" } }
         // The axes' titles: the category axis (a scatter's: its x axis, at the bottom), then the value axis.
         val axes = plot.kids().filter { it.localName == "catAx" || it.localName == "valAx" || it.localName == "dateAx" }
         val catAx = axes.firstOrNull { it.localName != "valAx" } ?: axes.firstOrNull { it.kid(C, "axPos")?.getAttribute("val") == "b" }

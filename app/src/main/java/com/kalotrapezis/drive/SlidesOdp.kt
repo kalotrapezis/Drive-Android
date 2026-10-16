@@ -66,6 +66,14 @@ internal object SlidesOdp {
             }
         }
         collect(styles); collect(content)
+        // LibreOffice's gradients by name: their two colours and angle (0: top to bottom, turning anticlockwise)
+        val gradients = HashMap<String, SlideGradient>()
+        for (root in listOfNotNull(styles, content)) root.getElementsByTagNameNS(DRAW, "gradient").let { l -> for (i in 0 until l.length) { val g = l.item(i) as Element
+            val a = g.a(DRAW, "start-color")?.let(::hex) ?: continue; val b = g.a(DRAW, "end-color")?.let(::hex) ?: continue
+            val deg = g.a(DRAW, "angle")?.let { v -> if (v.endsWith("deg")) v.removeSuffix("deg").toFloatOrNull() else v.toFloatOrNull()?.div(10f) } ?: 0f
+            val axial = g.a(DRAW, "style") == "axial"
+            gradients[g.a(DRAW, "name") ?: continue] = SlideGradient(if (axial) intArrayOf(b, a, b) else intArrayOf(a, b), if (axial) floatArrayOf(0f, 0.5f, 1f) else floatArrayOf(0f, 1f), 90f - deg)
+        } }
         /** A style's property with its parents' under it. */
         fun prop(family: String, name: String?, key: String, depth: Int = 0): String? {
             val s = all["$family:${name ?: return null}"] ?: return null
@@ -150,6 +158,7 @@ internal object SlidesOdp {
                 fun fill() = if (g("fill") == "none") null else if (g("fill") == "solid" || g("fill-color") != null) hex(g("fill-color")) else
                     if (g("fill") == "gradient") hex(g("fill-color")) ?: 0xFF729FCF.toInt() else null // shortcut: a gradient as one colour
                 fun line() = if (g("stroke") == "none") null else hex(g("stroke-color")) ?: if (g("stroke") == "solid") 0xFF3465A4.toInt() else null
+                fun gradient() = if (g("fill") == "gradient") g("fill-gradient-name")?.let(gradients::get) else null
                 when (e.localName) {
                     "frame" -> {
                         val inner = e.kids().firstOrNull() ?: return@runCatching
@@ -158,7 +167,7 @@ internal object SlidesOdp {
                                 val t = text(inner, pres, gr)
                                 val f = fill(); val l = line()
                                 val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
-                                if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t)
+                                if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient())
                             }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { part(p) } }
                             "object" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }?.let(OfficeCharts::readOdf)?.let { out += SlideItem.Chart(b[0], b[1], b[2], b[3], it) }
@@ -173,7 +182,7 @@ internal object SlidesOdp {
                         val own = if (preset == null && geo != null) ShapeGeometry.ofOdf(xml(geo)) else null
                         val f = fill() ?: if (g("fill") == null) 0xFF729FCF.toInt() else null; val l = line()
                         val shape = if (preset != null || own != null) ShapePicture(preset ?: "custom", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, own, adjust) else null
-                        out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, text(e, null, gr))
+                        out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, text(e, null, gr), gradient = gradient())
                     }
                     "g" -> shapes(e, out, master)
                 }

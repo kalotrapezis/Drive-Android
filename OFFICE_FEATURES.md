@@ -320,7 +320,9 @@ LibreOffice works them out).
       body styles, bullets and levels, theme colours and fonts — shapes in their outlines, pictures, charts, tables, groups,
       backgrounds, speaker notes (Notes under each slide); slides.py's deck and LibreOffice's .odp of it, as LibreOffice shows them
 - [x] Present: full screen and sideways, swipe or tap (right: next, left: back), the bars hidden, hidden slides skipped
-- [ ] Gradients (drawn as their first colour); a chart's own title when it has one series (LibreOffice's "Sales")
+- [x] Gradients (their own, the theme's through a shape's style, LibreOffice's named ones), custom outlines (custGeom),
+      flipped shapes, text shrunk to fit its box, a one-series chart titled with its name (Office's automatic title) —
+      checked with the user's own decks against LibreOffice (20 decks read, 16 Oct)
 - [ ] Slide thumbnails; add, duplicate, reorder, delete slides
 - [ ] Edit text on a slide; layouts and themes from the file
 - [ ] Insert picture, shape, table

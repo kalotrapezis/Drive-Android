@@ -24,6 +24,7 @@ internal object SheetSave {
     // --- .xlsx ---
 
     private fun esc(s: String) = OfficeFormats.esc(s)
+    private fun unesc(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 
     /** A number as the file keeps it: 12, 0.1, 1.0E20. */
     private fun num(v: Double) = if (v == Math.floor(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()
@@ -143,11 +144,13 @@ internal object SheetSave {
         val wanted = LinkedHashMap<Pair<Int, String>, Int>()
         var styles = book.parts["styles"]?.let { String(read(it)) }
         val xfCount = styles?.let { st -> Regex("""<cellXfs[^>]*>(.*?)</cellXfs>""", RegexOption.DOT_MATCHES_ALL).find(st)?.groupValues?.get(1)?.let { Regex("""<xf\b""").findAll(it).count() } } ?: 0
-        fun styleOf(cell: SheetCell, old: Int?): Int {
-            val base = old ?: cell.fileStyle
-            val code = cell.format ?: return base
-            if (styles == null) return base
-            return wanted.getOrPut(base to code) { xfCount + wanted.size }
+        fun styleOf(cell: SheetCell, @Suppress("UNUSED_PARAMETER") old: Int?): Int {
+            // the cell's look: the file's own, or one formatting made (numbered after the file's)
+            val base = cell.fileStyle
+            val code = cell.format
+            if (styles == null) return if (base < book.fileStyles) base else 0
+            if (base < book.fileStyles && code == null) return base
+            return wanted.getOrPut(base to (code ?: "")) { xfCount + wanted.size }
         }
         for ((i, edits) in book.edits) {
             if (edits.isEmpty()) continue
@@ -157,23 +160,57 @@ internal object SheetSave {
             replaced[path] = patchSheet(xml, edits, ::styleOf, { r, c -> sheet[r, c]?.formula }, sheet.rows, sheet.cols).toByteArray(Charsets.UTF_8)
         }
         if (wanted.isNotEmpty() && styles != null) {
-            // the formats: Excel's own ids, or new ones in numFmts
+            // the formats: the file's own, Excel's own ids, or new ones in numFmts
             var st: String = styles
             val ids = HashMap<String, Int>()
+            Regex("""<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"""").findAll(st).forEach { ids.putIfAbsent(unesc(it.groupValues[2]), it.groupValues[1].toInt()) }
+            SheetFormat.BUILT_IN.forEach { (id, code) -> ids.putIfAbsent(code, id) }
             var nextId = maxOf(163, Regex("""numFmtId="(\d+)"""").findAll(st).maxOfOrNull { it.groupValues[1].toInt() } ?: 163) + 1
             val newFmts = StringBuilder()
-            for ((_, code) in wanted.keys) if (code !in ids) ids[code] = BUILT[code] ?: (nextId++).also { newFmts.append("<numFmt numFmtId=\"$it\" formatCode=\"${esc(code)}\"/>") }
+            fun codeOf(key: Pair<Int, String>) = key.second.ifEmpty { book.styles.getOrNull(key.first)?.format ?: "General" }
+            for (key in wanted.keys) { val code = codeOf(key); if (code !in ids) ids[code] = BUILT[code] ?: (nextId++).also { newFmts.append("<numFmt numFmtId=\"$it\" formatCode=\"${esc(code)}\"/>") } }
             if (newFmts.isNotEmpty()) st = if ("<numFmts" in st) st.replace(Regex("""<numFmts[^>]*>"""), "$0$newFmts").replace(Regex("""(<numFmts[^>]*count=")(\d+)""")) { m -> m.groupValues[1] + (m.groupValues[2].toInt() + newFmts.split("<numFmt ").size - 1) }
                 else st.replaceFirst(Regex("""(<styleSheet[^>]*>)"""), "$1<numFmts count=\"${newFmts.split("<numFmt ").size - 1}\">$newFmts</numFmts>")
             // each new xf: the cell's own, its number format changed
             val xfs = Regex("""(<cellXfs[^>]*>)(.*?)(</cellXfs>)""", RegexOption.DOT_MATCHES_ALL).find(st)!!
             val list = Regex("""<xf\b[^>]*?(?:/>|>.*?</xf>)""", RegexOption.DOT_MATCHES_ALL).findAll(xfs.groupValues[2]).map { it.value }.toList()
-            val added = wanted.keys.joinToString("") { (base, code) ->
-                val xf = list.getOrElse(base) { list.first() }
-                xf.replaceFirst(Regex("""numFmtId="\d+""""), "numFmtId=\"${ids[code]}\"").let { if ("numFmtId=" in it) it else it.replaceFirst("<xf ", "<xf numFmtId=\"${ids[code]}\" ") }
-                    .replace(Regex("""\sapplyNumberFormat="[^"]*""""), "").replaceFirst("<xf ", "<xf applyNumberFormat=\"1\" ")
+            // looks formatting made: their fonts, fills and borders added to the file's
+            fun add(list: String, item: String): Int {
+                val m = Regex("""(<$list\b[^>]*>)(.*?)(</$list>)""", RegexOption.DOT_MATCHES_ALL).find(st) ?: run {
+                    st = st.replaceFirst(Regex("""(<styleSheet[^>]*>)"""), "$1<$list count=\"0\"></$list>"); return add(list, item)
+                }
+                val n = Regex("""<${list.dropLast(1)}\b""").findAll(m.groupValues[2]).count()
+                st = st.replaceRange(m.range, m.groupValues[1].replace(Regex("""count="\d+""""), "count=\"${n + 1}\"") + m.groupValues[2] + item + m.groupValues[3])
+                return n
             }
-            st = st.replaceRange(xfs.range, xfs.groupValues[1].replace(Regex("""count="\d+""""), "count=\"${list.size + wanted.size}\"") + xfs.groupValues[2] + added + xfs.groupValues[3])
+            fun rgb(c: Int) = "FF%06X".format(c and 0xFFFFFF)
+            fun line(name: String, l: SheetLine?) = if (l == null) "<$name/>" else "<$name style=\"${when {
+                l.double -> "double"; l.dots -> "dotted"; l.dashed && l.width >= 2 -> "mediumDashed"; l.dashed -> "dashed"; l.width >= 3 -> "thick"; l.width >= 2 -> "medium"; else -> "thin" }}\"><color rgb=\"${rgb(l.color)}\"/></$name>"
+            val added = wanted.keys.joinToString("") { key ->
+                val base = key.first
+                val code = codeOf(key)
+                if (base < book.fileStyles) {
+                    val xf = list.getOrElse(base) { list.first() }
+                    return@joinToString xf.replaceFirst(Regex("""numFmtId="\d+""""), "numFmtId=\"${ids[code]}\"").let { if ("numFmtId=" in it) it else it.replaceFirst("<xf ", "<xf numFmtId=\"${ids[code]}\" ") }
+                        .replace(Regex("""\sapplyNumberFormat="[^"]*""""), "").replaceFirst("<xf ", "<xf applyNumberFormat=\"1\" ")
+                }
+                val look = book.styles[base]
+                val font = add("fonts", "<font>" + (if (look.bold) "<b/>" else "") + (if (look.italic) "<i/>" else "") + (if (look.strike) "<strike/>" else "") +
+                    (if (look.underline) "<u/>" else "") + "<sz val=\"${num(look.size.toDouble())}\"/>" + (look.color?.let { "<color rgb=\"${rgb(it)}\"/>" } ?: "") +
+                    "<name val=\"${esc(look.font ?: "Calibri")}\"/></font>")
+                val fill = look.fill?.let { add("fills", "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"${rgb(it)}\"/><bgColor indexed=\"64\"/></patternFill></fill>") } ?: 0
+                val border = if (look.left == null && look.right == null && look.top == null && look.bottom == null) 0
+                    else add("borders", "<border>" + line("left", look.left) + line("right", look.right) + line("top", look.top) + line("bottom", look.bottom) + "<diagonal/></border>")
+                val h = when (look.align) { SheetAlign.Left -> "left"; SheetAlign.Center -> "center"; SheetAlign.Right -> "right"; SheetAlign.Justify -> "justify"; else -> null }
+                val v = when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "center"; else -> null }
+                val align = if (h == null && v == null && !look.wrap && look.indent == 0 && look.rotation == 0) "" else "<alignment" + (h?.let { " horizontal=\"$it\"" } ?: "") +
+                    (v?.let { " vertical=\"$it\"" } ?: "") + (if (look.wrap) " wrapText=\"1\"" else "") + (if (look.indent > 0) " indent=\"${look.indent}\"" else "") +
+                    (if (look.rotation != 0) " textRotation=\"${look.rotation}\"" else "") + "/>"
+                "<xf numFmtId=\"${ids[code]}\" fontId=\"$font\" fillId=\"$fill\" borderId=\"$border\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\"" +
+                    (if (align.isEmpty()) "/>" else " applyAlignment=\"1\">$align</xf>")
+            }
+            val xfsNow = Regex("""(<cellXfs[^>]*>)(.*?)(</cellXfs>)""", RegexOption.DOT_MATCHES_ALL).find(st)!!
+            st = st.replaceRange(xfsNow.range, xfsNow.groupValues[1].replace(Regex("""count="\d+""""), "count=\"${list.size + wanted.size}\"") + xfsNow.groupValues[2] + added + xfsNow.groupValues[3])
             styles = st
             replaced[book.parts.getValue("styles")] = st.toByteArray(Charsets.UTF_8)
         }
@@ -249,9 +286,10 @@ internal object SheetSave {
         val doc = OfficeFormats.parse(zip.getInputStream(entry).use { it.readBytes() })
         val tables = doc.getElementsByTagNameNS(TABLE, "table").let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
             .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is org.w3c.dom.Element && it.localName == "table" } }
+        val looks = OdsLooks(doc, book)
         for ((i, edits) in book.edits) {
             val table = tables.getOrNull(i) ?: continue
-            for ((k, cell) in edits) odsCell(table, Sheet.row(k), Sheet.col(k), cell, book)
+            for ((k, cell) in edits) odsCell(table, Sheet.row(k), Sheet.col(k), cell, book, looks)
         }
         rezip(zip, target, mapOf("content.xml" to ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + OfficeFormats.xml(doc.documentElement)).toByteArray(Charsets.UTF_8)), stored = "mimetype")
         zip.close()
@@ -282,7 +320,7 @@ internal object SheetSave {
         return one
     }
 
-    private fun odsCell(table: org.w3c.dom.Element, r: Int, c: Int, cell: SheetCell, book: Workbook) {
+    private fun odsCell(table: org.w3c.dom.Element, r: Int, c: Int, cell: SheetCell, book: Workbook, looks: OdsLooks) {
         val doc = table.ownerDocument
         // the row: found through the repeats, or added at the end
         var at = 0; var row: org.w3c.dom.Element? = null
@@ -308,6 +346,10 @@ internal object SheetSave {
             row.appendChild(target)
         }
         if (target.localName == "covered-table-cell") return // inside a merged cell: nothing of its own
+        // its look: the file's style by its name, or one formatting made
+        val style = cell.fileStyle
+        val name = if (style < book.fileStyles) book.styleNames.getOrNull(style) else looks.name(style, cell.format)
+        if (name == null || name == "Default") target.removeAttributeNS(TABLE, "style-name") else target.setAttributeNS(TABLE, "table:style-name", name)
         // its value: what it was goes, the edit comes; its look, comments and pictures stay
         for (a in listOf("value-type", "value", "date-value", "time-value", "boolean-value", "string-value", "currency")) target.removeAttributeNS(OFFICE, a)
         target.removeAttributeNS(CALCEXT, "value-type"); target.removeAttributeNS(TABLE, "formula")
@@ -318,8 +360,9 @@ internal object SheetSave {
         when (cell.kind) {
             SheetKind.Number -> {
                 val v = cell.value ?: 0.0
-                if (cell.format?.let(book.format::isDate) == true) { type("date"); target.setAttributeNS(OFFICE, "office:date-value", book.format.dateTime(v).toString().let { if (it.endsWith("T00:00")) it.substringBefore('T') else it }) }
-                else if (cell.format?.contains('%') == true) { type("percentage"); target.setAttributeNS(OFFICE, "office:value", num(v)) }
+                val code = cell.format ?: book.styles.getOrNull(style)?.format ?: "General"
+                if (book.format.isDate(code) && (cell.format != null || style >= book.fileStyles)) { type("date"); target.setAttributeNS(OFFICE, "office:date-value", book.format.dateTime(v).toString().let { if (it.endsWith("T00:00")) it.substringBefore('T') else it }) }
+                else if ('%' in SheetFormat.strip(code)) { type("percentage"); target.setAttributeNS(OFFICE, "office:value", num(v)) }
                 else { type("float"); target.setAttributeNS(OFFICE, "office:value", num(v)) }
             }
             SheetKind.Bool -> { type("boolean"); target.setAttributeNS(OFFICE, "office:boolean-value", if (cell.value == 1.0) "true" else "false") }
@@ -328,6 +371,92 @@ internal object SheetSave {
             SheetKind.Empty -> Unit
         }
         if (cell.text.isNotEmpty()) cell.text.split('\n').forEach { line -> target.appendChild(doc.createElementNS(TEXT, "text:p").apply { textContent = line }) }
+    }
+
+    /** Looks formatting made, as LibreOffice's automatic cell styles (with a number style for their format). */
+    private class OdsLooks(val doc: org.w3c.dom.Document, val book: Workbook) {
+        val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+        val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+        val NUMBER = "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"
+        val auto: org.w3c.dom.Element = (doc.documentElement.getElementsByTagNameNS(OFFICE, "automatic-styles").item(0) as? org.w3c.dom.Element)
+            ?: doc.createElementNS(OFFICE, "office:automatic-styles").also { a -> doc.documentElement.insertBefore(a, doc.documentElement.getElementsByTagNameNS(OFFICE, "body").item(0)) }
+        val made = HashMap<Pair<Int, String?>, String>()
+        /** Every style name the file uses, so a new one is never one of them. */
+        val taken = HashSet<String>().also { t -> val all = doc.getElementsByTagName("*"); for (i in 0 until all.length) (all.item(i) as org.w3c.dom.Element).getAttributeNS(STYLE, "name").takeIf { it.isNotEmpty() }?.let { t += it } }
+        fun fresh(prefix: String) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { taken += it }
+
+        fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
+        fun line(l: SheetLine?) = if (l == null) "none" else "${if (l.width >= 3) "2.5pt" else if (l.width >= 2) "1.5pt" else "0.74pt"} ${if (l.double) "double" else if (l.dots) "dotted" else if (l.dashed) "dashed" else "solid"} ${hex(l.color)}"
+
+        fun name(style: Int, format: String?): String = made.getOrPut(style to format) {
+            val look = book.styles[style]
+            val e = doc.createElementNS(STYLE, "style:style")
+            val name = fresh("Tce")
+            e.setAttributeNS(STYLE, "style:name", name); e.setAttributeNS(STYLE, "style:family", "table-cell"); e.setAttributeNS(STYLE, "style:parent-style-name", "Default")
+            dataStyle(format ?: look.format)?.let { e.setAttributeNS(STYLE, "style:data-style-name", it) }
+            e.appendChild(doc.createElementNS(STYLE, "style:table-cell-properties").apply {
+                look.fill?.let { setAttributeNS(FO, "fo:background-color", hex(it)) }
+                setAttributeNS(FO, "fo:border-left", line(look.left)); setAttributeNS(FO, "fo:border-right", line(look.right))
+                setAttributeNS(FO, "fo:border-top", line(look.top)); setAttributeNS(FO, "fo:border-bottom", line(look.bottom))
+                if (look.wrap) setAttributeNS(FO, "fo:wrap-option", "wrap")
+                setAttributeNS(STYLE, "style:vertical-align", when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "middle"; else -> "bottom" })
+                if (look.align != SheetAlign.General) setAttributeNS(STYLE, "style:text-align-source", "fix")
+            })
+            if (look.align != SheetAlign.General) e.appendChild(doc.createElementNS(STYLE, "style:paragraph-properties").apply {
+                setAttributeNS(FO, "fo:text-align", when (look.align) { SheetAlign.Left -> "start"; SheetAlign.Center -> "center"; SheetAlign.Right -> "end"; else -> "justify" })
+            })
+            e.appendChild(doc.createElementNS(STYLE, "style:text-properties").apply {
+                if (look.bold) setAttributeNS(FO, "fo:font-weight", "bold")
+                if (look.italic) setAttributeNS(FO, "fo:font-style", "italic")
+                if (look.underline) { setAttributeNS(STYLE, "style:text-underline-style", "solid"); setAttributeNS(STYLE, "style:text-underline-width", "auto"); setAttributeNS(STYLE, "style:text-underline-color", "font-color") }
+                if (look.strike) setAttributeNS(STYLE, "style:text-line-through-style", "solid")
+                look.color?.let { setAttributeNS(FO, "fo:color", hex(it)) }
+                setAttributeNS(FO, "fo:font-size", "${num(look.size.toDouble())}pt")
+                look.font?.let { setAttributeNS(FO, "fo:font-family", it) }
+            })
+            auto.appendChild(e)
+            name
+        }
+
+        /** A number style for an Excel format: decimals, thousands, percent, currency, a day-first date, a time, words. */
+        fun dataStyle(code: String): String? {
+            if (code.equals("General", true)) return null
+            val f = SheetFormat()
+            val name = fresh("TN")
+            fun el(tag: String) = doc.createElementNS(NUMBER, "number:$tag")
+            val e: org.w3c.dom.Element
+            if (f.isDate(code)) {
+                val time = Regex("[hs]", RegexOption.IGNORE_CASE).containsMatchIn(SheetFormat.strip(code))
+                val day = Regex("[dy]", RegexOption.IGNORE_CASE).containsMatchIn(SheetFormat.strip(code))
+                e = el(if (day) "date-style" else "time-style")
+                fun text(t: String) = el("text").apply { textContent = t }
+                if (day) {
+                    e.appendChild(el("day").apply { if ("dd" in code) setAttributeNS(NUMBER, "number:style", "long") }); e.appendChild(text("/"))
+                    e.appendChild(el("month").apply { if ("mm" in code.substringBefore('h')) setAttributeNS(NUMBER, "number:style", "long") }); e.appendChild(text("/"))
+                    e.appendChild(el("year").apply { setAttributeNS(NUMBER, "number:style", "long") })
+                    if (time) e.appendChild(text(" "))
+                }
+                if (time) { e.appendChild(el("hours")); e.appendChild(text(":")); e.appendChild(el("minutes").apply { setAttributeNS(NUMBER, "number:style", "long") })
+                    if (Regex("s", RegexOption.IGNORE_CASE).containsMatchIn(SheetFormat.strip(code))) { e.appendChild(text(":")); e.appendChild(el("seconds").apply { setAttributeNS(NUMBER, "number:style", "long") }) } }
+            } else if (code == "@") {
+                e = el("text-style"); e.appendChild(el("text-content"))
+            } else {
+                val first = SheetFormat.split(code).first()
+                val decimals = first.substringAfter('.', "").count { it == '0' }
+                val percent = '%' in SheetFormat.strip(first)
+                val currency = Regex("\"([^\"]*[€$£][^\"]*)\"|\\[\\$([€$£])").find(first)?.let { m -> m.groupValues.drop(1).first { it.isNotEmpty() }.trim() }
+                e = el(if (percent) "percentage-style" else if (currency != null) "currency-style" else "number-style")
+                e.appendChild(el("number").apply {
+                    setAttributeNS(NUMBER, "number:decimal-places", "$decimals"); setAttributeNS(NUMBER, "number:min-decimal-places", "$decimals")
+                    setAttributeNS(NUMBER, "number:min-integer-digits", "1"); if (',' in first.substringBefore('.')) setAttributeNS(NUMBER, "number:grouping", "true")
+                })
+                if (percent) e.appendChild(el("text").apply { textContent = "%" })
+                if (currency != null) { e.appendChild(el("text").apply { textContent = " " }); e.appendChild(el("currency-symbol").apply { textContent = currency }) }
+            }
+            e.setAttributeNS(STYLE, "style:name", name)
+            auto.insertBefore(e, auto.firstChild)
+            return name
+        }
     }
 
     // --- .csv ---

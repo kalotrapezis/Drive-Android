@@ -95,7 +95,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -138,8 +137,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var query by remember { mutableStateOf("") }
     var found by remember { mutableStateOf<List<Long>>(emptyList()) }
     var current by remember { mutableIntStateOf(0) }
-    var columnMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the sheet column, and where its letter was tapped
-    var rowMenu by remember { mutableStateOf<Pair<Int, Float>?>(null) } // the row as drawn, and where its number was tapped
+    // A column's letter ('c', its sheet column) or a row's number ('r', the row as drawn) tapped: the ribbon shows its tools
+    var header by remember { mutableStateOf<Pair<Char, Int>?>(null) }
+    var group by remember { mutableStateOf<String?>(null) } // the ribbon's group opened beside its button (Borders, Number, Font)
     var filtering by remember { mutableStateOf<Int?>(null) }
     var menu by remember { mutableStateOf(false) }
     var formulas by remember { mutableStateOf(false) } // ⋯ › Show formulas: the cells show their formulas
@@ -410,6 +410,136 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         WriterLog.i("Sheets: search in ${searched} sheets, ${hits.size} found in ${(System.nanoTime() - start) / 1_000_000} ms")
     }
 
+    /** The cells the ribbon's tools work on: the chosen ones (as the file has them), else the chosen cell (a merged one whole). */
+    fun targets(s: Sheet, l: SheetLayout): List<Long> {
+        view.range?.let { g -> return (g.r1..minOf(g.r2, l.rows.lastIndex)).flatMap { r -> (g.c1..minOf(g.c2, l.cols.lastIndex)).map { c -> Sheet.key(l.rows[r], l.cols[c]) } }.take(100_000) }
+        val g = s.merge(view.row, view.col) ?: SheetRange(view.row, view.col, view.row, view.col)
+        return (g.r1..g.r2).flatMap { r -> (g.c1..g.c2).map { c -> Sheet.key(r, c) } }
+    }
+    /** The targets' range as the file has it (for borders round it). */
+    fun box(keys: List<Long>) = SheetRange(keys.minOf { Sheet.row(it) }, keys.minOf { Sheet.col(it) }, keys.maxOf { Sheet.row(it) }, keys.maxOf { Sheet.col(it) })
+
+    /**
+     * Writer's way (asked 16 Oct): no menu over the sheet — one strip above the tabs whose tools follow what is chosen:
+     * a column's letter, a row's number, chosen cells (Sum, Average, Count), and while editing the cell's looks.
+     */
+    @Composable fun Ribbon(s: Sheet, b: Workbook, l: SheetLayout) {
+        val w = islandContentColor()
+        fun look(change: (SheetStyle, Long) -> SheetStyle) {
+            val keys = targets(s, l)
+            val changed = SheetLook.change(b, s, keys, change)
+            if (changed.isNotEmpty()) { history.apply(b, index, changed); version++; WriterLog.i("Sheets: ${changed.size} cells formatted") }
+        }
+        val (cr, cc) = chosen(s)
+        val now = (s[cr, cc]?.fileStyle ?: (s.rowStyles[cr] ?: s.colStyles[cc] ?: 0)).let { b.styles.getOrNull(it) } ?: SheetStyle()
+        Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+            // from its start again whenever what is chosen changes (a column, a row, cells, a cell)
+            val scroll = remember(header, view.range == null) { androidx.compose.foundation.ScrollState(0) }
+            Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                val h = header
+                val g = view.range
+                if (h != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(18.dp)) }
+                when {
+                    h?.first == 'c' -> {
+                        val col = h.second
+                        Text("Column ${Sheets.colName(col)}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+                        RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { val c = l.col(col); if (c >= 0) view.range = SheetRange(0, c, l.rows.lastIndex, c); header = null }
+                        RibbonButton(if (col in view.filters) "Change filter" else "Filter", w, R.drawable.ic_filter) { filtering = col }
+                        if (col in view.filters) RibbonButton("Clear filter", w) { view.filters.remove(col) }
+                        RibbonButton("A → Z", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, true) }
+                        RibbonButton("Z → A", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, false) }
+                        if (col in view.pins) RibbonButton("Unpin", w, R.drawable.ic_push_pin) { view.pins.remove(col) }
+                        else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
+                        if (editing) {
+                            RibbonButton("Insert left", w) { header = null; shift(false, col, 1) }
+                            RibbonButton("Insert right", w) { header = null; shift(false, col + 1, 1) }
+                            RibbonButton("Delete", w, R.drawable.ic_delete_column) { header = null; shift(false, col, -1) }
+                        }
+                    }
+                    h?.first == 'r' -> {
+                        val row = h.second; val sheetRow = l.rows[row]
+                        Text("Row ${sheetRow + 1}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+                        RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { view.range = SheetRange(row, 0, row, l.cols.lastIndex); header = null }
+                        RibbonButton("Keep at the top", w, R.drawable.ic_push_pin) { view.freeze = row + 1; view.y = 0f }
+                        if (l.frozenRows > 0) RibbonButton("Let scroll", w) { view.freeze = 0 }
+                        if (editing) {
+                            RibbonButton("Insert above", w) { header = null; shift(true, sheetRow, 1) }
+                            RibbonButton("Insert below", w) { header = null; shift(true, sheetRow + 1, 1) }
+                            RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
+                        }
+                    }
+                    else -> {
+                        if (g != null) {
+                            // Excel's status bar, at the strip's start
+                            val stats = remember(s, l, g, version) { SheetStats.of(s, l, g) }
+                            Text(buildString {
+                                if (stats.numbers > 0) append("Sum ${b.format.general(stats.sum)} · Average ${b.format.general(stats.average)} · ")
+                                append("Count ${stats.count}")
+                            }, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                            RibbonButton("Copy", w, R.drawable.ic_copy) { copy(context, "Cells", sheetText(s, l, g)); message = "Copied"; WriterLog.i("Sheets: cells copied") }
+                            // whole rows or columns chosen: put in or taken out together
+                            if (editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
+                                RibbonButton("Insert ${g.r2 - g.r1 + 1} rows", w) { shift(true, l.rows[g.r1], g.r2 - g.r1 + 1) }
+                                RibbonButton("Delete rows", w, R.drawable.ic_delete_row) { shift(true, l.rows[g.r1], -(g.r2 - g.r1 + 1)) }
+                            }
+                            if (editing && g.r1 == 0 && g.r2 == l.rows.lastIndex && view.pins.isEmpty()) {
+                                RibbonButton("Insert ${g.c2 - g.c1 + 1} columns", w) { shift(false, l.cols[g.c1], g.c2 - g.c1 + 1) }
+                                RibbonButton("Delete columns", w, R.drawable.ic_delete_column) { shift(false, l.cols[g.c1], -(g.c2 - g.c1 + 1)) }
+                            }
+                            if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) {
+                                val changes = LinkedHashMap<Long, SheetCell>()
+                                for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
+                                if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
+                            }
+                        }
+                        if (editing && b.kind != "csv") {
+                            // the looks: Home's, one tool each
+                            RibbonButton("", w, R.drawable.ic_format_bold, on = now.bold) { look { st, _ -> st.copy(bold = !now.bold) } }
+                            RibbonButton("", w, R.drawable.ic_format_italic, on = now.italic) { look { st, _ -> st.copy(italic = !now.italic) } }
+                            RibbonButton("", w, R.drawable.ic_format_underlined, on = now.underline) { look { st, _ -> st.copy(underline = !now.underline) } }
+                            RibbonButton("", w, R.drawable.ic_format_strikethrough, on = now.strike) { look { st, _ -> st.copy(strike = !now.strike) } }
+                            Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                                look { st, _ -> st.copy(color = c?.let { (it.value shr 32).toInt() }) }
+                            }
+                            Swatches(w, R.drawable.ic_format_color_fill, "Fill", listOf(Color(0xFFFFFF00), Color(0xFFC6EFCE), Color(0xFFFFC7CE), Color(0xFFDDEBF7), Color(0xFFFCE4D6), Color(0xFFD9D9D9))) { c ->
+                                look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
+                            }
+                            @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
+                            val thin = SheetLine(0xFF000000.toInt(), 1f)
+                            opener("Borders", R.drawable.ic_border_outer)
+                            if (group == "Borders") {
+                                val keys = targets(s, l); val g2 = box(keys)
+                                RibbonButton("All", w, R.drawable.ic_border_all) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = true) } }
+                                RibbonButton("Outside", w, R.drawable.ic_border_outer) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false) } }
+                                RibbonButton("Bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false, onlyBottom = true) } }
+                                RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
+                                RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
+                                RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
+                            }
+                            RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
+                            RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
+                            RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
+                            RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
+                            opener("Number", R.drawable.ic_functions)
+                            if (group == "Number") listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
+                                .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
+                            RibbonButton(".0−", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
+                            RibbonButton(".0+", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
+                            RibbonButton("A−", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
+                            Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
+                            RibbonButton("A+", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
+                            opener(now.font ?: "Font", R.drawable.ic_text_box)
+                            if (group == (now.font ?: "Font")) listOf("Calibri", "Arial", "Times New Roman", "Courier New").forEach { f ->
+                                RibbonButton(f, w, on = now.font == f) { group = null; look { st, _ -> st.copy(font = f) } }
+                            }
+                            RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
@@ -505,8 +635,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
                     SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas, version,
-                        column = { col, x -> columnMenu = col to x }, row = { r, y -> rowMenu = r to y },
+                        column = { col, _ -> header = 'c' to col; group = null }, row = { r, _ -> header = 'r' to r; group = null },
                         pick = { r, c ->
+                            header = null
                             val d = draft
                             when {
                                 // a formula being typed: the tapped cell's name goes in at the cursor (Excel's pointing)
@@ -520,29 +651,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 else -> false
                             }
                         })
-                    columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col },
-                        shift = if (editing) ({ at, n -> shift(false, at, n) }) else null) }
-                    rowMenu?.let { (r, y) -> RowMenu(r, y, view, l, shift = if (editing) ({ at, n -> shift(true, at, n) }) else null) { rowMenu = null } }
-                    view.range?.let { g ->
-                        RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter), copy = {
-                            copy(context, "Cells", sheetText(s, l, g)); WriterLog.i("Sheets: ${(g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1)} cells copied")
-                        }, clear = if (!editing) null else ({
-                            // the chosen cells emptied (their looks kept), one step to undo
-                            val changes = LinkedHashMap<Long, SheetCell>()
-                            for (r in g.r1..minOf(g.r2, l.rows.lastIndex)) for (c in g.c1..minOf(g.c2, l.cols.lastIndex)) {
-                                val k = Sheet.key(l.rows[r], l.cols[c]); val old = s.cells[k] ?: continue
-                                if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format)
-                                if (changes.size >= 100_000) break
-                            }
-                            if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
-                            view.range = null
-                        })) { view.range = null }
-                    }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
             }
         }
-        book?.let { b -> SheetTabs(b, index, sheet) { i -> WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; index = i } }
+        val rs = sheet; val rb = book; val rl = layout
+        if (rs != null && rb != null && rl != null && draft == null && !searching && (header != null || view.range != null || editing)) Ribbon(rs, rb, rl)
+        book?.let { b -> SheetTabs(b, index, sheet) { i -> WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; header = null; index = i } }
     }
     message?.let { m ->
         Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
@@ -698,88 +813,6 @@ private fun ToolChips(view: SheetView) {
         if (view.pins.isNotEmpty()) chip(R.drawable.ic_push_pin, "Pinned " + view.pins.joinToString(", ") { Sheets.colName(it) }) { WriterLog.i("Sheets: pins cleared"); view.pins.clear() }
         view.filters.keys.sorted().forEach { c -> chip(R.drawable.ic_filter, "Filter " + Sheets.colName(c)) { WriterLog.i("Sheets: filter cleared"); view.filters.remove(c) } }
         view.sort?.let { s -> chip(R.drawable.ic_sort_name, "Sorted " + Sheets.colName(s.col) + if (s.ascending) " A→Z" else " Z→A") { WriterLog.i("Sheets: sort cleared"); view.sort = null } }
-    }
-}
-
-/** A tap on a column's letter: its filter, sort and pin, as Excel's header menu. */
-@Composable
-private fun ColumnMenu(col: Int, x: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit, filter: () -> Unit, shift: ((Int, Int) -> Unit)? = null) {
-    val density = LocalDensity.current
-    Box(Modifier.offset { IntOffset(x.roundToInt(), (28 * density.density).roundToInt()) }) {
-        DropdownMenu(expanded = true, onDismissRequest = dismiss) {
-            Text("Column ${Sheets.colName(col)}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-            // while editing: columns in and out (the chosen columns, when whole columns are chosen through this one)
-            if (shift != null) {
-                val chosen = view.range?.takeIf { it.r1 == 0 && it.r2 == layout.rows.lastIndex && layout.col(col) in it.c1..it.c2 }?.let { g -> (g.c1..g.c2).map { layout.cols[it] } }?.takeIf { it.zipWithNext().all { (a, b) -> b == a + 1 } }
-                val first = chosen?.first() ?: col; val n = chosen?.size ?: 1
-                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n columns" else "a column"} to the left") }, onClick = { dismiss(); shift(first, n) })
-                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n columns" else "a column"} to the right") }, onClick = { dismiss(); shift(first + n, n) })
-                DropdownMenuItem(text = { Text(if (n > 1) "Delete columns ${Sheets.colName(first)}–${Sheets.colName(first + n - 1)}" else "Delete column ${Sheets.colName(col)}") },
-                    leadingIcon = { Icon(painterResource(R.drawable.ic_delete_column), null) }, onClick = { dismiss(); shift(first, -n) })
-            }
-            DropdownMenuItem(text = { Text("Select column") }, leadingIcon = { Icon(painterResource(R.drawable.ic_check_box_outline_blank), null) }, onClick = {
-                dismiss(); val c = layout.col(col); if (c >= 0) view.range = SheetRange(0, c, layout.rows.lastIndex, c); WriterLog.i("Sheets: column chosen")
-            })
-            DropdownMenuItem(text = { Text(if (col in view.filters) "Change filter…" else "Filter…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_filter), null) },
-                onClick = { dismiss(); filter() })
-            if (col in view.filters) DropdownMenuItem(text = { Text("Clear filter") }, onClick = { dismiss(); WriterLog.i("Sheets: filter cleared"); view.filters.remove(col) })
-            DropdownMenuItem(text = { Text("Sort A → Z") }, leadingIcon = { Icon(painterResource(R.drawable.ic_sort_name), null) },
-                onClick = { dismiss(); WriterLog.i("Sheets: sort up"); view.sort = SheetSort(col, true) })
-            DropdownMenuItem(text = { Text("Sort Z → A") }, leadingIcon = { Icon(painterResource(R.drawable.ic_sort_name), null, modifier = Modifier.rotate(180f)) },
-                onClick = { dismiss(); WriterLog.i("Sheets: sort down"); view.sort = SheetSort(col, false) })
-            if (col in view.pins) DropdownMenuItem(text = { Text("Unpin column") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) },
-                onClick = { dismiss(); WriterLog.i("Sheets: unpinned"); view.pins.remove(col) })
-            else DropdownMenuItem(text = { Text("Pin to the start") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) },
-                onClick = { dismiss(); view.pins.add(col); WriterLog.i("Sheets: pinned, ${view.pins.size} now"); view.x = 0f })
-        }
-    }
-}
-
-/** A tap on a row's number: keep the rows down to it at the top while scrolling (Excel's Freeze Panes), or choose the row. */
-@Composable
-private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, shift: ((Int, Int) -> Unit)? = null, dismiss: () -> Unit) {
-    Box(Modifier.offset { IntOffset(0, y.roundToInt()) }) {
-        DropdownMenu(expanded = true, onDismissRequest = dismiss) {
-            Text("Row ${layout.rows[row] + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-            // while editing: rows in and out (the chosen rows, when whole rows are chosen through this one)
-            if (shift != null) {
-                val chosen = view.range?.takeIf { it.c1 == 0 && it.c2 == layout.cols.lastIndex && row in it.r1..it.r2 }?.let { g -> (g.r1..g.r2).map { layout.rows[it] } }?.takeIf { it.zipWithNext().all { (a, b) -> b == a + 1 } }
-                val first = chosen?.first() ?: layout.rows[row]; val n = chosen?.size ?: 1
-                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n rows" else "a row"} above") }, onClick = { dismiss(); shift(first, n) })
-                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n rows" else "a row"} below") }, onClick = { dismiss(); shift(first + n, n) })
-                DropdownMenuItem(text = { Text(if (n > 1) "Delete rows ${first + 1}–${first + n}" else "Delete row ${first + 1}") },
-                    leadingIcon = { Icon(painterResource(R.drawable.ic_delete_row), null) }, onClick = { dismiss(); shift(first, -n) })
-            }
-            DropdownMenuItem(text = { Text("Keep rows up to here at the top") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) }, onClick = {
-                dismiss(); view.freeze = row + 1; view.y = 0f; WriterLog.i("Sheets: ${row + 1} rows frozen")
-            })
-            if (layout.frozenRows > 0) DropdownMenuItem(text = { Text("Let the top rows scroll") }, onClick = { dismiss(); view.freeze = 0; WriterLog.i("Sheets: rows unfrozen") })
-            DropdownMenuItem(text = { Text("Select row") }, leadingIcon = { Icon(painterResource(R.drawable.ic_check_box_outline_blank), null) }, onClick = {
-                dismiss(); view.range = SheetRange(row, 0, row, layout.cols.lastIndex); WriterLog.i("Sheets: row chosen")
-            })
-        }
-    }
-}
-
-/** Excel's status bar for the chosen cells: Sum, Average and Count; a tap shows the least and the most too. */
-@Composable
-private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, copy: () -> Unit, clear: (() -> Unit)? = null, close: () -> Unit) {
-    val stats = remember(sheet, layout, range) { SheetStats.of(sheet, layout, range) }
-    val f = remember { DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) } }
-    var more by remember { mutableStateOf(false) }
-    Surface(shape = RoundedCornerShape(16.dp), color = islandColor(), contentColor = islandContentColor(), modifier = modifier.padding(12.dp).clickable { more = !more }) {
-        Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f, fill = false)) {
-                Text(buildString {
-                    if (stats.numbers > 0) append("Sum ${f.general(stats.sum)}   Average ${f.general(stats.average)}   ")
-                    append("Count ${stats.count}")
-                }, style = MaterialTheme.typography.labelLarge)
-                if (more && stats.numbers > 0) Text("Min ${f.general(stats.min)}   Max ${f.general(stats.max)}   Numbers ${stats.numbers}", style = MaterialTheme.typography.labelMedium)
-            }
-            IconButton(onClick = copy) { Icon(painterResource(R.drawable.ic_copy), contentDescription = "Copy", modifier = Modifier.size(18.dp)) }
-            clear?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Clear", modifier = Modifier.size(18.dp)) } }
-            IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear the choice", modifier = Modifier.size(18.dp)) }
-        }
     }
 }
 

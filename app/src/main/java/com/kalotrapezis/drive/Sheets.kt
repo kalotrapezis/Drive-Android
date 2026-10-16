@@ -207,9 +207,21 @@ internal class Workbook(
     val parts: Map<String, String> = emptyMap(),
     /** Defined names (in small letters) and what they stand for ("rows!$b$3:$b$12"), for formulas. */
     val names: Map<String, String> = emptyMap(),
+    /** An .ods's cell styles' names by index (to write a cell's look back by name). */
+    val styleNames: List<String> = emptyList(),
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
+    /** How many looks the file has; looks made by formatting are numbered after them. */
+    val fileStyles = styles.size
+
+    /** A look's index: one the workbook has, or a new one added (formatting). */
+    fun styleFor(st: SheetStyle): Int = synchronized(styles) {
+        val i = styles.indexOf(st)
+        if (i >= 0) return i
+        (styles as MutableList<SheetStyle>) += st
+        return styles.lastIndex
+    }
     /** Cells changed and not yet saved, by sheet: laid again on a sheet read again (only two are kept). */
     val edits = HashMap<Int, LinkedHashMap<Long, SheetCell>>()
     /** After the edits are laid on a sheet (formulas worked out again). */
@@ -1177,7 +1189,9 @@ internal object Sheets {
             return SheetLine(color, w, double = "double" in parts, dashed = parts.any { it in setOf("dashed", "dash-dot", "dash-dot-dot", "fine-dashed") }, dots = "dotted" in parts)
         }
 
-        fun style(name: String?): Int = styleIndex.getOrPut(name ?: "") {
+        /** After the first pass every look is made: a name not seen then is the default (formatting adds after them). */
+        var sealed = false
+        fun style(name: String?): Int = if (sealed) styleIndex[name ?: ""] ?: 0 else styleIndex.getOrPut(name ?: "") {
             val p = props(name)
             val fix = p["c.text-align-source"] != "value-type"
             val all = p["c.border"]
@@ -1230,9 +1244,11 @@ internal object Sheets {
             // Every cell look made now, so the list does not grow while a sheet is drawn.
             style(null) // index 0: the default look
             raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
+            sealed = true
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
-            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second)) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+            val names = Array(styles.size) { "Default" }.also { a -> styleIndex.forEach { (n, i) -> if (n.isNotEmpty()) a[i] = n } }.toList()
+            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second), styleNames = names) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */

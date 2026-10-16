@@ -149,7 +149,15 @@ internal object SheetRules {
      */
     fun again(sheet: Sheet, styles: List<SheetStyle>) {
         if (sheet.rules.isEmpty()) return
-        for ((k, style) in sheet.ruleBase) sheet.cells[k]?.let { if (it.style != style) sheet.cells[k] = it.copy(style = style) }
+        for ((k, style) in sheet.ruleBase) sheet.cells[k]?.let { cell ->
+            when {
+                // formatted since (a look of the workbook's, not a rule's): that is now the look under the rule
+                cell.style < Sheet.LOOKS -> sheet.ruleBase[k] = cell.style
+                // a rule's look again (an undo): the file's look under it, unless a table's look is (kept)
+                style < Sheet.LOOKS && cell.own >= 0 -> { sheet.ruleBase[k] = cell.own; sheet.cells[k] = cell.copy(style = cell.own) }
+                cell.style != style -> sheet.cells[k] = cell.copy(style = style)
+            }
+        }
         val looks = sheet.looks as? ArrayList<SheetStyle> ?: return
         val icons = HashMap<Long, SheetIcon>()
         sheet.bars = apply(sheet.rules, sheet.cells, { i -> sheet.look(i, styles) ?: SheetStyle() }, looks, icons, sheet.ruleBase)

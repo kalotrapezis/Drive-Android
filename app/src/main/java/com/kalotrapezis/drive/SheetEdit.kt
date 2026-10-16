@@ -199,6 +199,54 @@ internal object SheetRecalc {
     }
 }
 
+/**
+ * Formatting chosen cells (asked 16 Oct with editing): each cell's look changed by [change] — given the look and the
+ * cell's place in the range, for borders round it — as a look the workbook has or a new one; a number shown again in a
+ * new number format. Returns the changed cells, for [SheetHistory.apply].
+ */
+internal object SheetLook {
+    fun change(book: Workbook, sheet: Sheet, keys: Collection<Long>, change: (SheetStyle, Long) -> SheetStyle): Map<Long, SheetCell> {
+        val out = LinkedHashMap<Long, SheetCell>()
+        for (k in keys) {
+            val r = Sheet.row(k); val c = Sheet.col(k)
+            val cell = sheet.cells[k] ?: SheetCell("", SheetKind.Empty, style = sheet.rowStyles[r] ?: sheet.colStyles[c] ?: 0)
+            // the look the file gives it, under a table's or a rule's
+            val base = cell.fileStyle
+            val old = book.styles.getOrNull(base) ?: SheetStyle()
+            val now = change(old, k)
+            if (now == old) continue
+            val i = book.styleFor(now)
+            val format = if (now.format != old.format) null else cell.format
+            val text = if (cell.kind == SheetKind.Number && cell.value != null && (format ?: now.format) != (cell.format ?: old.format))
+                book.format.format(cell.value, format ?: now.format).let { cell.copy(text = it.text, color = it.color) } else cell
+            out[k] = text.copy(style = i, own = -1, format = format)
+        }
+        return out
+    }
+
+    /** A number format with one more or one fewer decimal (General: 0.0 or 0). */
+    fun decimals(code: String, delta: Int): String {
+        if (code.equals("General", true) || code == "@") return if (delta > 0) "0.0" else "0"
+        return SheetFormat.split(code).joinToString(";") { sec ->
+            val m = Regex("""([0#?,]*)(\.([0#?]*))?""").findAll(sec).firstOrNull { it.value.any { c -> c == '0' || c == '#' } } ?: return@joinToString sec
+            val now = m.groupValues[3].length
+            val n = maxOf(0, now + delta)
+            sec.replaceRange(m.range, m.groupValues[1] + if (n > 0) "." + "0".repeat(n) else "")
+        }
+    }
+
+    /** A border round a range: each edge where the cell is on the range's edge ([all]: between the cells too). */
+    fun edges(st: SheetStyle, k: Long, g: SheetRange, line: SheetLine?, all: Boolean, onlyBottom: Boolean = false): SheetStyle {
+        val r = Sheet.row(k); val c = Sheet.col(k)
+        if (onlyBottom) return st.copy(bottom = if (r == g.r2) line else st.bottom)
+        if (line == null) return st.copy(left = null, right = null, top = null, bottom = null)
+        return st.copy(
+            left = if (all || c == g.c1) line else st.left, right = if (all || c == g.c2) line else st.right,
+            top = if (all || r == g.r1) line else st.top, bottom = if (all || r == g.r2) line else st.bottom,
+        )
+    }
+}
+
 /** Undo and redo of edits: each step the cells as they were and as they became (the formulas worked out again too). */
 internal class SheetHistory {
     /** Cells changed: as they were, as they became. */

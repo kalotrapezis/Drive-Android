@@ -1002,6 +1002,34 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         // the newest of each kind, one list again by date (the list is newest first)
         files = all.groupBy { if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.file.lastModified() } } }
     BackHandler { back() }
+    var choosingTemplate by remember { mutableStateOf(false) }
+    /** A new presentation in Documents, opened editing: the app's empty deck (a title slide), or one of [template]. */
+    fun newPresentation(template: File?) {
+        runCatching {
+            val dir = File(root, "Documents").apply { mkdirs() }
+            val f = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "Presentation.pptx" else "Presentation ($it).pptx") }.first { !it.exists() }
+            if (template != null) SlidesTemplates.make(template, f) else f.writeBytes(context.assets.open("blank.pptx").use { it.readBytes() })
+            JustMade.mark(f); WriterLog.i("Slides: a new presentation${template?.let { " from a template" } ?: ""}")
+            openSlides(Uri.fromFile(f).toString())
+        }.onFailure { WriterLog.e("Slides: a new presentation could not be made", it) }
+    }
+    if (choosingTemplate) {
+        val options = remember { listOf<Pair<File?, SlideTheme?>>(null to SlidesThemes.BUILT_IN.first().copy(name = "Blank")) + SlidesTemplates.files().map { it to SlidesThemes.fromFile(it) } }
+        androidx.compose.ui.window.Dialog(onDismissRequest = { choosingTemplate = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.widthIn(max = 720.dp).padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("New presentation", style = MaterialTheme.typography.titleLarge)
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), maxItemsInEachRow = 2) {
+                            options.forEach { (f, t) -> ThemeCard(t ?: SlidesThemes.BUILT_IN.first().copy(name = f?.nameWithoutExtension ?: "Blank"), false, Modifier.weight(1f)) { choosingTemplate = false; newPresentation(f) } }
+                            if (options.size % 2 == 1) Spacer(Modifier.weight(1f)) // a last one alone keeps its size
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = { choosingTemplate = false }) { Text("Cancel") } }
+                }
+            }
+        }
+    }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
@@ -1009,14 +1037,9 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     NewDocCard("Words", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
                     NewDocCard("Tables", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
                     // a new presentation: the app's empty deck (a title slide) in Documents, opened editing
+                    // with templates in Documents/Templates: which to start from first (asked 16 Oct: a school's, a company's)
                     NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, true, Modifier.weight(1f)) {
-                        runCatching {
-                            val dir = File(root, "Documents").apply { mkdirs() }
-                            val f = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "Presentation.pptx" else "Presentation ($it).pptx") }.first { !it.exists() }
-                            f.writeBytes(context.assets.open("blank.pptx").use { it.readBytes() })
-                            JustMade.mark(f); WriterLog.i("Slides: a new presentation")
-                            openSlides(Uri.fromFile(f).toString())
-                        }.onFailure { WriterLog.e("Slides: a new presentation could not be made", it) }
+                        if (SlidesTemplates.files().isNotEmpty()) choosingTemplate = true else newPresentation(null)
                     }
                 }
             }

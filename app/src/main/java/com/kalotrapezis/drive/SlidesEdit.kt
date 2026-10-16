@@ -24,7 +24,8 @@ internal object SlidesEdit {
         /** a slide's transition as chosen: its kind "" none, else PowerPoint's name (fade, push, wipe, cover, pull, cut), its side and length */ val transitions: Map<Int, SlideTransition> = emptyMap(),
         /** a slide's click animations as chosen, each its own click in their order: entrances and exits (appear, fade, fly) */ val anims: Map<Int, List<SlideEffect>> = emptyMap(),
         /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap(),
-        /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet()) {
+        /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet(),
+        /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit

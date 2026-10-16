@@ -281,7 +281,8 @@ internal object Slides {
         inner class Placeholders(val layout: Element?, val master: Element?, val defaults: Element?) {
             private fun phOf(sp: Element) = sp.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("nvPr")?.kid("ph")
             private fun find(tree: Element?, type: String, idx: String?): Element? {
-                val shapes = tree?.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty()
+                // only placeholders: a master's own drawing (a band, a logo) is no placeholder, though "no type" means body
+                val shapes = tree?.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().filter { phOf(it) != null }
                 fun kind(t: String?) = when (t) { null, "", "obj", "body", "subTitle" -> "body"; "ctrTitle", "title" -> "title"; else -> t }
                 return idx?.let { i -> shapes.firstOrNull { phOf(it)?.attr("idx") == i } } ?: shapes.firstOrNull { kind(phOf(it)?.attr("type")) == kind(type) }
             }

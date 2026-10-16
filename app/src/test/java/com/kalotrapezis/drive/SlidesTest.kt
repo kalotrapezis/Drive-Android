@@ -281,6 +281,62 @@ class SlidesTest {
         assertEquals("9005", more.newId(0, listOf("9000", "9003")))
     }
 
+    /** Design's themes (asked 16 Oct: light and dark): each applied to the blank deck, read back, and drawn by LibreOffice. */
+    @Test fun `themes applied to a deck`() {
+        val blank = File("src/main/assets/blank.pptx")
+        for (theme in SlidesThemes.BUILT_IN) {
+            val out = File.createTempFile("theme", ".pptx")
+            SlidesThemes.apply(blank, theme, out)
+            val d = Slides.read(out)
+            // the slide's background is the theme's (its lt1), and the theme read back is the same
+            assertEquals(theme.name, 0xFF000000.toInt() or theme.colors[1], d.slides.first().background)
+            val back = SlidesThemes.fromFile(out)!!
+            assertEquals(theme.name, theme.colors, back.colors); assertEquals(theme.name, theme.dark, back.dark)
+            assertEquals(theme.name, listOf(theme.major, theme.minor), listOf(back.major, back.minor))
+            val master = java.util.zip.ZipFile(out).use { z -> String(z.getInputStream(z.getEntry("ppt/slideMasters/slideMaster1.xml")).readBytes()) }
+            assertEquals(theme.name, if (theme.band != null) 1 else 0, Regex("Tetra theme band").findAll(master).count())
+            // applied again (another theme over it): still one band at most
+            val again = File.createTempFile("theme2", ".pptx"); SlidesThemes.apply(out, SlidesThemes.BUILT_IN[1], again)
+            assertEquals(1, Regex("Tetra theme band").findAll(java.util.zip.ZipFile(again).use { z -> String(z.getInputStream(z.getEntry("ppt/slideMasters/slideMaster1.xml")).readBytes()) }).count())
+        }
+        // a band on the master is no placeholder: slides.pptx's title and text keep their places and looks under a banded theme
+        val src = File("src/test/resources/slides.pptx"); val before = Slides.read(src)
+        val banded = File.createTempFile("banded", ".pptx"); SlidesThemes.apply(src, SlidesThemes.BUILT_IN.first { it.name == "Midnight" }, banded)
+        val after = Slides.read(banded)
+        for (k in 0..1) {
+            val a = before.slides[k].items.filterIsInstance<SlideItem.Shape>().filter { it.text != null }; val b = after.slides[k].items.filterIsInstance<SlideItem.Shape>().filter { it.text != null }
+            assertEquals(a.map { listOf(it.x, it.y, it.w, it.h) }, b.map { listOf(it.x, it.y, it.w, it.h) })
+            assertTrue("slide $k: a text box took the band's fill", b.none { it.shape?.fill == 0xFF000000.toInt() or 0xFCA311 })
+        }
+        // LibreOffice draws a dark one dark
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val night = SlidesThemes.BUILT_IN.first { it.name == "Night" }
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val f = File(dir, "n.pptx"); SlidesThemes.apply(blank, night, f)
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+            assertEquals(0xFF000000.toInt() or night.colors[1], Slides.read(File(dir, "n.odp")).slides.first().background)
+        }
+    }
+
+    /** A template made by the tetra-slides-theme skill: its theme read, a new presentation made from it (a .potx said to be a deck), LibreOffice opening that. */
+    @Test fun `a new presentation from a template`() {
+        val potx = File("src/test/resources/example-school.potx")
+        val theme = SlidesThemes.fromFile(potx)!!
+        assertEquals(listOf("Georgia", "Calibri"), listOf(theme.major, theme.minor)); assertEquals(0x1F3A5F, theme.colors[4]); assertTrue(!theme.dark)
+        val deck = File.createTempFile("from", ".pptx"); SlidesTemplates.make(potx, deck)
+        val types = java.util.zip.ZipFile(deck).use { z -> String(z.getInputStream(z.getEntry("[Content_Types].xml")).readBytes()) }
+        assertTrue("presentationml.presentation.main+xml" in types && "template.main" !in types)
+        val d = Slides.read(deck)
+        assertEquals(1, d.slides.size)
+        assertTrue(d.slides[0].items.any { it is SlideItem.Picture }) // the logo on the master
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val f = File(dir, "d.pptx").also { deck.copyTo(it) }
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+            assertEquals(1, Slides.read(File(dir, "d.odp")).slides.size)
+        }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

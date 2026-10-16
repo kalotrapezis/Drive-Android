@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
@@ -109,16 +110,32 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             .onFailure { WriterLog.e("Slides: could not open", it); failed = "This presentation could not be opened." }
     }
     val changed = edit != saved
+    // Design › a theme: a copy of the file with it, read once (the deck shown and saved from it while it is chosen)
+    val themed = remember { androidx.compose.runtime.mutableStateMapOf<SlideTheme, Pair<File, Deck>>() }
+    val base: Deck? = edit?.theme?.let { themed[it]?.second } ?: deck
+    LaunchedEffect(edit?.theme) {
+        val t = edit?.theme ?: return@LaunchedEffect
+        val src = file ?: return@LaunchedEffect
+        if (t in themed) return@LaunchedEffect
+        withContext(Dispatchers.IO) { runCatching {
+            val out = File(context.cacheDir, "theme-${System.nanoTime()}.pptx")
+            SlidesThemes.apply(src, t, out); out to Slides.read(out)
+        }.onFailure { WriterLog.e("Slides: a theme could not be applied", it) }.getOrNull() }?.let { themed[t] = it; WriterLog.i("Slides: theme ${t.name}") }
+            ?: run { message = "That theme could not be applied." }
+    }
     fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; redos.clear(); edit = to }
     fun save(then: (() -> Unit)? = null) {
-        val f = file ?: return; val d = deck ?: return; val e = edit ?: return
+        val e = edit ?: return
+        // with a theme chosen: saved from the themed copy, into the file
+        val f = file ?: return; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: f
+        if (e.theme != null && e.theme !in themed) return
         if (saving) return
         saving = true
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching {
                 val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                 try {
-                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(f, d, e, temp) else SlidesEdit.save(f, d, e, temp) }
+                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(f, d, e, temp) else SlidesEdit.save(from, d, e, temp) }
                     keepPrevious(context, f) // Writer's versions
                     check(temp.renameTo(f)) { "Could not save ${f.name}." }
                 } finally { temp.delete() }
@@ -134,6 +151,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
     var ribbonTab by remember { mutableStateOf("Slide") }
+    var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
     LaunchedEffect(ribbonTab, item) { effectOptions = false }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
@@ -149,7 +167,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         change(e.copy(added = e.added + (uid to e.added[uid].orEmpty().mapNotNull { if (it.id == id) f(it) else it })))
     }
     /** Item [id] of slide [i] as it is now, a group as its bounds (a finger's drag starts from it). */
-    fun current(e: SlidesEdit.Edit, i: Int, id: String): SlideItem? = deck?.let { d -> SlidesEdit.box(SlidesEdit.slide(d, e, e.order[i]), id) }
+    fun current(e: SlidesEdit.Edit, i: Int, id: String): SlideItem? = base?.let { d -> SlidesEdit.box(SlidesEdit.slide(d, e, e.order[i]), id) }
     /** The chosen item moved or sized: [f] gives its x, y, w, h from where it is. */
     fun reframe(f: (SlideItem) -> List<Float>) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return
@@ -157,7 +175,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val (x, y, w, h) = f(it); change(SlidesEdit.framed(e, e.order[c].uid, id, x, y, w, h))
     }
     /** The ids on slide [c] now (its own items', a group's shapes'), which a new item's must not be. */
-    fun taken(e: SlidesEdit.Edit, c: Int): List<String> = deck?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, (it as? SlideItem.Shape)?.id) } }.orEmpty()
+    fun taken(e: SlidesEdit.Edit, c: Int): List<String> = base?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, (it as? SlideItem.Shape)?.id) } }.orEmpty()
     /** The chosen item's looks changed by [f] (fill, border, words' colour), saved with the slide. */
     fun restyle(f: (SlidesEdit.Look) -> SlidesEdit.Look) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val k = e.order[c].uid to id
@@ -192,7 +210,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
-    val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
+    val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
     @Composable fun SlideRibbon(tab: String, c: Int, e: SlidesEdit.Edit, w: Color) {
         val entry = e.order[c]; val uid = entry.uid
@@ -249,6 +267,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+            }
+            "Design" -> {
+                // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
+                if (odp) Text("Themes are for PowerPoint files (.pptx); a LibreOffice deck keeps its own look", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                else {
+                    RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
+                    Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                    if (e.theme != null) RibbonButton("As the file was", w) { change(e.copy(theme = null)) }
+                }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
@@ -455,7 +482,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions", "Animations")
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Design", "Transitions", "Animations")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Column(Modifier.navigationBarsPadding()) {
@@ -567,6 +594,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
         }
     }
+    if (themesPage) ThemesDialog(edit?.theme, { themesPage = false }) { t -> themesPage = false; edit?.let { change(it.copy(theme = t)) } }
     if (leaving) androidx.compose.material3.AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
         text = { Text("${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
@@ -838,4 +866,62 @@ private class TvSlides(context: android.content.Context, display: android.view.D
     }
     override fun onCreate(savedInstanceState: android.os.Bundle?) { super.onCreate(savedInstanceState); setContentView(view) }
     fun update() = view.invalidate()
+}
+
+/** Design › Themes (asked 16 Oct): Tetra's light and dark ones and the templates in Documents/Templates, each a small slide in its colours and fonts. */
+@Composable
+private fun ThemesDialog(now: SlideTheme?, dismiss: () -> Unit, pick: (SlideTheme) -> Unit) {
+    val templates by androidx.compose.runtime.produceState(emptyList<SlideTheme>()) {
+        value = withContext(Dispatchers.IO) { SlidesTemplates.files().mapNotNull { SlidesThemes.fromFile(it) } }
+    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 720.dp).then(Modifier.padding(12.dp)), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Themes", style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    @Composable fun group(title: String, list: List<SlideTheme>) {
+                        if (list.isEmpty()) return
+                        Text(title, style = MaterialTheme.typography.titleSmall)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), maxItemsInEachRow = 2) {
+                            list.forEach { t -> ThemeCard(t, t == now, Modifier.weight(1f)) { pick(t) } }
+                            if (list.size % 2 == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) // a last one alone keeps its size
+                        }
+                    }
+                    group("Light", SlidesThemes.BUILT_IN.filter { !it.dark })
+                    group("Dark", SlidesThemes.BUILT_IN.filter { it.dark })
+                    group("Your templates", templates)
+                    if (templates.isEmpty()) Text("Templates (.potx or .pptx) in Documents/Templates show here — their colours and fonts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Close") } }
+            }
+        }
+    }
+}
+
+/** A theme as a small slide: its background, its band, a title and words in its fonts and colours, its six accents. */
+@Composable
+internal fun ThemeCard(t: SlideTheme, chosen: Boolean, modifier: Modifier = Modifier, click: () -> Unit) {
+    fun c(i: Int) = Color(0xFF000000.toInt() or t.colors[i])
+    Column(modifier.clip(RoundedCornerShape(10.dp)).border(if (chosen) 3.dp else 1.dp, if (chosen) POWERPOINT_ORANGE else Color(0x55888888), RoundedCornerShape(10.dp)).clickable(onClick = click)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(c(1))) {
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val a = c(4)
+                when (t.band) {
+                    'l' -> drawRect(a, size = androidx.compose.ui.geometry.Size(size.width * 0.03f, size.height))
+                    'r' -> drawRect(a, androidx.compose.ui.geometry.Offset(size.width * 0.94f, 0f), androidx.compose.ui.geometry.Size(size.width * 0.06f, size.height))
+                    't' -> drawRect(a, size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.03f))
+                    'b' -> drawRect(a, androidx.compose.ui.geometry.Offset(0f, size.height * 0.94f), androidx.compose.ui.geometry.Size(size.width, size.height * 0.06f))
+                }
+                drawIntoCanvas { cv ->
+                    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = (0xFF000000.toInt() or t.colors[0]); textSize = size.height * 0.2f
+                        typeface = OfficeFonts.typeface(t.major) ?: android.graphics.Typeface.DEFAULT }
+                    cv.nativeCanvas.drawText(t.name, size.width * 0.08f, size.height * 0.42f, p)
+                    p.textSize = size.height * 0.11f; p.typeface = OfficeFonts.typeface(t.minor) ?: android.graphics.Typeface.DEFAULT; p.color = 0xFF000000.toInt() or t.colors[2]
+                    cv.nativeCanvas.drawText("${t.major} · ${t.minor}", size.width * 0.08f, size.height * 0.62f, p)
+                }
+                // its accents
+                for (i in 0 until 6) drawCircle(c(4 + i), size.height * 0.05f, androidx.compose.ui.geometry.Offset(size.width * (0.1f + i * 0.08f), size.height * 0.8f))
+            }
+        }
+    }
 }

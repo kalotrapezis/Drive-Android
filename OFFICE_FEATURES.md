@@ -349,6 +349,13 @@ LibreOffice works them out).
 - [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
       everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —
       saved into the file (LibreOffice opens it)
+- [x] Design › Themes (16 Oct, asked: "some dark ones some light ones"): four light (Office, Leaf, Ocean, Paper) and four
+      dark (Night, Slate, Midnight, Charcoal) — a theme's colours and fonts, a band on the master — and the templates in
+      Documents/Templates (their colours and fonts); one step to undo, saved into the file's theme and master (LibreOffice
+      shows them); .pptx only — [ ] an .odp's themes
+- [x] New presentation from a template (the Slides card asks when Documents/Templates has .potx/.pptx in it)
+- [x] Claude's tetra-slides-theme skill (~/.claude/skills): a school's or company's theme — its colours, fonts, logo,
+      band — as a .potx in ~/Tetra/Files/Documents/Templates, which syncs to the phone
 - [x] Insert › Shape: Words' Shapes panel (16 Oct) — all of Word's shapes in their groups, Shape Styles, twelve colours;
       a new item's id past every one on the slide (a shape saved there before had the same id as the next one put on)
 - [x] Insert table on a slide (2×2 to 5×4, PowerPoint's default banded style; a cell tapped is typed into); GIFs play on

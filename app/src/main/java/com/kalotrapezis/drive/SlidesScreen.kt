@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -58,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -444,71 +446,97 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
                     // a wide screen (a tablet held sideways): each slide no wider than fits the screen's height, so a whole slide shows
                     val fit = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 200).coerceAtLeast(200).dp * (d.width / d.height)
+                    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
+                    // a tablet edits a slide at a time: the first is chosen to begin with
+                    LaunchedEffect(editing, wide) { if (editing && wide && chosen == null) chosen = 0 }
+                    /** Slide [i] as it is edited: chosen with a tap, its items tapped, moved and sized (the phone's list, the tablet's big slide). */
+                    @Composable fun SlideBox(i: Int, s: Slide) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
+                            // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
+                            .pointerInput(editing, chosen, i, item) {
+                                if (!editing || chosen != i || item == null) return@pointerInput
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val ee = edit ?: return@awaitEachGesture; val uid = ee.order[i].uid; val id = item ?: return@awaitEachGesture
+                                    val a = current(ee, i, id) ?: return@awaitEachGesture
+                                    val k = d.width / size.width // points a pixel
+                                    val px = down.position.x * k; val py = down.position.y * k
+                                    val reach = 28.dp.toPx() * k
+                                    val handle = kotlin.math.hypot(px - (a.x + a.w), py - (a.y + a.h)) < reach
+                                    if (!handle && !(px in a.x..(a.x + a.w) && py in a.y..(a.y + a.h))) return@awaitEachGesture
+                                    down.consume()
+                                    undos += ee; if (undos.size > 100) undos.removeAt(0)
+                                    var x = a.x; var y = a.y; var w = a.w; var h = a.h
+                                    while (true) {
+                                        val ev = awaitPointerEvent()
+                                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!ch.pressed) break
+                                        val dx = (ch.position.x - ch.previousPosition.x) * k; val dy = (ch.position.y - ch.previousPosition.y) * k
+                                        if (handle) { w = maxOf(12f, w + dx); h = w * a.h / a.w.coerceAtLeast(1f) } else { x += dx; y += dy }
+                                        val now = edit ?: break
+                                        edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
+                                        ch.consume()
+                                    }
+                                    WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
+                                }
+                            }) {
+                        SlideCanvas(d, s, hints = editing, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+                            .then(if (chosen == i) Modifier.border(3.dp, POWERPOINT_ORANGE, RoundedCornerShape(4.dp)) else Modifier)
+                            .pointerInput(editing, chosen, i, s) {
+                                detectTapGestures { o ->
+                                    if (!editing) { presenting = i; return@detectTapGestures }
+                                    if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
+                                    val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
+                                    // what is tapped is chosen (its tools in the ribbon); tapped again, a text box's words are typed, a table's cell
+                                    val hit = s.items.lastOrNull { it.anim != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
+                                    val a = hit?.anim?.let { id -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == id } } }
+                                    when {
+                                        hit == null -> { item = null; message = "Tap a text box, shape or picture on the slide" }
+                                        a?.prst == "table" && item == a.id -> {
+                                            val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
+                                            val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
+                                            cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
+                                        }
+                                        a == null && item == hit.anim && hit is SlideItem.Shape && hit.id != null && hit.text != null -> typeInto(hit)
+                                        else -> { item = hit.anim; typing = null }
+                                    }
+                                }
+                            })
+                        // what is chosen: an outline, and (put on it here) the handle its size is dragged from
+                        val sel = if (editing && chosen == i) item?.let { SlidesEdit.box(s, it) } else null
+                        sel?.let { a -> Canvas(Modifier.matchParentSize()) {
+                            val k = size.width / d.width
+                            drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                            val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
+                            drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
+                        } }
+                        }
+                    }
+                    // a tablet editing (asked 16 Oct): the slides in a sidebar, the chosen one big beside it, as PowerPoint's and LibreOffice's
+                    if (wide && editing) Row(Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            itemsIndexed(d.slides) { i, s ->
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("${i + 1}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(22.dp))
+                                    SlideCanvas(d, s, modifier = Modifier.fillMaxWidth().aspectRatio(d.width / d.height).clip(RoundedCornerShape(3.dp))
+                                        .then(if (chosen == i) Modifier.border(2.dp, POWERPOINT_ORANGE, RoundedCornerShape(3.dp)) else Modifier)
+                                        .then(if (s.hidden) Modifier.alpha(0.5f) else Modifier)
+                                        .clickable { if (chosen != i) { chosen = i; typing = null; item = null } })
+                                }
+                            }
+                        }
+                        // the chosen slide as big as the room above the floating ribbon lets it be
+                        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 150.dp), contentAlignment = Alignment.TopCenter) {
+                            val c = (chosen ?: 0).coerceIn(0, d.slides.lastIndex)
+                            Column(Modifier.width(minOf(maxWidth, maxHeight * (d.width / d.height)))) { SlideBox(c, d.slides[c]) }
+                        }
+                    } else
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
                             Column(Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = fit)) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
-                                Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
-                                    // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
-                                    .pointerInput(editing, chosen, i, item) {
-                                        if (!editing || chosen != i || item == null) return@pointerInput
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            val ee = edit ?: return@awaitEachGesture; val uid = ee.order[i].uid; val id = item ?: return@awaitEachGesture
-                                            val a = current(ee, i, id) ?: return@awaitEachGesture
-                                            val k = d.width / size.width // points a pixel
-                                            val px = down.position.x * k; val py = down.position.y * k
-                                            val reach = 28.dp.toPx() * k
-                                            val handle = kotlin.math.hypot(px - (a.x + a.w), py - (a.y + a.h)) < reach
-                                            if (!handle && !(px in a.x..(a.x + a.w) && py in a.y..(a.y + a.h))) return@awaitEachGesture
-                                            down.consume()
-                                            undos += ee; if (undos.size > 100) undos.removeAt(0)
-                                            var x = a.x; var y = a.y; var w = a.w; var h = a.h
-                                            while (true) {
-                                                val ev = awaitPointerEvent()
-                                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                                if (!ch.pressed) break
-                                                val dx = (ch.position.x - ch.previousPosition.x) * k; val dy = (ch.position.y - ch.previousPosition.y) * k
-                                                if (handle) { w = maxOf(12f, w + dx); h = w * a.h / a.w.coerceAtLeast(1f) } else { x += dx; y += dy }
-                                                val now = edit ?: break
-                                                edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
-                                                ch.consume()
-                                            }
-                                            WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
-                                        }
-                                    }) {
-                                SlideCanvas(d, s, hints = editing, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
-                                    .then(if (chosen == i) Modifier.border(3.dp, POWERPOINT_ORANGE, RoundedCornerShape(4.dp)) else Modifier)
-                                    .pointerInput(editing, chosen, i, s) {
-                                        detectTapGestures { o ->
-                                            if (!editing) { presenting = i; return@detectTapGestures }
-                                            if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
-                                            val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
-                                            // what is tapped is chosen (its tools in the ribbon); tapped again, a text box's words are typed, a table's cell
-                                            val hit = s.items.lastOrNull { it.anim != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
-                                            val a = hit?.anim?.let { id -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == id } } }
-                                            when {
-                                                hit == null -> { item = null; message = "Tap a text box, shape or picture on the slide" }
-                                                a?.prst == "table" && item == a.id -> {
-                                                    val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
-                                                    val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
-                                                    cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
-                                                }
-                                                a == null && item == hit.anim && hit is SlideItem.Shape && hit.id != null && hit.text != null -> typeInto(hit)
-                                                else -> { item = hit.anim; typing = null }
-                                            }
-                                        }
-                                    })
-                                // what is chosen: an outline, and (put on it here) the handle its size is dragged from
-                                val sel = if (editing && chosen == i) item?.let { SlidesEdit.box(s, it) } else null
-                                sel?.let { a -> Canvas(Modifier.matchParentSize()) {
-                                    val k = size.width / d.width
-                                    drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
-                                    val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
-                                    drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
-                                } }
-                                }
+                                SlideBox(i, s)
                                 if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }
@@ -525,10 +553,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val w = islandContentColor()
                         val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations", "Slide show")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
-                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
-                            Column(Modifier.navigationBarsPadding()) {
+                        // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island
+                        Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+                            Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.navigationBarsPadding()) {
                                 Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                                    // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
+                                    if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                                     tabs.forEach { t ->
                                         val on = t == shown
                                         Column(Modifier.clickable { ribbonTab = t }.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {

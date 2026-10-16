@@ -144,8 +144,8 @@ object DriveRules {
     fun newKinds(root: File, blankDeck: ByteArray? = null): List<DriveNew> {
         val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
-        val built = listOfNotNull(DriveNew("Text file", "txt"), DriveNew("Word document", "docx"), DriveNew("Excel spreadsheet", "xlsx"),
-            blankDeck?.let { DriveNew("PowerPoint presentation", "pptx", bytes = it) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        val built = listOfNotNull(DriveNew("Text file", "txt"), DriveNew("Words document", "docx"), DriveNew("Tables spreadsheet", "xlsx"),
+            blankDeck?.let { DriveNew("Slides presentation", "pptx", bytes = it) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
         return listOf(DriveNew("Folder", null)) + templates + built
     }
 

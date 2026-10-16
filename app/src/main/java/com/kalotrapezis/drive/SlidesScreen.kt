@@ -88,6 +88,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     var edit by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
     val undos = remember { ArrayList<SlidesEdit.Edit>() }
+    val redos = remember { ArrayList<SlidesEdit.Edit>() }
     var saved by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
     var chosen by remember { mutableStateOf<Int?>(null) }
     var typing by remember { mutableStateOf<Pair<SlideItem.Shape, androidx.compose.ui.text.input.TextFieldValue>?>(null) }
@@ -104,7 +105,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             .onFailure { WriterLog.e("Slides: could not open", it); failed = "This presentation could not be opened." }
     }
     val changed = edit != saved
-    fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; edit = to }
+    fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; redos.clear(); edit = to }
     fun save(then: (() -> Unit)? = null) {
         val f = file ?: return; val d = deck ?: return; val e = edit ?: return
         if (saving) return
@@ -120,7 +121,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 Slides.read(f)
             } }
             saving = false
-            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; undos.clear(); chosen = null; message = "Saved"; then?.invoke() }
+            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -176,14 +177,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     view?.let { Text(if (editing) "Editing" else "${it.slides.size} slide${if (it.slides.size == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
                 }
                 if (editing) {
-                    IconButton(onClick = { undos.removeLastOrNull()?.let { edit = it; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = undos.isNotEmpty()) {
+                    IconButton(onClick = { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = undos.isNotEmpty()) {
                         Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
+                    IconButton(onClick = { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = redos.isNotEmpty()) {
+                        Icon(painterResource(R.drawable.ic_redo), contentDescription = "Redo") }
                     IconButton(onClick = { save() }, enabled = changed && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
                     IconButton(onClick = { editing = false; chosen = null; typing = null }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Done") }
                 } else {
-                    // a deck Tetra can save into: a .pptx of its own, writable
-                    if (deck != null && file?.extension?.lowercase() == "pptx" && file.canWrite()) IconButton(onClick = { editing = true; WriterLog.i("Slides: editing") }) {
-                        Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                     IconButton(onClick = { notes = !notes }, enabled = deck != null) {
                         Icon(painterResource(R.drawable.ic_comment), contentDescription = if (notes) "Hide the notes" else "Show the notes", tint = if (notes) POWERPOINT_ORANGE else islandContentColor())
                     }
@@ -192,6 +192,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         IconButton(onClick = { shareDriveFile(context, f) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
                         IconButton(onClick = { openElsewhere(context, f) }) { Icon(painterResource(R.drawable.ic_open_with), contentDescription = "Open in another app") }
                     }
+                    // Edit at the far right, where Done is while editing — the same place in Words, Tables and Slides
+                    if (deck != null && file?.extension?.lowercase() == "pptx" && file.canWrite()) IconButton(onClick = { editing = true; WriterLog.i("Slides: editing") }) {
+                        Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                 }
             }
         }

@@ -1008,10 +1008,10 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NewDocCard("Word", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
-                    NewDocCard("Excel", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
+                    NewDocCard("Words", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
+                    NewDocCard("Tables", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
                     // a new presentation: the app's empty deck (a title slide) in Documents, opened editing
-                    NewDocCard("PowerPoint", "New presentation", POWERPOINT_ORANGE, true, Modifier.weight(1f)) {
+                    NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, true, Modifier.weight(1f)) {
                         runCatching {
                             val dir = File(root, "Documents").apply { mkdirs() }
                             val f = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "Presentation.pptx" else "Presentation ($it).pptx") }.first { !it.exists() }
@@ -1035,7 +1035,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }
             } else when (val list = files) {
                 null -> item { Text("Looking…", style = MaterialTheme.typography.bodyMedium) }
-                else -> if (list.isEmpty()) item { Text("No Word, Excel, PowerPoint or OpenDocument files in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
+                else -> if (list.isEmpty()) item { Text("No documents, spreadsheets or presentations in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
                 else items(list, key = { it.relative }) { f ->
                     val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name)
                     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {
@@ -1061,11 +1061,17 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.7f),
     modifier = modifier.height(104.dp).then(if (enabled) Modifier.clickable(onClick = click) else Modifier),
 ) {
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
-        Icon(painterResource(if (enabled) R.drawable.ic_note_add else R.drawable.ic_office), contentDescription = null, modifier = Modifier.size(24.dp))
-        Column {
-            Text(app, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    // a wide card (a tablet): the name bigger, and what it opens (asked 16 Oct: the cards have room there)
+    BoxWithConstraints {
+        val wide = maxWidth >= 200.dp
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Icon(painterResource(if (enabled) R.drawable.ic_note_add else R.drawable.ic_office), contentDescription = null, modifier = Modifier.size(24.dp))
+            Column {
+                Text(app, style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; else -> "PowerPoint and LibreOffice presentations" },
+                    style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -1783,7 +1789,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val bytes = img.bytes ?: img.part?.let { packageParts[it] } ?: return
         scope.launch {
             val out = withContext(Dispatchers.Default) { runCatching { transformedPicture(img, bytes, turn, flip) }.getOrNull() }
-            if (out == null) { message = "Writer cannot turn this kind of picture."; return@launch }
+            if (out == null) { message = "Words cannot turn this kind of picture."; return@launch }
             changePicture(key, out)
             state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         }
@@ -2552,7 +2558,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (pa != pb) { message = "Both must be on the same page"; return@launch }
         fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
         val g = (if (kind == OfficeKind.Odt) Arrange::odtGroup else Arrange::group)(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
-            ?: run { message = "Writer cannot group these (an older kind of drawing?)"; return@launch }
+            ?: run { message = "Words cannot group these (an older kind of drawing?)"; return@launch }
         // The document read from the editor first (it finds its pictures by their keys), then the map changed.
         swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
         pictures.remove(first); pictures.remove(second); pictures[g.key] = g
@@ -2563,7 +2569,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val img = pictures[key] ?: return@launch
         val (laid, _) = laidOut(current()) ?: return@launch
         val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
-        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Writer cannot take this group apart"; return@launch }
+        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Words cannot take this group apart"; return@launch }
         swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
         pictures.remove(key); pieces.forEach { pictures[it.key] = it }
         message = "Ungrouped into ${pieces.size}"
@@ -2985,7 +2991,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
                     Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) "An older ${name.substringAfterLast('.').uppercase()} file: saving makes ${name.substringBeforeLast('.')}.docx beside it; the original stays as it is."
-                        else if (copyOnly) "Writer does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
+                        else if (copyOnly) "Words does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
                         else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
@@ -3841,7 +3847,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
                                 cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { decodePicture(it, 2400) }.getOrNull() } }
-                                if (cropping == null) message = "Writer cannot crop this kind of picture."
+                                if (cropping == null) message = "Words cannot crop this kind of picture."
                             }
                         }
                     }, {
@@ -4252,7 +4258,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     if (file == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OfficeKind.entries.forEach { k -> RibbonButton(if (k == OfficeKind.Docx) "Word (.docx)" else "OpenDocument (.odt)", MaterialTheme.colorScheme.onSurface, on = kind == k) { kind = k } }
                     }
-                    Text(file?.parentFile?.let { "Beside ${file.name}, in ${it.name}. Writer goes on with the new one." } ?: "In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                    Text(file?.parentFile?.let { "Beside ${file.name}, in ${it.name}. Words goes on with the new one." } ?: "In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
@@ -4601,9 +4607,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 if (!sel.collapsed) counted(state.annotatedString.text, sel.min, sel.max).let {
                     Text("Selected: ${plural(it.words, "word")} · ${plural(it.chars, "character")} (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
                 }
-                if (meta.blocking.isNotEmpty()) Text("Writer does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
+                if (meta.blocking.isNotEmpty()) Text("Words does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
                 if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
-                if (meta.unsupported.isEmpty()) Text("Writer keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)
+                if (meta.unsupported.isEmpty()) Text("Words keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)
                 Text("Page size, margins, headers and footers are kept as the file has them.", style = MaterialTheme.typography.bodySmall)
             }
         },
@@ -5121,7 +5127,7 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
                     TextButton(onClick = dismiss) { Text("Close") }
                 }
                 if (shown == null) {
-                    Text(if (entries.isEmpty()) "None yet. Writer keeps a copy every few minutes while you work, and the file as it was before it saves over it."
+                    Text(if (entries.isEmpty()) "None yet. Words keeps a copy every few minutes while you work, and the file as it was before it saves over it."
                         else "Open one to see its pages. Keeping one makes it the document and deletes the others.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
                     Column(Modifier.shadedScroll()) {
                         entries.forEach { (f, session) ->

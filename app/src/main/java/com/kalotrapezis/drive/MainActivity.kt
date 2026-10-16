@@ -1531,7 +1531,7 @@ private fun SettingsTab(
                 Row(Modifier.fillMaxWidth().clickable { opens = !opens; office.opensOffice = opens }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Open Word documents here", style = MaterialTheme.typography.titleSmall)
-                        Text(if (opens) "Files opens a .docx or .odt in Writer. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                        Text(if (opens) "Files opens a .docx or .odt in Words. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
                 }
@@ -1539,7 +1539,7 @@ private fun SettingsTab(
                 Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("AutoSave", style = MaterialTheme.typography.titleSmall)
-                        Text(if (auto) "Writer saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Writer saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
+                        Text(if (auto) "Words saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Words saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = auto, onCheckedChange = { auto = it; office.autoSave = it })
                 }

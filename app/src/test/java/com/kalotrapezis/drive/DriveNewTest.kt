@@ -12,7 +12,7 @@ class DriveNewTest {
         File(root, "Documents").mkdir()
         File(root, ".templates").mkdir(); File(root, ".templates/Νέο αρχείο.txt").writeText("hello")
         val kinds = DriveRules.newKinds(root)
-        assertEquals(listOf("Folder", "Νέο αρχείο", "Word document", "Excel spreadsheet"), kinds.map { it.label }) // the template stands in for the text file
+        assertEquals(listOf("Folder", "Νέο αρχείο", "Words document", "Tables spreadsheet"), kinds.map { it.label }) // the template stands in for the text file
         assertEquals("Documents/Notes", DriveRules.create(root, "Documents", kinds[0], "Notes"))
         assertTrue(File(root, "Documents/Notes").isDirectory)
         assertEquals("Documents/a.txt", DriveRules.create(root, "Documents", kinds[1], "a"))

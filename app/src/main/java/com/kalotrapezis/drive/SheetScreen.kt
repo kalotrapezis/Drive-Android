@@ -852,9 +852,6 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         IconButton(onClick = { save() }, enabled = (unsaved || draft != null) && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
                         IconButton(onClick = { commit(false); focusManager.clearFocus(); editing = false; WriterLog.i("Sheets: editing done") }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Done") }
                     } else {
-                        // a spreadsheet Tetra can save into: its own file, writable
-                        if (sheet != null && file?.canWrite() == true && book?.kind in setOf("xlsx", "ods", "csv"))
-                            IconButton(onClick = { editing = true; WriterLog.i("Sheets: editing") }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                         if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }
                     }
                     if (!editing) 
@@ -880,6 +877,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             DropdownMenuItem(text = { Text("Send log") }, onClick = { menu = false; WriterLog.export(context)?.let { shareDriveFile(context, it) } })
                         }
                     }
+                    // Edit at the far right, where Done is while editing — the same place in Words, Tables and Slides
+                    if (!editing && sheet != null && file?.canWrite() == true && book?.kind in setOf("xlsx", "ods", "csv"))
+                        IconButton(onClick = { editing = true; WriterLog.i("Sheets: editing") }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                 }
                 sheet?.let { s ->
                     if (editing) {

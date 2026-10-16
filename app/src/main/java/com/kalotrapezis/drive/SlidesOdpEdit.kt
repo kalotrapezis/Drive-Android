@@ -206,8 +206,8 @@ internal object SlidesOdpEdit {
         fun idOf(el: Element): String = el.a(XML, "id") ?: el.a(DRAW, "id") ?: fresh("idT").also { el.setAttributeNS(XML, "xml:id", it); el.setAttributeNS(DRAW, "draw:id", it) }
         val ans = """xmlns:anim="$ANIM" xmlns:smil="$SMIL" xmlns:presentation="$PRES""""
         fun secs(ms: Int) = String.format(Locale.ROOT, "%.3fs", ms / 1000f)
-        /** One click's group: [fx] on [target], in LibreOffice's presets. */
-        fun click(fx: SlideEffect, target: String): String {
+        /** [fx] on [target], in LibreOffice's presets, starting [node] (on-click, with-previous, after-previous). */
+        fun effect(fx: SlideEffect, target: String, node: String): String {
             val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"; else -> if (fx.exit) "fade-out" else "fade-in" }
             val cls = if (fx.exit) "exit" else "entrance"
             val sub = if (fx.kind == "fly") """ presentation:preset-sub-type="${OdpEffects.subtype(fx.from)}"""" else ""
@@ -224,7 +224,18 @@ internal object SlidesOdpEdit {
                 }
                 else -> """<anim:transitionFilter smil:dur="${secs(fx.ms)}" smil:targetElement="$target" smil:type="fade" smil:subtype="crossfade"${if (fx.exit) " smil:mode=\"out\"" else ""}/>"""
             }
-            return """<anim:par smil:begin="next" smil:fill="hold"><anim:par smil:begin="0s" smil:fill="hold"><anim:par smil:begin="0s" smil:fill="hold" presentation:node-type="on-click" presentation:preset-class="$cls" presentation:preset-id="ooo-$cls-$kind"$sub>$set$move</anim:par></anim:par></anim:par>"""
+            return """<anim:par smil:begin="0s" smil:fill="hold" presentation:node-type="$node" presentation:preset-class="$cls" presentation:preset-id="ooo-$cls-$kind"$sub>$set$move</anim:par>"""
+        }
+        /** The clicks: each a group (on a click, or by itself), its effects in pars by when they start. */
+        fun clicks(list: List<SlideEffect>, ids: Map<String, String>): String = SlidesEdit.group(list.filter { it.target in ids }).joinToString("") { step ->
+            var last: SlideEffect? = null
+            """<anim:par smil:begin="${if (step.auto) "0s" else "next"}" smil:fill="hold">""" + step.effects.groupBy { it.delay }.toSortedMap().entries.joinToString("") { (delay, fxs) ->
+                """<anim:par smil:begin="${secs(delay)}" smil:fill="hold">""" + fxs.joinToString("") { fx ->
+                    val node = when { last == null -> if (step.auto) "after-previous" else "on-click"; fx.delay == last!!.delay -> "with-previous"; else -> "after-previous" }
+                    last = fx
+                    effect(fx, ids.getValue(fx.target), node)
+                } + "</anim:par>"
+            } + "</anim:par>"
         }
         fun fragment(x: String) = doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true) as Element
         /** The page's timing root, made when it has none (after its shapes, before its notes). */
@@ -270,8 +281,9 @@ internal object SlidesOdpEdit {
             if (anims != null) {
                 val r = timingRoot(page)
                 r.kids().filter { it.localName == "seq" && it.a(PRES, "node-type") == "main-sequence" }.forEach { r.removeChild(it) }
-                val clicks = anims.mapNotNull { (fx, el) -> (el?.takeIf { it.parentNode != null } ?: put[fx.target])?.let { click(fx, idOf(it)) } }
-                if (clicks.isNotEmpty()) r.appendChild(fragment("""<anim:seq $ans smil:dur="indefinite" presentation:node-type="main-sequence">${clicks.joinToString("")}</anim:seq>"""))
+                val ids = anims.mapNotNull { (fx, el) -> (el?.takeIf { it.parentNode != null } ?: put[fx.target])?.let { fx.target to idOf(it) } }.toMap()
+                val xml = clicks(anims.map { it.first }, ids)
+                if (xml.isNotEmpty()) r.appendChild(fragment("""<anim:seq $ans smil:dur="indefinite" presentation:node-type="main-sequence">$xml</anim:seq>"""))
             }
             page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }?.let { if (it.kids().isEmpty()) page.removeChild(it) }
             edit.hidden[uid]?.let { h -> if (h != slide.hidden)

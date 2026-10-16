@@ -86,8 +86,26 @@ internal object SlidesEdit {
         val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
         val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() } ?: s.transition.takeIf { e.uid !in edit.transitions }
-        val steps = edit.anims[e.uid]?.map { SlideStep(false, listOf(it.copy(delay = 0))) } ?: s.steps
+        val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
         return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
+    }
+    /** A slide's clicks as a list to edit, each effect with its start (on a click, with the one before, after it). */
+    fun flat(steps: List<SlideStep>): List<SlideEffect> = steps.flatMap { st ->
+        val fx = st.effects.sortedBy { it.delay }
+        fx.mapIndexed { i, e -> e.copy(start = when { i == 0 -> if (st.auto) 'a' else 'c'; e.delay <= fx[i - 1].delay -> 'w'; else -> 'a' }) }
+    }
+    /** The list back as clicks: a click begins a group; with the one before starts as it does, after it when it ends (a first one not on a click: by itself). */
+    fun group(list: List<SlideEffect>): List<SlideStep> {
+        val out = ArrayList<Pair<Boolean, MutableList<SlideEffect>>>()
+        for (fx in list) {
+            val cur = out.lastOrNull()
+            when {
+                fx.start == 'c' || cur == null -> out += (fx.start != 'c') to mutableListOf(fx.copy(delay = 0))
+                fx.start == 'w' -> cur.second += fx.copy(delay = cur.second.last().delay)
+                else -> cur.second += fx.copy(delay = cur.second.maxOf { it.delay + it.ms })
+            }
+        }
+        return out.map { SlideStep(it.first, it.second) }
     }
     /** [item] in the looks chosen for it (a shape: its fill, border, words' colour; anything else as it is). */
     private fun styled(item: SlideItem, l: Look?): SlideItem {
@@ -265,30 +283,40 @@ internal object SlidesEdit {
         fun tgt(s: String) = """<p:tgtEl><p:spTgt spid="$s"/></p:tgtEl>"""
         // a shape's builds: one group a effect on it (its entrance 0, its exit 1…), each listed in the build list
         val groups = ArrayList<Pair<String, Int>>()
-        val clicks = anims.joinToString("") { fx ->
-            val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
-            val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
-            val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }; else -> 10 to 0 }
-            val a = id(); val b = id(); val c = id()
-            // shown at the start of an entrance; hidden at the end of an exit (at once for disappear)
-            val at = if (fx.exit && fx.kind != "appear") ms - 1 else 0
-            val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="$at"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="${if (fx.exit) "hidden" else "visible"}"/></p:to></p:set>"""
-            val move = when (fx.kind) {
-                "appear" -> ""
-                "fly" -> {
-                    // off the slide on its side, and where it stands
-                    val edge = when (fx.from) { 'l' -> "ppt_x" to "0-#ppt_w/2"; 'r' -> "ppt_x" to "1+#ppt_w/2"; 'u' -> "ppt_y" to "0-#ppt_h/2"; else -> "ppt_y" to "1+#ppt_h/2" }
-                    listOf("ppt_x", "ppt_y").joinToString("") { attr ->
-                        val there = if (attr == edge.first) edge.second else "#$attr"
-                        val (v0, v1) = if (fx.exit) "#$attr" to there else there to "#$attr"
-                        """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="$v0"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="$v1"/></p:val></p:tav></p:tavLst></p:anim>"""
+        // each click a group: its effects in pars by when they start, the first on the click (or by itself), the others with or after it
+        val clicks = group(anims).joinToString("") { step ->
+            val a = id()
+            val begin = if (step.auto) """<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>""" else """<p:cond delay="indefinite"/>"""
+            var last: SlideEffect? = null
+            val inner = step.effects.groupBy { it.delay }.toSortedMap().entries.joinToString("") { (delay, effects) ->
+                val b = id()
+                """<p:par><p:cTn id="$b" fill="hold"><p:stCondLst><p:cond delay="$delay"/></p:stCondLst><p:childTnLst>""" + effects.joinToString("") { fx ->
+                    val node = when { last == null -> if (step.auto) "afterEffect" else "clickEffect"; fx.delay == last!!.delay -> "withEffect"; else -> "afterEffect" }
+                    last = fx
+                    val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
+                    val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
+                    val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }; else -> 10 to 0 }
+                    val c = id()
+                    // shown at the start of an entrance; hidden at the end of an exit (at once for disappear)
+                    val at = if (fx.exit && fx.kind != "appear") ms - 1 else 0
+                    val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="$at"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="${if (fx.exit) "hidden" else "visible"}"/></p:to></p:set>"""
+                    val move = when (fx.kind) {
+                        "appear" -> ""
+                        "fly" -> {
+                            // off the slide on its side, and where it stands
+                            val edge = when (fx.from) { 'l' -> "ppt_x" to "0-#ppt_w/2"; 'r' -> "ppt_x" to "1+#ppt_w/2"; 'u' -> "ppt_y" to "0-#ppt_h/2"; else -> "ppt_y" to "1+#ppt_h/2" }
+                            listOf("ppt_x", "ppt_y").joinToString("") { attr ->
+                                val there = if (attr == edge.first) edge.second else "#$attr"
+                                val (v0, v1) = if (fx.exit) "#$attr" to there else there to "#$attr"
+                                """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="$v0"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="$v1"/></p:val></p:tav></p:tavLst></p:anim>"""
+                            }
+                        }
+                        else -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
                     }
-                }
-                else -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
+                    """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="$node"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>"""
+                } + "</p:childTnLst></p:cTn></p:par>"
             }
-            """<p:par><p:cTn id="$a" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="$b" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>""" +
-                """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="clickEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>""" +
-                "</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>"
+            """<p:par><p:cTn id="$a" fill="hold"><p:stCondLst>$begin</p:stCondLst><p:childTnLst>$inner</p:childTnLst></p:cTn></p:par>"""
         }
         val build = groups.takeIf { it.isNotEmpty() }?.joinToString("", "<p:bldLst>", "</p:bldLst>") { (spid, g) -> """<p:bldP spid="$spid" grpId="$g" animBg="1"/>""" }.orEmpty()
         return """<p:timing xmlns:p="$P"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>$clicks</p:childTnLst></p:cTn>""" +

@@ -217,7 +217,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) {
                     val id = item ?: return@RibbonButton
                     // its animation goes with it (the slide's timing then names only what is there)
-                    val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { it.effects }
+                    val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
                     val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
                     change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
                         else e.copy(removed = e.removed + (uid to id), anims = anims))
@@ -269,7 +269,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
             "Animations" -> {
                 // the chosen item's entrance and exit, each on its own click, in the slide's order; Options: side and speed
-                val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { it.effects }
+                val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
                 val id = item
                 fun set(to: List<SlideEffect>) { change(e.copy(anims = e.anims + (uid to to))); WriterLog.i("Slides: ${to.size} animations on a slide") }
                 val inK = list.indexOfFirst { it.target == id && !it.exit }; val outK = list.indexOfFirst { it.target == id && it.exit }
@@ -290,10 +290,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         if (mineNow.any { it.kind == "fly" }) for ((label, d) in listOf("Bottom" to 'd', "Top" to 'u', "Left" to 'l', "Right" to 'r'))
                             RibbonButton(label, w, on = mineNow.first { it.kind == "fly" }.from == d) { all { if (it.kind == "fly") it.copy(from = d) else it } }
                         for ((label, ms) in listOf("Fast" to 500, "Medium" to 1000, "Slow" to 2000)) RibbonButton(label, w, on = mineNow.first().ms == ms) { all { it.copy(ms = ms) } }
+                        // when its first effect starts (PowerPoint's Start)
+                        val k = list.indexOfFirst { it.target == id }
+                        for ((label, c) in listOf("On click" to 'c', "With previous" to 'w', "After previous" to 'a'))
+                            RibbonButton(label, w, on = list[k].start == c) { set(list.toMutableList().also { it[k] = it[k].copy(start = c) }) }
                     }
                     else -> {
                         val first = listOf(inK, outK).filter { it >= 0 }.minOrNull() ?: -1
-                        Text(if (first >= 0) "Click ${first + 1} of ${list.size}" else "No animation", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                        // which click brings it (several effects can share one)
+                        val groups = SlidesEdit.group(list); val g = groups.indexOfFirst { st -> st.effects.any { it.target == id } }
+                        Text(when { first < 0 -> "No animation"; groups[g].auto -> "By itself"; else -> "Click ${groups.take(g + 1).count { !it.auto }} of ${groups.count { !it.auto }}" },
+                            style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                         Text("In", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
                         for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
                             RibbonButton(label, w, on = if (inK < 0) kind == null else list[inK].kind == kind) { choose(false, kind) }

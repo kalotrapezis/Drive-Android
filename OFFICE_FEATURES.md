@@ -356,7 +356,8 @@ LibreOffice works them out).
       all; Play) and an item's entrance and exit (Appear/Disappear, Fade in/out, Fly in/out; Options: the fly's side,
       Fast/Medium/Slow; Earlier/Later in the clicks; Play), saved as PowerPoint's XML; files' exits read and played —
       LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left) — [ ] emphasis effects (changing a
-      slide's animations rewrites its timing, so emphasis there is dropped), effects starting with or after the one before
+      slide's animations rewrites its timing, so emphasis there is dropped); Start — on a click, with the one before, after it
+      (Options; the label counts clicks), in both formats (LibreOffice's "by itself" read in its .pptx too)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
       the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)

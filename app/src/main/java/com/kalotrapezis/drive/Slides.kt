@@ -49,7 +49,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
 /** How a slide comes in when presenting (PowerPoint's transition): [kind] fade, push, wipe, cover…; [dir] l, r, u, d; [ms] how long. */
 internal data class SlideTransition(val kind: String, val dir: String?, val ms: Int)
 /** An effect on a click: [target] the shape's id; [kind] appear, fade, fly; [from] fly's side (l, r, u, d); its delay and length; [exit]: it goes (disappear, fade out, fly out to [from]). */
-internal data class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int, val exit: Boolean = false)
+internal data class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int, val exit: Boolean = false,
+    /** while editing: when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c')
 /** One click's effects ([auto]: they start by themselves, with the slide or after the step before). */
 internal class SlideStep(val auto: Boolean, val effects: List<SlideEffect>)
 
@@ -240,7 +241,9 @@ internal object Slides {
             fun delay(c: Element?) = c?.kid("stCondLst")?.kids("cond")?.firstNotNullOfOrNull { it.attr("delay")?.toIntOrNull() } ?: 0
             return main.kid("childTnLst")?.kids("par").orEmpty().mapNotNull { g ->
                 val gc = g.kid("cTn") ?: return@mapNotNull null
-                val auto = gc.kid("stCondLst")?.kids("cond")?.any { it.attr("evt") == "onBegin" } == true
+                // by itself: PowerPoint's onBegin, or (LibreOffice's) a start that waits for no click
+                val conds = gc.kid("stCondLst")?.kids("cond").orEmpty()
+                val auto = conds.any { it.attr("evt") == "onBegin" } || (conds.isNotEmpty() && conds.none { it.attr("delay") == "indefinite" })
                 val effects = gc.kid("childTnLst")?.kids("par").orEmpty().flatMap { inner ->
                     val ic = inner.kid("cTn"); val at = delay(ic)
                     ic?.below("cTn").orEmpty().filter { it.attr("presetClass") == "entr" || it.attr("presetClass") == "exit" }.mapNotNull { e ->

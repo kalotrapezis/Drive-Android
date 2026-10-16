@@ -254,7 +254,9 @@ internal object SlidesOdp {
                         val target = kids.firstNotNullOfOrNull { it.a(SMIL, "targetElement") }?.let(named::get) ?: return@mapNotNull null
                         val ms = kids.mapNotNull { secs(it.a(SMIL, "dur")) }.filter { it > 0.01f }.maxOrNull()?.let { (it * 1000).toInt() } ?: 500
                         val id = fx.a(PRES, "preset-id").orEmpty()
-                        SlideEffect(target, if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade", OdpEffects.side(fx.a(PRES, "preset-sub-type")), 0, ms, exit = fx.a(PRES, "preset-class") == "exit")
+                        // when it starts within its click: its par's begin (LibreOffice groups effects by it)
+                        val at = secs((fx.parentNode as? Element)?.a(SMIL, "begin"))?.let { (it * 1000).toInt() } ?: 0
+                        SlideEffect(target, if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade", OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit")
                     }
                 if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
             }

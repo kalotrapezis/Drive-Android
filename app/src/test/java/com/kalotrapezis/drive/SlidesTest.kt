@@ -195,6 +195,34 @@ class SlidesTest {
         }
     }
 
+    /** PowerPoint's Start: effects with the one before and after it in one click, a first one by itself — .pptx and .odp, read back here and by LibreOffice. */
+    @Test fun `animations starting with and after the one before`() {
+        fun lo(file: File, to: String): File? {
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
+            return dir.listFiles()!!.single { it.extension == to }
+        }
+        // .pptx: one click — the box fades in, the star flies in with it, the box fades out after them
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.anim!!
+        val e = SlidesEdit.start(deck).copy(added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5"))),
+            anims = mapOf(2 to listOf(SlideEffect(box, "fade", 'd', 0, 500), SlideEffect("9100", "fly", 'l', 0, 1000, start = 'w'), SlideEffect(box, "fade", 'd', 0, 500, exit = true, start = 'a'))))
+        val out = File.createTempFile("starts", ".pptx"); SlidesEdit.save(src, deck, e, out)
+        fun one(d: Deck, k: Int) { val st = d.slides[k].steps; assertEquals(1, st.size); assertTrue(!st[0].auto); assertEquals(listOf(0, 0, 1000), st[0].effects.map { it.delay }) }
+        one(Slides.read(out), 2)
+        assertEquals(listOf('c', 'w', 'a'), SlidesEdit.flat(Slides.read(out).slides[2].steps).map { it.start })
+        lo(out, "odp")?.let { one(Slides.read(it), 2) }
+        // .odp: the box fades in by itself as the page begins, then a click flies the star in and the box out with it
+        val osrc = File("src/test/resources/slides.odp"); val odeck = Slides.read(osrc)
+        val oe = SlidesEdit.start(odeck).copy(added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5"))),
+            anims = mapOf(2 to listOf(SlideEffect("o0", "fade", 'd', 0, 500, start = 'a'), SlideEffect("9100", "fly", 'l', 0, 1000), SlideEffect("o0", "fade", 'd', 0, 500, exit = true, start = 'w'))))
+        val oout = File.createTempFile("starts", ".odp"); SlidesOdpEdit.save(osrc, odeck, oe, oout)
+        fun two(d: Deck) { val st = d.slides[2].steps; assertEquals(2, st.size); assertTrue(st[0].auto); assertTrue(!st[1].auto); assertEquals(2, st[1].effects.size); assertEquals(listOf(0, 0), st[1].effects.map { it.delay }) }
+        two(Slides.read(oout))
+        lo(oout, "pptx")?.let { two(Slides.read(it)) }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

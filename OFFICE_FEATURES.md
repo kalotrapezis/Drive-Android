@@ -294,6 +294,14 @@ LibreOffice works them out).
       and formulas follow; LibreOffice agrees), each one step to undo
 - [x] Recovery draft: unsaved changes kept when the app goes to the background, back by themselves on the next open
       (Undo shows the file as saved), the sheet and place kept too
+- [x] Font, Borders and Number as strips in the ribbon's place, as Writer's Page numbers (a font shown as tapped, ✕ puts
+      it back); the ribbon slides down and up (asked 16 Oct)
+- [x] Typing in the cell bar: a row of the functions for the letters typed, each with what it does; inside one's brackets,
+      what it takes (asked 16 Oct: "I don't know them by heart")
+- [x] The fill handle: a dot at the chosen cells' corner while editing, dragged to fill (series, dates, "Week 1" → 2,
+      formulas with their references moved, $ kept)
+- [x] Cut, Copy, Paste: cells copied here keep their formulas (moved), looks and formats; one cell onto many chosen
+      fills them; text from another app goes in as a table (LibreOffice agrees)
 - [ ] .ods number styles shown as LibreOffice (an edited .ods number is shown as General until saved and read again)
 
 ## PowerPoint (Presentation) — after Excel

@@ -115,4 +115,10 @@ class SheetEditTest {
         assertEquals("=C1+\$B2", SheetFill.moved("=B1+\$B1", 1, 1).let { SheetFill.moved("=B1+\$B2", 0, 1) })
         assertEquals("=LOG10(B2)", SheetFill.moved("=LOG10(A2)", 0, 1)) // a function's name is not a cell
     }
+
+    @Test fun `text pasted from another app`() {
+        assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
+        assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))
+        assertEquals(listOf(listOf("one")), SheetPaste.table("one"))
+    }
 }

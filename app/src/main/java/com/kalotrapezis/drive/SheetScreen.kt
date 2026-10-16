@@ -174,6 +174,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var renamingSheet by remember { mutableStateOf(false) }
     var deletingSheet by remember { mutableStateOf(false) }
     var showVersions by remember { mutableStateOf(false) }
+    var clip by remember { mutableStateOf<SheetPaste.Clip?>(null) } // cells copied or cut here, for Paste
     var fontStrip by remember { mutableStateOf<String?>(null) } // Home › Font's gallery open: the font in use ("" none)
     var fontChosen by remember { mutableStateOf<FontChoice?>(null) } // the one shown on the cells, one step of Undo
     val barFocus = remember { FocusRequester() }
@@ -418,6 +419,62 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         WriterLog.i("Sheets: filled ${changes.size} cells ${if (vertical) (if (forward) "down" else "up") else (if (forward) "right" else "left")}")
     }
 
+    /** The chosen cells as drawn: the range, else the chosen cell. */
+    fun chosenDrawn(l: SheetLayout): SheetRange? = view.range ?: run {
+        val r = l.row(view.row); val c = l.col(view.col)
+        if (r < 0 || c < 0) null else SheetRange(r, c, r, c)
+    }
+
+    /** Copy or Cut: the chosen cells kept for Paste here, and their text on the phone's clipboard for other apps. */
+    fun copyCells(cut: Boolean) {
+        val s = sheet ?: return; val l = layout ?: return; val g = chosenDrawn(l) ?: return
+        val rows = (g.r1..minOf(g.r2, l.rows.lastIndex)).take(5000).map { r -> (g.c1..minOf(g.c2, l.cols.lastIndex)).map { c -> Triple(l.rows[r], l.cols[c], s.cells[Sheet.key(l.rows[r], l.cols[c])]) } }
+        val text = sheetText(s, l, g)
+        copy(context, "Cells", text)
+        clip = SheetPaste.Clip(index, rows, text, cut)
+        message = if (cut) "Cut: choose where they go, then Paste" else "Copied"
+        WriterLog.i("Sheets: ${rows.sumOf { it.size }} cells ${if (cut) "cut" else "copied"}")
+    }
+
+    /**
+     * Paste at the chosen cell (the chosen cells' first): cells copied here with their formulas moved as Excel moves them
+     * (one cell onto many chosen: each one gets it), else the clipboard's text typed in as a table. Cut cells leave their
+     * place empty. One step of Undo.
+     */
+    // shortcut: cut cells pasted on another sheet are copied (their place stays); move them across sheets if asked
+    fun paste() {
+        val s = sheet ?: return; val b = book ?: return; val l = layout ?: return; val g = chosenDrawn(l) ?: return
+        val text = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+            ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+        val c = clip?.takeIf { text == null || it.text == text }
+        val changes = LinkedHashMap<Long, SheetCell>()
+        fun target(i: Int, j: Int): Pair<Int, Int>? {
+            val r = g.r1 + i; val k = g.c1 + j
+            return if (r > l.rows.lastIndex || k > l.cols.lastIndex) null else l.rows[r] to l.cols[k]
+        }
+        if (c != null && c.cells.isNotEmpty()) {
+            val h = c.cells.size; val w = c.cells[0].size
+            val one = h == 1 && w == 1 && view.range != null
+            for (i in 0 until if (one) g.r2 - g.r1 + 1 else h) for (j in 0 until if (one) g.c2 - g.c1 + 1 else w) {
+                val (tr, tc) = target(i, j) ?: continue
+                val (sr, sc, cell) = c.cells[i % h][j % w]
+                changes[Sheet.key(tr, tc)] = cell?.let { if (it.formula != null) it.copy(formula = SheetFill.moved(it.formula, tr - sr, tc - sc), text = "", kind = SheetKind.Empty, value = null) else it }
+                    ?: SheetCell("", SheetKind.Empty)
+            }
+            if (c.cut && c.sheet == index) c.cells.flatten().forEach { (sr, sc, cell) -> if (cell != null) changes.putIfAbsent(Sheet.key(sr, sc), SheetCell("", SheetKind.Empty)) }
+            if (c.cut) clip = null
+        } else if (!text.isNullOrEmpty()) {
+            SheetPaste.table(text).take(5000).forEachIndexed { i, row -> row.forEachIndexed { j, t ->
+                val (tr, tc) = target(i, j) ?: return@forEachIndexed
+                val (look, format) = lookAt(s, tr, tc)
+                changes[Sheet.key(tr, tc)] = SheetInput.cell(t, s[tr, tc], look, format, b.format)
+            } }
+        } else { message = "Nothing to paste"; return }
+        if (changes.isEmpty()) return
+        history.apply(b, index, changes); version++
+        WriterLog.i("Sheets: pasted ${changes.size} cells${if (c != null) "" else " from the clipboard"}")
+    }
+
     /** File › Versions: the file as it was before a save, in the editor in place of what is there (Undo goes back). */
     fun openVersion(v: File) = fileStep("version opened", { _, next, _ -> v.copyTo(next, overwrite = true) }) { message = "This version is open. Save keeps it, Undo goes back." }
 
@@ -634,7 +691,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
                     val thin = SheetLine(0xFF000000.toInt(), 1f)
                     @Composable fun copyClear() {
-                        RibbonButton("Copy", w, R.drawable.ic_copy) { copy(context, "Cells", g?.let { sheetText(s, l, it) } ?: s[cr, cc]?.text.orEmpty()); message = "Copied"; WriterLog.i("Sheets: cells copied") }
+                        if (editing) RibbonButton("Cut", w, R.drawable.ic_content_cut) { copyCells(cut = true) }
+                        RibbonButton("Copy", w, R.drawable.ic_copy) { copyCells(cut = false) }
+                        if (editing) RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste() }
                         if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) {
                             val changes = LinkedHashMap<Long, SheetCell>()
                             for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }

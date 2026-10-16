@@ -503,3 +503,33 @@ internal object SheetFill {
         }
     }
 }
+
+/**
+ * Paste (asked 16 Oct): cells copied here go in with their formulas moved, looks and formats as they were; text from
+ * another app is read as a table (a tab between cells, a line between rows, as spreadsheets copy them) and typed in.
+ */
+internal object SheetPaste {
+    /** Cells copied in this app: rows of (the sheet's row, column, the cell), and the text put on the clipboard for them. */
+    class Clip(val sheet: Int, val cells: List<List<Triple<Int, Int, SheetCell?>>>, val text: String, val cut: Boolean)
+
+    /** Text as a table: a cell in quotes may hold tabs, lines and "" for a quote (Excel's and LibreOffice's way). */
+    fun table(text: String): List<List<String>> {
+        val rows = ArrayList<List<String>>(); var row = ArrayList<String>(); val cell = StringBuilder()
+        var i = 0; var quoted = false
+        val t = text.replace("\r\n", "\n").replace('\r', '\n').trimEnd('\n')
+        while (i < t.length) {
+            val ch = t[i]
+            when {
+                quoted && ch == '"' && t.getOrNull(i + 1) == '"' -> { cell.append('"'); i++ }
+                quoted && ch == '"' -> quoted = false
+                !quoted && ch == '"' && cell.isEmpty() -> quoted = true
+                !quoted && ch == '\t' -> { row.add(cell.toString()); cell.clear() }
+                !quoted && ch == '\n' -> { row.add(cell.toString()); cell.clear(); rows.add(row); row = ArrayList() }
+                else -> cell.append(ch)
+            }
+            i++
+        }
+        row.add(cell.toString()); rows.add(row)
+        return rows
+    }
+}

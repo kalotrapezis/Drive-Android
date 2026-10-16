@@ -88,8 +88,8 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
         Column {
             Choices("The ribbon", OfficeUi.place, listOf("auto" to "By itself", "bottom" to "At the bottom", "top" to "At the top")) { OfficeUi.set(context, place = it) }
             Choices("Its tools", OfficeUi.size, listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact")) { OfficeUi.set(context, size = it) }
-            Text("By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, for a finger.",
-                style = MaterialTheme.typography.bodySmall)
+            Text("By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, for a finger. " +
+                "Office's other settings (AutoSave, lengths, read aloud) are in Tetra's Settings › Office.", style = MaterialTheme.typography.bodySmall)
         }
     }, confirmButton = { TextButton(onClick = dismiss) { Text("Done") } })
 }

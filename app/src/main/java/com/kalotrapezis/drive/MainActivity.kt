@@ -1549,6 +1549,17 @@ private fun SettingsTab(
                 Text("Read aloud speed", style = MaterialTheme.typography.titleSmall)
                 Text("How fast Review › Read aloud speaks (1× is normal).", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
+                // the ribbon's place and size for Words, Tables and Slides (asked 16 Oct: one Office section; File › Settings opens the same)
+                Text("The ribbon", style = MaterialTheme.typography.titleSmall)
+                Text("By itself: at the top while a mouse is in use, as on a computer; at the bottom, in reach of a hand, when you touch.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("auto" to "By itself", "bottom" to "Bottom", "top" to "Top"), OfficeUi.place) { OfficeUi.set(officeContext, place = it) }
+                Text("Its tools", style = MaterialTheme.typography.titleSmall)
+                Text("By itself: smaller while a mouse is in use.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact"), OfficeUi.size) { OfficeUi.set(officeContext, size = it) }
+                LaunchedEffect(Unit) { WriterUnits.load(officeContext) }
+                Text("Lengths in", style = MaterialTheme.typography.titleSmall)
+                Text("Words' rulers, margins, indents and sizes.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(false to "Centimetres", true to "Inches"), WriterUnits.inches) { WriterUnits.set(officeContext, it) }
             }
         }
         item {

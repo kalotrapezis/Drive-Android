@@ -269,12 +269,26 @@ slow frames, taps, filters, searches — never a cell's words).
 - [ ] Tablet: two panes? (check the layout on the tablet)
 - [ ] .xls (Excel 97–2003) — none in the user's files
 
-### Then, later: editing
-- [ ] Edit cells; formula bar; insert/delete rows and columns
-- [ ] Formulas: SUM, AVERAGE, COUNT, MIN, MAX, IF, VLOOKUP, dates, text; recalculation
+### Editing — started 16 Oct (asked: "edit cells, the formula bar, save back to the file")
+Code: `SheetEdit.kt` (typed entries, the bar's text, recalculation, undo), `SheetCalc.kt` (formulas), `SheetSave.kt`.
+Tests: `SheetEditTest`, `SheetSaveTest` (saved files opened by LibreOffice), `SheetsTest.formulas` (129 formulas as
+LibreOffice works them out).
+- [x] Edit (pencil) → Undo, Redo, Save, Done; the cell bar is a field (the cell as typed: 1234,5, 15/3/2026, =B2*2);
+      Enter puts it in and goes down; ✕ leaves it; a second tap on the chosen cell starts typing; Clear chosen cells
+- [x] Typed entries as Excel: the phone's 1.234,5, 25%, dates day first, times, TRUE, ' for words, =formulas (; or ,)
+- [x] Formulas: ~80 functions (sums, counts, IF/IFS-style, lookups, text, dates, rounding, statistics), across sheets;
+      a tapped cell's name goes into a formula being typed; formulas that read a changed cell follow at once (a function
+      not known keeps the file's value)
+- [x] Save back into the file: .xlsx (only the edited rows rewritten, every other part as it was; a typed date's or
+      percent's format added as a style; shared formulas written out; calcChain dropped, worked out on opening),
+      .ods (cells in content.xml), .csv (its separator and letters); the file before kept as a version (Writer's)
+- [x] Leaving with changes: Save / Don't save
+- [ ] A spreadsheet's Versions in its ⋯ (they are kept, not yet shown)
+- [ ] Insert/delete rows and columns (every reference, merge, rule and drawing moved)
 - [ ] Cell formatting: bold, colour, fill, borders, alignment, number/currency/date/percent
-- [ ] New sheet, rename, reorder
-- [ ] Save back into the original package (same rule as Writer: copy when something would be lost)
+- [ ] New spreadsheet (the Office home's Excel card); new sheet, rename, reorder
+- [ ] Recovery draft while editing (Writer keeps one; here unsaved edits go when the app is closed)
+- [ ] .ods number styles shown as LibreOffice (an edited .ods number is shown as General until saved and read again)
 
 ## PowerPoint (Presentation) — after Excel
 

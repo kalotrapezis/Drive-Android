@@ -824,7 +824,8 @@ private fun Home(
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val groups: List<@Composable () -> Unit> = listOf(
         {
-            HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
+            // Gallery's green, as the new Gallery picture in the Photos card (asked 16 Oct), the way Notes and Office have theirs
+            HomeGroup(Category.Gallery.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -932,11 +933,10 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         Box(Modifier.fillMaxSize()) {
             photo?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
-            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                // Same slot either way, so the title always sits at the bottom like the Files card.
-                if (hasBackdrop) Spacer(Modifier.size(38.dp))
-                else Icon(painterResource(R.drawable.ic_gallery), contentDescription = "Photos", modifier = Modifier.size(38.dp))
-                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
+            // Laid out like HomeArtCard: the Gallery tile top-right (only without the photo backdrop), the title at the bottom.
+            Box(Modifier.fillMaxSize().padding(18.dp)) {
+                if (!hasBackdrop) Image(painterResource(R.drawable.gallery_art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
             }
         }
     }

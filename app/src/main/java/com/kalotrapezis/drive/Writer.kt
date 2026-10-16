@@ -2178,6 +2178,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         noteEditing = note to (notesShown.firstOrNull { it.first == note }?.second ?: "")
     }
     var noteNumbering by remember { mutableStateOf(false) }
+    var artEditing by remember { mutableStateOf<Pair<String, String>?>(null) } // a WordArt's key and words: its look changed after
     /** References › Note numbers: the footnotes' and endnotes' formats, every note renumbered. */
     fun setNoteFormats(foot: String, end: String) = change {
         meta = OfficeFormats.numberNotes(current().copy(footFormat = foot, endFormat = end))
@@ -3916,7 +3917,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
                         img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
-                        img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
+                        // a WordArt Writer made: its words, colour, effects and bend, all to change (Word's Text Effects after)
+                        img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) {
+                            if (TextWarp.art(img.raw) != null) artEditing = key to paras.joinToString("\n") { it.text } else boxing = key to paras.joinToString("\n") { it.text } } }
                         // a shape's own words (Word's Add Text): typed in the box's window, in the shape's middle
                         if (img != null && img.box == null && img.group == null && ShapePicture.of(img)?.geometry?.let { it != "line" && it != "straightConnector1" } == true)
                             RibbonButton("Add text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to "" }
@@ -4673,6 +4676,20 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             tab = WriterTab.Picture
         }
     }
+    artEditing?.let { (key, words) ->
+        val old = pictures[key]
+        val (rgb, fx) = TextWarp.art(old?.raw) ?: (0 to TextEffects())
+        TextBoxDialog(words, { artEditing = null }, art = true, glowAllowed = kind == OfficeKind.Docx, confirm = "Done", start = Triple(0xFF000000.toInt() or rgb, fx, TextWarp.of(old?.raw))) { text, color, effects, bend ->
+            artEditing = null
+            val raw = old?.raw ?: return@TextBoxDialog
+            val lines = text.split('\n')
+            val fx2 = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null)
+            val odt = kind == OfficeKind.Odt
+            val written = PictureXml.boxText(raw, kind, lines, color, fx2).let { x -> if (bend != null) TextWarp.applied(x, bend, odt) else TextWarp.removed(x, odt) }
+            changePicture(old.key, old.with(raw = written, box = lines.map { DocPara(listOf(DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = color and 0xFFFFFF,
+                font = (if (odt) fx2.odt() else fx2.docx()).ifEmpty { null }))) }))
+        }
+    }
     if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx, bend -> wordArt = false; putTextBox(text.split('\n'), color, fx, bend) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
@@ -4789,15 +4806,16 @@ private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 e
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
 private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, title: String? = null, confirm: String? = null,
+    /** a WordArt's colour (ARGB), effects and bend as they are, to be changed */ start: Triple<Int, TextEffects, TextWarp?>? = null,
     done: (String, Int, TextEffects, TextWarp?) -> Unit) {
-    var bend by remember { mutableStateOf<TextWarp?>(null) }
+    var bend by remember { mutableStateOf(start?.third) }
     // A gallery's WordArt: "Your text here" chosen, so the first letter typed replaces it (as Word does).
     var field by remember { mutableStateOf(TextFieldValue(initial, androidx.compose.ui.text.TextRange(if (initial == "Your text here") 0 else initial.length, initial.length))) }
     val text = field.text
-    var outlined by remember { mutableStateOf(false) }; var shadowed by remember { mutableStateOf(false) }; var glowing by remember { mutableStateOf(false) }
+    var outlined by remember { mutableStateOf(start?.second?.outline != null) }; var shadowed by remember { mutableStateOf(start?.second?.shadow == true) }; var glowing by remember { mutableStateOf(start?.second?.glow != null) }
     // Word's WordArt colours: blue, orange, grey, gold, green, black (its theme's accents).
     val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF70AD47, 0xFF000000).map { it.toInt() }
-    var color by remember { mutableIntStateOf(colors[0]) }
+    var color by remember { mutableIntStateOf(start?.first ?: colors[0]) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title ?: if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },

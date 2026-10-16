@@ -157,7 +157,7 @@ one pass once the tabs' features are done.
       files' text boxes (Word's, LibreOffice's frames and shapes with words) show their words on the pages and in the
       editor ; editing a file's text box keeps every run's look and each paragraph's (15 Oct)
 - [x] **WordArt** (Insert › WordArt): its words big, bold, in one of Word's six colours, no frame; outline, shadow,
-      glow (15 Oct; glow in Word files — LibreOffice has no glow for letters in a text document); bends — arch up/down, circle, wave, slant up/down (Word's prstTxWarp, LibreOffice's fontwork), the words along them inside the box (15 Oct, evening) — [ ] Word's other warps (inflate, triangle…), changing effects after
+      glow (15 Oct; glow in Word files — LibreOffice has no glow for letters in a text document); bends — arch up/down, circle, wave, slant up/down (Word's prstTxWarp, LibreOffice's fontwork), the words along them inside the box (15 Oct, evening) ; changing them after (16 Oct: Edit text on a WordArt opens with its colour, effects and bend, each to change — written into the same drawing) — [ ] Word's other warps (inflate, triangle…: the letters themselves stretched, which Android's text drawing cannot do along a path)
 - [x] **Line numbers** (Layout, 1 Oct): none / continuous / restart each page / each section (Word; LibreOffice has
       no per-section); drawn on the pages
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages

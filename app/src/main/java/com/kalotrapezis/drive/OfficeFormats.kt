@@ -358,7 +358,8 @@ internal object PictureXml {
                 style to runs
             }.toList()
             val artSpan = art?.let { "Tetra_20_art_%06X".format(it and 0xFFFFFF) + effects.odtName() }
-            val paras = relaid(old, lines, "", artSpan ?: Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1)).joinToString("") { (style, runs) ->
+            // a WordArt's look given (made, or changed after): every letter takes it
+            val paras = relaid(if (artSpan == null) old else old.map { (st, runs) -> st to runs.map { artSpan to it.second } }, lines, "", artSpan ?: Regex("""<text:span\b[^>]*?\stext:style-name="([^"]*)"""").find(xml)?.groupValues?.get(1)).joinToString("") { (style, runs) ->
                 "<text:p$style>" + runs.joinToString("") { (span, t) -> esc(t).replace("\t", "<text:tab/>").let { w -> span?.let { "<text:span text:style-name=\"$it\">$w</text:span>" } ?: w } } + "</text:p>"
             }
             area?.let { m -> return xml.replaceRange(m.range, m.groupValues[1] + paras + m.groupValues[3]) }
@@ -385,7 +386,7 @@ internal object PictureXml {
             pPr to runs
         }.toList()
         val artPr = art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
-        val paras = relaid(old, lines, if (shaped) """<w:pPr><w:jc w:val="center"/></w:pPr>""" else "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
+        val paras = relaid(if (artPr.isEmpty()) old else old.map { (pPr, runs) -> pPr to runs.map { artPr to it.second } }, lines, if (shaped) """<w:pPr><w:jc w:val="center"/></w:pPr>""" else "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
             "<w:p>$pPr" + runs.joinToString("") { (rPr, t) -> "<w:r>${rPr ?: ""}" + t.split('\t').joinToString("<w:tab/>") { "<w:t xml:space=\"preserve\">${esc(it)}</w:t>" } + "</w:r>" } + "</w:p>"
         }
         return src.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))

@@ -508,6 +508,33 @@ class OfficeFormatsTest {
         }
     }
 
+    /** The notes' numbers in other formats (References › Note numbers): kept in each kind, and LibreOffice numbers them so. */
+    @Test fun `footnotes and endnotes are numbered in the document's formats`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            fun note(end: Boolean) = DocRun("1", note = DocNote(end, listOf(DocPara(listOf(DocRun(if (end) "An endnote." else "A footnote."))))), script = 1)
+            val plain = OfficeDoc(listOf(DocPara(listOf(DocRun("One"), note(false), DocRun(" two"), note(false), DocRun(" three"), note(true)))))
+            assertEquals(kind.name, listOf("1", "2", "i"), OfficeFormats.numberNotes(plain).paras[0].runs.filter { it.note != null }.map { it.text })
+            val doc = OfficeFormats.numberNotes(plain.copy(footFormat = "lowerLetter", endFormat = "upperRoman"))
+            assertEquals(kind.name, listOf("a", "b", "I"), doc.paras[0].runs.filter { it.note != null }.map { it.text })
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, "lowerLetter" to "upperRoman", back.footFormat to back.endFormat)
+            assertEquals(kind.name, listOf("a", "b", "I"), back.paras[0].runs.filter { it.note != null }.map { it.text })
+            // back to the defaults: the file says so again
+            val again = OfficeFormats.read(OfficeFormats.write(back.copy(footFormat = NoteFormats.FOOT, endFormat = NoteFormats.END), kind, bytes), kind)
+            assertEquals(kind.name, NoteFormats.FOOT to NoteFormats.END, again.footFormat to again.endFormat)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)
+                assertEquals(kind.name, "lowerLetter" to "upperRoman", lo.footFormat to lo.endFormat)
+            }
+        }
+        assertEquals(listOf("*", "†", "‡", "§", "**"), (1..5).map { NoteFormats.number(it, NoteFormats.CHICAGO) })
+    }
+
     /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
     @Test fun `track changes is remembered in a Word file`() {
         val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)

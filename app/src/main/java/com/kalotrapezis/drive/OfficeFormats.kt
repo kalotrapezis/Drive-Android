@@ -655,6 +655,7 @@ internal data class OfficeDoc(
     val sources: List<DocSource> = emptyList(), // References: Word's sources part, or an ODT's bibliography marks' sources
     val numbering: List<Pair<String, String>>? = null, // Writer's own numbered lists, each level's (numFmt, lvlText) (Home › Multilevel list); null: 1. 2. 3.
     val citeStyle: CiteStyle = CiteStyle.APA, // References › Style: the citations' and the list's (Word's sources part's StyleName)
+    val footFormat: String = NoteFormats.FOOT, val endFormat: String = NoteFormats.END, // the notes' numbers, Word's names (NoteFormats)
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {
@@ -700,7 +701,7 @@ internal object OfficeFormats {
         return numberNotes(when (kind) {
             OfficeKind.Docx -> DocxReader(parts).read()
             OfficeKind.Odt -> OdtReader(parts).read().let { it.copy(citeStyle = CiteStyle.infer(it)) }
-        })
+        }.let { d -> NoteFormats.read(parts, kind).let { (foot, end) -> d.copy(footFormat = foot, endFormat = end) } })
     }
 
     /** The file's bytes: [doc] written into [original] (the file it came from), or into a new blank document. */
@@ -1193,23 +1194,17 @@ internal object OfficeFormats {
 
     internal fun hex(rgb: Int) = "%06X".format(rgb and 0xFFFFFF)
     /**
-     * The notes numbered in the order they stand (tables' too), each kind on its own — footnotes 1, 2, 3; endnotes i, ii,
-     * iii, as Word and LibreOffice number them by default. Their letters are the numbers.
+     * The notes numbered in the order they stand (tables' too), each kind on its own — by default footnotes 1, 2, 3;
+     * endnotes i, ii, iii, as Word and LibreOffice number them; else in the document's formats. Their letters are the numbers.
      */
     fun numberNotes(doc: OfficeDoc): OfficeDoc {
         var foot = 0; var end = 0
         fun walk(ps: List<DocPara>): List<DocPara> = ps.map { p ->
             if (p.table != null) p.copy(table = p.table.copy(rows = p.table.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = walk(c.paras)) }) }))
             else if (p.runs.none { it.note != null }) p
-            else p.copy(runs = p.runs.map { r -> r.note?.let { n -> r.copy(text = if (n.end) roman(++end) else (++foot).toString(), script = 1) } ?: r })
+            else p.copy(runs = p.runs.map { r -> r.note?.let { n -> r.copy(text = if (n.end) NoteFormats.number(++end, doc.endFormat) else NoteFormats.number(++foot, doc.footFormat), script = 1) } ?: r })
         }
         return doc.copy(paras = walk(doc.paras))
-    }
-    fun roman(n: Int): String {
-        var k = n; val out = StringBuilder()
-        for ((v, s) in listOf(1000 to "m", 900 to "cm", 500 to "d", 400 to "cd", 100 to "c", 90 to "xc", 50 to "l", 40 to "xl", 10 to "x", 9 to "ix", 5 to "v", 4 to "iv", 1 to "i"))
-            while (k >= v) { out.append(s); k -= v }
-        return out.toString()
     }
     /** Every note, in order. */
     fun notesOf(doc: OfficeDoc): List<DocNote> {
@@ -2344,6 +2339,7 @@ private object DocxWriter {
         parts[relsPath] = rels.toByteArray()
         parts["[Content_Types].xml"] = types.toByteArray()
         WordSources.write(parts, doc.sources, doc.citeStyle)
+        NoteFormats.docx(parts, doc)
         return OfficeFormats.zip(parts)
     }
 
@@ -3167,6 +3163,7 @@ private object OdtWriter {
             if ("xmlns:$prefix=" !in head) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:$prefix=\"$ns\"")
         }
         parts["content.xml"] = out.toByteArray()
+        NoteFormats.odt(parts, doc)
         return OfficeFormats.zip(parts, stored = "mimetype")
     }
 

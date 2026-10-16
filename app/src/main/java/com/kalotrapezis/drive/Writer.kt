@@ -2177,6 +2177,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.selection = androidx.compose.ui.text.TextRange(start + 1)
         noteEditing = note to (notesShown.firstOrNull { it.first == note }?.second ?: "")
     }
+    var noteNumbering by remember { mutableStateOf(false) }
+    /** References › Note numbers: the footnotes' and endnotes' formats, every note renumbered. */
+    fun setNoteFormats(foot: String, end: String) = change {
+        meta = OfficeFormats.numberNotes(current().copy(footFormat = foot, endFormat = end))
+        dirty = true
+        reshow()
+    }
     fun saveNote(old: DocNote, text: String?) = change {
         val new = text?.let { t ->
             val keep = old.paras.firstOrNull()?.keep
@@ -4143,6 +4150,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // Word's Footnotes group.
                     RibbonButton("Insert footnote", w, R.drawable.ic_superscript, enabled = loaded) { insertNote(false) }
                     RibbonButton("Insert endnote", w, R.drawable.ic_last_page, enabled = loaded) { insertNote(true) }
+                    RibbonButton("Note numbers", w, R.drawable.ic_tune, enabled = loaded) { noteNumbering = true }
                 }, {
                     // Word's Citations & Bibliography, APA 7.
                     RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
@@ -4563,6 +4571,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (noteNumbering) NoteNumbersDialog(meta.footFormat, meta.endFormat, kind == OfficeKind.Docx, { noteNumbering = false }) { foot, end -> noteNumbering = false; setNoteFormats(foot, end) }
     noteEditing?.let { (n, number) -> NoteDialog(n, number, { noteEditing = null }, { saveNote(n, it) }, { saveNote(n, null) }) }
     if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->
         prefs.edit().putString("author", name).apply()
@@ -5189,6 +5198,33 @@ internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.ric
             if (looks.doubleStrike || looks.doubleUnder) ys.forEach { y -> drawLine(Color.Black, Offset(x1, y), Offset(x2, y), h * 0.04f) }
         }
     }
+}
+
+/** References › Note numbers (Word's Footnote and Endnote › Number format): each kind's numbers, a preview of both; [word]: Word's *, †, ‡ too. */
+@Composable
+private fun NoteNumbersDialog(foot: String, end: String, word: Boolean, dismiss: () -> Unit, done: (String, String) -> Unit) {
+    var f by remember { mutableStateOf(foot) }
+    var e by remember { mutableStateOf(end) }
+    val formats = NoteFormats.ALL.filter { word || it.first != NoteFormats.CHICAGO }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Note numbers") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            for ((label, now, set) in listOf(Triple("Footnotes", f) { v: String -> f = v }, Triple("Endnotes", e) { v: String -> e = v })) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    formats.forEach { (id, shown) -> androidx.compose.material3.FilterChip(selected = id == now, onClick = { set(id) }, label = { Text(shown) }) }
+                }
+            }
+            // the preview: a line with both kinds' first two notes
+            Surface(color = Color.White, contentColor = Color.Black, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    fun sup(t: String) { pushStyle(SpanStyle(baselineShift = androidx.compose.ui.text.style.BaselineShift.Superscript, fontSize = 0.7.em)); append(t); pop() }
+                    append("A footnote"); sup(NoteFormats.number(1, f)); append(", another"); sup(NoteFormats.number(2, f))
+                    append(" and an endnote"); sup(NoteFormats.number(1, e)); append(".")
+                }, modifier = Modifier.padding(12.dp))
+            }
+        } },
+        confirmButton = { TextButton(onClick = { done(f, e) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 
 /** References › Caption: which label ("Figure", "Table" — Word's, and the Greek ones) and the words after its number. */

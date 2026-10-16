@@ -74,6 +74,44 @@ class SheetShiftTest {
         assertNull(fill(2, 1))
     }
 
+    /** A row inserted under the cells a total sums (the total's own row moving down): its value still shown. */
+    @Test fun `a total keeps its value when a row goes in above it`() {
+        val moved = shift("total-above.xlsx", 0, rows = true, at = 3, count = 1)
+        for ((decimal, grouping) in listOf(',' to '.', '.' to ',')) { // a Greek phone's marks and an English one's
+            val rows = Sheets.read(moved, decimal, grouping).sheet(0)
+            assertEquals("=SUM(B2:B3)", rows[5, 1]?.formula)
+            assertEquals("$decimal", 1192.5, rows[5, 1]?.value)
+        }
+        // each cell keeps its look (a shift once gave the cells their neighbours' borders and formats)
+        val before = Sheets.read(java.io.File.createTempFile("total", ".xlsx").apply { writeBytes(resource("total-above.xlsx")) }, ',', '.')
+        val after = Sheets.read(moved, ',', '.')
+        for ((r0, r1) in listOf(1 to 1, 2 to 2, 4 to 5)) for (c in 0..3) {
+            val was = before.sheet(0)[r0, c]?.let { before.sheet(0).look(it.style, before.styles) }
+            val now = after.sheet(0)[r1, c]?.let { after.sheet(0).look(it.style, after.styles) }
+            assertEquals("row $r0 col $c", was, now)
+        }
+    }
+
+    /** As the app does it: the sheet opened (its formulas worked out), its edits saved into a copy, then the row inserted. */
+    @Test fun `a row inserted after the app has opened the sheet`() {
+        val dir = Files.createTempDirectory("shift").toFile()
+        val source = File(dir, "total-above.xlsx").apply { writeBytes(resource("total-above.xlsx")) }
+        val book = Sheets.read(source, ',', '.')
+        book.laid = { i, sh -> SheetRecalc.run(book, i, sh, book.edits[i]?.keys.orEmpty()).forEach { (k, c) -> sh.put(k, c); book.edits.getOrPut(i) { LinkedHashMap() }[k] = c } }
+        book.sheet(0)
+        val baked = File(dir, "baked.xlsx"); val moved = File(dir, "moved.xlsx")
+        if (book.edits.isNotEmpty()) SheetSave.save(book, source, baked) else source.copyTo(baked)
+        SheetShift(book.tabs[0].name, true, 3, 1).xlsx(baked, moved, 0, book.parts, book.tabs.map { it.name })
+        val after = Sheets.read(moved, ',', '.')
+        assertEquals("edits ${book.edits}", 1192.5, after.sheet(0)[5, 1]?.value)
+        assertEquals(book.sheet(0).merges.map { if (it.r1 >= 3) it.copy(r1 = it.r1 + 1, r2 = it.r2 + 1) else it }, after.sheet(0).merges) // the merged cell moved down one row
+        for ((r0, r1) in listOf(1 to 1, 2 to 2, 4 to 5)) for (c in 0..3) {
+            val was = book.sheet(0)[r0, c]?.let { book.sheet(0).look(it.style, book.styles) }
+            val now = after.sheet(0)[r1, c]?.let { after.sheet(0).look(it.style, after.styles) }
+            assertEquals("row $r0 col $c", was, now)
+        }
+    }
+
     @Test fun `two rows inserted in the middle of the scores`() {
         for (name in listOf("Excel-test.xlsx", "Excel-test.ods")) {
             val moved = shift(name, 0, rows = true, at = 4, count = 2)
@@ -82,6 +120,7 @@ class SheetShiftTest {
             assertEquals(name, "Γεωργίου", rows[6, 0]?.text) // row 5 is row 7 now
             assertNull(name, rows[4, 0]); assertNull(name, rows[5, 0])
             assertEquals(name, "=SUM(B3:B14)", rows[15, 1]?.formula)
+            assertEquals(name, 167.5, rows[15, 1]?.value) // its value as Tetra shows it after the shift (a total once went blank)
             assertEquals(name, "Teo: Check this score", rows[6, 1]?.note)
             assertEquals(name, listOf(SheetRange(0, 0, 0, 3)), rows.merges)
             assertEquals(name, "=Rows!B9", book.sheet(1)[1, 1]?.formula)

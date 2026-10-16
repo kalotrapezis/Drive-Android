@@ -223,8 +223,9 @@ internal class SheetShift(
             val s = span(a, minOf(b, 16383 - maxOf(count, 0))) ?: return@replace ""
             m.value.replaceFirst(Regex("""min="\d+""""), "min=\"${s.first + 1}\"").replaceFirst(Regex("""max="\d+""""), "max=\"${minOf(s.last, 16383) + 1}\"")
         }.replace("<cols></cols>", "")
-        // merges that lose all their cells go; the count follows
-        xml = Regex("""<mergeCell ref="([^"]*)"\s*/>""").replace(xml) { m -> ref(m.groupValues[1])?.let { "<mergeCell ref=\"$it\"/>" } ?: "" }
+        // merges that lose all their cells go (attrs() below moves the rest, as it does links' — moved here too, a merge
+        // under the cut went down twice and covered the row below it); the count follows
+        xml = Regex("""<mergeCell ref="([^"]*)"\s*/>""").replace(xml) { m -> if (ref(m.groupValues[1]) == null) "" else m.value }
         xml = xml.replace(Regex("""<mergeCells count="\d+">""")) { "<mergeCells count=\"${Regex("<mergeCell ").findAll(xml).count()}\">" }.replace(Regex("""<mergeCells count="0">\s*</mergeCells>"""), "")
         // rules and validations whose ranges are all gone go
         xml = Regex("""<conditionalFormatting\b[^>]*sqref="([^"]*)"[^>]*>.*?</conditionalFormatting>""", RegexOption.DOT_MATCHES_ALL).replace(xml) { m -> if (refs(m.groupValues[1]) == null) "" else m.value }

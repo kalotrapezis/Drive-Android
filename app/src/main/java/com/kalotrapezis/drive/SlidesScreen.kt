@@ -118,7 +118,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val src = file ?: return@LaunchedEffect
         if (t in themed) return@LaunchedEffect
         withContext(Dispatchers.IO) { runCatching {
-            val out = File(context.cacheDir, "theme-${System.nanoTime()}.pptx")
+            val out = File(context.cacheDir, "theme-${System.nanoTime()}.${src.extension.lowercase()}")
             SlidesThemes.apply(src, t, out); out to Slides.read(out)
         }.onFailure { WriterLog.e("Slides: a theme could not be applied", it) }.getOrNull() }?.let { themed[t] = it; WriterLog.i("Slides: theme ${t.name}") }
             ?: run { message = "That theme could not be applied." }
@@ -135,7 +135,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             val result = withContext(Dispatchers.IO) { runCatching {
                 val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                 try {
-                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(f, d, e, temp) else SlidesEdit.save(from, d, e, temp) }
+                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(from, d, e, temp) else SlidesEdit.save(from, d, e, temp) }
                     keepPrevious(context, f) // Writer's versions
                     check(temp.renameTo(f)) { "Could not save ${f.name}." }
                 } finally { temp.delete() }
@@ -270,12 +270,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
             "Design" -> {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
-                if (odp) Text("Themes are for PowerPoint files (.pptx); a LibreOffice deck keeps its own look", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                else {
-                    RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
-                    Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                    if (e.theme != null) RibbonButton("As the file was", w) { change(e.copy(theme = null)) }
-                }
+                RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
+                Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                if (e.theme != null) RibbonButton("As the file was", w) { change(e.copy(theme = null)) }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before

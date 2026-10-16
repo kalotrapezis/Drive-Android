@@ -318,6 +318,31 @@ class SlidesTest {
         }
     }
 
+    /** A theme on a LibreOffice deck: its master pages' background, band and placeholders' words; LibreOffice draws it so too. */
+    @Test fun `a theme on an odp`() {
+        val src = File("src/test/resources/slides.odp")
+        val midnight = SlidesThemes.BUILT_IN.first { it.name == "Midnight" }
+        val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("midnight.odp"); SlidesThemes.apply(src, midnight, out) // kept, for a look
+        val d = Slides.read(out)
+        assertEquals(0xFF000000.toInt() or midnight.colors[1], d.slides[1].background)
+        val plan = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Plan" }
+        val run = plan.text!!.paras[0].runs[0]
+        assertEquals(midnight.colors[0], run.color and 0xFFFFFF)
+        assertEquals(midnight.minor, run.font) // its words in the theme's font (the deck's own font was on its words)
+        val paper = File.createTempFile("paper", ".odp"); SlidesThemes.apply(src, SlidesThemes.BUILT_IN.first { it.name == "Paper" }, paper)
+        assertEquals("Georgia", Slides.read(paper).slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!.paras[0].runs[0].font)
+        assertTrue(d.slides[1].items.any { it is SlideItem.Shape && it.shape?.fill == (0xFF000000.toInt() or midnight.colors[4]) }) // the band
+        // again with another: one band still
+        val again = File.createTempFile("theme2", ".odp"); SlidesThemes.apply(out, SlidesThemes.BUILT_IN.first { it.name == "Leaf" }, again)
+        assertEquals(1, Slides.read(again).slides[1].items.count { it is SlideItem.Shape && it.shape?.fill == (0xFF000000.toInt() or 0x90C226) })
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val f = File(dir, "t.odp").also { out.copyTo(it) }
+            ProcessBuilder("soffice", "--headless", "--convert-to", "pptx", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+            assertEquals(0xFF000000.toInt() or midnight.colors[1], Slides.read(File(dir, "t.pptx")).slides[1].background)
+        }
+    }
+
     /** A template made by the tetra-slides-theme skill: its theme read, a new presentation made from it (a .potx said to be a deck), LibreOffice opening that. */
     @Test fun `a new presentation from a template`() {
         val potx = File("src/test/resources/example-school.potx")

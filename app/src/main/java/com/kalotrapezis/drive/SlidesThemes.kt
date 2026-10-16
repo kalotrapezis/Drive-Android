@@ -61,8 +61,9 @@ internal object SlidesThemes {
         return s.replaceFirst(Regex("""(<p:spTree>[\s\S]*?</p:grpSpPr>)"""), "$1${Regex.escapeReplacement(sp)}")
     }
 
-    /** [source] (a .pptx) to [target] with [theme]: every master's theme part and the masters themselves. */
+    /** [source] to [target] with [theme]: a .pptx's master(s) and their theme part(s), an .odp's master pages and their styles. */
     fun apply(source: File, theme: SlideTheme, target: File) {
+        if (source.extension.equals("odp", true)) { applyOdp(source, theme, target); return }
         java.util.zip.ZipFile(source).use { zip ->
             fun read(n: String) = zip.getEntry(n)?.let { e -> zip.getInputStream(e).use { String(it.readBytes()) } }
             val pres = read("ppt/presentation.xml") ?: error("Not a presentation.")
@@ -93,4 +94,103 @@ internal object SlidesThemes {
             SlideTheme(file.nameWithoutExtension, lum(colors[1]) < lum(colors[0]), colors, font("majorFont"), font("minorFont"))
         }
     }.getOrNull()
+
+    private const val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+    private const val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+    private const val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+    private const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+    private const val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+
+    /**
+     * A LibreOffice deck with [theme] (it has no theme part as PowerPoint's: its looks are its styles'): each master
+     * page's background, its title, subtitle and outline styles' words (colour, font), the band on each master page.
+     */
+    fun applyOdp(source: File, theme: SlideTheme, target: File) {
+        java.util.zip.ZipFile(source).use { zip ->
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("styles.xml") ?: error("Not a presentation.")).use { it.readBytes() })
+            fun all(tag: String, ns: String) = doc.getElementsByTagNameNS(ns, tag).let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
+            fun kids(e: org.w3c.dom.Element) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? org.w3c.dom.Element }
+            fun hex(c: Int) = "#%06X".format(c and 0xFFFFFF)
+            val styles = all("style", STYLE)
+            fun styleOf(name: String?, family: String) = styles.firstOrNull { it.getAttributeNS(STYLE, "name") == name && it.getAttributeNS(STYLE, "family") == family }
+            fun props(st: org.w3c.dom.Element, kind: String) = kids(st).firstOrNull { it.localName == kind } ?: doc.createElementNS(STYLE, "style:$kind").also { st.appendChild(it) }
+            // the backgrounds
+            val masters = all("master-page", STYLE)
+            for (m in masters) styleOf(m.getAttributeNS(DRAW, "style-name"), "drawing-page")?.let { st ->
+                val d = props(st, "drawing-page-properties")
+                for (n in listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name")) d.removeAttributeNS(DRAW, n)
+                d.setAttributeNS(DRAW, "draw:fill", "solid"); d.setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[1]))
+            }
+            // what the deck's words were before (the masters' outline and title styles'): the slides' own looks that are these follow the theme
+            fun textProps(suffix: Regex) = styles.firstOrNull { it.getAttributeNS(STYLE, "family") == "presentation" && suffix.containsMatchIn(it.getAttributeNS(STYLE, "name")) }
+                ?.let { kids(it).firstOrNull { k -> k.localName == "text-properties" } }
+            fun fontOf(t: org.w3c.dom.Element?) = t?.getAttributeNS(STYLE, "font-name")?.takeIf { it.isNotEmpty() } ?: t?.getAttributeNS(FO, "font-family")?.takeIf { it.isNotEmpty() }
+            val oldColor = textProps(Regex("-outline1$"))?.getAttributeNS(FO, "color")?.takeIf { it.isNotEmpty() } ?: "#000000"
+            // the masters' fonts, or (they name none: a deck from PowerPoint keeps its fonts on its words) the one most of its words have
+            val content0 = zip.getEntry("content.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes()) } }.orEmpty()
+            val common = Regex("""style:font-name="([^"]+)"""").findAll(content0).map { it.groupValues[1] }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+            val oldMajor = fontOf(textProps(Regex("-title$"))); val oldMinor = fontOf(textProps(Regex("-outline1$"))) ?: common
+            // the masters' words: titles in the heading font, the rest in the body's, all in the theme's text colour
+            for (st in styles.filter { it.getAttributeNS(STYLE, "family") == "presentation" }) {
+                val name = st.getAttributeNS(STYLE, "name")
+                // LibreOffice draws a master's background from its "-background" style (the drawing-page style is the file's other copy)
+                if (name.endsWith("-background")) { val g = props(st, "graphic-properties")
+                    for (n in listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name")) g.removeAttributeNS(DRAW, n)
+                    g.setAttributeNS(DRAW, "draw:fill", "solid"); g.setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[1])); continue }
+                val title = name.endsWith("-title"); val text = title || name.endsWith("-subtitle") || Regex("-outline\\d$").containsMatchIn(name)
+                if (!text) continue
+                val t = props(st, "text-properties")
+                t.removeAttributeNS(STYLE, "use-window-font-color"); t.removeAttributeNS(STYLE, "font-name")
+                t.setAttributeNS(FO, "fo:color", hex(theme.colors[0])); t.setAttributeNS(FO, "fo:font-family", if (title) theme.major else theme.minor)
+            }
+            // the band: gone from before, then on each master page, first (behind the rest), in its own style
+            val autos = kids(doc.documentElement).firstOrNull { it.localName == "automatic-styles" }
+                ?: doc.createElementNS(OFFICE, "office:automatic-styles").also { doc.documentElement.insertBefore(it, kids(doc.documentElement).firstOrNull { k -> k.localName == "master-styles" }) }
+            for (m in masters) kids(m).filter { it.getAttributeNS(DRAW, "name") == BAND }.forEach { m.removeChild(it) }
+            styles.filter { it.getAttributeNS(STYLE, "name") == "grTetraBand" }.forEach { it.parentNode.removeChild(it) }
+            theme.band?.let { band ->
+                autos.appendChild(doc.createElementNS(STYLE, "style:style").apply { setAttributeNS(STYLE, "style:name", "grTetraBand"); setAttributeNS(STYLE, "style:family", "graphic")
+                    appendChild(doc.createElementNS(STYLE, "style:graphic-properties").apply { setAttributeNS(DRAW, "draw:fill", "solid"); setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[4])); setAttributeNS(DRAW, "draw:stroke", "none") }) })
+                for (m in masters) {
+                    val layout = all("page-layout", STYLE).firstOrNull { it.getAttributeNS(STYLE, "name") == m.getAttributeNS(STYLE, "page-layout-name") }
+                    val lp = layout?.let { kids(it).firstOrNull { k -> k.localName == "page-layout-properties" } }
+                    val w = odfLength(lp?.getAttributeNS(FO, "page-width")) ?: 720f; val h = odfLength(lp?.getAttributeNS(FO, "page-height")) ?: 540f
+                    val k = 0.06f
+                    val (x, y, bw, bh) = when (band) { 'l' -> listOf(0f, 0f, w * k / 2, h); 'r' -> listOf(w - w * k, 0f, w * k, h); 't' -> listOf(0f, 0f, w, h * k / 2); else -> listOf(0f, h - h * k, w, h * k) }
+                    fun pt(v: Float) = String.format(java.util.Locale.ROOT, "%.2fpt", v)
+                    val shape = doc.createElementNS(DRAW, "draw:custom-shape").apply {
+                        setAttributeNS(DRAW, "draw:name", BAND); setAttributeNS(DRAW, "draw:style-name", "grTetraBand"); setAttributeNS(DRAW, "draw:layer", "backgroundobjects")
+                        setAttributeNS(SVG, "svg:x", pt(x)); setAttributeNS(SVG, "svg:y", pt(y)); setAttributeNS(SVG, "svg:width", pt(bw)); setAttributeNS(SVG, "svg:height", pt(bh))
+                        appendChild(doc.createElementNS(DRAW, "draw:enhanced-geometry").apply { setAttributeNS(SVG, "svg:viewBox", "0 0 21600 21600"); setAttributeNS(DRAW, "draw:type", "rectangle") })
+                    }
+                    m.insertBefore(shape, m.firstChild)
+                }
+            }
+            val bytes = java.io.ByteArrayOutputStream().also { out ->
+                javax.xml.transform.TransformerFactory.newInstance().newTransformer().apply { setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8") }
+                    .transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
+            }.toByteArray()
+            // the slides' own text styles (a deck made from a PowerPoint file has its colours and fonts there): the old text colour
+            // and fonts made the theme's, the fonts declared
+            fun follow(xml: String): String {
+                val start = xml.indexOf("<office:automatic-styles"); val end = xml.indexOf("</office:automatic-styles>")
+                if (start < 0 || end < 0) return xml
+                var auto = xml.substring(start, end)
+                auto = auto.replace(Regex("""fo:color="${Regex.escape(oldColor)}"""", RegexOption.IGNORE_CASE), """fo:color="${hex(theme.colors[0])}"""")
+                fun font(old: String?, new: String) { if (old != null) auto = auto.replace(Regex("""(style:font-name|fo:font-family)="'?${Regex.escape(old)}'?""""), "$1=\"${Regex.escapeReplacement(new)}\"") }
+                // a title font the same as the body's: the body's (most of the words)
+                if (oldMajor != null && oldMajor != oldMinor) font(oldMajor, theme.major)
+                font(oldMinor, theme.minor)
+                var out = xml.substring(0, start) + auto + xml.substring(end)
+                // the new fonts declared, as LibreOffice names a font by its declaration
+                val decls = listOf(theme.major, theme.minor).distinct().filter { f -> """style:name="$f"""" !in out }
+                    .joinToString("") { f -> """<style:font-face style:name="$f" svg:font-family="'$f'"/>""" }
+                if (decls.isNotEmpty()) out = if ("</office:font-face-decls>" in out) out.replace("</office:font-face-decls>", "$decls</office:font-face-decls>")
+                    else out.replaceFirst("<office:automatic-styles", "<office:font-face-decls>$decls</office:font-face-decls><office:automatic-styles")
+                return out
+            }
+            val content = zip.getEntry("content.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes()) } }
+            SheetSave.rezip(zip, target, listOfNotNull("styles.xml" to follow(String(bytes)).toByteArray(), content?.let { "content.xml" to follow(it).toByteArray() }).toMap(), stored = "mimetype")
+        }
+    }
 }

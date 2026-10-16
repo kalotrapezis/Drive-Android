@@ -352,7 +352,8 @@ LibreOffice works them out).
 - [x] Design › Themes (16 Oct, asked: "some dark ones some light ones"): four light (Office, Leaf, Ocean, Paper) and four
       dark (Night, Slate, Midnight, Charcoal) — a theme's colours and fonts, a band on the master — and the templates in
       Documents/Templates (their colours and fonts); one step to undo, saved into the file's theme and master (LibreOffice
-      shows them); .pptx only — [ ] an .odp's themes
+      shows them); an .odp's too — its master pages' backgrounds (LibreOffice's "-background" styles), title and outline
+      styles, the band, and the slides' own words in the old text colour and fonts made the theme's (a deck from PowerPoint)
 - [x] New presentation from a template (the Slides card asks when Documents/Templates has .potx/.pptx in it)
 - [x] Claude's tetra-slides-theme skill (~/.claude/skills): a school's or company's theme — its colours, fonts, logo,
       band — as a .potx in ~/Tetra/Files/Documents/Templates, which syncs to the phone

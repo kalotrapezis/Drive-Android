@@ -162,7 +162,7 @@ one pass once the tabs' features are done.
       no per-section); drawn on the pages
 - [x] **Hyphenation** (Layout, 1 Oct): none / automatic (Word's settings, LibreOffice's fo:hyphenate); the pages
       hyphenate by the paragraph's language (Greek or English) ; by hand (16 Oct): Layout › Optional hyphen at the cursor (Word's softHyphen, read and written; LibreOffice keeps it —
-      Word's soft hyphens in files were dropped before); Hyphenation an on/off button, no menu — [ ] hyphenation zone/limits
+      Word's soft hyphens in files were dropped before); Hyphenation an on/off button, no menu; Hyphenation options beside it (16 Oct: Word's zone, lines in a row ending in a hyphen, words in CAPS — Word's settings, LibreOffice's on its Standard style; Word and LibreOffice follow them, the pages break words by Android's hyphenator, which takes none)
 - [x] **Style sets** (Design, 1 Oct): Basic (Word), Classic (Times), Modern (Arial), Elegant (Georgia) — Normal, Title,
       Headings 1–3 at once; nine sets (+ Word 2010, Word 2003, Centred, Casual, Minimalist); Design › Colours (Word's seven palettes, the file's theme) and Design › Fonts (seven pairs: the theme's in Word files, the styles' in .odt) (15 Oct, evening)
 - [x] **Charts** (Insert › Chart, Picture › Edit data): column, bar, line, area, pie, doughnut; clustered or stacked;

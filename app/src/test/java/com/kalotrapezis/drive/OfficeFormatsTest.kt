@@ -588,6 +588,32 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Hyphenation options (zone, lines in a row, capitals) kept in each kind's place; LibreOffice reads them each way. */
+    @Test fun `hyphenation options are kept`() {
+        val o = HyphenOptions(zonePt = 36f, limit = 2, caps = false)
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), kind)
+            fun zip(p: Map<String, ByteArray>) = OfficeFormats.zip(LinkedHashMap(p), if (kind == OfficeKind.Odt) "mimetype" else null)
+            assertEquals(kind.name, HyphenOptions(), HyphenOptions.read(OfficeFormats.unzip(bytes), kind))
+            // with automatic hyphenation on, before and after: the options and it both kept
+            val on = zip(PageDesign.hyphenation(OfficeFormats.unzip(bytes), kind, true))
+            val set = zip(HyphenOptions.write(OfficeFormats.unzip(zip(HyphenOptions.write(OfficeFormats.unzip(on), kind, HyphenOptions()))), kind, o))
+            assertEquals(kind.name, o, HyphenOptions.read(OfficeFormats.unzip(set), kind))
+            assertEquals(kind.name, true, DocStyles.of(kind, set).hyphenate)
+            if (kind == OfficeKind.Docx) {
+                val settings = String(OfficeFormats.unzip(set).getValue("word/settings.xml"))
+                assert(settings.indexOf("<w:autoHyphenation") < settings.indexOf("<w:consecutiveHyphenLimit") && settings.indexOf("<w:consecutiveHyphenLimit") < settings.indexOf("<w:hyphenationZone")) { settings }
+            }
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(set) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                assertEquals(kind.name, o, HyphenOptions.read(OfficeFormats.unzip(java.io.File(dir, "out/h.${other.extension}").readBytes()), other))
+            }
+        }
+    }
+
     /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
     @Test fun `track changes is remembered in a Word file`() {
         val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)

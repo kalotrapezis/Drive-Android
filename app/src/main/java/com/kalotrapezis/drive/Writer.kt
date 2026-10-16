@@ -2809,6 +2809,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         if (on) message = "Automatic hyphenation — the pages show it (the eye at the top)"
     }
+    var hyphenOptions by remember { mutableStateOf(false) }
+    /** Layout › Hyphenation options (Word's zone, consecutive limit, capitals), into the file as it will be written. */
+    fun setHyphenOptions(o: HyphenOptions) = change {
+        val parts = runCatching { HyphenOptions.write(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, o) }
+            .onFailure { WriterLog.e("hyphenation options", it) }.getOrNull() ?: run { message = "Hyphenation options could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        dirty = true; styleEdits++
+        WriterLog.i("hyphenation options: $o")
+    }
     /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
     fun setLineNumbers(restart: String?) = change {
         val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
@@ -3845,8 +3854,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     RibbonButton("Styles…", w) { stylesPage = true }
                 }, {
-                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { state.toggleUnorderedList() }
-                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { state.toggleOrderedList() }
+                    // a numbered item made a bullet (and back) is taken out of its list first: the library's toggle moved it a
+                    // level out instead, still numbered (found 16 Oct on the emulator)
+                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { if (state.isOrderedList) state.toggleOrderedList(); state.toggleUnorderedList() }
+                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { if (state.isUnorderedList) state.toggleUnorderedList(); state.toggleOrderedList() }
                     Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
                     Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
                     RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }
@@ -4163,6 +4174,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val now = documentStyles.hyphenate
                     RibbonButton(if (now) "Hyphenation: on" else "Hyphenation: off", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { setHyphenation(!now) }
                     RibbonButton("Optional hyphen", w, R.drawable.ic_hyphenation, enabled = loaded) { typeIn("\u00AD"); message = "An optional hyphen: the word breaks there at a line's end" }
+                    RibbonButton("Hyphenation options", w, R.drawable.ic_tune, enabled = loaded) { hyphenOptions = true }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
@@ -4593,6 +4605,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (hyphenOptions) HyphenOptionsDialog(remember { HyphenOptions.read(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind) }, { hyphenOptions = false }) { hyphenOptions = false; setHyphenOptions(it) }
     if (noteNumbering) NoteNumbersDialog(meta.footFormat, meta.endFormat, kind == OfficeKind.Docx, { noteNumbering = false }) { foot, end -> noteNumbering = false; setNoteFormats(foot, end) }
     noteEditing?.let { (n, number) -> NoteDialog(n, number, { noteEditing = null }, { saveNote(n, it) }, { saveNote(n, null) }) }
     if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->

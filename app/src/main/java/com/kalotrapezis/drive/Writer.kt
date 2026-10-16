@@ -3978,6 +3978,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Landscape", w, R.drawable.ic_crop_landscape, enabled = loaded, on = PageSetup.landscape(sheet)) {
                         if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
                 }, {
+                    // Word's Layout › Paragraph: the indents and the space before and after, as number boxes (asked: as OnlyOffice's)
+                    val here = rulerAt
+                    fun set(f: (ParaLook) -> ParaLook) { val (at, look) = here ?: return; setSpacing(at, look, f(look)) }
+                    val step = if (WriterUnits.name == "in") 7.2f else 0.25f * WriterUnits.pt // a tenth of an inch, a quarter centimetre
+                    @Composable fun box(label: String, shown: String, down: () -> Unit, up: () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, color = w, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
+                        Tool(R.drawable.ic_remove, "Less: $label", w, enabled = here != null && loaded) { down() }
+                        Text(shown, color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.widthIn(min = 44.dp))
+                        Tool(R.drawable.ic_add, "More: $label", w, enabled = here != null && loaded) { up() }
+                    }
+                    val look = here?.second ?: ParaLook()
+                    box("Left", WriterUnits.text(look.left) + " " + WriterUnits.name, { set { it.copy(left = maxOf(0f, it.left - step)) } }, { set { it.copy(left = it.left + step) } })
+                    box("Right", WriterUnits.text(look.right) + " " + WriterUnits.name, { set { it.copy(right = maxOf(0f, it.right - step)) } }, { set { it.copy(right = it.right + step) } })
+                    box("Before", "${Math.round(look.before)} pt", { set { it.copy(before = maxOf(0f, it.before - 6f)) } }, { set { it.copy(before = it.before + 6f) } })
+                    box("After", "${Math.round(look.after)} pt", { set { it.copy(after = maxOf(0f, it.after - 6f)) } }, { set { it.copy(after = it.after + 6f) } })
+                }, {
                     RibbonButton("Size", w, R.drawable.ic_fit_page, enabled = loaded) { pagePage = true }
                     // Columns: the pages show them (the editor keeps one column of text).
                     Box {

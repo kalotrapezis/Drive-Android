@@ -183,7 +183,8 @@ one pass once the tabs' features are done.
 - [x] Columns (Layout › Columns: one, two, three — Word w:cols / ODT style:columns, every section; the pages flow text down each column, a page break still starts a page; the editor keeps one column) ; column breaks, columns in part of a document through continuous section breaks (15 Oct); in .odt a section's own columns (LibreOffice's text:section), files' sections kept and shown, page styles changing mid-document start a page of their size (15 Oct, evening) — [ ] balancing a continuous section
 - [x] Page break, blank page (also on Layout); Layout › Breaks: column break, section break next page / continuous (15 Oct; .odt: LibreOffice's text:section, 15 Oct evening)
 - [x] Line numbers, hyphenation (Layout, 1 Oct — see Insert's entries)
-- [ ] Indent left/right and spacing before/after as number boxes (as OnlyOffice; Home's ⋯ page has them already)
+- [x] Indent left/right and spacing before/after as number boxes (Layout's second page: − value +, a quarter cm or a
+      tenth of an inch, 6 pt — 16 Oct)
 - [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup (15 Oct; .odt too, 15 Oct evening) — [ ] a rotation handle
 
 ### References

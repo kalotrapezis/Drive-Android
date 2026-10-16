@@ -74,9 +74,10 @@ class SheetsTest {
 
     @Test fun fractions() {
         assertEquals("1 1/2", show(1.5, "# ?/?"))
-        assertEquals("1/3", show(1 / 3.0, "# ??/??"))
+        // ? keeps a digit's place with a figure space, as LibreOffice (so a column of fractions lines up)
+        assertEquals(" \u20071/3\u2007", show(1 / 3.0, "# ??/??"))
         assertEquals("3/4", show(0.75, "?/4"))
-        assertEquals("2", show(2.0, "# ?/?"))
+        assertEquals("2 \u2007 \u2007", show(2.0, "# ?/?"))
     }
 
     @Test fun dates() {
@@ -409,5 +410,37 @@ class SheetsTest {
         }
         println("Sheets sweep: ${files.size} files, ${failed.size} failed"); failed.forEach(::println)
         assertTrue(failed.joinToString("\n"), failed.isEmpty())
+    }
+
+    /**
+     * An .ods number's look as LibreOffice's (asked 16 Oct): every number LibreOffice wrote in these files, formatted
+     * again from the format read from its number style, reads the same. number-formats.ods: number-formats.py's
+     * workbook saved by LibreOffice. A full month alone ("Οκτώβριος 2026") is Excel's nominative, not LibreOffice's genitive.
+     */
+    @Test fun `ods number formats read as LibreOffice shows them`() {
+        val wrong = ArrayList<String>(); var n = 0
+        for (name in listOf("number-formats.ods", "Excel-test.ods", "rules.ods", "icons.ods", "sheet.ods", "drawings.ods")) {
+            val f = File.createTempFile("formats", ".ods").apply { writeBytes(SheetsTest::class.java.classLoader!!.getResource(name).readBytes()) }
+            val b = Sheets.read(f, ',', '.')
+            for (i in b.tabs.indices) {
+                val s = b.sheet(i)
+                s.cells.forEach { k, c ->
+                    if (c.kind != SheetKind.Number || c.value == null) return@forEach
+                    n++
+                    val code = s.look(c.style, b.styles)?.format ?: "General"
+                    val t = b.format.format(c.value!!, code).text
+                    if (t != c.text && !(code.contains("mmmm") && !code.contains("d"))) wrong += "$name ${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: '${c.text}' as '$code' → '$t'"
+                }
+            }
+        }
+        assertTrue("$n numbers", n > 300)
+        assertEquals(emptyList<String>(), wrong)
+        // typed into an .ods cell: shown in its format at once
+        val f = File.createTempFile("excel", ".ods").apply { writeBytes(SheetsTest::class.java.classLoader!!.getResource("Excel-test.ods").readBytes()) }
+        val b = Sheets.read(f, ',', '.'); val s = b.sheet(3)
+        fun typed(r: Int, t: String) = s[r, 1]!!.let { c -> SheetInput.cell(t, c, c.style, s.look(c.style, b.styles)!!.format, b.format).text }
+        assertEquals("99,50 €", typed(3, "99,5"))
+        assertEquals("25,0%", typed(1, "25")) // a percent cell: 25 is 25%, as Excel
+        assertEquals("01/02/2026", typed(2, "1/2/2026"))
     }
 }

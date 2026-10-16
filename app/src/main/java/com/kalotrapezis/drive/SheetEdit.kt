@@ -80,7 +80,9 @@ internal object SheetInput {
             val code = if (f.isDate(format)) format else if (m.groupValues[3].isNotEmpty()) "h:mm:ss" else "h:mm"
             return shown(v, code).copy(format = code.takeIf { it != format })
         }
-        number(t, f)?.let { n ->
+        number(t, f)?.let { n0 ->
+            // a percent cell: 25 is 25%, as Excel's automatic percent entry (0,25 too)
+            val n = if ('%' in SheetFormat.strip(format) && kotlin.math.abs(n0) >= 1) n0 / 100 else n0
             // a date cell given a plain number keeps it as a number (Excel would show the date of that number)
             return shown(n, format).copy(format = old?.format?.takeIf { !f.isDate(it) && '%' !in it })
         }

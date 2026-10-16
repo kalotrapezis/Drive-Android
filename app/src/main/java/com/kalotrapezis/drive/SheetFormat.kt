@@ -24,6 +24,8 @@ internal class SheetFormat(
     private val decimal: Char = '.', private val group: Char = ',', private val date1904: Boolean = false,
     /** Month and day names when the format names no language ("d-mmm" shows "27-Σεπ" on a Greek phone, as Excel there). */
     private val language: Locale = Locale.getDefault(),
+    /** LibreOffice's days (an .ods): from 1899-12-30 without Excel's made-up 29 February 1900, and before 1900 too. */
+    private val calc: Boolean = false,
 ) {
     fun decimalSeparator() = decimal
     fun groupSeparator() = group
@@ -314,13 +316,18 @@ internal class SheetFormat(
         var w = whole
         if (den > 0 && num == den && hasWhole) { w++; num = 0 }
         val sign = if (v < 0) "-" else ""
-        val frac = if (num == 0L) " ".repeat(denomDigits * 2 + 1) else "$num/$den"
+        // ? holds a place with a figure space, as LibreOffice does (Excel a space), so fractions line up: "3  3/4 ", "12    "
+        val numDigits = before.size - 1 - k
+        val fs = '\u2007' // a figure space: a digit's width
+        val shownDen = if (fixed != null) den.toString() else den.toString().padEnd(denomDigits, fs)
+        val frac = if (num == 0L) fs.toString().repeat(numDigits) + " " + fs.toString().repeat(if (fixed != null) fixed.toString().length else denomDigits)
+            else num.toString().padStart(numDigits, fs) + "/" + shownDen
         return when {
-            hasWhole && w == 0L && num == 0L -> sign + "0"
-            hasWhole && w == 0L -> sign + frac
-            hasWhole -> sign + w + (if (num == 0L) "" else " $frac")
+            hasWhole && w == 0L && num == 0L -> sign + "0 " + frac
+            hasWhole && w == 0L -> sign + " " + frac
+            hasWhole -> sign + w + " " + frac
             else -> sign + if (num == 0L) "0" else "$num/$den"
-        }.trimEnd()
+        }
     }
 
     private fun best(x: Double, maxDen: Long): Pair<Long, Long> {
@@ -331,12 +338,15 @@ internal class SheetFormat(
 
     // --- dates ---
 
+    /** Greek short months as Excel and LibreOffice write them (no accents: Μαϊ, Αυγ; the phone's own have them). */
+    private val GREEK_MONTHS = listOf("Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαϊ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ")
+
     /** The date and time of an Excel serial number (days since 1899-12-30; 1900's made-up 29 February respected). */
     fun dateTime(serial: Double): LocalDateTime {
         val day = floor(serial).toLong()
         val base = when {
             date1904 -> LocalDate.of(1904, 1, 1)
-            day < 60 -> LocalDate.of(1899, 12, 31)
+            day < 60 && !calc -> LocalDate.of(1899, 12, 31)
             else -> LocalDate.of(1899, 12, 30)
         }
         val ms = ((serial - day) * 86_400_000).roundToLong()
@@ -344,7 +354,7 @@ internal class SheetFormat(
     }
 
     private fun date(value: Double, code: String, locale: String?): String {
-        if (value < 0) return "#".repeat(8)
+        if (value < 0 && !calc) return "#".repeat(8)
         // [$-409] and its kind name the language; else the phone's.
         val names = when (locale?.removePrefix("x-")) {
             null, "", "f800", "f400", "sysdate", "systime" -> language
@@ -406,7 +416,7 @@ internal class SheetFormat(
                     'y' -> append(if (tok.n <= 2) (dt.year % 100).toString().padStart(2, '0') else dt.year.toString())
                     'm' -> if (minute[k]) append(dt.minute.toString().padStart(tok.n, '0')) else append(when (tok.n) {
                         1, 2 -> dt.monthValue.toString().padStart(tok.n, '0')
-                        3 -> dt.month.getDisplayName(TextStyle.SHORT_STANDALONE, names).trimEnd('.')
+                        3 -> if (greek) GREEK_MONTHS[dt.monthValue - 1] else dt.month.getDisplayName(TextStyle.SHORT_STANDALONE, names).trimEnd('.')
                         5 -> dt.month.getDisplayName(TextStyle.FULL_STANDALONE, names).take(1)
                         else -> dt.month.getDisplayName(if (kinds.contains('d') && greek) TextStyle.FULL else TextStyle.FULL_STANDALONE, names)
                     })
@@ -424,7 +434,9 @@ internal class SheetFormat(
                     'a' -> {
                         val pm = dt.hour >= 12
                         val word = ampm!!
-                        append(if (tok.n == 5) (if (pm) "PM" else "AM").let { if (word[0].isLowerCase()) it.lowercase() else it } else (if (pm) word[2] else word[0]))
+                        // the language's own words (Greek ΠΜ, ΜΜ, as LibreOffice and Excel there), in the format's case
+                        val said = java.text.DateFormatSymbols.getInstance(names).amPmStrings[if (pm) 1 else 0].replace(".", "").uppercase(names)
+                        append(if (tok.n == 5) said.let { if (word[0].isLowerCase()) it.lowercase(names) else it } else (if (pm) word[2] else word[0]))
                     }
                 }
             }

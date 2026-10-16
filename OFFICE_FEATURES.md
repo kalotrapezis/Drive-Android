@@ -302,7 +302,9 @@ LibreOffice works them out).
       formulas with their references moved, $ kept)
 - [x] Cut, Copy, Paste: cells copied here keep their formulas (moved), looks and formats; one cell onto many chosen
       fills them; text from another app goes in as a table (LibreOffice agrees)
-- [ ] .ods number styles shown as LibreOffice (an edited .ods number is shown as General until saved and read again)
+- [x] .ods number styles read as Excel formats, so a typed or formatted .ods number shows as LibreOffice shows it
+      (number-formats.ods: 300+ numbers formatted as LibreOffice wrote them; ? as a figure space, ΠΜ/ΜΜ, dates before
+      1900, negative times); a number typed into a percent cell is a percent (25 → 25%), as Excel
 
 ## PowerPoint (Presentation) — after Excel
 

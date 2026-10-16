@@ -1133,7 +1133,7 @@ internal object Sheets {
         }
 
         /** A number style's colour ([Red] in LibreOffice) and its maps: "value()>=0" → the style used then. */
-        class DataStyle(var color: Int? = null, val maps: ArrayList<Pair<String, String>> = ArrayList())
+        class DataStyle(var color: Int? = null, val maps: ArrayList<Pair<String, String>> = ArrayList(), val code: StringBuilder = StringBuilder(), val kind: String = "")
         val dataStyles = HashMap<String, DataStyle>()
         private val dataStyleOf = HashMap<String?, String?>()
 
@@ -1150,17 +1150,57 @@ internal object Sheets {
             return d.color
         }
 
+        /**
+         * A number style as an Excel format code (asked 16 Oct: an edited .ods number shown as LibreOffice shows it):
+         * its own code, after the code of the style its map uses for value()>=0 (LibreOffice's positive;negative).
+         */
+        fun formatCode(name: String?, seen: Int = 0): String {
+            val d = dataStyles[name ?: return "General"] ?: return "General"
+            val own = d.code.toString().ifBlank { return "General" }
+            val positive = d.maps.firstOrNull { it.first.replace(" ", "") == "value()>=0" }?.second
+            return if (positive != null && seen < 3 && positive != name) formatCode(positive, seen + 1) + ";" + own else own
+        }
+
         fun styleHandler() = object : DefaultHandler() {
             var current: Raw? = null
             var data: DataStyle? = null
+            var literal: StringBuilder? = null // number:text or a currency symbol being read
+            override fun characters(ch: CharArray, start: Int, length: Int) { literal?.appendRange(ch, start, start + length) }
+            /** One part of a number style, in Excel's words. */
+            fun part(local: String, at: Attributes) {
+                val d = data ?: return
+                val long = at.a("style") == "long"
+                when (local) {
+                    "number" -> {
+                        val places = at.a("decimal-places")?.toIntOrNull() ?: 0
+                        val min = at.a("min-decimal-places")?.toIntOrNull() ?: places
+                        val ints = at.a("min-integer-digits")?.toIntOrNull() ?: 1
+                        d.code.append(if (at.a("grouping") == "true") "#,##0" else if (ints == 0) "#" else "0".repeat(ints))
+                        if (places > 0) d.code.append('.').append("0".repeat(min)).append("#".repeat(places - min))
+                    }
+                    "scientific-number" -> d.code.append("0").append(at.a("decimal-places")?.toIntOrNull()?.takeIf { it > 0 }?.let { "." + "0".repeat(it) } ?: "").append("E+").append("0".repeat(at.a("min-exponent-digits")?.toIntOrNull() ?: 2))
+                    "fraction" -> d.code.append("# ").append("?".repeat(at.a("min-numerator-digits")?.toIntOrNull() ?: 1)).append('/').append("?".repeat(at.a("min-denominator-digits")?.toIntOrNull() ?: 1))
+                    "day" -> d.code.append(if (long) "dd" else "d")
+                    "month" -> d.code.append(if (at.a("textual") == "true") (if (long) "mmmm" else "mmm") else if (long) "mm" else "m")
+                    "year" -> d.code.append(if (long) "yyyy" else "yy")
+                    "day-of-week" -> d.code.append(if (long) "dddd" else "ddd")
+                    "hours" -> d.code.append(if (long) "hh" else "h")
+                    "minutes" -> d.code.append(if (long) "mm" else "m")
+                    "seconds" -> d.code.append(if (long) "ss" else "s").append(at.a("decimal-places")?.toIntOrNull()?.takeIf { it > 0 }?.let { "." + "0".repeat(it) } ?: "")
+                    "am-pm" -> d.code.append("AM/PM")
+                    "text-content" -> d.code.append("@")
+                    "text", "currency-symbol" -> literal = StringBuilder()
+                }
+            }
             override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
+                if (data != null && uri == "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0") part(local, at)
                 when (local) {
                     "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s ->
                         at.a("name")?.let { raw[it] = s; at.a("display-name")?.let { d -> shown[d] = it } }
                         at.a("data-style-name")?.let { s.props["data-style"] = it }
                     }
                     "number-style", "currency-style", "percentage-style", "date-style", "time-style", "boolean-style", "text-style" ->
-                        data = DataStyle().also { d -> at.a("name")?.let { dataStyles[it] = d } }
+                        if (uri == "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0") data = DataStyle(kind = local).also { d -> at.a("name")?.let { dataStyles[it] = d } }
                     "map" -> data?.let { d -> val c = at.a("condition"); val a = at.a("apply-style-name"); if (c != null && a != null) d.maps += c to a }
                     "default-style" -> current = if (at.a("family") == "table-cell") Raw("table-cell", null).also { defaultCell = it } else null
                     "table-cell-properties", "text-properties", "paragraph-properties", "table-column-properties", "table-row-properties", "table-properties" -> {
@@ -1174,8 +1214,14 @@ internal object Sheets {
                 }
             }
             override fun endElement(uri: String?, local: String, q: String?) {
+                literal?.takeIf { local == "text" || local == "currency-symbol" }?.let { t ->
+                    literal = null
+                    val d = data
+                    // a percent's %, as Excel's (it scales); other words in quotes
+                    if (d != null && t.isNotEmpty()) d.code.append(if (d.kind == "percentage-style" && t.toString() == "%") "%" else "\"" + t.toString().replace("\"", "") + "\"")
+                }
                 if (local == "style" || local == "default-style") current = null
-                if (local.endsWith("-style") && local != "default-style") data = null
+                if (local.endsWith("-style") && local != "default-style" && uri == "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0") data = null
             }
         }
 
@@ -1211,6 +1257,7 @@ internal object Sheets {
                 rotation = p["c.rotation-angle"]?.toIntOrNull()?.let { if (it > 180) it - 360 else it } ?: 0,
                 left = border(p["c.border-left"] ?: all), right = border(p["c.border-right"] ?: all),
                 top = border(p["c.border-top"] ?: all), bottom = border(p["c.border-bottom"] ?: all),
+                format = formatCode(p["data-style"]),
             )
             styles.lastIndex
         }
@@ -1233,6 +1280,7 @@ internal object Sheets {
                 override fun endElement(uri: String?, local: String, q: String?) {
                     if (inStyles) { autoStyles.endElement(uri, local, q); if (local == "automatic-styles") inStyles = false }
                 }
+                override fun characters(ch: CharArray, start: Int, length: Int) { if (inStyles) autoStyles.characters(ch, start, length) }
             })
             // The sheets' names: each <table:table …> found in the bytes, not parsed (a 360 MB body takes a second, not a minute).
             // meta.xml says how many there are, so the scan stops at the last one's start.
@@ -1248,7 +1296,7 @@ internal object Sheets {
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
             val names = Array(styles.size) { "Default" }.also { a -> styleIndex.forEach { (n, i) -> if (n.isNotEmpty()) a[i] = n } }.toList()
-            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second), styleNames = names) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */
@@ -1464,7 +1512,7 @@ internal object Sheets {
                                 ?.let { ChronoUnit.SECONDS.between(LocalDate.of(1899, 12, 30).atStartOfDay(), it) / 86_400.0 }
                         }
                         "time" -> a["time-value"]?.let { t ->
-                            Regex("""PT(\d+)H(\d+)M([0-9.]+)S""").find(t)?.destructured?.let { (h, m, sec) -> (h.toDouble() * 3600 + m.toDouble() * 60 + sec.toDouble()) / 86_400 }
+                            Regex("""(-?)PT(\d+)H(\d+)M([0-9.]+)S""").find(t)?.destructured?.let { (minus, h, m, sec) -> (if (minus.isEmpty()) 1 else -1) * (h.toDouble() * 3600 + m.toDouble() * 60 + sec.toDouble()) / 86_400 }
                         }
                         "boolean" -> if (a["boolean-value"] == "true") 1.0 else 0.0
                         else -> null

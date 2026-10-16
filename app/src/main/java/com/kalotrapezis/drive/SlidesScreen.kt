@@ -1,5 +1,14 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -215,6 +224,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
+    /** What is chosen on the slide, deleted — its animation with it (the slide's timing then names only what is there). */
+    fun deleteItem() {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
+        val sl = view?.slides?.getOrNull(c)
+        val a = e.added[uid]?.firstOrNull { it.id == id }
+        if (a == null && sl?.items?.none { it.anim == id } != false) return
+        val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
+        val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
+        change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
+            else e.copy(removed = e.removed + (uid to id), anims = anims))
+        item = null; WriterLog.i("Slides: an item deleted")
+    }
+    fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
+    fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
     @Composable fun SlideRibbon(tab: String, c: Int, e: SlidesEdit.Edit, w: Color) {
         val entry = e.order[c]; val uid = entry.uid
@@ -243,15 +266,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Smaller", w, R.drawable.ic_remove) { reframe { val k = 1 / 1.15f; listOf(it.x + it.w * (1 - k) / 2, it.y + it.h * (1 - k) / 2, it.w * k, it.h * k) } }
                 }
                 if (it0 != null) RibbonDivider(w)
-                if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) {
-                    val id = item ?: return@RibbonButton
-                    // its animation goes with it (the slide's timing then names only what is there)
-                    val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
-                    val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
-                    change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
-                        else e.copy(removed = e.removed + (uid to id), anims = anims))
-                    item = null; WriterLog.i("Slides: an item deleted")
-                }
+                if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
             }
             "Slide" -> {
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -406,7 +421,30 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
         }
     }
-    Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
+    // a keyboard's shortcuts (a tablet's or a desktop's, asked 16 Oct): the screen holds the keys while nothing is typed in
+    val keys = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(editing, typing == null, cellEdit == null, presenting == null) { if (typing == null && cellEdit == null && presenting == null) runCatching { keys.requestFocus() } }
+    Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B)).focusRequester(keys).focusable().onPreviewKeyEvent { k ->
+        if (k.type != KeyEventType.KeyDown || typing != null || cellEdit != null) return@onPreviewKeyEvent false
+        val step = (deck?.width ?: 720f) / (if (k.isShiftPressed) 8 else 40)
+        when {
+            k.key == Key.F5 -> { presenting = if (k.isShiftPressed) chosen ?: 0 else 0; true }
+            !editing -> false
+            k.isCtrlPressed && k.key == Key.S -> { if (changed && !saving) save(); true }
+            k.isCtrlPressed && (k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed)) -> { redoEdit(); true }
+            k.isCtrlPressed && k.key == Key.Z -> { undoEdit(); true }
+            item != null && (k.key == Key.Delete || k.key == Key.Backspace) -> { deleteItem(); true }
+            item != null && k.key == Key.DirectionLeft -> { reframe { listOf(it.x - step, it.y, it.w, it.h) }; true }
+            item != null && k.key == Key.DirectionRight -> { reframe { listOf(it.x + step, it.y, it.w, it.h) }; true }
+            item != null && k.key == Key.DirectionUp -> { reframe { listOf(it.x, it.y - step, it.w, it.h) }; true }
+            item != null && k.key == Key.DirectionDown -> { reframe { listOf(it.x, it.y + step, it.w, it.h) }; true }
+            item != null && k.key == Key.Escape -> { item = null; true }
+            // with nothing chosen on it, the arrows go from slide to slide
+            item == null && (k.key == Key.DirectionUp || k.key == Key.PageUp) -> { chosen = ((chosen ?: 0) - 1).coerceAtLeast(0); true }
+            item == null && (k.key == Key.DirectionDown || k.key == Key.PageDown) -> { chosen = ((chosen ?: -1) + 1).coerceAtMost((view?.slides?.size ?: 1) - 1); true }
+            else -> false
+        }
+    }) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
@@ -420,9 +458,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         "$hidden hidden".takeIf { hidden > 0 }, if (editing) saveState(saving, changed) else null, file?.extension?.let { ".$it" }), islandContentColor())
                 }
                 if (editing) {
-                    IconButton(onClick = { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = undos.isNotEmpty()) {
+                    IconButton(onClick = ::undoEdit, enabled = undos.isNotEmpty()) {
                         Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
-                    IconButton(onClick = { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = redos.isNotEmpty()) {
+                    IconButton(onClick = ::redoEdit, enabled = redos.isNotEmpty()) {
                         Icon(painterResource(R.drawable.ic_redo), contentDescription = "Redo") }
                     IconButton(onClick = { save() }, enabled = changed && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
                     IconButton(onClick = { editing = false; chosen = null; typing = null }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Done") }

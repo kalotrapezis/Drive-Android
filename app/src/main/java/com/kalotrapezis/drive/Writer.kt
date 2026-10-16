@@ -2,6 +2,13 @@
 
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
@@ -2945,7 +2952,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     } }
     LaunchedEffect(viewing, finding) { barShown = true }
     Box(Modifier.fillMaxSize().background(Color(0xFF1B1D1E)).statusBarsPadding().imePadding()
-        .then(Modifier.nestedScroll(barScroll))) {
+        .then(Modifier.nestedScroll(barScroll))
+        // a keyboard's shortcuts (a tablet's or a desktop's, asked 16 Oct), as Word's
+        .onPreviewKeyEvent { k ->
+            if (k.type != KeyEventType.KeyDown || !k.isCtrlPressed || !loaded) return@onPreviewKeyEvent false
+            when {
+                k.key == Key.F -> { finding = true; true }
+                viewing || reading -> false
+                k.key == Key.S -> { if (!saving) save(); true }
+                k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed) -> { redo(); true }
+                k.key == Key.Z -> { undo(); true }
+                cellEdit != null -> false // a table cell's own text field
+                k.key == Key.B -> { toggleBold(state.currentSpanStyle); dirty = true; true }
+                k.key == Key.I -> { toggleItalic(state.currentSpanStyle); dirty = true; true }
+                k.key == Key.U -> { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)); dirty = true; true }
+                else -> false
+            }
+        }) {
         Column(Modifier.fillMaxSize()) {
             // Find and Replace (Word's magnifier): the matches are found in the text as the editor holds it, so a
             // match's place is where the editor selects it.

@@ -1,5 +1,13 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.focusable
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -861,7 +869,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // a keyboard's shortcuts (a tablet's or a desktop's, asked 16 Oct): the screen holds the keys while no cell is typed in
+    val keys = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(editing, draft == null, searching) { if (draft == null && !searching) runCatching { keys.requestFocus() } }
+    Box(Modifier.fillMaxSize().focusRequester(keys).focusable().onPreviewKeyEvent { k ->
+        if (k.type != KeyEventType.KeyDown || !k.isCtrlPressed || sheet == null) return@onPreviewKeyEvent false
+        when {
+            k.key == Key.F -> { searching = true; true }
+            draft != null -> false // the cell bar's own copy, paste and undo
+            k.key == Key.C -> { copyCells(cut = false); true }
+            !editing -> false
+            k.key == Key.S -> { if (!saving) save(); true }
+            k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed) -> { undoOrRedo(true); true }
+            k.key == Key.Z -> { undoOrRedo(false); true }
+            k.key == Key.X -> { copyCells(cut = true); true }
+            k.key == Key.V -> { paste(); true }
+            else -> false
+        }
+    }) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {

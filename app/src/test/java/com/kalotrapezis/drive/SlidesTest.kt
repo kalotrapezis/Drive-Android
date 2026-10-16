@@ -101,13 +101,14 @@ class SlidesTest {
         var e = SlidesEdit.start(deck)
         e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5"))),
             looks = mapOf((2 to box.id!!) to SlidesEdit.Look(fill = 0xFFC00000.toInt(), line = SlidesEdit.NONE, text = 0xFFFFFFFF.toInt()), (2 to "9100") to SlidesEdit.Look(fill = 0xFF00B050.toInt())),
-            transitions = mapOf(2 to "wipe", 0 to ""), anims = mapOf(2 to listOf(box.anim!! to "fade", "9100" to "fly")),
+            transitions = mapOf(2 to SlideTransition("wipe", "d", 1000), 0 to SlideTransition("", null, 750)),
+            anims = mapOf(2 to listOf(SlideEffect(box.anim!!, "fade", 'd', 0, 500), SlideEffect("9100", "fly", 'l', 0, 1000), SlideEffect(box.anim!!, "fly", 'r', 0, 500, exit = true))),
             frames = mapOf((2 to box.id!!) to listOf(100f, 120f, 200f, 90f)), // the file's own box moved and sized
             removed = setOf(2 to deck.slides[2].items.first { it is SlideItem.Picture }.anim!!)) // and its picture deleted
         val pictures = deck.slides[2].items.count { it is SlideItem.Picture }
         // as it shows while editing
         SlidesEdit.view(deck, e).slides[2].let { s ->
-            assertEquals("wipe", s.transition!!.kind); assertEquals(listOf("fade", "fly"), s.steps.map { it.effects.single().kind })
+            assertEquals("wipe", s.transition!!.kind); assertEquals(listOf("fade", "fly", "fly"), s.steps.map { it.effects.single().kind })
             assertEquals(0xFF00B050.toInt(), s.items.filterIsInstance<SlideItem.Shape>().first { it.id == "9100" }.shape!!.fill)
         }
         val out = File.createTempFile("looks", ".pptx")
@@ -118,20 +119,53 @@ class SlidesTest {
         assertEquals(pictures - 1, back.slides[2].items.count { it is SlideItem.Picture })
         assertEquals(0xFFC00000.toInt(), b.shape!!.fill); assertEquals(null, b.shape!!.line); assertEquals(0xFFFFFFFF.toInt(), b.text!!.paras[0].runs[0].color)
         assertEquals(0xFF00B050.toInt(), back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
-        assertEquals("wipe", back.slides[2].transition!!.kind)
+        assertEquals(SlideTransition("wipe", "d", 1000), back.slides[2].transition)
         assertEquals(null, back.slides[0].transition)
-        back.slides[2].steps.let { st -> assertEquals(2, st.size); assertEquals(b.anim, st[0].effects.single().target); assertEquals("fade", st[0].effects.single().kind)
-            st[1].effects.single().let { assertEquals("fly", it.kind); assertEquals('d', it.from) } }
+        back.slides[2].steps.let { st -> assertEquals(3, st.size); assertEquals(b.anim, st[0].effects.single().target); assertEquals("fade", st[0].effects.single().kind)
+            st[1].effects.single().let { assertEquals("fly", it.kind); assertEquals('l', it.from); assertEquals(1000, it.ms); assertTrue(!it.exit) }
+            st[2].effects.single().let { assertEquals(b.anim, it.target); assertEquals("fly", it.kind); assertEquals('r', it.from); assertTrue(it.exit) } }
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
             val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             val odp = dir.listFiles()!!.single { it.extension == "odp" }
             val content = java.util.zip.ZipFile(odp).use { z -> String(z.getInputStream(z.getEntry("content.xml")).readBytes()) + String(z.getInputStream(z.getEntry("styles.xml")).readBytes()) }
             assertTrue("LibreOffice sees the wipe", Regex("""smil:type="(barWipe|slideWipe)"""").containsMatchIn(content))
-            assertEquals("LibreOffice sees two clicks", 2, Regex("""presentation:node-type="on-click"""").findAll(content).count())
+            assertTrue("and the exit", content.contains("""presentation:preset-class="exit""""))
+            assertEquals("LibreOffice sees three clicks", 3, Regex("""presentation:node-type="on-click"""").findAll(content).count())
             assertTrue("and a fade", content.contains("""smil:type="fade""""))
             val lo = Slides.read(odp)
             assertEquals(0xFFC00000.toInt(), lo.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.shape!!.fill)
+        }
+    }
+
+    /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
+    @Test fun `a group moved, coloured and animated`() {
+        val src = File("src/test/resources/effects.pptx")
+        val deck = Slides.read(src)
+        val items = deck.slides[3].items
+        assertTrue(items.size == 2 && items.all { it.grouped && it.anim == "2" })
+        val box = SlidesEdit.box(deck.slides[3], "2")!!
+        assertEquals(listOf(72f, 72f, 360f, 144f), listOf(box.x, box.y, box.w, box.h))
+        val e = SlidesEdit.start(deck).copy(frames = mapOf((3 to "2") to listOf(100f, 100f, 180f, 72f)), looks = mapOf((3 to "2") to SlidesEdit.Look(fill = 0xFF00B050.toInt())),
+            anims = mapOf(3 to listOf(SlideEffect("2", "fade", 'd', 0, 500))))
+        fun check(s: Slide) {
+            val (oval, rect) = s.items.filterIsInstance<SlideItem.Shape>().sortedBy { it.x }
+            assertEquals(listOf(100f, 100f, 72f, 72f), listOf(oval.x, oval.y, oval.w, oval.h).map { Math.round(it * 10) / 10f })
+            assertEquals(listOf(208f, 136f, 72f, 36f), listOf(rect.x, rect.y, rect.w, rect.h).map { Math.round(it * 10) / 10f })
+            assertTrue(s.items.all { (it as SlideItem.Shape).shape!!.fill == 0xFF00B050.toInt() })
+        }
+        check(SlidesEdit.view(deck, e).slides[3])
+        val out = File.createTempFile("group", ".pptx")
+        SlidesEdit.save(src, deck, e, out)
+        val back = Slides.read(out).slides[3]
+        check(back)
+        assertEquals("2", back.steps.single().effects.single().target)
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+            val lo = Slides.read(dir.listFiles()!!.single { it.extension == "odp" }).slides[3]
+            val (oval, rect) = lo.items.filterIsInstance<SlideItem.Shape>().sortedBy { it.x }
+            assertEquals(100f, oval.x, 0.5f); assertEquals(208f, rect.x, 0.5f); assertEquals(0xFF00B050.toInt(), rect.shape!!.fill)
         }
     }
 

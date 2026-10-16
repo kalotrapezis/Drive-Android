@@ -344,11 +344,13 @@ LibreOffice works them out).
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard
       colours, or none), a table's (its first row, the others in its tints) — the file's own shapes too
 - [x] The file's own text boxes, shapes, pictures, charts and tables moved and sized (finger or arrows), saved in their
-      place, or deleted (its animation with it) — [ ] one in a group (it moves with the group)
-- [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Apply to all; Play) and an item's
-      entrance (None, Appear, Fade, Fly in; Earlier/Later in the clicks; Play), saved as PowerPoint's XML — LibreOffice
-      reads them (its wipe, its clicks) — [ ] emphasis and exit effects, a direction or length to choose (changing a
-      slide's animations rewrites its timing, so effects not read here are dropped)
+      place, or deleted (its animation with it); a group chosen as a whole (moved, sized, coloured, animated, deleted; a
+      second tap types into its shape)
+- [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Options: its side and speed; Apply to
+      all; Play) and an item's entrance and exit (Appear/Disappear, Fade in/out, Fly in/out; Options: the fly's side,
+      Fast/Medium/Slow; Earlier/Later in the clicks; Play), saved as PowerPoint's XML; files' exits read and played —
+      LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left) — [ ] emphasis effects (changing a
+      slide's animations rewrites its timing, so emphasis there is dropped), effects starting with or after the one before
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
       the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)

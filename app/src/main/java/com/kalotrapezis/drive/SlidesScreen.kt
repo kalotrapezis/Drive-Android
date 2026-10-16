@@ -132,6 +132,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
     var ribbonTab by remember { mutableStateOf("Slide") }
+    var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
+    LaunchedEffect(ribbonTab, item) { effectOptions = false }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
     LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Slide", "Insert")) ribbonTab = "Selection" }
     /** [a] put on the chosen slide, then chosen. */
@@ -144,8 +146,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid; val id = item ?: return
         change(e.copy(added = e.added + (uid to e.added[uid].orEmpty().mapNotNull { if (it.id == id) f(it) else it })))
     }
-    /** Item [id] of slide [i] as it is now (a finger's drag starts from it); one in a group: null, it moves with the group. */
-    fun current(e: SlidesEdit.Edit, i: Int, id: String): SlideItem? = deck?.let { d -> SlidesEdit.slide(d, e, e.order[i]).items.lastOrNull { it.anim == id }?.takeIf { !it.grouped } }
+    /** Item [id] of slide [i] as it is now, a group as its bounds (a finger's drag starts from it). */
+    fun current(e: SlidesEdit.Edit, i: Int, id: String): SlideItem? = deck?.let { d -> SlidesEdit.box(SlidesEdit.slide(d, e, e.order[i]), id) }
     /** The chosen item moved or sized: [f] gives its x, y, w, h from where it is. */
     fun reframe(f: (SlideItem) -> List<Float>) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return
@@ -195,14 +197,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Selection" -> {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
-                if (a == null && it0 is SlideItem.Shape && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
+                if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
                     Swatches(w, R.drawable.ic_format_color_fill, "Fill", SLIDE_COLOURS) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SLIDE_COLOURS) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", SLIDE_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
                 }
                 // moved, made bigger or smaller (the arrows a step a press, for where a finger is not precise); what was put on it here, deleted
-                if (it0 != null && !it0.grouped) {
+                if (it0 != null) {
                     val step = (deck?.width ?: 720f) / 40
                     RibbonButton("Left", w, R.drawable.ic_chevron_left) { reframe { listOf(it.x - step, it.y, it.w, it.h) } }
                     RibbonButton("Right", w, R.drawable.ic_chevron_right) { reframe { listOf(it.x + step, it.y, it.w, it.h) } }
@@ -214,8 +216,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) {
                     val id = item ?: return@RibbonButton
                     // its animation goes with it (the slide's timing then names only what is there)
-                    val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { st -> st.effects.map { it.target to it.kind } }
-                    val anims = if (list.any { it.first == id }) e.anims + (uid to list.filter { it.first != id }) else e.anims
+                    val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { it.effects }
+                    val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
                     change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
                         else e.copy(removed = e.removed + (uid to id), anims = anims))
                     item = null; WriterLog.i("Slides: an item deleted")
@@ -245,34 +247,65 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
             "Transitions" -> {
-                // how this slide comes in when presenting; Play shows it from the slide before
-                val now = sl?.transition?.kind ?: ""
+                // how this slide comes in when presenting; Options: its side and speed; Play shows it from the slide before
+                val now = sl?.transition
                 val kinds = listOf("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", "Cut" to "cut")
-                for ((label, kind) in kinds) RibbonButton(label, w, on = now == kind) { change(e.copy(transitions = e.transitions + (uid to kind))); WriterLog.i("Slides: transition $kind") }
-                // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
-                RibbonButton("Apply to all", w, enabled = kinds.any { it.second == now }) { change(e.copy(transitions = e.transitions + e.order.associate { it.uid to now })) }
-                RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
+                fun set(t: SlideTransition) { change(e.copy(transitions = e.transitions + (uid to t))); WriterLog.i("Slides: transition ${t.kind} ${t.dir} ${t.ms}") }
+                if (effectOptions && now != null) {
+                    IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                    if (now.kind in setOf("push", "wipe", "cover", "pull"))
+                        for ((label, d) in listOf("From the right" to "l", "From the left" to "r", "From below" to "u", "From above" to "d"))
+                            RibbonButton(label, w, on = (now.dir ?: "l") == d) { set(now.copy(dir = d)) }
+                    for ((label, ms) in listOf("Fast" to 500, "Medium" to 750, "Slow" to 1000)) RibbonButton(label, w, on = now.ms == ms) { set(now.copy(ms = ms)) }
+                } else {
+                    for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, now?.ms ?: 750)) }
+                    RibbonButton("Options", w, R.drawable.ic_tune, enabled = now != null) { effectOptions = true }
+                    // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
+                    RibbonButton("Apply to all", w, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
+                    RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
+                }
             }
             "Animations" -> {
-                // the chosen item's entrance, each on its own click, in the slide's order
-                val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { st -> st.effects.map { it.target to it.kind } }
+                // the chosen item's entrance and exit, each on its own click, in the slide's order; Options: side and speed
+                val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { it.effects }
                 val id = item
-                if (id == null) Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                else if (sl?.items?.lastOrNull { it.anim == id }?.grouped == true) Text("In a group: it comes in with its group", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                else {
-                    val k = list.indexOfFirst { it.first == id }
-                    fun set(to: List<Pair<String, String>>) { change(e.copy(anims = e.anims + (uid to to))); WriterLog.i("Slides: ${to.size} animations on a slide") }
-                    Text(if (k >= 0) "Click ${k + 1} of ${list.size}" else "No animation", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                    for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
-                        RibbonButton(label, w, on = if (k < 0) kind == null else list[k].second == kind) {
-                            set(if (kind == null) list.filter { it.first != id } else if (k >= 0) list.toMutableList().also { it[k] = id to kind } else list + (id to kind))
+                fun set(to: List<SlideEffect>) { change(e.copy(anims = e.anims + (uid to to))); WriterLog.i("Slides: ${to.size} animations on a slide") }
+                val inK = list.indexOfFirst { it.target == id && !it.exit }; val outK = list.indexOfFirst { it.target == id && it.exit }
+                /** The item's entrance ([exit] false) or exit made [kind] (null: none), in its place in the clicks or last. */
+                fun choose(exit: Boolean, kind: String?) {
+                    val k = if (exit) outK else inK; val id2 = id ?: return
+                    val old = list.getOrNull(k)
+                    val fx = kind?.let { SlideEffect(id2, it, old?.from ?: 'd', 0, old?.ms ?: 500, exit) }
+                    set(when { fx == null -> list.filterIndexed { i, _ -> i != k }; k >= 0 -> list.toMutableList().also { it[k] = fx }; else -> list + fx })
+                }
+                when {
+                    id == null -> Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                    effectOptions && (inK >= 0 || outK >= 0) -> {
+                        IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                        // the side a fly comes from (or goes to), and how long each of the item's effects takes
+                        fun all(f: (SlideEffect) -> SlideEffect) = set(list.map { if (it.target == id) f(it) else it })
+                        val mineNow = list.filter { it.target == id }
+                        if (mineNow.any { it.kind == "fly" }) for ((label, d) in listOf("Bottom" to 'd', "Top" to 'u', "Left" to 'l', "Right" to 'r'))
+                            RibbonButton(label, w, on = mineNow.first { it.kind == "fly" }.from == d) { all { if (it.kind == "fly") it.copy(from = d) else it } }
+                        for ((label, ms) in listOf("Fast" to 500, "Medium" to 1000, "Slow" to 2000)) RibbonButton(label, w, on = mineNow.first().ms == ms) { all { it.copy(ms = ms) } }
+                    }
+                    else -> {
+                        val first = listOf(inK, outK).filter { it >= 0 }.minOrNull() ?: -1
+                        Text(if (first >= 0) "Click ${first + 1} of ${list.size}" else "No animation", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                        Text("In", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
+                        for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
+                            RibbonButton(label, w, on = if (inK < 0) kind == null else list[inK].kind == kind) { choose(false, kind) }
+                        Text("Out", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
+                        for ((label, kind) in listOf("None" to null, "Disappear" to "appear", "Fade out" to "fade", "Fly out" to "fly"))
+                            RibbonButton(label, w, on = if (outK < 0) kind == null else list[outK].kind == kind) { choose(true, kind) }
+                        RibbonButton("Options", w, R.drawable.ic_tune, enabled = first >= 0) { effectOptions = true }
+                        if (first >= 0) {
+                            RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = first > 0) { set(list.toMutableList().apply { add(first - 1, removeAt(first)) }) }
+                            RibbonButton("Later", w, R.drawable.ic_keyboard_arrow_down, enabled = first < list.lastIndex) { set(list.toMutableList().apply { add(first + 1, removeAt(first)) }) }
                         }
-                    if (k >= 0) {
-                        RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = k > 0) { set(list.toMutableList().apply { add(k - 1, removeAt(k)) }) }
-                        RibbonButton("Later", w, R.drawable.ic_keyboard_arrow_down, enabled = k < list.lastIndex) { set(list.toMutableList().apply { add(k + 1, removeAt(k)) }) }
+                        RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
                     }
                 }
-                RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
             }
         }
     }
@@ -371,14 +404,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         }
                                     })
                                 // what is chosen: an outline, and (put on it here) the handle its size is dragged from
-                                val sel = if (editing && chosen == i && item != null) s.items.lastOrNull { it.anim == item } else null
+                                val sel = if (editing && chosen == i) item?.let { SlidesEdit.box(s, it) } else null
                                 sel?.let { a -> Canvas(Modifier.matchParentSize()) {
                                     val k = size.width / d.width
                                     drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
-                                    if (!a.grouped) {
-                                        val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
-                                        drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
-                                    }
+                                    val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
+                                    drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                                 } }
                                 }
                                 if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
@@ -409,7 +440,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         }
                                     }
                                 }
-                                val scroll = remember(shown, item) { androidx.compose.foundation.ScrollState(0) }
+                                val scroll = remember(shown, item, effectOptions) { androidx.compose.foundation.ScrollState(0) }
                                 Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                     if (e != null) SlideRibbon(shown, c, e, w)
                                 }
@@ -579,31 +610,42 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
         }
     }
     fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
-    /** An item's look now: hidden until its click, then appearing, fading in or flying in from its side. */
+    /**
+     * An item's look now: hidden until its entrance's click, then appearing, fading in or flying in from its side; an
+     * exit the other way (disappearing, fading out, flying out to its side), hidden after it.
+     */
     fun look(sl: Slide, p: Int): (SlideItem) -> FloatArray? {
-        val targets = HashMap<String, Pair<Int, SlideEffect>>()
-        sl.steps.forEachIndexed { g, st -> st.effects.forEach { e -> targets.putIfAbsent(e.target, g to e) } }
+        val mine = HashMap<String, MutableList<Pair<Int, SlideEffect>>>()
+        sl.steps.forEachIndexed { g, st -> st.effects.forEach { e -> mine.getOrPut(e.target) { ArrayList() } += g to e } }
         val done = if (p == page) step else sl.steps.size
         val play = if (p == page) playing else null
+        val shown = floatArrayOf(1f, 0f, 0f)
         return { item ->
-            val (g, e) = item.anim?.let(targets::get) ?: (null to null)
-            when {
-                g == null || e == null || g < done -> floatArrayOf(1f, 0f, 0f)
-                play?.first == g -> {
-                    val t = ((ms(play.second) - e.delay).toFloat() / e.ms.coerceAtLeast(1))
-                    if (t < 0f) null else {
-                        val k = t.coerceAtMost(1f); val ease = 1 - (1 - k) * (1 - k)
-                        when (e.kind) {
-                            "appear" -> floatArrayOf(1f, 0f, 0f)
-                            "fly" -> when (e.from) {
-                                'l' -> floatArrayOf(1f, -(item.x + item.w) * (1 - ease), 0f); 'r' -> floatArrayOf(1f, (deck.width - item.x) * (1 - ease), 0f)
-                                'u' -> floatArrayOf(1f, 0f, -(item.y + item.h) * (1 - ease)); else -> floatArrayOf(1f, 0f, (deck.height - item.y) * (1 - ease))
+            val list = item.anim?.let(mine::get)
+            if (list == null) shown else {
+                // before its first effect: hidden if that brings it in, else there
+                var r: FloatArray? = if (list.first().second.exit) shown else null
+                for ((g, e) in list) {
+                    if (g < done) { r = if (e.exit) null else shown; continue }
+                    if (play?.first == g) {
+                        val t = (ms(play.second) - e.delay).toFloat() / e.ms.coerceAtLeast(1)
+                        if (t >= 0f) {
+                            val k = t.coerceAtMost(1f)
+                            // an entrance eases in to where it stands; an exit eases out from there
+                            val away = if (e.exit) k * k else (1 - k) * (1 - k)
+                            r = when (e.kind) {
+                                "appear" -> if (e.exit) null else shown
+                                "fly" -> when (e.from) {
+                                    'l' -> floatArrayOf(1f, -(item.x + item.w) * away, 0f); 'r' -> floatArrayOf(1f, (deck.width - item.x) * away, 0f)
+                                    'u' -> floatArrayOf(1f, 0f, -(item.y + item.h) * away); else -> floatArrayOf(1f, 0f, (deck.height - item.y) * away)
+                                }
+                                else -> floatArrayOf(if (e.exit) 1 - k else k, 0f, 0f)
                             }
-                            else -> floatArrayOf(k, 0f, 0f)
                         }
                     }
+                    break
                 }
-                else -> null
+                r
             }
         }
     }

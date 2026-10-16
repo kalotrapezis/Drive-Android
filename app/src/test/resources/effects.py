@@ -12,6 +12,11 @@ s = p.slides.add_slide(p.slide_layouts[6])
 box = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1), Inches(1), Inches(4), Inches(2)); box.text = "Fades in"
 star = s.shapes.add_shape(MSO_SHAPE.STAR_5_POINT, Inches(6), Inches(4), Inches(2.5), Inches(2.5))
 ids = (box.shape_id, star.shape_id)
+# a group of two shapes, for choosing, moving and colouring a group as a whole
+s = p.slides.add_slide(p.slide_layouts[6])
+g = s.shapes.add_group_shape()
+g.shapes.add_shape(MSO_SHAPE.OVAL, Inches(1), Inches(1), Inches(2), Inches(2)).text = "One"
+g.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(4), Inches(2), Inches(2), Inches(1)).text = "Two"
 p.save(out)
 def effect(n, spid, preset, sub, extra):
     return (f'<p:par><p:cTn id="{n}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="{n+1}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'

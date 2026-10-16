@@ -21,8 +21,8 @@ internal object SlidesEdit {
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
         val added: Map<Int, List<Added>> = emptyMap(),
         /** (slide uid, shape id) → its looks */ val looks: Map<Pair<Int, String>, Look> = emptyMap(),
-        /** a slide's transition as chosen: "" none, else PowerPoint's name (fade, push, wipe, cover, pull, cut) */ val transitions: Map<Int, String> = emptyMap(),
-        /** a slide's click animations as chosen, in their order: each item's id and its entrance (appear, fade, fly) */ val anims: Map<Int, List<Pair<String, String>>> = emptyMap(),
+        /** a slide's transition as chosen: its kind "" none, else PowerPoint's name (fade, push, wipe, cover, pull, cut), its side and length */ val transitions: Map<Int, SlideTransition> = emptyMap(),
+        /** a slide's click animations as chosen, each its own click in their order: entrances and exits (appear, fade, fly) */ val anims: Map<Int, List<SlideEffect>> = emptyMap(),
         /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap(),
         /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
@@ -36,17 +36,27 @@ internal object SlidesEdit {
         return if (added.any { it.id == id }) edit.copy(added = edit.added + (uid to added.map { if (it.id == id) it.copy(x = x, y = y, w = w, h = h) else it }))
         else edit.copy(frames = edit.frames + ((uid to id) to listOf(x, y, w, h)))
     }
-    /** [item] moved or sized to [f] (x, y, w, h). */
-    private fun moved(item: SlideItem, f: List<Float>?): SlideItem {
-        if (f == null || item.grouped) return item
-        val (x, y, w, h) = f
+    /** Where item [id] is on [s]: the item, or for a group its items' bounds (a box with no shape of its own, never drawn). */
+    fun box(s: Slide, id: String): SlideItem? {
+        val mine = s.items.filter { it.anim == id }
+        if (mine.size <= 1) return mine.firstOrNull()
+        val x = mine.minOf { it.x }; val y = mine.minOf { it.y }
+        return SlideItem.Shape(x, y, mine.maxOf { it.x + it.w } - x, mine.maxOf { it.y + it.h } - y, 0f, null, null).also { it.anim = id; it.grouped = true }
+    }
+    /** [item] moved or sized to [f] (x, y, w, h); in a group, [group] (the group's bounds) is what moved, the item with it. */
+    private fun moved(item: SlideItem, f: List<Float>?, group: SlideItem?): SlideItem {
+        if (f == null) return item
+        val (x, y, w, h) = if (group == null) f else {
+            val gx = if (group.w > 0) f[2] / group.w else 1f; val gy = if (group.h > 0) f[3] / group.h else 1f
+            listOf(f[0] + (item.x - group.x) * gx, f[1] + (item.y - group.y) * gy, item.w * gx, item.h * gy)
+        }
         val kx = if (item.w > 0) w / item.w else 1f; val ky = if (item.h > 0) h / item.h else 1f
         return when (item) {
             is SlideItem.Shape -> SlideItem.Shape(x, y, w, h, item.rotation, item.shape, item.text, item.paths, item.flipH, item.flipV, item.gradient, item.id, item.hint)
             is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
-        }.also { it.anim = item.anim }
+        }.also { it.anim = item.anim; it.grouped = item.grouped }
     }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
@@ -73,9 +83,10 @@ internal object SlidesEdit {
             (if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
             else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)).also { it.anim = a.id } // what it is chosen and animated by
         }
-        val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
-        val transition = edit.transitions[e.uid]?.let { k -> if (k.isEmpty()) null else SlideTransition(k, null, 750) } ?: s.transition.takeIf { e.uid !in edit.transitions }
-        val steps = edit.anims[e.uid]?.map { (id, kind) -> SlideStep(false, listOf(SlideEffect(id, kind, 'd', 0, 500))) } ?: s.steps
+        val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
+        val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
+        val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() } ?: s.transition.takeIf { e.uid !in edit.transitions }
+        val steps = edit.anims[e.uid]?.map { SlideStep(false, listOf(it.copy(delay = 0))) } ?: s.steps
         return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
     }
     /** [item] in the looks chosen for it (a shape: its fill, border, words' colour; anything else as it is). */
@@ -131,7 +142,7 @@ internal object SlidesEdit {
 
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
-        looks: Map<String, Look> = emptyMap(), transition: String? = null, anims: List<Pair<String, String>>? = null, frames: Map<String, List<Float>> = emptyMap(),
+        looks: Map<String, Look> = emptyMap(), transition: SlideTransition? = null, anims: List<SlideEffect>? = null, frames: Map<String, List<Float>> = emptyMap(),
         removed: Set<String> = emptySet()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
@@ -186,8 +197,9 @@ internal object SlidesEdit {
             el.kids().filter { it.localName in fills }.forEach { el.removeChild(it) }
             el.insertBefore(fill(c), el.kids().firstOrNull { it.localName in after })
         }
-        for ((id, l) in looks) {
-            val sp = shapes.firstOrNull { idOf(it) == id } ?: continue
+        // a group's looks: each shape in it
+        fun named(id: String) = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }?.parentNode?.parentNode as? Element
+        for ((id, l) in looks) for (sp in shapes.filter { idOf(it) == id }.ifEmpty { named(id)?.takeIf { it.localName == "grpSp" }?.getElementsByTagNameNS(P, "sp")?.let { g -> (0 until g.length).map { g.item(it) as Element } }.orEmpty() }) {
             val spPr = sp.kids().firstOrNull { it.localName == "spPr" } ?: continue
             l.fill?.let { refill(spPr, it, setOf("ln", "effectLst", "effectDag", "scene3d", "sp3d", "extLst")) }
             l.line?.let { c ->
@@ -226,43 +238,59 @@ internal object SlidesEdit {
         fun place(el: Element, before: Set<String>) { root.insertBefore(doc.importNode(el, true), root.kids().firstOrNull { it.localName in before }) }
         if (transition != null) {
             root.kids().filter { it.localName == "transition" || (it.localName == "AlternateContent" && it.getElementsByTagNameNS(P, "transition").length > 0) }.forEach { root.removeChild(it) }
-            if (transition.isNotEmpty()) place(OfficeFormats.parse("""<p:transition xmlns:p="$P" spd="med"><p:$transition/></p:transition>""".toByteArray()).documentElement, setOf("timing", "extLst"))
+            val spd = when { transition.ms <= 500 -> "fast"; transition.ms >= 1000 -> "slow"; else -> "med" }
+            val dir = transition.dir?.takeIf { transition.kind in setOf("push", "wipe", "cover", "pull") }?.let { """ dir="$it"""" }.orEmpty()
+            if (transition.kind.isNotEmpty()) place(OfficeFormats.parse("""<p:transition xmlns:p="$P" spd="$spd"><p:${transition.kind}$dir/></p:transition>""".toByteArray()).documentElement, setOf("timing", "extLst"))
         }
         if (anims != null) {
             root.kids().filter { it.localName == "timing" }.forEach { root.removeChild(it) }
             // only what is still on the slide (a deleted shape's animation would make PowerPoint call the file damaged)
             val ids = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { (l.item(it) as Element).getAttribute("id") } }.toSet()
-            val kept = anims.filter { it.first in ids }.distinctBy { it.first }
-            val sps = kept.map { it.first }.filter { id -> shapes.any { idOf(it) == id } }.toSet()
+            val kept = anims.filter { it.target in ids }
+            val sps = kept.map { it.target }.distinct().filter { id -> shapes.any { idOf(it) == id } }.toSet()
             if (kept.isNotEmpty()) place(OfficeFormats.parse(timing(kept, sps).toByteArray()).documentElement, setOf("extLst"))
         }
         return xml(doc)
     }
 
     /**
-     * A slide's timing for [anims], PowerPoint's own XML: each an entrance on its own click — appear (preset 1), fade
-     * (10), fly in from the bottom (2, subtype 4); [sps] the targets that are shapes (they take a build entry).
+     * A slide's timing for [anims], PowerPoint's own XML: each on its own click, an entrance or an exit — appear or
+     * disappear (preset 1), fade (10), fly (2, its subtype the side: 1 top, 2 right, 4 bottom, 8 left); [sps] the
+     * targets that are shapes (they take a build entry).
      */
-    // shortcut: rewrites the slide's whole timing, so its emphasis and exit effects (not read here) are lost when its animations are changed
-    fun timing(anims: List<Pair<String, String>>, sps: Set<String>): String {
+    // shortcut: rewrites the slide's whole timing, so its emphasis effects (not read here) are lost when its animations are changed
+    fun timing(anims: List<SlideEffect>, sps: Set<String>): String {
         var n = 2
         fun id() = ++n
         fun tgt(s: String) = """<p:tgtEl><p:spTgt spid="$s"/></p:tgtEl>"""
-        val clicks = anims.joinToString("") { (s, kind) ->
-            val (preset, sub) = when (kind) { "appear" -> 1 to 0; "fly" -> 2 to 4; else -> 10 to 0 }
+        // a shape's builds: one group a effect on it (its entrance 0, its exit 1…), each listed in the build list
+        val groups = ArrayList<Pair<String, Int>>()
+        val clicks = anims.joinToString("") { fx ->
+            val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
+            val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
+            val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }; else -> 10 to 0 }
             val a = id(); val b = id(); val c = id()
-            val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>"""
-            val move = when (kind) {
+            // shown at the start of an entrance; hidden at the end of an exit (at once for disappear)
+            val at = if (fx.exit && fx.kind != "appear") ms - 1 else 0
+            val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="$at"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="${if (fx.exit) "hidden" else "visible"}"/></p:to></p:set>"""
+            val move = when (fx.kind) {
                 "appear" -> ""
-                "fly" -> listOf("ppt_x" to ("#ppt_x" to "#ppt_x"), "ppt_y" to ("1+#ppt_h/2" to "#ppt_y")).joinToString("") { (attr, v) ->
-                    """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="500" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="${v.first}"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="${v.second}"/></p:val></p:tav></p:tavLst></p:anim>""" }
-                else -> """<p:animEffect transition="in" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="500"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
+                "fly" -> {
+                    // off the slide on its side, and where it stands
+                    val edge = when (fx.from) { 'l' -> "ppt_x" to "0-#ppt_w/2"; 'r' -> "ppt_x" to "1+#ppt_w/2"; 'u' -> "ppt_y" to "0-#ppt_h/2"; else -> "ppt_y" to "1+#ppt_h/2" }
+                    listOf("ppt_x", "ppt_y").joinToString("") { attr ->
+                        val there = if (attr == edge.first) edge.second else "#$attr"
+                        val (v0, v1) = if (fx.exit) "#$attr" to there else there to "#$attr"
+                        """<p:anim calcmode="lin" valueType="num"><p:cBhvr additive="base"><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>$attr</p:attrName></p:attrNameLst></p:cBhvr><p:tavLst><p:tav tm="0"><p:val><p:strVal val="$v0"/></p:val></p:tav><p:tav tm="100000"><p:val><p:strVal val="$v1"/></p:val></p:tav></p:tavLst></p:anim>"""
+                    }
+                }
+                else -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
             }
             """<p:par><p:cTn id="$a" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:par><p:cTn id="$b" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>""" +
-                """<p:par><p:cTn id="$c" presetID="$preset" presetClass="entr" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"0\"" else ""} nodeType="clickEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>""" +
+                """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="clickEffect"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>""" +
                 "</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>"
         }
-        val build = sps.takeIf { it.isNotEmpty() }?.joinToString("", "<p:bldLst>", "</p:bldLst>") { """<p:bldP spid="$it" grpId="0" animBg="1"/>""" }.orEmpty()
+        val build = groups.takeIf { it.isNotEmpty() }?.joinToString("", "<p:bldLst>", "</p:bldLst>") { (spid, g) -> """<p:bldP spid="$spid" grpId="$g" animBg="1"/>""" }.orEmpty()
         return """<p:timing xmlns:p="$P"><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>$clicks</p:childTnLst></p:cTn>""" +
             """<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst>$build</p:timing>"""
     }

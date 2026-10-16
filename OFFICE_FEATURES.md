@@ -426,7 +426,8 @@ Each is done on the emulator; tick when checked on the real phone.
       emulator 16 Oct; Bullets/Numbering on a line with words switch it — fixed — [ ] on a new, empty list line Numbering
       gives a second-level bullet: the editor library's toggle)
 - [ ] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches
-- [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count)
+- [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count) — Find,
+      Replace and Replace all checked on the emulator 16 Oct (the replaced words now keep their bold, italic… — fixed)
 - [x] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
       (checked on the emulator 16 Oct, AutoSave off: the question, then the typed word back after the app was killed)
 - [ ] Text size −/+ and zoom; undo/redo

@@ -1616,7 +1616,8 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     "pPr" -> Unit
                     "r" -> run(e, link, runs, ::breakLine)
                     "hyperlink" -> {
-                        val url = e.attr(R, "id")?.let { links[it] }
+                        // a link inside the document: to a bookmark (#name), as Word's contents' entries are
+                        val url = e.attr(R, "id")?.let { links[it] } ?: e.attr(W, "anchor")?.let { "#$it" }
                         if (url == null) notes += "links inside the document"
                         content(e, url ?: link)
                     }
@@ -2044,7 +2045,7 @@ private object DocxWriter {
             ids += id
             styles = styles.replace("</w:styles>", DOCX_BUILTIN.getValue(id).let { d -> if (normal != null) d.replace("NORMAL", normal) else d.replace(Regex("""<w:(basedOn|next) w:val="NORMAL"/>"""), "") } + "</w:styles>")
         }
-        val hyperlinkId = if (allParas.any { p -> p.runs.any { it.link != null } })
+        val hyperlinkId = if (allParas.any { p -> p.runs.any { it.link != null && !it.link.startsWith("#") } })
             styleId("hyperlink", "Hyperlink") { id -> """<w:style w:type="character" w:styleId="$id"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style>""" } else null
         parts[dir + "styles.xml"] = styles.toByteArray()
 
@@ -2260,7 +2261,9 @@ private object DocxWriter {
                 var end = k
                 while (end < runs.size && runs[end].link == link && runs[end].control == runs[k].control) end++
                 controlTo(runs[k].control)
-                if (link != null) { changeTo(null); citeTo(null); body.append("""<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
+                // a link inside the document (#name: a bookmark, as the contents' entries) goes by its anchor, not a relationship
+                if (link != null) { changeTo(null); citeTo(null); body.append(if (link.startsWith("#")) """<w:hyperlink w:anchor="${OfficeFormats.esc(link.substring(1))}" w:history="1">"""
+                    else """<w:hyperlink r:id="${linkIds.getOrPut(link) { newRel(REL_HYPERLINK, link, true) }}">""") }
                 for (r in runs.subList(k, end)) {
                     if (r.comments != openComments.toList() || link == null && r.cite != cite) changeTo(null)
                     commentMarks(r.comments); if (link == null) citeTo(r.cite); changeTo(r.change)
@@ -2269,7 +2272,7 @@ private object DocxWriter {
                         val list = if (n.end) endList else footList
                         list += n
                         body.append("""<w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:${if (n.end) "endnote" else "footnote"}Reference w:id="${list.size}"/></w:r>""")
-                    } ?: body.append(run(r, if (link != null) hyperlinkId else null, doc.basePt))
+                    } ?: body.append(run(r, if (link != null && !link.startsWith("#")) hyperlinkId else null, doc.basePt))
                 }
                 changeTo(null)
                 if (link != null) body.append("</w:hyperlink>")
@@ -2738,6 +2741,9 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             if (!isHeading || !plainParagraph(style.parent, true)) keepStyle = style.parent // the exact one: Standard and Text body space differently
             style.masterPage?.let { if (it.isNotEmpty()) parts += "master" to it }
         } else if (!isHeading || !plainParagraph(styleName, true)) keepStyle = styleName
+        // its bookmarks (what links inside the document go to, as the contents' entries): kept on it
+        (listOf("bookmark", "bookmark-start").flatMap { n -> p.getElementsByTagNameNS(TEXT, n).let { l -> (0 until l.length).mapNotNull { (l.item(it) as Element).attr(TEXT, "name") } } })
+            .takeIf { it.isNotEmpty() }?.let { parts += BOOKMARKS to it.joinToString(" ") }
         val keep = DocKeep(keepStyle, parts, listSource.takeIf { list != null }).takeIf { !it.isEmpty }
         if (isHeading && p.attr(TEXT, "is-list-header") == null && p.parentNode.let { it is Element && it.localName == "list-item" }) notes += "numbered headings"
         val runs = CommentedRuns(openComments)
@@ -2755,7 +2761,8 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
                         "span" -> content(e, e.attr(TEXT, "style-name")?.let { charStyle(it, look, inLink) } ?: look, inLink)
                         "a" -> {
                             val href = e.attr(XLINK, "href")
-                            if (href == null || href.startsWith("#")) { notes += "links inside the document"; content(e, look, inLink) }
+                            // one inside the document (#name: to a bookmark, as the contents' entries) is kept as it is
+                            if (href == null) { notes += "links inside the document"; content(e, look, inLink) }
                             else content(e, look.copy(link = href), true)
                         }
                         // A citation: the source it holds, its letters tagged with it.
@@ -2987,10 +2994,12 @@ private object OdtWriter {
         fun paragraphXml(p: DocPara): String = buildString {
             val tag = if (p.heading > 0) "text:h" else "text:p"
             val parent = p.keep?.style?.takeIf { p.heading == 0 || !plainNamed(it) } ?: if (p.heading > 0) "Heading_20_${p.heading}" else body
-            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" && it.first != OdtSections.PART })
+            val style = paraStyle(parent, p.align, p.keep?.parts.orEmpty().filter { it.first != "empty" && it.first != OdtSections.PART && it.first != BOOKMARKS })
             append("<$tag text:style-name=\"$style\"")
             if (p.heading > 0) append(" text:outline-level=\"${p.heading}\"")
             append(">")
+            // its bookmarks, where links inside the document go
+            p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.filter { it.isNotEmpty() }?.forEach { append("""<text:bookmark text:name="${OfficeFormats.esc(it)}"/>""") }
             var k = 0
             var prev: String? = null
             val runs = OfficeFormats.tidy(p.runs)

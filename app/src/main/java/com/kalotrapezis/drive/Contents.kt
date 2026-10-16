@@ -6,7 +6,8 @@ import kotlin.math.roundToInt
  * References › Table of contents (asked 2026-09-29): the document's headings (levels 1–3), each with its page, in the
  * file's own contents styles — Word's TOC 1–3 and TOC Heading, LibreOffice's Contents 1–3 and Contents Heading — a dot
  * leader to the number at the text's right edge. Plain paragraphs, not a field: Word and LibreOffice show it exactly as
- * written, and Update finds it again by its styles.
+ * written, and Update finds it again by its styles. Each entry links to its heading's bookmark (_Toc…, as Word names
+ * them): a click there goes to it (16 Oct: clickable entries).
  */
 internal object Contents {
     fun headingStyle(kind: OfficeKind) = if (kind == OfficeKind.Docx) "TOCHeading" else "Contents_20_Heading"
@@ -27,15 +28,32 @@ internal object Contents {
             else "child" to """<style:tab-stops><style:tab-stop style:position="${OdtWriterFmt.pt(textWidth - 0.5f)}" style:type="right" style:leader-style="dotted" style:leader-text="."/></style:tab-stops>"""
         val title = DocPara(listOf(DocRun("Contents")), keep = DocKeep(style = headingStyle(kind)))
         val entries = doc.paras.withIndex().filter { (i, p) -> p.heading in 1..3 && p.text.isNotBlank() && (skip == null || i !in skip) }.map { (i, p) ->
-            DocPara(listOf(DocRun(p.text.replace(LINE_BREAK, ' ').replace(OBJECT_MARK.toString(), "").trim() + "\t" + (pages?.getOrNull(i)?.takeIf { it > 0 }?.toString() ?: ""))),
+            DocPara(listOf(DocRun(p.text.replace(LINE_BREAK, ' ').replace(OBJECT_MARK.toString(), "").trim() + "\t" + (pages?.getOrNull(i)?.takeIf { it > 0 }?.toString() ?: ""), link = mark(p)?.let { "#$it" })),
                 keep = DocKeep(style = levelStyle(kind, p.heading), parts = listOf(tab)))
         }
         return listOf(title) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No headings yet — give titles a Heading style (Home › H1–H3)")), keep = DocKeep(style = levelStyle(kind, 1)))) }
     }
 
+    /** A heading's bookmark for the contents to link to: its own _Toc one, if it has one. */
+    fun mark(p: DocPara): String? = p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.firstOrNull { it.startsWith("_Toc") }
+    /** [doc] with a _Toc bookmark on each heading the contents list (a new name for those without one). */
+    fun marked(doc: OfficeDoc, skip: IntRange?): OfficeDoc {
+        val used = doc.paras.flatMap { p -> p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ').orEmpty() }.toMutableSet()
+        var n = 100000000
+        return doc.copy(paras = doc.paras.mapIndexed { i, p ->
+            if (p.heading !in 1..3 || p.text.isBlank() || (skip != null && i in skip) || mark(p) != null) p else {
+                val name = generateSequence { "_Toc${n++}" }.first { it !in used }.also { used += it }
+                val parts = p.keep?.parts.orEmpty().let { ps -> val k = ps.indexOfFirst { it.first == BOOKMARKS }
+                    if (k < 0) ps + (BOOKMARKS to name) else ps.toMutableList().also { it[k] = BOOKMARKS to "${it[k].second} $name" } }
+                p.copy(keep = (p.keep ?: DocKeep()).copy(parts = parts))
+            }
+        })
+    }
+
     /** [doc] with its contents put at paragraph [at] (or, if it has them, replacing them), numbered from its pages. */
-    fun insert(doc: OfficeDoc, kind: OfficeKind, styles: DocStyles, at: Int, layout: (OfficeDoc, IntArray) -> Unit): OfficeDoc {
-        val old = find(doc, kind)
+    fun insert(original: OfficeDoc, kind: OfficeKind, styles: DocStyles, at: Int, layout: (OfficeDoc, IntArray) -> Unit): OfficeDoc {
+        val old = find(original, kind)
+        val doc = marked(original, old)
         fun with(entries: List<DocPara>): OfficeDoc {
             val paras = doc.paras.toMutableList()
             if (old != null) { repeat(old.last - old.first + 1) { paras.removeAt(old.first) }; paras.addAll(old.first, entries) }

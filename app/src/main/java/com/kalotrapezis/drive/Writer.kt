@@ -4198,6 +4198,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             }
         } }
+        // A link inside the document at the cursor (a contents' entry, a cross-reference): a chip that goes to its bookmark (asked 16 Oct: clickable contents)
+        val inside = state.selectedLinkUrl?.takeIf { it.startsWith("#") && loaded }
+        // the bookmarked paragraph and its words, found once a link is reached (the document is built for it, not every frame)
+        val goal = remember(inside) { inside?.let { url -> current().paras.withIndex().firstOrNull { (_, p) -> p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.contains(url.substring(1)) == true } } }
+        val target = goal?.index
+        if (target != null && message == null) Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp).clip(CircleShape).clickable {
+                WriterLog.i("went to a bookmark (paragraph $target)")
+                WriterBridge.paragraphStarts(state.annotatedString.text, state.toRichTextDocument()).getOrNull(target)?.let { state.selection = androidx.compose.ui.text.TextRange(it); goText = it to System.nanoTime() }
+            }) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_link), contentDescription = null, modifier = Modifier.size(18.dp).padding(end = 6.dp))
+                Text("Go to “${goal.value.text.take(40).trim()}”", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         message?.let { m ->
             LaunchedEffect(m) { delay(2800); message = null }
             Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {

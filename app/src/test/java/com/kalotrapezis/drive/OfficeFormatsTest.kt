@@ -532,6 +532,27 @@ class OfficeFormatsTest {
             val updated = Contents.insert(more, kind, styles, more.paras.size, fake)
             assertEquals(kind.name, 1, updated.paras.count { it.text == "Contents" })
             assertEquals(kind.name, "Discussion\t12", updated.paras[5].text)
+            // Each entry a link to its heading's bookmark, kept by the file (asked 16 Oct: clickable contents)
+            val linked = OfficeFormats.read(OfficeFormats.write(updated, kind), kind)
+            for (k in 2..5) {
+                val link = linked.paras[k].runs.first().link
+                assert(link?.startsWith("#_Toc") == true) { "$kind ${linked.paras[k].text}: $link" }
+                val heading = linked.paras.first { p -> p.heading > 0 && p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.contains(link!!.substring(1)) == true }
+                assertEquals(kind.name, linked.paras[k].text.substringBefore('\t'), heading.text)
+            }
+            // LibreOffice follows them: its PDF of the file has links inside it, and its other format keeps them as links to bookmarks
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "c.${kind.extension}").apply { writeBytes(OfficeFormats.write(updated, kind)) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val pdf = String(java.io.File(dir, "c.pdf").readBytes(), Charsets.ISO_8859_1)
+                assert(Regex("/Subtype\\s*/Link").findAll(pdf).count() >= 4) { "$kind: LibreOffice's PDF has no links" }
+                val other = if (kind == OfficeKind.Docx) "odt" else "docx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = OfficeFormats.read(java.io.File(dir, "c.$other").readBytes(), if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx)
+                val entry = again.paras.first { it.text.startsWith("Method\t") }
+                assert(entry.runs.any { it.link?.startsWith("#") == true }) { "$kind → $other: ${entry.runs.map { it.link }}" }
+            }
         }
     }
 

@@ -1633,7 +1633,9 @@ internal object OfficePages {
                 r.italic -> span(StyleSpan(Typeface.ITALIC))
             }
             val letters = LetterLooks.of(r.font)
-            if (letters.doubleUnder) span(LetterLooks.SecondLine(false)) else if (r.underline || r.link != null) span(UnderlineSpan())
+            // a link to a page out there in Word's blue and underlined; one inside the document (#: the contents') as plain words, as Word shows it
+            val web = r.link != null && !r.link.startsWith("#")
+            if (letters.doubleUnder) span(LetterLooks.SecondLine(false)) else if (r.underline || web) span(UnderlineSpan())
             if (letters.doubleStrike) span(LetterLooks.SecondLine(true)) else if (r.strike) span(StrikethroughSpan())
             // Capitals: the letters shown as capitals (the file keeps them as typed); small ones a size smaller.
             if (letters.caps || letters.smallCaps) {
@@ -1644,7 +1646,7 @@ internal object OfficePages {
             }
             r.sizePt?.let { span(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
-            (r.color ?: if (r.link != null) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
+            (r.color ?: if (web) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
             // Tracked changes, as Word shows all markup: inserted underlined, deleted struck through, in the author's colour.
             r.change?.let { c -> span(ForegroundColorSpan(0xFF000000.toInt() or TrackChanges.color(c.author))); span(if (c.deleted) StrikethroughSpan() else UnderlineSpan()) }

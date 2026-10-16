@@ -65,4 +65,29 @@ class SheetEditTest {
         history.redo(book)
         assertEquals(5.0, main[0, 0]!!.value); assertEquals(30.0, main[0, 1]!!.value)
     }
+
+    @Test fun `the functions the bar offers`() {
+        // every one is worked out by the engine (none unknown)
+        val ctx = SheetCalc.Context({ _, _, _ -> null })
+        for (f in SheetFunctions.all) {
+            val e = runCatching { SheetCalc.eval("${f.name}(1,1,1)", ctx) }.exceptionOrNull()
+            assertFalse(f.name, e is SheetCalc.Unknown && e.message == f.name)
+        }
+        fun names(t: String, at: Int = t.length) = SheetFunctions.matching(t, at).map { it.name }
+        assertEquals(listOf("SUM", "SUMIF", "SUMIFS", "SUBSTITUTE"), names("su"))
+        assertEquals("SUM", names("=1+su").first())
+        assertTrue("COUNTIF" in names("=countif"))
+        assertTrue("SUMIFS" in names("=IFS")) // inside the name
+        assertEquals(SheetFunctions.all.size, names("=").size)
+        assertEquals(emptyList<String>(), names("=B12")) // a cell, not a function
+        assertEquals(emptyList<String>(), names("12"))
+        assertEquals(emptyList<String>(), names("=SUM(")) // in the brackets: what SUM takes instead
+        assertEquals("SUM", SheetFunctions.inside("=SUM(B3:B12", 11)?.name)
+        assertEquals("IF", SheetFunctions.inside("=IF(SUM(A1), \"(\"", 18)?.name)
+        assertNull(SheetFunctions.inside("=SUM(A1)+", 9))
+        val sum = SheetFunctions.all.first { it.name == "SUM" }
+        assertEquals("=SUM(" to 5, SheetFunctions.insert("su", 2, sum))
+        assertEquals("=1+SUM()*2" to 7, SheetFunctions.insert("=1+su()*2", 5, sum))
+        assertEquals("=TODAY()" to 8, SheetFunctions.insert("=tod", 4, SheetFunctions.all.first { it.name == "TODAY" }))
+    }
 }

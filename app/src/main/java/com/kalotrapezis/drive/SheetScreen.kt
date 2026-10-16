@@ -25,6 +25,14 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -166,6 +174,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var renamingSheet by remember { mutableStateOf(false) }
     var deletingSheet by remember { mutableStateOf(false) }
     var showVersions by remember { mutableStateOf(false) }
+    var fontStrip by remember { mutableStateOf<String?>(null) } // Home › Font's gallery open: the font in use ("" none)
+    var fontChosen by remember { mutableStateOf<FontChoice?>(null) } // the one shown on the cells, one step of Undo
     val barFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     fun leave() { if (history.unsaved > 0) leaving = true else { file?.let { sheetDraft(context, it).delete() }; back() } } // a draft of changes since undone: gone
@@ -561,7 +571,26 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (tabs.isEmpty()) return
         LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in listOf("File", "Home", "Insert", "Formulas", "Data", "View") } ?: "Home" }
         val shown = tab.takeIf { it in tabs } ?: tabs.first()
+        // A group with choices of its own (Borders, Number) takes the ribbon's place, ‹ back (asked 16 Oct, as Page numbers).
+        @Composable fun Strip(name: String) = Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            IconButton(onClick = { group = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+            Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+            val thin = SheetLine(0xFF000000.toInt(), 1f)
+            if (name == "Borders") {
+                                    val keys = targets(s, l); val g2 = box(keys)
+                                    RibbonButton("All", w, R.drawable.ic_border_all) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = true) } }
+                                    RibbonButton("Outside", w, R.drawable.ic_border_outer) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false) } }
+                                    RibbonButton("Bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false, onlyBottom = true) } }
+                                    RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
+                                    RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
+                                    RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
+                                            } else listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
+                .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
+        }
         Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
+                transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (ctx != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
@@ -592,7 +621,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         RibbonButton("Z → A", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, false) }
                         if (view.sort != null) RibbonButton("Clear sort", w) { view.sort = null }
                         if (col in view.pins) RibbonButton("Unpin", w, R.drawable.ic_push_pin) { view.pins.remove(col) }
-                        else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
+                        else RibbonButton("Pin to compare", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f } // beside the others pinned, at the start; the file unchanged
                     }
                     when {
                         shown == "Sheet" -> {
@@ -693,37 +722,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
                                 }
                                 opener("Borders", R.drawable.ic_border_outer)
-                                if (group == "Borders") {
-                                    val keys = targets(s, l); val g2 = box(keys)
-                                    RibbonButton("All", w, R.drawable.ic_border_all) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = true) } }
-                                    RibbonButton("Outside", w, R.drawable.ic_border_outer) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false) } }
-                                    RibbonButton("Bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false, onlyBottom = true) } }
-                                    RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
-                                    RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
-                                    RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
-                                }
                                 RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
                                 RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
                                 RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
                                 opener("Number", R.drawable.ic_functions)
-                                if (group == "Number") listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
-                                    .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
                                 RibbonButton(".0−", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
                                 RibbonButton(".0+", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
                                 RibbonButton("A−", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
                                 Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
                                 RibbonButton("A+", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
-                                opener(now.font ?: "Font", R.drawable.ic_text_box)
-                                if (group == (now.font ?: "Font")) listOf("Calibri", "Arial", "Times New Roman", "Courier New").forEach { f ->
-                                    RibbonButton(f, w, on = now.font == f) { group = null; look { st, _ -> st.copy(font = f) } }
-                                }
+                                RibbonButton(now.font ?: "Font", w, R.drawable.ic_text_box) { group = null; fontChosen = null; fontStrip = now.font.orEmpty() }
                                 RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
                             }
                             copyClear()
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -822,7 +838,50 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             }
         }
         val rs = sheet; val rb = book; val rl = layout
-        if (rs != null && rb != null && rl != null && draft == null && !searching && (header != null || view.range != null || editing)) Ribbon(rs, rb, rl)
+        // The ribbon slides down and up, as Writer's; Home › Font's gallery takes its place (asked 16 Oct, as Page numbers).
+        androidx.compose.animation.AnimatedVisibility(rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
+            enter = SLIDE_IN, exit = SLIDE_OUT) { if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl) }
+        // Typing in the cell bar: the functions for the letters typed (asked 16 Oct), or what the one the cursor is in takes.
+        val d = draft
+        val fns = remember(d?.text, d?.selection) { d?.let { SheetFunctions.matching(it.text, it.selection.min) }.orEmpty() }
+        val within = remember(d?.text, d?.selection) { d?.takeIf { fns.isEmpty() }?.let { SheetFunctions.inside(it.text, it.selection.min) } }
+        androidx.compose.animation.AnimatedVisibility(d != null && (fns.isNotEmpty() || within != null), enter = SLIDE_IN, exit = SLIDE_OUT) {
+            val w = islandContentColor()
+            Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                if (within != null) Text(buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(within.name) }; append("(${within.args})   ")
+                    withStyle(SpanStyle(color = w.copy(alpha = 0.7f))) { append(within.says) }
+                }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                else {
+                    val list = remember(fns.firstOrNull()?.name, fns.size) { androidx.compose.foundation.lazy.LazyListState() }
+                    androidx.compose.foundation.lazy.LazyRow(state = list, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(fns.size, key = { fns[it].name }) { i ->
+                            val f = fns[i]
+                            Column(Modifier.clip(RoundedCornerShape(10.dp)).background(w.copy(alpha = 0.08f)).clickable {
+                                val cur = draft ?: return@clickable
+                                val (t, at) = SheetFunctions.insert(cur.text, cur.selection.min, f)
+                                draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(at))
+                                WriterLog.i("Sheets: function ${f.name} from the row")
+                            }.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                                Text(f.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                Text(f.says, style = MaterialTheme.typography.labelSmall, color = w.copy(alpha = 0.7f), maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(fontStrip != null && rs != null && rb != null && rl != null, enter = SLIDE_IN, exit = SLIDE_OUT) {
+            // a font tapped shows on the cells at once, in place of the one tapped before; ✕ puts the cells back as they were
+            fun unshow() { if (fontChosen != null) { rb?.let { history.undo(it) }; version++; fontChosen = null } }
+            val fonts = remember { (rb?.styles.orEmpty().mapNotNull { it.font } + listOf("Calibri", "Cambria", "Arial", "Times New Roman", "Courier New")).distinct() }
+            DesignGalleryStrip(DesignGallery.Font, fontChosen, cancel = { unshow(); fontStrip = null }, ok = { fontStrip = null; fontChosen = null }, pick = { c ->
+                val s = rs ?: return@DesignGalleryStrip; val b = rb ?: return@DesignGalleryStrip; val l = rl ?: return@DesignGalleryStrip
+                unshow()
+                val changed = SheetLook.change(b, s, targets(s, l)) { st, _ -> st.copy(font = (c as FontChoice).name) }
+                if (changed.isNotEmpty()) { history.apply(b, index, changed); version++; fontChosen = c as FontChoice; WriterLog.i("Sheets: font on ${changed.size} cells") }
+            }, modifier = Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars), fonts = fonts, now = fontStrip)
+        }
         book?.let { b ->
             SheetTabs(b, index, sheet, add = if (editing && b.kind != "csv") ({
                 val name = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } }

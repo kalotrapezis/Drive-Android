@@ -52,8 +52,11 @@ import androidx.compose.ui.window.DialogProperties
  */
 internal enum class DesignGallery(val title: String) {
     StyleSets("Style sets"), Colours("Colours"), Fonts("Fonts"), WordArt("WordArt"), PageNumbers("Page numbers"),
-    HeaderFooter("Header & footer"), Lists("Multilevel list")
+    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font")
 }
+
+/** Home › Font's gallery: a font chosen. */
+internal data class FontChoice(val name: String)
 
 /** A WordArt look: its colour, and Word's effects on its letters. */
 internal data class ArtStyle(val color: Int, val outline: Boolean = false, val shadow: Boolean = false, val glow: Boolean = false)
@@ -114,7 +117,7 @@ internal fun ListScheme.marker(level: Int, n: Int): String {
  */
 @Composable
 internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () -> Unit, ok: () -> Unit, pick: (Any) -> Unit,
-    more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier) {
+    more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier, fonts: List<String> = emptyList(), now: String? = null) {
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
     // The phone (asked 15 Oct): one thin row — smaller cards, Cancel and OK at its ends — and no keyboard over it.
     val phone = LocalConfiguration.current.screenWidthDp < 700
@@ -208,6 +211,13 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     if (layout != HEADER_LAYOUTS.last()) MiniPage(header = hf.header.takeIf { it.isNotEmpty() }?.let { it to hf.headerAlign } ?: num(HeaderFooter.NumberPlace.Header),
                         footer = num(HeaderFooter.NumberPlace.Footer), k = k, also = if (hf.header.isNotEmpty() && hf.number == HeaderFooter.NumberPlace.Header) "1" to hf.numberAlign else null)
                     if (layout == HEADER_LAYOUTS.last()) Text(layout.label, modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
+                } }
+                // Fonts (asked 16 Oct: in the ribbon's place, as Page numbers): each written in itself, the one in use marked.
+                DesignGallery.Font -> fonts.forEach { f -> card(chosen == FontChoice(f) || (chosen == null && f == now), click = { pick(FontChoice(f)) }, f) {
+                    Column(Modifier.align(androidx.compose.ui.Alignment.Center), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Text("Aa Αα", style = face(f, 22), maxLines = 1)
+                        Text("123 abc", style = face(f, 12, color = Color(0xFF5F6368)), maxLines = 1)
+                    }
                 } }
                 // Multilevel lists: three levels as they read.
                 DesignGallery.Lists -> LIST_SCHEMES.forEach { scheme -> card(chosen == scheme, click = { pick(scheme) }) {

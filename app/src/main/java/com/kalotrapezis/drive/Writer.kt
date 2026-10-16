@@ -237,8 +237,8 @@ internal class FileNumbering(val styles: DocStyles, val levels: () -> List<Pair<
 /** Home › Font: Word's everyday fonts, each drawn by a font of the same widths (Carlito, Caladea, Liberation). */
 private val WRITER_FONTS = listOf("Calibri", "Cambria", "Times New Roman", "Arial", "Courier New")
 /** The ribbon's and a gallery strip's way in and out: quick, from and to the bottom. */
-private val SLIDE_IN = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(180)) { it } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180))
-private val SLIDE_OUT = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(140)) { it } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
+internal val SLIDE_IN = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(180)) { it } + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180))
+internal val SLIDE_OUT = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(140)) { it } + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
 /** Left said in the file itself (Word's jc="left" over a centred style): the paragraph's own, not its style's. */
 private fun ownLeft(p: DocPara) = p.align == DocAlign.Start && p.keep?.parts?.any { it.first == "jc" } == true
 
@@ -2375,7 +2375,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // The ruler shows the indents of the paragraph the cursor is in, and its marks set them (as Word's).
     var rulerAt by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) }
     var hereFont by remember { mutableStateOf<String?>(null) }
-    var fontsOpen by remember { mutableStateOf(false) } // Home › Font's window
     // …and the ribbon which style it has.
     LaunchedEffect(loaded, viewing) {
         if (!loaded || viewing) return@LaunchedEffect
@@ -2826,6 +2825,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             is HeaderLayout -> { galleryChosen = c; val hf = c.make(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd), name.substringBeforeLast('.'))
                 setHeaderFooter(hf); goPage = 0 to System.nanoTime() }
             is ListScheme -> { galleryChosen = c; setNumbering(c.levels) }
+            is FontChoice -> { galleryChosen = c; setFont(c.name) }
         }
     }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
@@ -3511,7 +3511,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         androidx.compose.animation.AnimatedVisibility(designGallery != null && (!viewing || galleryViewing != null) && !reading,
             Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { stripOf?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk, ::galleryPick,
             more = if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { { galleryCancel(); headerPage = true } } else null,
-            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.')) } }
+            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.'),
+            fonts = remember(g) { if (g == DesignGallery.Font) (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted().plus(WRITER_FONTS).distinct() else emptyList() },
+            now = hereFont) } }
         // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
         // The ribbon and a gallery's strip slide down and up as they take each other's place (asked 15 Oct).
         androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
@@ -3656,8 +3658,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         t.getOrNull(i) == EDITOR_PICTURE_CHAR && (!state.selection.collapsed || i == 0 || t.getOrNull(i - 1) == '\n') || t.getOrNull(i - 1) == EDITOR_PICTURE_CHAR }
                     val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
-                    // Home › Font: a window of the fonts, each shown in itself (the user: a modal, not a list).
-                    RibbonButton((hereFont ?: "Font").take(18), w, enabled = !onObject, outlined = true) { fontsOpen = true }
+                    // Home › Font: the fonts in the ribbon's place, each shown in itself (asked 16 Oct, as Page numbers).
+                    RibbonButton((hereFont ?: "Font").take(18), w, enabled = !onObject, outlined = true) { openGallery(DesignGallery.Font) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
                         Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
@@ -4220,10 +4222,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
         )
-    }
-    if (fontsOpen) {
-        val own = remember(meta.paras, hereFont) { (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted() }
-        FontDialog(own, WRITER_FONTS.filter { it !in own }, hereFont, { fontsOpen = false }) { fontsOpen = false; setFont(it) }
     }
     if (renaming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
@@ -5116,32 +5114,3 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
     }
 }
 
-/** Home › Font: the document's fonts, then Word's everyday ones, each name and a sample written in its own face. */
-@Composable
-private fun FontDialog(own: List<String>, others: List<String>, now: String?, dismiss: () -> Unit, choose: (String) -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Font") },
-        text = {
-            Column(Modifier.shadedScroll()) {
-                @Composable fun section(title: String, names: List<String>) {
-                    if (names.isEmpty()) return
-                    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-                    names.forEach { name ->
-                        val face = remember(name) { OfficeFonts.typeface(name)?.let { androidx.compose.ui.text.font.FontFamily(it) } }
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                            .then(if (name == now) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier)
-                            .clickable { choose(name) }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(name, fontFamily = face, style = MaterialTheme.typography.titleMedium)
-                                Text("Aa Αα 123 — Η γρήγορη αλεπού", fontFamily = face, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (name == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(20.dp))
-                        }
-                    }
-                }
-                section("In this document", own)
-                section("Word's fonts", others)
-            }
-        },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
-}

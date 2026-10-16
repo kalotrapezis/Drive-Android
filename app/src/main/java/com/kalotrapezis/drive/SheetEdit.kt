@@ -291,3 +291,153 @@ internal class SheetHistory {
     }
     fun saved() { unsaved = 0; undos.clear(); redos.clear() }
 }
+
+/**
+ * The functions the cell bar offers while typing (asked 16 Oct: "I don't know them by heart"): each with what it takes and
+ * what it does, narrowed by the letters typed before the cursor; inside one's brackets, what that one takes.
+ */
+object SheetFunctions {
+    class Fn(val name: String, val args: String, val says: String)
+
+    val all = listOf(
+        Fn("SUM", "number1, number2, …", "Adds the numbers"),
+        Fn("AVERAGE", "number1, number2, …", "The average of the numbers"),
+        Fn("COUNT", "value1, value2, …", "How many cells hold numbers"),
+        Fn("COUNTA", "value1, value2, …", "How many cells are not empty"),
+        Fn("COUNTBLANK", "range", "How many cells are empty"),
+        Fn("MAX", "number1, number2, …", "The largest number"),
+        Fn("MIN", "number1, number2, …", "The smallest number"),
+        Fn("IF", "test, if true, if false", "One value or another, by a test"),
+        Fn("SUMIF", "range, criterion, [sum range]", "Adds the cells that match"),
+        Fn("COUNTIF", "range, criterion", "Counts the cells that match"),
+        Fn("AVERAGEIF", "range, criterion, [average range]", "The average of the cells that match"),
+        Fn("SUMIFS", "sum range, range1, criterion1, …", "Adds the cells that match every test"),
+        Fn("COUNTIFS", "range1, criterion1, …", "Counts the cells that match every test"),
+        Fn("AVERAGEIFS", "average range, range1, criterion1, …", "The average of the cells that match every test"),
+        Fn("MAXIFS", "max range, range1, criterion1, …", "The largest of the cells that match"),
+        Fn("MINIFS", "min range, range1, criterion1, …", "The smallest of the cells that match"),
+        Fn("ROUND", "number, digits", "Rounds to so many decimals"),
+        Fn("ROUNDUP", "number, digits", "Rounds away from zero"),
+        Fn("ROUNDDOWN", "number, digits", "Rounds towards zero"),
+        Fn("TRUNC", "number, [digits]", "Cuts the decimals off"),
+        Fn("INT", "number", "Rounds down to a whole number"),
+        Fn("MOD", "number, divisor", "The remainder of a division"),
+        Fn("ABS", "number", "The number without its sign"),
+        Fn("SQRT", "number", "The square root"),
+        Fn("POWER", "number, power", "A number raised to a power"),
+        Fn("PRODUCT", "number1, number2, …", "Multiplies the numbers"),
+        Fn("MEDIAN", "number1, number2, …", "The middle number"),
+        Fn("STDEV", "number1, number2, …", "Standard deviation of a sample"),
+        Fn("STDEV.P", "number1, number2, …", "Standard deviation of everyone"),
+        Fn("VAR", "number1, number2, …", "Variance of a sample"),
+        Fn("VAR.P", "number1, number2, …", "Variance of everyone"),
+        Fn("RANK", "number, range, [order]", "Where a number stands in a list"),
+        Fn("LARGE", "range, k", "The k-th largest"),
+        Fn("SMALL", "range, k", "The k-th smallest"),
+        Fn("CEILING", "number, step", "Rounds up to a multiple"),
+        Fn("FLOOR", "number, step", "Rounds down to a multiple"),
+        Fn("MROUND", "number, multiple", "Rounds to the nearest multiple"),
+        Fn("SIGN", "number", "1, 0 or −1, by the sign"),
+        Fn("EXP", "number", "e raised to the number"),
+        Fn("LN", "number", "The natural logarithm"),
+        Fn("LOG10", "number", "The logarithm in base 10"),
+        Fn("PI", "", "π, 3,14159…"),
+        Fn("AND", "test1, test2, …", "TRUE when every test is"),
+        Fn("OR", "test1, test2, …", "TRUE when any test is"),
+        Fn("NOT", "test", "The opposite of the test"),
+        Fn("IFERROR", "value, if error", "The value, or another when it is an error"),
+        Fn("IFNA", "value, if #N/A", "The value, or another when it is #N/A"),
+        Fn("VLOOKUP", "key, table, column, [FALSE]", "Finds a row by its first cell; a cell of it"),
+        Fn("HLOOKUP", "key, table, row, [FALSE]", "Finds a column by its top cell; a cell of it"),
+        Fn("XLOOKUP", "key, look in, return from, [if none]", "Finds a key and returns what is beside it"),
+        Fn("MATCH", "key, range, [0]", "Where a value is in a range"),
+        Fn("INDEX", "range, row, [column]", "The cell at a row and column of a range"),
+        Fn("CHOOSE", "n, value1, value2, …", "The n-th of the values"),
+        Fn("ROW", "[cell]", "The cell's row number"),
+        Fn("COLUMN", "[cell]", "The cell's column number"),
+        Fn("ROWS", "range", "How many rows a range has"),
+        Fn("COLUMNS", "range", "How many columns a range has"),
+        Fn("CONCAT", "text1, text2, …", "Joins texts together"),
+        Fn("CONCATENATE", "text1, text2, …", "Joins texts together"),
+        Fn("TEXTJOIN", "between, skip empty, text1, …", "Joins texts with something between"),
+        Fn("LEN", "text", "How many characters"),
+        Fn("LEFT", "text, [count]", "The first characters"),
+        Fn("RIGHT", "text, [count]", "The last characters"),
+        Fn("MID", "text, start, count", "Characters from the middle"),
+        Fn("UPPER", "text", "IN CAPITALS"),
+        Fn("LOWER", "text", "in small letters"),
+        Fn("PROPER", "text", "Each Word Capitalised"),
+        Fn("TRIM", "text", "Takes out extra spaces"),
+        Fn("SUBSTITUTE", "text, old, new", "Puts new text in place of old"),
+        Fn("REPT", "text, times", "The text repeated"),
+        Fn("FIND", "what, text, [start]", "Where a text is (case counts)"),
+        Fn("SEARCH", "what, text, [start]", "Where a text is (any case, * and ?)"),
+        Fn("EXACT", "text1, text2", "TRUE when two texts are the same"),
+        Fn("VALUE", "text", "A number written as text, as a number"),
+        Fn("TEXT", "number, format", "A number written in a format"),
+        Fn("TODAY", "", "Today's date"),
+        Fn("NOW", "", "The date and time now"),
+        Fn("DATE", "year, month, day", "A date from its parts"),
+        Fn("YEAR", "date", "The year of a date"),
+        Fn("MONTH", "date", "The month of a date"),
+        Fn("DAY", "date", "The day of a date"),
+        Fn("WEEKDAY", "date, [type]", "The day of the week, as a number"),
+        Fn("HOUR", "time", "The hour of a time"),
+        Fn("MINUTE", "time", "The minutes of a time"),
+        Fn("SECOND", "time", "The seconds of a time"),
+        Fn("DAYS", "end, start", "Days between two dates"),
+        Fn("EDATE", "date, months", "The date so many months later"),
+        Fn("EOMONTH", "date, months", "The last day of a month"),
+        Fn("ISBLANK", "cell", "TRUE when the cell is empty"),
+        Fn("ISNUMBER", "value", "TRUE when it is a number"),
+        Fn("ISTEXT", "value", "TRUE when it is text"),
+        Fn("ISERROR", "value", "TRUE when it is an error"),
+        Fn("ISNA", "value", "TRUE when it is #N/A"),
+        Fn("NA", "", "The error #N/A"),
+    )
+
+    private val byName = all.associateBy { it.name }
+
+    /** Where the name typed before [cursor] starts (letters, digits and dots after the last other character). */
+    fun start(t: String, cursor: Int): Int {
+        var i = cursor.coerceIn(0, t.length)
+        while (i > 0 && (t[i - 1].isLetterOrDigit() || t[i - 1] == '.')) i--
+        return i
+    }
+
+    /** The functions for what is typed: those starting with the letters, then those with them inside; all for "=" alone. */
+    fun matching(t: String, cursor: Int): List<Fn> {
+        val s = start(t, cursor)
+        val typed = t.substring(s, cursor.coerceIn(s, t.length)).uppercase()
+        // a number, a cell's name (B12) or a sheet's (Rows!): not a function's name
+        if (typed.isNotEmpty() && (typed[0].isDigit() || Regex("""[A-Z]{1,3}\d+""").matches(typed) || t.getOrNull(cursor) == '!')) return emptyList()
+        if (typed.isEmpty()) return if (t.substring(0, s).trimEnd().let { it == "=" }) all else emptyList()
+        return all.filter { it.name.startsWith(typed) } + all.filter { !it.name.startsWith(typed) && typed.length > 1 && typed in it.name }
+    }
+
+    /** The function whose brackets the cursor is in, for what it takes. */
+    fun inside(t: String, cursor: Int): Fn? {
+        var depth = 0; var i = cursor.coerceIn(0, t.length) - 1; var quoted = false
+        while (i >= 0) {
+            val c = t[i]
+            if (c == '"') quoted = !quoted
+            else if (!quoted) when (c) {
+                ')' -> depth++
+                '(' -> if (depth == 0) return byName[t.substring(start(t, i), i).uppercase()] else depth--
+            }
+            i--
+        }
+        return null
+    }
+
+    /** [fn] put in for the name typed before [cursor]: "NAME(", the cursor after it, "=" first when the cell had none. */
+    fun insert(t: String, cursor: Int, fn: Fn): Pair<String, Int> {
+        val s = start(t, cursor)
+        val rest = t.substring(cursor.coerceIn(s, t.length))
+        val open = if (rest.startsWith("(")) "" else "(" + (if (fn.args.isEmpty()) ")" else "") // its bracket already typed: kept
+        var out = t.substring(0, s) + fn.name + open + rest
+        var at = s + fn.name.length + 1 + (if (fn.args.isEmpty() && open.isNotEmpty()) 1 else 0)
+        if (!out.startsWith("=")) { out = "=$out"; at++ }
+        return out to at
+    }
+}

@@ -634,8 +634,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     /**
-     * Writer's way (asked 16 Oct): no menu over the sheet — a ribbon above the sheet tabs, its tabs as Word's (File,
-     * Home, Insert, Formulas, Data, View) while editing, and a tab for what is chosen (a column, a row, the sheet, cells)
+     * Writer's way (asked 16 Oct): no menu over the sheet — a ribbon above the sheet tabs, its tabs as Word's (Selection, File,
+     * Home, Insert, Formulas, Data, View) while editing, and a tab for what is chosen (a column, a row, the sheet)
      * that comes by itself, as Writer's Selection tab does.
      */
     @Composable fun Ribbon(s: Sheet, b: Workbook, l: SheetLayout) {
@@ -650,10 +650,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val h = header
         val g = view.range
         // the tab for what is chosen, named by it; the others only while editing
-        val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> if (g != null) "Selection" else null }
-        val tabs = (if (editing) listOf("File", "Home", "Insert", "Formulas", "Data", "View") else emptyList()) + listOfNotNull(ctx)
+        val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> null }
+        // Selection first, as in Words: Cut, Copy, Paste and Clear out of the crowded Home (asked 16 Oct); a cell is
+        // always chosen while editing, so it is always there then, but Home stays the tab in use
+        val base = listOf("Selection", "File", "Home", "Insert", "Formulas", "Data", "View")
+        val tabs = (if (editing) base else listOfNotNull("Selection".takeIf { g != null })) + listOfNotNull(ctx)
         if (tabs.isEmpty()) return
-        LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in listOf("File", "Home", "Insert", "Formulas", "Data", "View") } ?: "Home" }
+        LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in base } ?: "Home" }
         val shown = tab.takeIf { it in tabs } ?: tabs.first()
         // A group with choices of its own (Borders, Number) takes the ribbon's place, ‹ back (asked 16 Oct, as Page numbers).
         @Composable fun Strip(name: String) = Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
@@ -677,7 +680,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (ctx != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                    if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                     tabs.forEach { t ->
                         val on = t == shown
                         Column(Modifier.clickable { tab = t; group = null }.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -738,20 +741,23 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
                             }
                         }
-                        shown == "Selection" && g != null -> {
+                        shown == "Selection" -> {
                             // Excel's status bar, at the strip's start
-                            val stats = remember(s, l, g, version) { SheetStats.of(s, l, g) }
-                            Text(buildString {
-                                if (stats.numbers > 0) append("Sum ${b.format.general(stats.sum)} · Average ${b.format.general(stats.average)} · ")
-                                append("Count ${stats.count}")
-                            }, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                            if (g != null) {
+                                val stats = remember(s, l, g, version) { SheetStats.of(s, l, g) }
+                                Text(buildString {
+                                    if (stats.numbers > 0) append("Sum ${b.format.general(stats.sum)} · Average ${b.format.general(stats.average)} · ")
+                                    append("Count ${stats.count}")
+                                }, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                            }
                             copyClear()
+                            RibbonButton("Select all", w, R.drawable.ic_select_all) { header = null; view.range = SheetRange(0, 0, l.rows.lastIndex, l.cols.lastIndex) }
                             // whole rows or columns chosen: put in or taken out together
-                            if (editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
+                            if (g != null && editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
                                 RibbonButton("Insert ${g.r2 - g.r1 + 1} rows", w) { shift(true, l.rows[g.r1], g.r2 - g.r1 + 1) }
                                 RibbonButton("Delete rows", w, R.drawable.ic_delete_row) { shift(true, l.rows[g.r1], -(g.r2 - g.r1 + 1)) }
                             }
-                            if (editing && g.r1 == 0 && g.r2 == l.rows.lastIndex && view.pins.isEmpty()) {
+                            if (g != null && editing && g.r1 == 0 && g.r2 == l.rows.lastIndex && view.pins.isEmpty()) {
                                 RibbonButton("Insert ${g.c2 - g.c1 + 1} columns", w) { shift(false, l.cols[g.c1], g.c2 - g.c1 + 1) }
                                 RibbonButton("Delete columns", w, R.drawable.ic_delete_column) { shift(false, l.cols[g.c1], -(g.c2 - g.c1 + 1)) }
                             }
@@ -821,7 +827,6 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton(now.font ?: "Font", w, R.drawable.ic_text_box) { group = null; fontChosen = null; fontStrip = now.font.orEmpty() }
                                 RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
                             }
-                            copyClear()
                         }
                     }
                 }

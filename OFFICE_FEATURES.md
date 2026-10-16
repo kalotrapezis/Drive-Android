@@ -428,7 +428,8 @@ Each is done on the emulator; tick when checked on the real phone.
 - [x] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
       (checked on the emulator 16 Oct, AutoSave off: the question, then the typed word back after the app was killed)
 - [ ] Text size −/+ and zoom; undo/redo
-- [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
+- [x] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF (checked on the emulator 16 Oct:
+      the file before the saves kept, written on Save; the PDF 3 A4 pages as the document)
 - [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer
 - [ ] PowerPoint: present to a real TV (HDMI or cast) — the slide on the TV, the notes on the phone (the emulator's second display works)
 - [x] Tablet (the emulator's 1280×800, 16 Oct): the Office home's wide cards, Words, Tables, Slides open and edit; a slide

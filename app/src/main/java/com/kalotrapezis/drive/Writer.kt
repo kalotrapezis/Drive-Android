@@ -2977,6 +2977,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // On a phone the top bar goes away while scrolling down the document and comes back when scrolling up (asked
     // 2026-09-29, for room); a tablet has room and keeps it.
     var barShown by remember { mutableStateOf(true) }
+    var officeSettings by remember { mutableStateOf(false) } // File › Settings
+    // the top bar's and the ribbon's heights: the ribbon at the top (a mouse in use) stands under the bar, the page under it
+    var barPx by remember { mutableIntStateOf(0) }; var islandPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val phone = screen < 700.dp
     val barScroll = remember(phone) { object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
         override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
@@ -3036,7 +3040,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             } else
             // Word's top bar: back, the name (a dot while unsaved), find, undo and redo.
-            androidx.compose.animation.AnimatedVisibility(barShown) { Column {
+            androidx.compose.animation.AnimatedVisibility(barShown, Modifier.onSizeChanged { barPx = it.height }) { Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
                 // The words, counted as one types (Word's status bar, Phase 2): of the selection too when there is one, worked
@@ -3096,7 +3100,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
-            Column(Modifier.weight(1f).fillMaxWidth()) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(top = if (OfficeUi.top && !viewing && !reading) with(density) { islandPx.toDp() } else 0.dp)) {
             val firstBefore = meta.paras.firstOrNull()?.takeIf { it.table == null }?.let { documentStyles.look(it).before } ?: 0f
             val leadingSpace = firstBefore * perPt
             val margins = if (onPage) androidx.compose.foundation.layout.PaddingValues(start = sheet.left * perPt, end = sheet.right * perPt, top = sheet.top * perPt + leadingSpace, bottom = 180.dp)
@@ -3632,12 +3636,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             now = hereFont) } }
         // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
         // The ribbon and a gallery's strip slide down and up as they take each other's place (asked 15 Oct).
+        // at the bottom for a finger; at the top, under the top bar, while a mouse is in use (or as Settings say), as a PC's Word
+        val atTop = OfficeUi.top
         androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
-            Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
+            (if (atTop) Modifier.align(Alignment.TopCenter).padding(top = with(density) { barPx.toDp() }) else Modifier.align(Alignment.BottomCenter)).onSizeChanged { islandPx = it.height },
+            enter = if (atTop) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
+            exit = if (atTop) androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut() else SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             // a phone: a solid bar across the bottom, as Tables' and Slides' ribbons (asked 16 Oct); a tablet: the floating island
-            else if (!tablet) Modifier.background(islandColor()).then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(vertical = 4.dp)
-            else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
+            else if (!tablet) Modifier.background(islandColor()).then(if (imeOpen || atTop) Modifier else Modifier.navigationBarsPadding()).padding(vertical = 4.dp)
+            else Modifier.then(if (imeOpen || atTop) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             // A note's number, the cursor at it: the note's words (Edit opens them).
             hereNote?.let { (n, number, _) ->
@@ -3736,6 +3744,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
                     // The log (asked 2026-10-01), to send when something goes wrong: what was done, not the words.
                     RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                    // Office's settings (asked 16 Oct): the ribbon's place and size — Tetra's Settings › Office has them all
+                    RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
                 })
                 // Typing in a table cell: Home formats the cell's text.
                 WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
@@ -4690,6 +4700,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 font = (if (odt) fx2.odt() else fx2.docx()).ifEmpty { null }))) }))
         }
     }
+    if (officeSettings) OfficeSettingsDialog { officeSettings = false }
     if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx, bend -> wordArt = false; putTextBox(text.split('\n'), color, fx, bend) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
@@ -5065,17 +5076,17 @@ internal fun Modifier.shadedScroll(): Modifier = composed {
 
 /** [outlined]: a thin border, for a button that is a word (Font's name) and would otherwise read as a label. */
 @Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, outlined: Boolean = false, click: () -> Unit) = Row(
-    Modifier.height(40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+    Modifier.height(if (OfficeUi.compact) 32.dp else 40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
         .then(if (outlined) Modifier.border(1.dp, tint.copy(alpha = 0.5f), CircleShape) else Modifier)
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
         .focusProperties { canFocus = false }
-        .clickable(enabled = enabled, onClick = { WriterLog.i("tap $label"); click() }).padding(horizontal = 12.dp),
+        .clickable(enabled = enabled, onClick = { WriterLog.i("tap $label"); click() }).padding(horizontal = if (OfficeUi.compact) 8.dp else 12.dp),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
 ) {
     val c = if (enabled) tint else tint.copy(alpha = 0.35f)
-    icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(18.dp)) }
-    Text(label, color = c, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+    icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(if (OfficeUi.compact) 16.dp else 18.dp)) }
+    Text(label, color = c, style = if (OfficeUi.compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge, maxLines = 1)
 }
 
 /** A paragraph's spacing in the editor (sp): before its first line, after its last, and its line's own height. */

@@ -387,7 +387,7 @@ LibreOffice works them out).
       opens documents, spreadsheets and presentations here, each its own switch; File › Settings (16 Oct): the ribbon by itself (at the top
       and smaller while a mouse is in use, as a PC's Office; at the bottom, in reach of a hand, for a finger), always at the
       bottom or always at the top; its tools by itself, normal or compact; right-click menus rounded, with icons, their
-      items smaller with a mouse — Tables and Slides (Words' to follow); a tap chooses a text box, shape or
+      items smaller with a mouse — Tables and Slides; Words' ribbon at the top too (under its top bar, the ruler and the page below it), and every ribbon's buttons smaller when compact; a tap chooses a text box, shape or
       picture, a second tap types in it. Tools on one sliding line; Animations › Effect is a catalog strip with a line
       each for In, Emphasis and Out
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard

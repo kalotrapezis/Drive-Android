@@ -283,11 +283,17 @@ LibreOffice works them out).
       percent's format added as a style; shared formulas written out; calcChain dropped, worked out on opening),
       .ods (cells in content.xml), .csv (its separator and letters); the file before kept as a version (Writer's)
 - [x] Leaving with changes: Save / Don't save
-- [ ] A spreadsheet's Versions in its ⋯ (they are kept, not yet shown)
-- [ ] Insert/delete rows and columns (every reference, merge, rule and drawing moved)
-- [ ] Cell formatting: bold, colour, fill, borders, alignment, number/currency/date/percent
-- [ ] New spreadsheet (the Office home's Excel card); new sheet, rename, reorder
-- [ ] Recovery draft while editing (Writer keeps one; here unsaved edits go when the app is closed)
+- [x] Versions in File and ⋯: the file as it was before a save (the last 3), opened in the editor as one step to undo
+- [x] Insert/delete rows and columns (every reference, merge, rule, drawing, chart, comment and table moved), Undo/Redo
+- [x] Cell formatting: bold, italic, underline, strike, colours, fill, borders, alignment, wrap, number/currency/date/
+      percent/text, decimals, size, font, Clear formatting (.xlsx and .ods; LibreOffice shows them)
+- [x] The ribbon as Word's (asked 16 Oct: "Tabs? home insert and so on"): File, Home, Insert, Formulas, Data, View while
+      editing, and a tab for what is chosen (Column, Row, Sheet, Selection) that comes by itself, in view mode too
+- [x] Formulas › AutoSum, Average, Count, Max, Min: the numbers above (or to the left) in the cell bar, Enter puts it in
+- [x] New spreadsheet (the Office home's Excel card, named on its first save); new sheet, rename, move, delete (names
+      and formulas follow; LibreOffice agrees), each one step to undo
+- [x] Recovery draft: unsaved changes kept when the app goes to the background, back by themselves on the next open
+      (Undo shows the file as saved), the sheet and place kept too
 - [ ] .ods number styles shown as LibreOffice (an edited .ods number is shown as General until saved and read again)
 
 ## PowerPoint (Presentation) — after Excel

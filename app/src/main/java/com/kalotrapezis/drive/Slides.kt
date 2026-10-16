@@ -415,6 +415,12 @@ internal object Slides {
     // --- drawing ---
 
     private val pictures = android.util.LruCache<Any, android.graphics.Bitmap>(24)
+    /** Animated GIFs (asked 16 Oct, as Google Slides): played where they show; their frames drawn as time goes. */
+    private val gifs = android.util.LruCache<Any, android.graphics.drawable.AnimatedImageDrawable>(8)
+    private val kinds = java.util.WeakHashMap<SlideItem.Picture, Boolean>() // whether a picture is a GIF
+    fun isGif(p: SlideItem.Picture): Boolean = synchronized(kinds) { kinds.getOrPut(p) { p.bytes()?.let { it.size > 6 && String(it, 0, 4, Charsets.ISO_8859_1) == "GIF8" } == true } }
+    /** Whether [slide] has a GIF, so its view is drawn again each frame. */
+    fun moves(slide: Slide) = slide.items.any { it is SlideItem.Picture && isGif(it) }
 
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
     fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false) {
@@ -434,6 +440,14 @@ internal object Slides {
                     item.text?.let { text(c, it, item.x, item.y, item.w, item.h) }
                 }
                 is SlideItem.Picture -> {
+                    val gif = if (isGif(item)) gifs.get(item) ?: runCatching { item.bytes()?.let { b ->
+                        android.graphics.ImageDecoder.decodeDrawable(android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(b))) as? android.graphics.drawable.AnimatedImageDrawable
+                    } }.getOrNull()?.also { it.repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE; it.start(); gifs.put(item, it) } else null
+                    if (gif != null) {
+                        c.save(); c.translate(item.x, item.y); c.scale(item.w / gif.intrinsicWidth.coerceAtLeast(1), item.h / gif.intrinsicHeight.coerceAtLeast(1))
+                        gif.setBounds(0, 0, gif.intrinsicWidth, gif.intrinsicHeight); gif.draw(c); c.restore()
+                        c.restore(); continue
+                    }
                     val bmp = pictures.get(item) ?: runCatching { item.bytes()?.let { b ->
                         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)

@@ -329,7 +329,10 @@ LibreOffice works them out).
       (not saved); a slide's own empty boxes the same; a new presentation (the Office home's card, Files › New: an empty title
       slide, opened editing) — [ ] .odp saving
 - [x] Edit text on a slide (above); layouts and themes from the file (as shown)
-- [ ] Insert picture, shape, table
+- [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
+      everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —
+      saved into the file (LibreOffice opens it)
+- [ ] Insert table on a slide; a GIF playing on the TV too (it shows its first frame there)
 - [ ] Transitions and animations (show; later edit)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,

@@ -145,8 +145,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
                 val mime = o.outMimeType ?: ""
                 val dir = File(context.cacheDir, "slide-pictures").apply { mkdirs() }
-                // PNG and JPEG as they are; another kind (HEIC, WebP) made a JPEG, as PowerPoint can show it
-                val (ext, data) = when (mime) { "image/png" -> "png" to bytes; "image/jpeg" -> "jpeg" to bytes
+                // PNG, JPEG and GIF (animated, it plays) as they are; another kind (HEIC, WebP) made a JPEG, as PowerPoint can show it
+                val (ext, data) = when (mime) { "image/png" -> "png" to bytes; "image/jpeg" -> "jpeg" to bytes; "image/gif" -> "gif" to bytes
                     else -> "jpeg" to java.io.ByteArrayOutputStream().also { out -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }.toByteArray() }
                 val f = File(dir, "${System.nanoTime()}.$ext").apply { writeBytes(data) }
                 val k = minOf(d.width * 0.6f / o.outWidth.coerceAtLeast(1), d.height * 0.6f / o.outHeight.coerceAtLeast(1))
@@ -387,7 +387,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
 /** One slide, as wide as it is given, its own shape. */
 @Composable
 private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boolean = false) {
+    // a slide with a GIF is drawn again every frame while it shows, so it plays
+    val moves = remember(slide) { Slides.moves(slide) }
+    val frame by androidx.compose.runtime.produceState(0L, moves) { if (moves) while (true) androidx.compose.runtime.withFrameNanos { value = it } }
     Canvas(modifier.aspectRatio(deck.width / deck.height).background(Color.White)) {
+        frame // read: a new frame, a new drawing
         drawIntoCanvas { c -> Slides.draw(c.nativeCanvas, deck, slide, size.width / deck.width, hints) }
     }
 }

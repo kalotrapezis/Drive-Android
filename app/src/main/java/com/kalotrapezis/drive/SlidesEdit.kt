@@ -138,7 +138,7 @@ internal object SlidesEdit {
         var nextMedia = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/media/tetra(\d+)\.""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
         /** The pictures put on slide [uid] into the file: each a media part and a relationship in [relsXml] (the slide's); their ids → rIds. */
         fun media(uid: Int, relsXml: org.w3c.dom.Document): Map<String, String> = edit.added[uid].orEmpty().filter { it.image != null }.associate { a ->
-            val ext = if (a.ext == "jpeg" || a.ext == "jpg") "jpeg" else "png"
+            val ext = when (a.ext) { "jpeg", "jpg" -> "jpeg"; "gif" -> "gif"; else -> "png" }
             val name = "tetra${nextMedia++}.$ext"
             out["ppt/media/$name"] = File(a.image!!).readBytes()
             if (!Regex("""<Default Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut))

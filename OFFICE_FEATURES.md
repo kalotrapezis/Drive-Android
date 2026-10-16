@@ -437,7 +437,8 @@ Each is done on the emulator; tick when checked on the real phone.
       Undo takes back a stretch of typing at once, Redo puts it back)
 - [x] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF (checked on the emulator 16 Oct:
       the file before the saves kept, written on Save; the PDF 3 A4 pages as the document)
-- [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer
+- [x] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer (checked on the emulator
+      16 Oct: from the photo picker, saved in word/media, LibreOffice draws it)
 - [ ] PowerPoint: present to a real TV (HDMI or cast) — the slide on the TV, the notes on the phone (the emulator's second display works)
 - [x] Tablet (the emulator's 1280×800, 16 Oct): the Office home's wide cards, Words, Tables, Slides open and edit; a slide
       no wider than fits the screen's height, so a whole one shows (it was taller than the screen)

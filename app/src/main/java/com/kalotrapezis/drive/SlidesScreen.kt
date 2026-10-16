@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -88,8 +89,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var typing by remember { mutableStateOf<Pair<SlideItem.Shape, androidx.compose.ui.text.input.TextFieldValue>?>(null) }
     var saving by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
     var message by remember { mutableStateOf<String?>(null) }
+    var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
     suspend fun load(f: File) = withContext(Dispatchers.IO) { runCatching { WriterLog.timed("Slides: deck read") { Slides.read(f) } } }
     LaunchedEffect(open) {
         WriterLog.init(context)
@@ -119,8 +120,45 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
+    var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
+    var item by remember { mutableStateOf<String?>(null) } // a picture or shape put on the chosen slide, to move, size or delete
+    /** [a] put on the chosen slide, then chosen. */
+    fun put(a: SlidesEdit.Added) {
+        val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
+        change(e.copy(added = e.added + (uid to (e.added[uid].orEmpty() + a)))); item = a.id
+    }
+    /** The chosen added thing changed by [f] (moved, sized), or gone (null). */
+    fun alter(f: (SlidesEdit.Added) -> SlidesEdit.Added?) {
+        val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid; val id = item ?: return
+        change(e.copy(added = e.added + (uid to e.added[uid].orEmpty().mapNotNull { if (it.id == id) f(it) else it })))
+    }
+    // Picture: the phone's photo picker; a copy kept on the phone until Save puts it in the file
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        val d = deck ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val made = withContext(Dispatchers.IO) { runCatching {
+                val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+                val mime = o.outMimeType ?: ""
+                val dir = File(context.cacheDir, "slide-pictures").apply { mkdirs() }
+                // PNG and JPEG as they are; another kind (HEIC, WebP) made a JPEG, as PowerPoint can show it
+                val (ext, data) = when (mime) { "image/png" -> "png" to bytes; "image/jpeg" -> "jpeg" to bytes
+                    else -> "jpeg" to java.io.ByteArrayOutputStream().also { out -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }.toByteArray() }
+                val f = File(dir, "${System.nanoTime()}.$ext").apply { writeBytes(data) }
+                val k = minOf(d.width * 0.6f / o.outWidth.coerceAtLeast(1), d.height * 0.6f / o.outHeight.coerceAtLeast(1))
+                Triple(f, o.outWidth * k, o.outHeight * k) to ext
+            }.onFailure { WriterLog.e("Slides: a picture could not be read", it) }.getOrNull() }
+            val e = edit; val c = chosen
+            if (made == null || e == null || c == null) { message = "That picture could not be read."; return@launch }
+            val (f, w, h) = made.first
+            put(SlidesEdit.Added(e.newId(e.order[c].uid), (d.width - w) / 2, (d.height - h) / 2, w, h, image = f.path, ext = made.second))
+            WriterLog.i("Slides: a picture put on a slide")
+        }
+    }
     fun leave() { if (changed) leaving = true else back() }
-    BackHandler { when { typing != null -> typing = null; layouts -> layouts = false; chosen != null -> chosen = null; else -> leave() } }
+    BackHandler { when { typing != null -> typing = null; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
@@ -169,8 +207,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     .pointerInput(editing, chosen, i, s) {
                                         detectTapGestures { o ->
                                             if (!editing) { presenting = i; return@detectTapGestures }
-                                            if (chosen != i) { chosen = i; typing = null; return@detectTapGestures }
+                                            if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
                                             val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
+                                            // a picture or shape put on it: chosen, to move or size
+                                            edit?.let { ee -> ee.added[ee.order[i].uid].orEmpty().lastOrNull { a -> x in a.x..(a.x + a.w) && y in a.y..(a.y + a.h) } }?.let { a -> item = a.id; typing = null; return@detectTapGestures }
                                             val hit = s.items.lastOrNull { it is SlideItem.Shape && it.id != null && it.text != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) } as SlideItem.Shape?
                                             if (hit != null) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
                                             else message = "Tap a text box on the slide to change its words"
@@ -187,7 +227,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's tools, in a strip that slides up (as Writer's galleries)
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && !shapes && item == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
@@ -197,6 +237,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (e != null) {
                                     val entry = e.order[c]
                                     if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
+                                    RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                                    RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
                                     RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next(), entry.layout)) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
                                     RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                                     RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
@@ -225,6 +267,42 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    // Shape: Office's everyday shapes, each drawn in a card; the one tapped goes in the slide's middle, in the theme's accent
+                    androidx.compose.animation.AnimatedVisibility(editing && shapes && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { shapes = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (kind in listOf("rect", "roundRect", "ellipse", "triangle", "rightArrow", "star5", "heart")) {
+                                        val shape = remember(kind) { ShapePicture(kind, 0xFF4472C4.toInt(), 0xFF2F5597.toInt(), 1.5f) }
+                                        Canvas(Modifier.size(64.dp).background(Color.White, RoundedCornerShape(8.dp)).clickable {
+                                            val dd = deck ?: return@clickable; val ee = edit ?: return@clickable; val c = chosen ?: return@clickable
+                                            val side = dd.height * 0.3f
+                                            put(SlidesEdit.Added(ee.newId(ee.order[c].uid), (dd.width - side) / 2, (dd.height - side) / 2, side, side, prst = kind, fill = 0xFF4472C4.toInt()))
+                                            shapes = false; WriterLog.i("Slides: a shape put on a slide ($kind)")
+                                        }) { drawIntoCanvas { shape.drawAt(it.nativeCanvas, 10f, 10f, size.width - 20f, size.height - 20f) } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // a picture or shape put on the slide: moved, made bigger or smaller, deleted
+                    androidx.compose.animation.AnimatedVisibility(editing && item != null && typing == null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val w = islandContentColor(); val dd = deck
+                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { item = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
+                                val step = (dd?.width ?: 720f) / 40
+                                RibbonButton("Left", w, R.drawable.ic_chevron_left) { alter { it.copy(x = it.x - step) } }
+                                RibbonButton("Right", w, R.drawable.ic_chevron_right) { alter { it.copy(x = it.x + step) } }
+                                RibbonButton("Up", w, R.drawable.ic_keyboard_arrow_up) { alter { it.copy(y = it.y - step) } }
+                                RibbonButton("Down", w, R.drawable.ic_keyboard_arrow_down) { alter { it.copy(y = it.y + step) } }
+                                RibbonButton("Bigger", w, R.drawable.ic_add) { alter { val k = 1.15f; it.copy(x = it.x - it.w * (k - 1) / 2, y = it.y - it.h * (k - 1) / 2, w = it.w * k, h = it.h * k) } }
+                                RibbonButton("Smaller", w, R.drawable.ic_remove) { alter { val k = 1 / 1.15f; it.copy(x = it.x + it.w * (1 - k) / 2, y = it.y + it.h * (1 - k) / 2, w = it.w * k, h = it.h * k) } }
+                                RibbonButton("Delete", w, R.drawable.ic_delete) { alter { null }; item = null }
                             }
                         }
                     }

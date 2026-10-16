@@ -11,8 +11,14 @@ import java.io.File
 internal object SlidesEdit {
     /** One slide in the edited deck: [src] the deck's slide it shows, [uid] its own (a duplicate is a new one); [layout]: a new slide of that layout. */
     data class Entry(val src: Int, val uid: Int, val layout: Int = -1)
-    data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap()) {
+    /** A picture ([image]: a copy on the phone, [ext] png/jpeg) or a shape ([prst], [fill]) put on a slide, where it is (points). */
+    data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
+        val prst: String? = null, val fill: Int = 0xFF4472C4.toInt())
+    data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
+        val added: Map<Int, List<Added>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
+        /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
+        fun newId(uid: Int) = "${9000 + (added[uid]?.size ?: 0) + added.values.sumOf { it.size }}"
     }
     fun start(deck: Deck) = Edit(deck.slides.indices.map { Entry(it, it) })
 
@@ -35,7 +41,18 @@ internal object SlidesEdit {
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink) }
                 ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id)
         }
-        return Slide(items, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part)
+        // what was put on it: pictures and shapes, over the rest
+        val added = edit.added[e.uid].orEmpty().map { a ->
+            if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { pictureIds[it] = a.id }
+            else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)
+        }
+        return Slide(items + added, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part)
+    }
+    /** A picture put on a slide → its id (pictures have none of their own here). */
+    val pictureIds = java.util.WeakHashMap<SlideItem, String>()
+    private fun darker(c: Int): Int {
+        fun ch(s: Int) = (((c shr s) and 255) * 0.7f).toInt() shl s
+        return (c and 0xFF000000.toInt()) or ch(16) or ch(8) or ch(0)
     }
 
     /** The edited deck, as it shows. */
@@ -55,10 +72,19 @@ internal object SlidesEdit {
         }.transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
     }.toByteArray()
 
-    /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run. */
-    fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?): ByteArray {
+    /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
+    fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
+        val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
+        fun emu(pt: Float) = (pt * 12700).toLong()
+        for (a in added) {
+            val xfrm = """<a:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></a:xfrm>"""
+            val ns = """xmlns:p="$P" xmlns:a="$A" xmlns:r="$R""""
+            val x = if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
+                else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
+            tree?.appendChild(doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true))
+        }
         if (hidden != null) { if (hidden) root.setAttribute("show", "0") else root.removeAttribute("show") }
         val shapes = root.getElementsByTagNameNS(P, "sp").let { l -> (0 until l.length).map { l.item(it) as Element } }
         for ((id, lines) in texts) {
@@ -109,15 +135,29 @@ internal object SlidesEdit {
         val used = HashSet<Int>()
         ids.forEach { list.removeChild(it) }
         fun relsPath(part: String) = part.substringBeforeLast('/') + "/_rels/" + part.substringAfterLast('/') + ".rels"
-        fun add(part: String, xml: ByteArray, layout: String?, from: String?) {
-            out[part] = xml
-            // a new slide's relationships: its layout's; a duplicate's: its slide's, its own notes left out (they belong to the first)
-            if (layout != null) out[relsPath(part)] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/${layout.substringAfterLast('/')}"/></Relationships>""".toByteArray()
-            else from?.let { read(relsPath(it)) }?.let { r ->
-                val d = OfficeFormats.parse(r)
-                d.documentElement.kids().filter { it.getAttribute("Type").endsWith("/notesSlide") }.forEach { d.documentElement.removeChild(it) }
-                out[relsPath(part)] = xml(d)
-            }
+        var nextMedia = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/media/tetra(\d+)\.""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        /** The pictures put on slide [uid] into the file: each a media part and a relationship in [relsXml] (the slide's); their ids → rIds. */
+        fun media(uid: Int, relsXml: org.w3c.dom.Document): Map<String, String> = edit.added[uid].orEmpty().filter { it.image != null }.associate { a ->
+            val ext = if (a.ext == "jpeg" || a.ext == "jpg") "jpeg" else "png"
+            val name = "tetra${nextMedia++}.$ext"
+            out["ppt/media/$name"] = File(a.image!!).readBytes()
+            if (!Regex("""<Default Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut))
+                typesOut = typesOut.replace("</Types>", """<Default Extension="$ext" ContentType="image/$ext"/></Types>""")
+            val ids = relsXml.documentElement.kids().map { it.getAttribute("Id") }.toSet()
+            val rid = generateSequence(1) { it + 1 }.map { "rId$it" }.first { it !in ids }
+            relsXml.documentElement.appendChild(relsXml.createElementNS(relsXml.documentElement.namespaceURI, "Relationship").apply {
+                setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"); setAttribute("Target", "../media/$name") })
+            a.id to rid
+        }
+        fun relsDoc(part: String?) = (part?.let { read(relsPath(it)) } ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>""".toByteArray()).let(OfficeFormats::parse)
+        /** A new slide part's relationships: its layout's, or the duplicated slide's without its notes (they belong to the first). */
+        fun newRels(layout: String?, from: String?): org.w3c.dom.Document {
+            if (layout != null) return OfficeFormats.parse("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/${layout.substringAfterLast('/')}"/></Relationships>""".toByteArray())
+            val d = relsDoc(from)
+            d.documentElement.kids().filter { it.getAttribute("Type").endsWith("/notesSlide") }.forEach { d.documentElement.removeChild(it) }
+            return d
+        }
+        fun list(part: String) {
             val rid = "rId${nextRel++}"
             rels.documentElement.appendChild(rels.createElementNS(rels.documentElement.namespaceURI, "Relationship").apply {
                 setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"); setAttribute("Target", "slides/" + part.substringAfterLast('/'))
@@ -128,13 +168,24 @@ internal object SlidesEdit {
         for (e in edit.order) {
             val texts = edit.texts.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val hide = edit.hidden[e.uid]
-            if (e.layout >= 0) { val l = deck.layouts[e.layout]; add("ppt/slides/slide${nextSlide++}.xml", withTexts(l.xml, texts, hide), l.part, null); continue }
-            val s = deck.slides[e.src]
-            if (used.add(e.src)) {
-                // the slide itself, where it was; its XML written only when its words or its hiding changed
-                byPart[s.part]?.let { list.appendChild(it) }
-                if (texts.isNotEmpty() || (hide != null && hide != s.hidden)) out[s.part] = withTexts(read(s.part) ?: continue, texts, hide)
-            } else add("ppt/slides/slide${nextSlide++}.xml", withTexts(read(s.part) ?: continue, texts, hide), null, s.part)
+            val added = edit.added[e.uid].orEmpty()
+            val source = if (e.layout >= 0) null else deck.slides[e.src]
+            val original = source != null && used.add(e.src)
+            // the slide's part: its own (the first time it is in the order), else a new one (a duplicate, a new slide of a layout)
+            val part = if (original) source!!.part else "ppt/slides/slide${nextSlide++}.xml"
+            val relsXml = if (original) relsDoc(part) else newRels(if (e.layout >= 0) deck.layouts[e.layout].part else null, source?.part)
+            val ids = media(e.uid, relsXml)
+            val base = if (e.layout >= 0) deck.layouts[e.layout].xml else read(source!!.part) ?: continue
+            if (original) {
+                byPart[part]?.let { list.appendChild(it) }
+                // written only when its words, its hiding or what is on it changed
+                if (texts.isNotEmpty() || added.isNotEmpty() || (hide != null && hide != source!!.hidden)) out[part] = withTexts(base, texts, hide, added, ids)
+                if (ids.isNotEmpty()) out[relsPath(part)] = xml(relsXml)
+            } else {
+                out[part] = withTexts(base, texts, hide, added, ids)
+                out[relsPath(part)] = xml(relsXml)
+                list(part)
+            }
         }
         // a deleted slide: its part, relationships, notes and listing gone
         for ((i, s) in deck.slides.withIndex()) if (i !in used) {

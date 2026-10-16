@@ -59,6 +59,9 @@ class SlidesTest {
         val titleId = deck.layouts[layout].preview.items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Title" }.id!!
         val uid = e.next()
         e = e.copy(order = e.order + SlidesEdit.Entry(-1, uid, layout), texts = e.texts + ((uid to titleId) to listOf("A new slide")))
+        // a picture and a star put on the shapes' slide (uid 2)
+        val png = File.createTempFile("pic", ".png").apply { writeBytes(File("src/test/resources/slides.pptx").let { java.util.zip.ZipFile(it).use { z -> z.getInputStream(z.entries().asSequence().first { en -> en.name.startsWith("ppt/media/") }).readBytes() } }) }
+        e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added(e.newId(2), 400f, 300f, 120f, 80f, image = png.path), SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()))))
         val out = File.createTempFile("edited", ".pptx")
         SlidesEdit.save(src, deck, e, out)
         val back = Slides.read(out)
@@ -66,6 +69,9 @@ class SlidesTest {
         assertEquals("A new slide", back.slides[4].items.firstNotNullOf { i -> words(i)?.takeIf { !(i as SlideItem.Shape).hint } }) // its title
         assertTrue(back.slides[4].items.none { words(it) == "Text" && !(it as SlideItem.Shape).hint }) // the hint not saved: an empty box again
         assertTrue(back.slides[0].items.any { words(it) == "A rounded box" }) // moved first
+        assertEquals(2, back.slides[0].items.count { it is SlideItem.Picture }) // its own and the one put on it
+        assertEquals(0xFFFFC000.toInt(), back.slides[0].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
+        assertTrue(back.slides[0].items.filterIsInstance<SlideItem.Picture>().any { it.bytes()?.size == png.length().toInt() })
         assertTrue(back.slides[1].hidden)
         assertEquals("Tetra Slides, edited", back.slides[1].items.firstNotNullOf { words(it)?.takeIf { w -> w.startsWith("Tetra") } })
         assertEquals(44f, (back.slides[1].items.first { words(it)?.startsWith("Tetra") == true } as SlideItem.Shape).text!!.paras[0].runs[0].size, 0.1f) // its look kept

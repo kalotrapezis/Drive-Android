@@ -2546,7 +2546,8 @@ private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "
 @Composable internal fun driveExtensionColor(extension: String): Color {
     return when (extension.lowercase(Locale.ROOT)) {
         "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
-        "xls", "xlsx", "csv" -> Color(0xFF55A96B)
+        "xls", "xlsx", "xlsm", "ods", "csv" -> Color(0xFF55A96B)
+        "ppt", "pptx", "ppsx", "odp" -> Color(0xFFE0784F) // PowerPoint's orange, light enough for the dark list
         "pdf" -> Color(0xFFE3685F)
         "txt", "md" -> Color(0xFF9AA3A4)
         "excalidraw" -> Color(0xFFAD68CF)

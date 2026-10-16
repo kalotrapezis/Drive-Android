@@ -359,6 +359,34 @@ class WriterBridgeTest {
         }
     }
 
+    /** Numbering on an empty bulleted line (Enter after a bullet) makes it "1." at its level, and Bullets back: the library's toggles made it "◦" a level in (16 Oct). LibreOffice numbers it so. */
+    @Test fun `an empty list line switches between bullets and numbers`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Point")), list = DocList(false, 0)), DocPara(emptyList(), list = DocList(false, 0))), basePt = 11f)
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc))
+        val text = state.annotatedString.text
+        val at = WriterBridge.blockPlaces(text, state.toRichTextDocument()).last().from // the empty line
+        val paras = WriterBridge.blockPlaces(text, state.toRichTextDocument()).filter { it.to >= at && it.from <= at }.map { it.para }.toSet()
+        assertEquals(setOf(1), paras)
+        val numbered = WriterBridge.listKind(doc, paras, true)
+        state.setRichTextDocument(WriterBridge.toEditor(numbered))
+        val back = WriterBridge.fromEditor(state.toRichTextDocument(), 11f)
+        assertEquals(listOf(DocList(false, 0), DocList(true, 0)), back.map { it.list })
+        assertEquals(listOf(DocList(false, 0), DocList(false, 0)), WriterBridge.listKind(numbered, paras, false).paras.map { it.list })
+        // typed into, saved: LibreOffice has a bullet, then 1.
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(numbered.copy(paras = listOf(numbered.paras[0], numbered.paras[1].copy(runs = listOf(DocRun("Second"))))), kind)
+            assertEquals(kind.name, listOf(false, true), OfficeFormats.read(bytes, kind).paras.map { it.list?.ordered })
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "l.${kind.extension}").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val lines = java.io.File(dir, "l.txt").readText().lines().filter { it.isNotBlank() }
+                assertEquals(kind.name, true, lines.any { it.trimStart().startsWith("1.") && it.endsWith("Second") } && lines.none { it.trimStart().startsWith("1.") && it.endsWith("Point") })
+            }
+        }
+    }
+
     @Test fun `heading and at least line spacing follow the same paragraph rules as body text`() {
         val styles = object : DocStyles() {
             override fun look(p: DocPara) = if (p.heading > 0) ParaLook(sizePt = 24f, lineExact = 36f)

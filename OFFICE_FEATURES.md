@@ -425,8 +425,9 @@ Each is done on the emulator; tick when checked on the real phone.
       cannot keep (embedded objects, unknown content, an older .doc); tables and pictures save in place. Checked on the
       emulator 16 Oct with an embedded chunk: the banner, then "(copy).docx" saved, the original's bytes the same
 - [x] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt (checked on the
-      emulator 16 Oct; Bullets/Numbering on a line with words switch it — fixed — [ ] on a new, empty list line Numbering
-      gives a second-level bullet: the editor library's toggle)
+      emulator 16 Oct; Bullets/Numbering on a line with words switch it — fixed; on a new, empty list line too (16 Oct: the
+      line's list changed in the document itself, at its level — the library's toggle gave a second-level bullet; an .odt's
+      bulleted item after numbered ones is a list of its own, as LibreOffice reads it))
 - [x] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches (emulator 16 Oct; the dots gave way to one free-sliding row, and on a desktop rows of whole groups)
 - [x] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count) — checked on
       the emulator 16 Oct: Find, Replace and Replace all (the replaced words now keep their bold, italic… — fixed); Line

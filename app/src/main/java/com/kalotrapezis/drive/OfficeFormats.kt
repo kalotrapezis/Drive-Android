@@ -3109,7 +3109,10 @@ private object OdtWriter {
             }
             if (p.list == null) { text.append(paragraphXml(p)); i++; continue }
             var end = i
-            while (end < paras.size && paras[end].list != null && paras[end].table == null && OdtSections.tags(paras[end]) == sections) end++
+            // one list while each level keeps its kind: a bulleted item after numbered ones (or back) starts a list of its own
+            val kinds = HashMap<Int, Boolean>()
+            while (end < paras.size && paras[end].list != null && paras[end].table == null && OdtSections.tags(paras[end]) == sections &&
+                kinds.getOrPut(paras[end].list!!.level) { paras[end].list!!.ordered } == paras[end].list!!.ordered) end++
             val items = paras.subList(i, end)
             // The file's own list style, when every item still belongs to it and is still of its kind at its level.
             val source = items.first().keep?.list

@@ -849,6 +849,10 @@ internal object WriterBridge {
         }
         return out
     }
+    /** Paragraphs [paras] made a list of the other kind (Bullets on a numbered item, Numbering on a bulleted one), at their own level. */
+    fun listKind(doc: OfficeDoc, paras: Set<Int>, ordered: Boolean): OfficeDoc = doc.copy(paras = doc.paras.mapIndexed { i, p ->
+        if (i !in paras || p.table != null) p else p.copy(list = p.list?.copy(ordered = ordered, start = null) ?: DocList(ordered, 0))
+    })
     /** The letters [from]..[to] of the editor's text as (paragraph, from, to) in the paragraphs' own text. */
     fun paragraphSpans(places: List<BlockPlace>, from: Int, to: Int): List<Triple<Int, Int, Int>> = places.mapNotNull { b ->
         val a = maxOf(from, b.from); val z = minOf(to, b.to)
@@ -2820,6 +2824,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         if (on) message = "Automatic hyphenation — the pages show it (the eye at the top)"
     }
+    /** The paragraphs at the cursor (or chosen) made bullets or numbers in place (see [WriterBridge.listKind]). */
+    fun switchList(ordered: Boolean) = change {
+        val sel = state.selection
+        val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
+        // the cursor can stand after a line's own text (the library's space after each line): then it is that line's
+        val paras = places.filter { it.to >= sel.min && it.from <= sel.max }.ifEmpty { listOfNotNull(places.lastOrNull { it.from <= sel.min }) }.map { it.para }.toSet()
+        meta = WriterBridge.listKind(current(), paras, ordered)
+        WriterLog.i("list made ${if (ordered) "numbered" else "bulleted"}: paragraphs $paras")
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+    }
     var hyphenOptions by remember { mutableStateOf(false) }
     /** Layout › Hyphenation options (Word's zone, consecutive limit, capitals), into the file as it will be written. */
     fun setHyphenOptions(o: HyphenOptions) = change {
@@ -3865,10 +3880,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     RibbonButton("Styles…", w) { stylesPage = true }
                 }, {
-                    // a numbered item made a bullet (and back) is taken out of its list first: the library's toggle moved it a
-                    // level out instead, still numbered (found 16 Oct on the emulator)
-                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { if (state.isOrderedList) state.toggleOrderedList(); state.toggleUnorderedList() }
-                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { if (state.isUnorderedList) state.toggleUnorderedList(); state.toggleOrderedList() }
+                    // a numbered item made a bullet (and back) is switched in the document itself, at its level: the library's
+                    // toggles moved it a level out instead, still numbered — an empty one even after taking it out first (16 Oct)
+                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { if (state.isOrderedList) switchList(false) else state.toggleUnorderedList() }
+                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { if (state.isUnorderedList) switchList(true) else state.toggleOrderedList() }
                     Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
                     Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
                     RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }

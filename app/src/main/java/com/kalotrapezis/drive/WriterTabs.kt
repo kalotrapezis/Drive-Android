@@ -39,8 +39,9 @@ internal fun editorTabs(shown: AnnotatedString, rich: RichTextDocument, doc: Off
             val laid = measurer.measure(current, textStyle, constraints = Constraints(maxWidth = widthPx))
             val x = laid.getHorizontalPosition(at, true) / pxPerPt
             val end = (at + 1 until b.to).firstOrNull { shown.text[it] == '\t' } ?: b.to
-            val following = if (end == at + 1) 0f else measurer.measure(current.subSequence(at + 1, end), textStyle,
-                softWrap = false).multiParagraph.maxIntrinsicWidth / pxPerPt
+            // the words after it with their letters' looks only: its paragraph's indent would count into the width (an indented contents line fell short)
+            val following = if (end == at + 1) 0f else current.subSequence(at + 1, end).let { piece -> measurer.measure(AnnotatedString(piece.text, piece.spanStyles), textStyle,
+                softWrap = false).multiParagraph.maxIntrinsicWidth / pxPerPt }
             val (stop, gap) = tabGap(x, following, stops)
             val glyph = measurer.measure(AnnotatedString(EDITOR_TAB_SPACE.toString()), textStyle.copy(fontSize = 0.5.sp), softWrap = false)
                 .multiParagraph.maxIntrinsicWidth / pxPerSp

@@ -1701,7 +1701,10 @@ internal object OfficePages {
             val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
             // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length
-            val after = Layout.getDesiredWidth(text, k + 1, end, paint) / U
+            // the words after it with their letters' looks only: Android counts the paragraph's indent (a LeadingMarginSpan) into
+            // any width it measures, and an indented contents line's number fell short of the stop
+            val piece = android.text.SpannableStringBuilder(text, k + 1, end).also { b -> b.getSpans(0, b.length, android.text.style.ParagraphStyle::class.java).forEach(b::removeSpan) }
+            val after = Layout.getDesiredWidth(piece, paint) / U
             val (stop, gap) = tabGap(x, after, stops)
             text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }

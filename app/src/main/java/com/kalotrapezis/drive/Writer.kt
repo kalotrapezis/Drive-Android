@@ -4141,6 +4141,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
                         if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
                     }
+                    // Word's Comments group (asked: reply and resolve from Review): a new one, the one before or after the cursor, and the one at it
+                    RibbonButton("New comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
+                    fun goComment(on: Boolean) {
+                        val at = state.selection.min
+                        val starts = commentsShown.map { it.second.first }.distinct().sorted()
+                        (if (on) starts.firstOrNull { it > at } ?: starts.firstOrNull() else starts.lastOrNull { it < at } ?: starts.lastOrNull())
+                            ?.let { state.selection = androidx.compose.ui.text.TextRange(it); goText = it to System.nanoTime() } ?: run { message = "No comments in this document" }
+                    }
+                    Tool(R.drawable.ic_chevron_left, "Previous comment", w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(false) }
+                    Tool(R.drawable.ic_chevron_right, "Next comment", w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(true) }
+                }, {
+                    val c = hereComment
+                    RibbonButton("Reply", w, R.drawable.ic_comment, enabled = loaded && c != null) { replyTo = c }
+                    RibbonButton(if (c?.done == true) "Reopen" else "Resolve", w, R.drawable.ic_check, enabled = loaded && c != null) { c?.let(::resolveComment) }
+                    RibbonButton("Delete comment", w, R.drawable.ic_delete, enabled = loaded && c != null) { c?.let { deleteComment(it.id) } }
                 })
                 WriterTab.View -> listOf({
                     RibbonButton("Navigation", w, R.drawable.ic_view_list, enabled = loaded, on = navOpen) { navOpen = !navOpen }

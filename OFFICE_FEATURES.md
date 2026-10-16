@@ -190,7 +190,7 @@ one pass once the tabs' features are done.
 - [x] Line numbers, hyphenation (Layout, 1 Oct — see Insert's entries)
 - [x] Indent left/right and spacing before/after as number boxes (Layout's second page: − value +, a quarter cm or a
       tenth of an inch, 6 pt — 16 Oct)
-- [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup (15 Oct; .odt too, 15 Oct evening) — [ ] a rotation handle
+- [x] Arrange (for floating objects): position, wrap, bring to front / send to back, align to the margins (14 Oct); free rotation, group / ungroup (15 Oct; .odt too, 15 Oct evening); a rotation handle (the knob above a floating object, 15 Oct)
 
 ### References
 - [x] Table of contents (References: from Heading 1–3, at the cursor; Update table rewrites it in place with fresh page numbers) — written as plain paragraphs in the file's TOC 1–3 / Contents 1–3 styles with a dot leader, not a field: Word/LibreOffice show it as written; **clickable entries** (16 Oct): each a link to its heading's _Toc bookmark

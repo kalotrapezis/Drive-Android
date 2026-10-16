@@ -1006,7 +1006,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NewDocCard("Word", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
-                    NewDocCard("Excel", "View only for now", EXCEL_GREEN, false, Modifier.weight(1f)) {}
+                    NewDocCard("Excel", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
                     NewDocCard("PowerPoint", "Coming later", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
                 }
             }

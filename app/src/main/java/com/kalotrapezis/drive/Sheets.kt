@@ -1569,7 +1569,7 @@ internal object Sheets {
             m.groupValues[1].split(':').joinToString(":") { part ->
                 val sheet = part.substringBefore('.', "").removePrefix("$").trim('\'')
                 val cell = part.substringAfter('.')
-                if (sheet.isEmpty()) cell else "$sheet!$cell"
+                if (sheet.isEmpty()) cell else "${SheetBook.quoted(sheet)}!$cell"
             }
         }.let { if (it.startsWith("=")) it else "=$it" }
     }

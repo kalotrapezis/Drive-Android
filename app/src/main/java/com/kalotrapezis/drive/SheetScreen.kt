@@ -118,7 +118,8 @@ import kotlin.math.roundToInt
 @Composable
 internal fun SheetScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
-    val file = remember(open) { Uri.parse(open).path?.let(::File) }
+    // the file (null: a new spreadsheet, named on its first Save)
+    var file by remember(open) { mutableStateOf(if (open == NEW_SHEET) null else Uri.parse(open).path?.let(::File)) }
     var book by remember { mutableStateOf<Workbook?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(-1) }
@@ -140,6 +141,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // A column's letter ('c', its sheet column) or a row's number ('r', the row as drawn) tapped: the ribbon shows its tools
     var header by remember { mutableStateOf<Pair<Char, Int>?>(null) }
     var group by remember { mutableStateOf<String?>(null) } // the ribbon's group opened beside its button (Borders, Number, Font)
+    var tab by remember { mutableStateOf("Home") } // the ribbon's tab
     var filtering by remember { mutableStateOf<Int?>(null) }
     var menu by remember { mutableStateOf(false) }
     var formulas by remember { mutableStateOf(false) } // ⋯ › Show formulas: the cells show their formulas
@@ -160,6 +162,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val workDir = remember { File(context.cacheDir, "sheet-work").apply { deleteRecursively(); mkdirs() } }
     DisposableEffect(Unit) { onDispose { workDir.deleteRecursively() } }
     var leaving by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) } // a new spreadsheet's first Save: its name
+    var renamingSheet by remember { mutableStateOf(false) }
+    var deletingSheet by remember { mutableStateOf(false) }
     val barFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     fun leave() { if (history.unsaved > 0) leaving = true else back() }
@@ -178,6 +183,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     LaunchedEffect(open) {
         WriterLog.init(context)
+        if (open == NEW_SHEET) {
+            // a new spreadsheet: Excel's empty workbook in a working copy, ready to type in
+            val f = File(workDir, "New spreadsheet.xlsx").apply { writeBytes(SheetBook.empty()) }
+            work = f; editing = true
+            val b = withContext(Dispatchers.IO) { DecimalFormatSymbols.getInstance().let { Sheets.read(f, it.decimalSeparator, it.groupingSeparator) } }
+            prepare(b); book = b; index = 0
+            WriterLog.i("Sheets: a new spreadsheet")
+            return@LaunchedEffect
+        }
         val f = file ?: run { failed = "This file cannot be opened."; return@LaunchedEffect }
         WriterLog.i("Sheets: open .${f.extension} of ${f.length() / 1024} KB")
         withContext(Dispatchers.IO) {
@@ -282,36 +296,23 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     /**
-     * Rows ([rows]) or columns inserted ([count] > 0) or deleted at [at] of this sheet: the edits written into a copy,
-     * the copy changed (every reference moved), read again; one step to undo.
+     * A change to the whole file ([op] from the copy with the edits in it to a new copy — rows, columns, sheets): the
+     * edits written into a copy, [op] done, the new copy read again; one step to undo; [then] after, with it.
      */
-    fun shift(rows: Boolean, at: Int, count: Int) {
-        val b = book ?: return; val f = file ?: return; val i = index
-        if (view.filters.isNotEmpty() || view.sort != null) { message = "Clear the filter and the sort first: rows are moved as the file has them."; return }
+    fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, then: (Workbook) -> Unit = {}) {
+        val b = book ?: return; val i = index
+        val from = work ?: file ?: return
         commit(false)
         saving = true
         scope.launch {
-            val from = work ?: f
-            val ext = f.extension.lowercase()
+            val ext = from.extension.lowercase()
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val baked = File(workDir, "${System.nanoTime()}.edits.$ext")
                     val next = File(workDir, "${System.nanoTime()}.$ext")
                     try {
                         if (b.edits.isNotEmpty() || b.kind == "csv") SheetSave.save(b, from, baked) else from.copyTo(baked, overwrite = true)
-                        val sh = SheetShift(b.tabs[i].name, rows, at, count)
-                        WriterLog.timed("Sheets: ${if (count > 0) "inserted" else "deleted"} ${kotlin.math.abs(count)} ${if (rows) "rows" else "columns"}") {
-                            when (b.kind) {
-                                "xlsx" -> sh.xlsx(baked, next, i, b.parts, b.tabs.map { it.name })
-                                "ods" -> sh.ods(baked, next, i, b.tabs.map { it.name })
-                                else -> {
-                                    val old = DecimalFormatSymbols.getInstance().let { Sheets.read(baked, it.decimalSeparator, it.groupingSeparator) }.sheet(0)
-                                    val cells = sh.cells(old)
-                                    val moved = Sheet(old.name, cells, maxOf(0, old.rows + if (rows) count else 0), maxOf(0, old.cols + if (rows) 0 else count), emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
-                                    SheetSave.save(Workbook(b.tabs, b.styles, kind = "csv", format = b.format, csv = b.csv) { moved }, baked, next)
-                                }
-                            }
-                        }
+                        WriterLog.timed("Sheets: $what") { op(baked, next, b) }
                     } finally { baked.delete() }
                     next
                 }
@@ -322,7 +323,38 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 work = next
                 reread(next, emptyMap())
                 view.range = null
-            }.onFailure { WriterLog.e("Sheets: rows or columns could not be moved", it); message = it.message ?: "Could not do that." }
+                book?.let(then)
+            }.onFailure { WriterLog.e("Sheets: $what could not be done", it); message = it.message ?: "Could not do that." }
+        }
+    }
+
+    /** Rows ([rows]) or columns inserted ([count] > 0) or deleted at [at] of this sheet, every reference following. */
+    fun shift(rows: Boolean, at: Int, count: Int) {
+        if (view.filters.isNotEmpty() || view.sort != null) { message = "Clear the filter and the sort first: rows are moved as the file has them."; return }
+        val i = index
+        fileStep("${if (count > 0) "inserted" else "deleted"} ${kotlin.math.abs(count)} ${if (rows) "rows" else "columns"}", { baked, next, b ->
+            val sh = SheetShift(b.tabs[i].name, rows, at, count)
+            when (b.kind) {
+                "xlsx" -> sh.xlsx(baked, next, i, b.parts, b.tabs.map { it.name })
+                "ods" -> sh.ods(baked, next, i, b.tabs.map { it.name })
+                else -> {
+                    val old = DecimalFormatSymbols.getInstance().let { Sheets.read(baked, it.decimalSeparator, it.groupingSeparator) }.sheet(0)
+                    val moved = Sheet(old.name, sh.cells(old), maxOf(0, old.rows + if (rows) count else 0), maxOf(0, old.cols + if (rows) 0 else count), emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
+                    SheetSave.save(Workbook(b.tabs, b.styles, kind = "csv", format = b.format, csv = b.csv) { moved }, baked, next)
+                }
+            }
+        })
+    }
+
+    /** A sheet added after this one, renamed, deleted, or moved to place [to]. */
+    fun sheetStep(add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null) {
+        val i = index
+        fileStep(when { add != null -> "sheet added"; rename != null -> "sheet renamed"; delete -> "sheet deleted"; else -> "sheet moved" }, { baked, next, b ->
+            if (b.kind == "xlsx") SheetBook.xlsx(baked, next, b.parts, b.tabs.map { it.name }, i, add, rename, delete, to)
+            else SheetBook.ods(baked, next, b.tabs.map { it.name }, i, add, rename, delete, to)
+        }) { nb ->
+            views.clear(); header = null
+            index = when { add != null -> i + 1; delete -> maxOf(0, i - 1); to != null -> to; else -> i }.coerceIn(0, nb.tabs.lastIndex)
         }
     }
 
@@ -346,7 +378,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * Writer's), then the new one put in its place and read again; [then] after.
      */
     fun save(then: (() -> Unit)? = null) {
-        val b = book ?: return; val f = file ?: return
+        val b = book ?: return
+        val f = file ?: run { naming = true; return } // a new spreadsheet: named first
         if (saving) return
         commit(false)
         saving = true
@@ -357,7 +390,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     try {
                         // from the working copy when rows or columns were moved, else from the file
                         WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, work ?: f, temp) }
-                        keepPrevious(context, f)
+                        if (f.exists()) keepPrevious(context, f) // a new spreadsheet has none
                         check(temp.renameTo(f)) { "Could not save ${f.name}." }
                     } finally { temp.delete() }
                     val sym = DecimalFormatSymbols.getInstance()
@@ -419,9 +452,59 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     /** The targets' range as the file has it (for borders round it). */
     fun box(keys: List<Long>) = SheetRange(keys.minOf { Sheet.row(it) }, keys.minOf { Sheet.col(it) }, keys.maxOf { Sheet.row(it) }, keys.maxOf { Sheet.col(it) })
 
+    /** File › Export PDF: the sheet as it prints, beside the spreadsheet, never over a file. */
+    fun exportPdf() {
+        val f = file ?: return; val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val stem = f.nameWithoutExtension + if (b.tabs.count { !it.hidden } > 1) " - ${s.name}" else ""
+                val target = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
+                val n = target.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) }
+                WriterLog.i("Sheets: PDF of $n pages, ${target.length() / 1024} KB")
+                target
+            } }
+            message = result.fold({ "Saved ${it.name} beside the spreadsheet" }, { WriterLog.e("Sheets: PDF", it); "Could not make the PDF." })
+        }
+    }
+
+    /** File › Print: the pages as Export PDF makes them, to Android's printing. */
+    fun printIt() {
+        val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        val title = file?.nameWithoutExtension ?: "Spreadsheet"
+        scope.launch {
+            val pdf = withContext(Dispatchers.IO) { runCatching {
+                File(context.cacheDir, "print.pdf").also { out -> out.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) } }
+            }.onFailure { WriterLog.e("Sheets: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+            context.getSystemService(android.print.PrintManager::class.java)?.print(title, PdfPrintAdapter(pdf, title), null)
+            WriterLog.i("Sheets: print ${pdf.length() / 1024} KB")
+        }
+    }
+
     /**
-     * Writer's way (asked 16 Oct): no menu over the sheet — one strip above the tabs whose tools follow what is chosen:
-     * a column's letter, a row's number, chosen cells (Sum, Average, Count), and while editing the cell's looks.
+     * Excel's quick functions (Formulas, Home): the chosen cell given =SUM(…) of the numbers above it (else those to its
+     * left), in the cell bar, to be put in with Enter as Excel's AutoSum.
+     */
+    fun autoFunction(name: String) {
+        val s = sheet ?: return
+        val (r, c) = chosen(s)
+        fun number(rr: Int, cc: Int) = s[rr, cc]?.kind == SheetKind.Number
+        var top = r - 1
+        while (top >= 0 && number(top, c)) top--
+        val ref = if (top < r - 1) "${Sheets.colName(c)}${top + 2}:${Sheets.colName(c)}$r" else {
+            var left = c - 1
+            while (left >= 0 && number(r, left)) left--
+            if (left < c - 1) "${Sheets.colName(left + 1)}${r + 1}:${Sheets.colName(c - 1)}${r + 1}" else ""
+        }
+        val t = "=$name($ref)"
+        barFocus.requestFocus() // first: taking focus starts typing with the cell's own text, which this replaces
+        draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(if (ref.isEmpty()) t.length - 1 else t.length))
+        WriterLog.i("Sheets: $name")
+    }
+
+    /**
+     * Writer's way (asked 16 Oct): no menu over the sheet — a ribbon above the sheet tabs, its tabs as Word's (File,
+     * Home, Insert, Formulas, Data, View) while editing, and a tab for what is chosen (a column, a row, the sheet, cells)
+     * that comes by itself, as Writer's Selection tab does.
      */
     @Composable fun Ribbon(s: Sheet, b: Workbook, l: SheetLayout) {
         val w = islandContentColor()
@@ -432,51 +515,84 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         val (cr, cc) = chosen(s)
         val now = (s[cr, cc]?.fileStyle ?: (s.rowStyles[cr] ?: s.colStyles[cc] ?: 0)).let { b.styles.getOrNull(it) } ?: SheetStyle()
+        val h = header
+        val g = view.range
+        // the tab for what is chosen, named by it; the others only while editing
+        val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> if (g != null) "Selection" else null }
+        val tabs = (if (editing) listOf("File", "Home", "Insert", "Formulas", "Data", "View") else emptyList()) + listOfNotNull(ctx)
+        if (tabs.isEmpty()) return
+        LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in listOf("File", "Home", "Insert", "Formulas", "Data", "View") } ?: "Home" }
+        val shown = tab.takeIf { it in tabs } ?: tabs.first()
         Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
-            // from its start again whenever what is chosen changes (a column, a row, cells, a cell)
-            val scroll = remember(header, view.range == null) { androidx.compose.foundation.ScrollState(0) }
-            Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                val h = header
-                val g = view.range
-                if (h != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(18.dp)) }
-                when {
-                    h?.first == 'c' -> {
-                        val col = h.second
-                        Text("Column ${Sheets.colName(col)}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
-                        RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { val c = l.col(col); if (c >= 0) view.range = SheetRange(0, c, l.rows.lastIndex, c); header = null }
+            Column {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (ctx != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                    tabs.forEach { t ->
+                        val on = t == shown
+                        Column(Modifier.clickable { tab = t; group = null }.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
+                            Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).heightIn(min = 3.dp, max = 3.dp).background(if (t == ctx) Color(0xFF6FCF97) else EXCEL_GREEN))
+                        }
+                    }
+                }
+                val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }
+                Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
+                    val thin = SheetLine(0xFF000000.toInt(), 1f)
+                    @Composable fun copyClear() {
+                        RibbonButton("Copy", w, R.drawable.ic_copy) { copy(context, "Cells", g?.let { sheetText(s, l, it) } ?: s[cr, cc]?.text.orEmpty()); message = "Copied"; WriterLog.i("Sheets: cells copied") }
+                        if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) {
+                            val changes = LinkedHashMap<Long, SheetCell>()
+                            for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
+                            if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
+                        }
+                    }
+                    @Composable fun sortFilter(col: Int) {
                         RibbonButton(if (col in view.filters) "Change filter" else "Filter", w, R.drawable.ic_filter) { filtering = col }
                         if (col in view.filters) RibbonButton("Clear filter", w) { view.filters.remove(col) }
                         RibbonButton("A → Z", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, true) }
                         RibbonButton("Z → A", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, false) }
+                        if (view.sort != null) RibbonButton("Clear sort", w) { view.sort = null }
                         if (col in view.pins) RibbonButton("Unpin", w, R.drawable.ic_push_pin) { view.pins.remove(col) }
                         else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
-                        if (editing) {
-                            RibbonButton("Insert left", w) { header = null; shift(false, col, 1) }
-                            RibbonButton("Insert right", w) { header = null; shift(false, col + 1, 1) }
-                            RibbonButton("Delete", w, R.drawable.ic_delete_column) { header = null; shift(false, col, -1) }
-                        }
                     }
-                    h?.first == 'r' -> {
-                        val row = h.second; val sheetRow = l.rows[row]
-                        Text("Row ${sheetRow + 1}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
-                        RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { view.range = SheetRange(row, 0, row, l.cols.lastIndex); header = null }
-                        RibbonButton("Keep at the top", w, R.drawable.ic_push_pin) { view.freeze = row + 1; view.y = 0f }
-                        if (l.frozenRows > 0) RibbonButton("Let scroll", w) { view.freeze = 0 }
-                        if (editing) {
-                            RibbonButton("Insert above", w) { header = null; shift(true, sheetRow, 1) }
-                            RibbonButton("Insert below", w) { header = null; shift(true, sheetRow + 1, 1) }
-                            RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
+                    when {
+                        shown == "Sheet" -> {
+                            Text(b.tabs[index].name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
+                            RibbonButton("Rename", w, R.drawable.ic_edit) { renamingSheet = true }
+                            RibbonButton("Move left", w, enabled = index > 0) { sheetStep(to = index - 1) }
+                            RibbonButton("Move right", w, enabled = index < b.tabs.lastIndex) { sheetStep(to = index + 1) }
+                            RibbonButton("Delete", w, R.drawable.ic_delete, enabled = b.tabs.count { !it.hidden } > 1) { deletingSheet = true }
                         }
-                    }
-                    else -> {
-                        if (g != null) {
+                        shown.startsWith("Column") && h != null -> {
+                            val col = h.second
+                            RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { val c = l.col(col); if (c >= 0) view.range = SheetRange(0, c, l.rows.lastIndex, c); header = null }
+                            sortFilter(col)
+                            if (editing) {
+                                RibbonButton("Insert left", w) { header = null; shift(false, col, 1) }
+                                RibbonButton("Insert right", w) { header = null; shift(false, col + 1, 1) }
+                                RibbonButton("Delete", w, R.drawable.ic_delete_column) { header = null; shift(false, col, -1) }
+                            }
+                        }
+                        shown.startsWith("Row") && h != null -> {
+                            val row = h.second; val sheetRow = l.rows[row]
+                            RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { view.range = SheetRange(row, 0, row, l.cols.lastIndex); header = null }
+                            RibbonButton("Keep at the top", w, R.drawable.ic_push_pin) { view.freeze = row + 1; view.y = 0f }
+                            if (l.frozenRows > 0) RibbonButton("Let scroll", w) { view.freeze = 0 }
+                            if (editing) {
+                                RibbonButton("Insert above", w) { header = null; shift(true, sheetRow, 1) }
+                                RibbonButton("Insert below", w) { header = null; shift(true, sheetRow + 1, 1) }
+                                RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
+                            }
+                        }
+                        shown == "Selection" && g != null -> {
                             // Excel's status bar, at the strip's start
                             val stats = remember(s, l, g, version) { SheetStats.of(s, l, g) }
                             Text(buildString {
                                 if (stats.numbers > 0) append("Sum ${b.format.general(stats.sum)} · Average ${b.format.general(stats.average)} · ")
                                 append("Count ${stats.count}")
                             }, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                            RibbonButton("Copy", w, R.drawable.ic_copy) { copy(context, "Cells", sheetText(s, l, g)); message = "Copied"; WriterLog.i("Sheets: cells copied") }
+                            copyClear()
                             // whole rows or columns chosen: put in or taken out together
                             if (editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
                                 RibbonButton("Insert ${g.r2 - g.r1 + 1} rows", w) { shift(true, l.rows[g.r1], g.r2 - g.r1 + 1) }
@@ -486,53 +602,86 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Insert ${g.c2 - g.c1 + 1} columns", w) { shift(false, l.cols[g.c1], g.c2 - g.c1 + 1) }
                                 RibbonButton("Delete columns", w, R.drawable.ic_delete_column) { shift(false, l.cols[g.c1], -(g.c2 - g.c1 + 1)) }
                             }
-                            if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) {
-                                val changes = LinkedHashMap<Long, SheetCell>()
-                                for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
-                                if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
-                            }
                         }
-                        if (editing && b.kind != "csv") {
-                            // the looks: Home's, one tool each
-                            RibbonButton("", w, R.drawable.ic_format_bold, on = now.bold) { look { st, _ -> st.copy(bold = !now.bold) } }
-                            RibbonButton("", w, R.drawable.ic_format_italic, on = now.italic) { look { st, _ -> st.copy(italic = !now.italic) } }
-                            RibbonButton("", w, R.drawable.ic_format_underlined, on = now.underline) { look { st, _ -> st.copy(underline = !now.underline) } }
-                            RibbonButton("", w, R.drawable.ic_format_strikethrough, on = now.strike) { look { st, _ -> st.copy(strike = !now.strike) } }
-                            Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
-                                look { st, _ -> st.copy(color = c?.let { (it.value shr 32).toInt() }) }
+                        shown == "File" -> {
+                            RibbonButton("Save", w, R.drawable.ic_save, enabled = !saving) { save() }
+                            RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
+                            RibbonButton("Print", w) { printIt() }
+                            file?.let { f ->
+                                RibbonButton("Share", w, R.drawable.ic_share) { shareDriveFile(context, f) }
+                                RibbonButton("Open in another app", w, R.drawable.ic_open_with) { openElsewhere(context, f) }
                             }
-                            Swatches(w, R.drawable.ic_format_color_fill, "Fill", listOf(Color(0xFFFFFF00), Color(0xFFC6EFCE), Color(0xFFFFC7CE), Color(0xFFDDEBF7), Color(0xFFFCE4D6), Color(0xFFD9D9D9))) { c ->
-                                look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
+                            RibbonButton("About this file", w) { about = true }
+                            RibbonButton("Send log", w) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                        }
+                        shown == "Insert" -> {
+                            RibbonButton("Row above", w) { shift(true, cr, 1) }
+                            RibbonButton("Row below", w) { shift(true, cr + 1, 1) }
+                            RibbonButton("Column left", w) { shift(false, cc, 1) }
+                            RibbonButton("Column right", w) { shift(false, cc + 1, 1) }
+                            if (b.kind != "csv") RibbonButton("Sheet", w) {
+                                sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } })
                             }
-                            @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
-                            val thin = SheetLine(0xFF000000.toInt(), 1f)
-                            opener("Borders", R.drawable.ic_border_outer)
-                            if (group == "Borders") {
-                                val keys = targets(s, l); val g2 = box(keys)
-                                RibbonButton("All", w, R.drawable.ic_border_all) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = true) } }
-                                RibbonButton("Outside", w, R.drawable.ic_border_outer) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false) } }
-                                RibbonButton("Bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false, onlyBottom = true) } }
-                                RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
-                                RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
-                                RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
+                            RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
+                        }
+                        shown == "Formulas" -> {
+                            RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
+                            RibbonButton("Average", w) { autoFunction("AVERAGE") }
+                            RibbonButton("Count", w) { autoFunction("COUNT") }
+                            RibbonButton("Max", w) { autoFunction("MAX") }
+                            RibbonButton("Min", w) { autoFunction("MIN") }
+                            RibbonButton("Show formulas", w, on = formulas) { formulas = !formulas }
+                        }
+                        shown == "Data" -> sortFilter(cc)
+                        shown == "View" -> {
+                            RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
+                            if (l.frozenRows > 0) RibbonButton("Let them scroll", w) { view.freeze = 0 }
+                            RibbonButton("Show formulas", w, on = formulas) { formulas = !formulas }
+                            RibbonButton("100%", w) { view.zoom = 1f }
+                            RibbonButton("Search", w, R.drawable.ic_search) { searching = true }
+                        }
+                        else -> {
+                            // Home: the cell's looks, one tool each
+                            if (b.kind != "csv") {
+                                RibbonButton("", w, R.drawable.ic_format_bold, on = now.bold) { look { st, _ -> st.copy(bold = !now.bold) } }
+                                RibbonButton("", w, R.drawable.ic_format_italic, on = now.italic) { look { st, _ -> st.copy(italic = !now.italic) } }
+                                RibbonButton("", w, R.drawable.ic_format_underlined, on = now.underline) { look { st, _ -> st.copy(underline = !now.underline) } }
+                                RibbonButton("", w, R.drawable.ic_format_strikethrough, on = now.strike) { look { st, _ -> st.copy(strike = !now.strike) } }
+                                Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                                    look { st, _ -> st.copy(color = c?.let { (it.value shr 32).toInt() }) }
+                                }
+                                Swatches(w, R.drawable.ic_format_color_fill, "Fill", listOf(Color(0xFFFFFF00), Color(0xFFC6EFCE), Color(0xFFFFC7CE), Color(0xFFDDEBF7), Color(0xFFFCE4D6), Color(0xFFD9D9D9))) { c ->
+                                    look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
+                                }
+                                opener("Borders", R.drawable.ic_border_outer)
+                                if (group == "Borders") {
+                                    val keys = targets(s, l); val g2 = box(keys)
+                                    RibbonButton("All", w, R.drawable.ic_border_all) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = true) } }
+                                    RibbonButton("Outside", w, R.drawable.ic_border_outer) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false) } }
+                                    RibbonButton("Bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, thin, all = false, onlyBottom = true) } }
+                                    RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
+                                    RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
+                                    RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
+                                }
+                                RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
+                                RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
+                                RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
+                                RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
+                                opener("Number", R.drawable.ic_functions)
+                                if (group == "Number") listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
+                                    .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
+                                RibbonButton(".0−", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
+                                RibbonButton(".0+", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
+                                RibbonButton("A−", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
+                                Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
+                                RibbonButton("A+", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
+                                opener(now.font ?: "Font", R.drawable.ic_text_box)
+                                if (group == (now.font ?: "Font")) listOf("Calibri", "Arial", "Times New Roman", "Courier New").forEach { f ->
+                                    RibbonButton(f, w, on = now.font == f) { group = null; look { st, _ -> st.copy(font = f) } }
+                                }
+                                RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
                             }
-                            RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
-                            RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
-                            RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
-                            RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
-                            opener("Number", R.drawable.ic_functions)
-                            if (group == "Number") listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
-                                .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
-                            RibbonButton(".0−", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
-                            RibbonButton(".0+", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
-                            RibbonButton("A−", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
-                            Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
-                            RibbonButton("A+", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
-                            opener(now.font ?: "Font", R.drawable.ic_text_box)
-                            if (group == (now.font ?: "Font")) listOf("Calibri", "Arial", "Times New Roman", "Courier New").forEach { f ->
-                                RibbonButton(f, w, on = now.font == f) { group = null; look { st, _ -> st.copy(font = f) } }
-                            }
-                            RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
+                            copyClear()
                         }
                     }
                 }
@@ -553,7 +702,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                     val unsaved = version >= 0 && history.unsaved > 0
                     Column(Modifier.weight(1f)) {
-                        Text((file?.name ?: "Spreadsheet") + if (unsaved) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text((file?.name ?: "New spreadsheet") + if (unsaved) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(if (saving) "Saving…" else if (editing) "Editing" else "View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
                     }
                     if (editing) {
@@ -579,31 +728,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     onClick = { menu = false; WriterLog.i("Sheets: share"); shareDriveFile(context, f) })
                             }
                             if (f != null && sheet != null) {
-                                DropdownMenuItem(text = { Text("Export PDF") }, leadingIcon = { Icon(painterResource(R.drawable.ic_file), null) }, onClick = {
-                                    menu = false
-                                    val s = sheet ?: return@DropdownMenuItem; val b = book ?: return@DropdownMenuItem; val l = layout ?: return@DropdownMenuItem
-                                    scope.launch {
-                                        val result = withContext(Dispatchers.IO) { runCatching {
-                                            val stem = f.nameWithoutExtension + if (b.tabs.count { !it.hidden } > 1) " - ${s.name}" else ""
-                                            val target = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
-                                            val n = target.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) }
-                                            WriterLog.i("Sheets: PDF of $n pages, ${target.length() / 1024} KB")
-                                            target
-                                        } }
-                                        message = result.fold({ "Saved ${it.name} beside the spreadsheet" }, { WriterLog.e("Sheets: PDF", it); "Could not make the PDF." })
-                                    }
-                                })
-                                DropdownMenuItem(text = { Text("Print") }, onClick = {
-                                    menu = false
-                                    val s = sheet ?: return@DropdownMenuItem; val b = book ?: return@DropdownMenuItem; val l = layout ?: return@DropdownMenuItem
-                                    scope.launch {
-                                        val pdf = withContext(Dispatchers.IO) { runCatching {
-                                            File(context.cacheDir, "print.pdf").also { out -> out.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) } }
-                                        }.onFailure { WriterLog.e("Sheets: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
-                                        context.getSystemService(android.print.PrintManager::class.java)?.print(f.nameWithoutExtension, PdfPrintAdapter(pdf, f.nameWithoutExtension), null)
-                                        WriterLog.i("Sheets: print ${pdf.length() / 1024} KB")
-                                    }
-                                })
+                                DropdownMenuItem(text = { Text("Export PDF") }, leadingIcon = { Icon(painterResource(R.drawable.ic_file), null) }, onClick = { menu = false; exportPdf() })
+                                DropdownMenuItem(text = { Text("Print") }, onClick = { menu = false; printIt() })
                             }
                             DropdownMenuItem(text = { Text("Show formulas") }, leadingIcon = { Icon(painterResource(R.drawable.ic_functions), null) },
                                 trailingIcon = { if (formulas) Icon(painterResource(R.drawable.ic_check), null) },
@@ -657,7 +783,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         val rs = sheet; val rb = book; val rl = layout
         if (rs != null && rb != null && rl != null && draft == null && !searching && (header != null || view.range != null || editing)) Ribbon(rs, rb, rl)
-        book?.let { b -> SheetTabs(b, index, sheet) { i -> WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; header = null; index = i } }
+        book?.let { b ->
+            SheetTabs(b, index, sheet, add = if (editing && b.kind != "csv") ({
+                val name = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } }
+                sheetStep(add = name)
+            }) else null, tools = if (editing && b.kind != "csv") ({ header = 's' to index; group = null }) else null) { i ->
+                WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; header = null; index = i
+            }
+        }
     }
     message?.let { m ->
         Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
@@ -669,6 +802,41 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
+    if (naming) {
+        var typed by remember { mutableStateOf("New spreadsheet") }
+        val dir = remember { TextEditorStore(context).saveDirectory() }
+        AlertDialog(onDismissRequest = { naming = false }, title = { Text("Save as") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".xlsx") })
+                    Text("In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                val name = typed.trim().removeSuffix(".xlsx")
+                val target = File(dir, "$name.xlsx")
+                when {
+                    name.isEmpty() || '/' in name -> message = "That is not a file name."
+                    target.exists() -> message = "${target.name} is already there. Choose another name."
+                    else -> { naming = false; dir.mkdirs(); file = target; WriterLog.i("Sheets: new spreadsheet named"); save() }
+                }
+            }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } })
+    }
+    if (renamingSheet) book?.let { b ->
+        var typed by remember { mutableStateOf(b.tabs[index].name) }
+        val problem = SheetBook.valid(typed.trim(), b.tabs.map { it.name }.filterIndexed { i, _ -> i != index })
+        AlertDialog(onDismissRequest = { renamingSheet = false }, title = { Text("Rename the sheet") },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, isError = problem != null, supportingText = { problem?.let { Text(it) } }) },
+            confirmButton = { TextButton(enabled = problem == null, onClick = { renamingSheet = false; if (typed.trim() != b.tabs[index].name) sheetStep(rename = typed.trim()) }) { Text("Rename") } },
+            dismissButton = { TextButton(onClick = { renamingSheet = false }) { Text("Cancel") } })
+    }
+    if (deletingSheet) book?.let { b ->
+        AlertDialog(onDismissRequest = { deletingSheet = false }, title = { Text("Delete ${b.tabs[index].name}?") },
+            text = { Text("Its cells go, and formulas that read them show #REF!. Undo brings it back.") },
+            confirmButton = { TextButton(onClick = { deletingSheet = false; sheetStep(delete = true) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deletingSheet = false }) { Text("Cancel") } })
+    }
     if (leaving) AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
         text = { Text("${history.unsaved} change${if (history.unsaved == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },
@@ -695,6 +863,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 }
 
 /** The file in an app that can open (and change) it: Android's chooser, the file given to read and write. */
+/** [SheetScreen]'s open for a new spreadsheet (the Office home's Excel card). */
+internal const val NEW_SHEET = "tetra:new-spreadsheet"
+
 private fun openElsewhere(context: android.content.Context, file: File) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
     val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
@@ -925,8 +1096,8 @@ private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit, cop
 
 /** The sheets as Excel's tabs along the bottom (the file's hidden ones left out), the open one in Excel's green. */
 @Composable
-private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> Unit) {
-    if (book.tabs.count { !it.hidden } < 2) return
+private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit)? = null, tools: (() -> Unit)? = null, pick: (Int) -> Unit) {
+    if (book.tabs.count { !it.hidden } < 2 && add == null) return
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             book.tabs.forEachIndexed { i, tab ->
@@ -936,7 +1107,8 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> U
                 Surface(
                     shape = RoundedCornerShape(10.dp), color = if (on) EXCEL_GREEN else Color.Transparent,
                     contentColor = if (on) Color.White else islandContentColor(),
-                    modifier = Modifier.clickable { if (!on) pick(i) },
+                    // the open sheet tapped while editing: its tools in the strip (rename, move, delete)
+                    modifier = Modifier.clickable { if (!on) pick(i) else tools?.invoke() },
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(tab.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
@@ -944,6 +1116,7 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> U
                     }
                 }
             }
+            add?.let { a -> IconButton(onClick = a) { Text("+", style = MaterialTheme.typography.titleLarge) } }
         }
     }
 }

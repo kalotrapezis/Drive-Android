@@ -250,6 +250,8 @@ internal object SheetSave {
                 if (data != null) out.write(data) else zip.getInputStream(e).use { it.copyTo(out) }
                 out.closeEntry()
             }
+            // parts the file did not have (a new sheet)
+            for ((name, data) in replaced) if (data != null && zip.getEntry(name) == null) { out.putNextEntry(ZipEntry(name)); out.write(data); out.closeEntry() }
         }
     }
 

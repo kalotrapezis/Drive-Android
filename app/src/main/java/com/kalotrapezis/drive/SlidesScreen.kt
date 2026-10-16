@@ -82,6 +82,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
+    val odp = file?.extension.equals("odp", true)
     var deck by remember { mutableStateOf<Deck?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     var notes by remember { mutableStateOf(false) }
@@ -116,7 +117,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             val result = withContext(Dispatchers.IO) { runCatching {
                 val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                 try {
-                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { SlidesEdit.save(f, d, e, temp) }
+                    WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(f, d, e, temp) else SlidesEdit.save(f, d, e, temp) }
                     keepPrevious(context, f) // Writer's versions
                     check(temp.renameTo(f)) { "Could not save ${f.name}." }
                 } finally { temp.delete() }
@@ -244,7 +245,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Insert" -> {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
-                RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+                if (!odp) RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side and speed; Play shows it from the slide before
@@ -334,7 +335,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         IconButton(onClick = { openElsewhere(context, f) }) { Icon(painterResource(R.drawable.ic_open_with), contentDescription = "Open in another app") }
                     }
                     // Edit at the far right, where Done is while editing — the same place in Words, Tables and Slides
-                    if (deck != null && file?.extension?.lowercase() == "pptx" && file.canWrite()) IconButton(onClick = { editing = true; WriterLog.i("Slides: editing") }) {
+                    if (deck != null && file?.extension?.lowercase() in setOf("pptx", "odp") && file!!.canWrite()) IconButton(onClick = { editing = true; WriterLog.i("Slides: editing") }) {
                         Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                 }
             }
@@ -426,7 +427,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions", "Animations")
+                        // shortcut: an .odp's transitions and animations are not written yet, so its ribbon leaves those tabs out
+                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "Slide", "Insert", "Transitions".takeIf { !odp }, "Animations".takeIf { !odp })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Column(Modifier.navigationBarsPadding()) {

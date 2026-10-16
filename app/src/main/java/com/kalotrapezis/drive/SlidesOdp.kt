@@ -148,8 +148,14 @@ internal object SlidesOdp {
                 shrink = g("shrink-to-fit") == "true" || g("fit-to-size") == "shrink-to-fit")
         }
 
-        fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean) {
-            for (e in parent.kids()) runCatching {
+        /**
+         * The shapes under [parent]; a page's own named by their place on it ("o3": the page's fourth element, "o3.1" the
+         * second in that group) — what editing finds them by again in the file ([top]: the group's, what moves with it).
+         */
+        fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean, prefix: String? = null, top: String? = null) {
+            for ((k, e) in parent.kids().withIndex()) runCatching {
+                val path = if (master) null else prefix?.let { "$it.$k" } ?: "o$k"
+                val before = out.size
                 // a master's placeholders (title, outline, numbers): their words show only on pages that fill them
                 if (master && (e.a(PRES, "class") != null || e.a(PRES, "placeholder") == "true")) return@runCatching
                 val b = box(e); val rot = rotation(e)
@@ -167,7 +173,7 @@ internal object SlidesOdp {
                                 val t = text(inner, pres, gr)
                                 val f = fill(); val l = line()
                                 val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
-                                if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient())
+                                if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { part(p) } }
                             "object" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }?.let(OfficeCharts::readOdf)?.let { out += SlideItem.Chart(b[0], b[1], b[2], b[3], it) }
@@ -182,10 +188,11 @@ internal object SlidesOdp {
                         val own = if (preset == null && geo != null) ShapeGeometry.ofOdf(xml(geo)) else null
                         val f = fill() ?: if (g("fill") == null) 0xFF729FCF.toInt() else null; val l = line()
                         val shape = if (preset != null || own != null) ShapePicture(preset ?: "custom", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, own, adjust) else null
-                        out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, text(e, null, gr), gradient = gradient())
+                        out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, text(e, null, gr), gradient = gradient(), id = path)
                     }
-                    "g" -> shapes(e, out, master)
+                    "g" -> shapes(e, out, master, path, top ?: path)
                 }
+                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 

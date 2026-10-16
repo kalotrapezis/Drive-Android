@@ -138,6 +138,42 @@ class SlidesTest {
         }
     }
 
+    /** An .odp edited and saved as the .pptx is (asked 16 Oct: the three apps alike), read back here and by LibreOffice. */
+    @Test fun `an odp edited and saved`() {
+        val src = File("src/test/resources/slides.odp")
+        val deck = Slides.read(src)
+        val png = File.createTempFile("pic", ".png").apply { writeBytes(java.util.zip.ZipFile(File("src/test/resources/slides.pptx")).use { z -> z.getInputStream(z.entries().asSequence().first { en -> en.name.startsWith("ppt/media/") }).readBytes() }) }
+        var e = SlidesEdit.start(deck)
+        // the shapes' page first, "Plan" duplicated, the chart's page deleted, the title page hidden and retitled
+        e = e.copy(order = listOf(SlidesEdit.Entry(2, 2), SlidesEdit.Entry(0, 0), SlidesEdit.Entry(1, 1), SlidesEdit.Entry(1, 4)),
+            hidden = mapOf(0 to true), texts = mapOf((0 to "o0") to listOf("Tetra Slides, edited"), (1 to "o1") to listOf("One", "Two")),
+            looks = mapOf((2 to "o0") to SlidesEdit.Look(fill = 0xFFC00000.toInt(), text = 0xFFFFFFFF.toInt())), frames = mapOf((2 to "o1") to listOf(100f, 400f, 150f, 60f)),
+            removed = setOf(2 to "o3"), added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()),
+                SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path))))
+        val out = File.createTempFile("edited", ".odp")
+        SlidesEdit.view(deck, e) // as it shows while editing (no failure)
+        SlidesOdpEdit.save(src, deck, e, out)
+        fun check(d: Deck, odp: Boolean) {
+            assertEquals(4, d.slides.size)
+            val shapes = d.slides[0].items.filterIsInstance<SlideItem.Shape>()
+            val box = shapes.first { words(it) == "A rounded box" }
+            assertEquals(0xFFC00000.toInt(), box.shape!!.fill); assertEquals(0xFFFFFFFF.toInt(), box.text!!.paras[0].runs[0].color)
+            assertTrue(shapes.any { Math.abs(it.x - 100f) < 1 && Math.abs(it.y - 400f) < 1 && Math.abs(it.w - 150f) < 1 }) // moved and sized
+            assertEquals(1, d.slides[0].items.count { it is SlideItem.Picture }) // its own deleted, one put on
+            assertTrue(shapes.any { it.shape?.fill == 0xFFFFC000.toInt() && Math.abs(it.x - 550f) < 1 }) // the star
+            assertTrue(d.slides[1].hidden); assertTrue(d.slides[1].items.any { words(it) == "Tetra Slides, edited" })
+            for (k in 2..3) assertEquals(listOf("One", "Two"), (d.slides[k].items.first { words(it)?.startsWith("One") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
+            assertTrue(d.slides.none { s -> s.items.any { it is SlideItem.Chart } })
+            if (odp) assertEquals(d.slides[2].items.size, d.slides[3].items.size)
+        }
+        check(Slides.read(out), true)
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", "pptx", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+            check(Slides.read(dir.listFiles()!!.single { it.extension == "pptx" }), false)
+        }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

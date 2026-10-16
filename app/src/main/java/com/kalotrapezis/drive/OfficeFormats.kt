@@ -1711,7 +1711,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                 "t" -> if (!(fieldMarks && fieldState == 2 && fieldMark(fieldInstr.toString()) != null)) runs += look.copy(text = e.textContent) // a page number's old value: the page's own instead
                 "tab", "ptab" -> runs += look.copy(text = "\t")
                 "noBreakHyphen" -> runs += look.copy(text = "‑")
-                "softHyphen", "lastRenderedPageBreak" -> Unit
+                // an optional hyphen (Word's Ctrl + -): kept as the soft hyphen it is, written back as Word's
+                "softHyphen" -> runs += look.copy(text = "\u00AD")
+                "lastRenderedPageBreak" -> Unit
                 "br", "cr" -> when (e.attr(W, "type")) {
                     "page" -> breakLine(true)
                     // In columns (Phase 2): the part after it starts the next column — a paragraph of its own marked so,
@@ -2412,9 +2414,10 @@ private object DocxWriter {
         append("<w:r>")
         if (rPr.isNotEmpty()) append("<w:rPr>").append(rPr).append("</w:rPr>")
         if (r.image != null) { append(picture(r.image)); append("</w:r>"); return@buildString }
-        Regex("""[\t$LINE_BREAK]|[^\t$LINE_BREAK]+""").findAll(r.text).forEach { m ->
+        Regex("""[\t$LINE_BREAK\u00AD]|[^\t$LINE_BREAK\u00AD]+""").findAll(r.text).forEach { m ->
             when (m.value) {
                 "\t" -> append("<w:tab/>")
+                "\u00AD" -> append("<w:softHyphen/>")
                 LINE_BREAK.toString() -> append("<w:br/>")
                 else -> (if (r.change?.deleted == true) "delText" else "t").let { t -> append("""<w:$t xml:space="preserve">""").append(OfficeFormats.esc(m.value)).append("</w:$t>") }
             }

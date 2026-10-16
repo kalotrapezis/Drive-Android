@@ -4048,17 +4048,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     onClick = { open = false; if (mode != now) setLineNumbers(mode) }) }
                         }
                     }
-                    // Word's Hyphenation: none or automatic, for the whole document; the pages break words at lines' ends.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        val now = documentStyles.hyphenate
-                        RibbonButton("Hyphenation", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            listOf(false to "None", true to "Automatic").forEach { (on, label) -> DropdownMenuItem(text = { Text(label) },
-                                trailingIcon = { if (on == now) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                onClick = { open = false; if (on != now) setHyphenation(on) }) }
-                        }
-                    }
+                    // Word's Hyphenation: automatic on or off for the whole document (the pages break words at lines' ends), and by
+                    // hand an optional hyphen at the cursor (Word's Ctrl + -): the word breaks there only at a line's end
+                    val now = documentStyles.hyphenate
+                    RibbonButton(if (now) "Hyphenation: on" else "Hyphenation: off", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { setHyphenation(!now) }
+                    RibbonButton("Optional hyphen", w, R.drawable.ic_hyphenation, enabled = loaded) { typeIn("\u00AD"); message = "An optional hyphen: the word breaks there at a line's end" }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }

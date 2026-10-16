@@ -567,6 +567,23 @@ class OfficeFormatsTest {
         }
     }
 
+    /** An optional hyphen (Word's Ctrl + -, a soft hyphen): kept in both kinds, Word's softHyphen, and LibreOffice keeps it too. */
+    @Test fun `an optional hyphen is kept`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val word = "Δια\u00ADδι\u00ADκτυο"
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Το $word μας"))))), kind)
+            if (kind == OfficeKind.Docx) assert(String(java.util.zip.ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name == "word/document.xml" }; z.readBytes() }).contains("<w:softHyphen/>")) { "no softHyphen" }
+            assertEquals(kind.name, "Το $word μας", OfficeFormats.read(bytes, kind).paras.single().text)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("$kind → LibreOffice", "Το $word μας", OfficeFormats.read(java.io.File(dir, "h.${other.extension}").readBytes(), other).paras.first { it.text.isNotBlank() }.text)
+            }
+        }
+    }
+
     /** A shape's own words (Word's Add Text): put in a shape made here, read back as its words, and LibreOffice has them in the shape. */
     @Test fun `a shape takes words of its own`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {

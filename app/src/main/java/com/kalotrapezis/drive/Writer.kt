@@ -1190,6 +1190,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var galleryViewing by remember { mutableStateOf<Boolean?>(null) } // a page gallery: whether the pages were shown before it
     var pagesIndex by remember { mutableStateOf<IntArray?>(null) } // the page each paragraph starts on, in [pages]
     var navOpen by remember { mutableStateOf(false) }
+    var pagesAcross by remember { mutableIntStateOf(1) } // View › Two pages
+    var fitWidth by remember { mutableStateOf(false) } // View › Fit width
     var goPage by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a page to scroll to (and when it was asked)
     var goText by remember { mutableStateOf<Pair<Int, Long>?>(null) } // a place in the editor's text to bring to the top
     var sizing by remember { mutableStateOf(false) }
@@ -2953,6 +2955,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 } else if (viewing) {
                     Tool(R.drawable.ic_menu_book, "Reading mode", w, enabled = loaded) { viewing = false; reading = true }
                     Tool(R.drawable.ic_view_list, "Navigation", w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
+                    Tool(R.drawable.ic_view_column, "Two pages", w, enabled = loaded, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2 }
                     Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
                     RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
@@ -2977,7 +2980,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             } }
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
                 pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage,
-                    covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp) }
+                    covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp,
+                    across = pagesAcross, fitWidth = fitWidth) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
@@ -4138,6 +4142,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                     // A phone: the page as it prints (Print layout), or the text to the screen's width (Mobile view).
                     RibbonButton("Reading mode", w, R.drawable.ic_menu_book) { commitCell(); reading = true }
+                    // the pages (the eye): as wide as the screen, or two side by side
+                    RibbonButton("Fit width", w, R.drawable.ic_fit_page, on = fitWidth) { fitWidth = !fitWidth; commitCell(); viewing = true }
+                    RibbonButton("Two pages", w, R.drawable.ic_view_column, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2; commitCell(); viewing = true }
                     if (!tablet) RibbonButton("Mobile view", w, R.drawable.ic_wrap_text, on = mobileView) {
                         mobileView = !mobileView
                         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putBoolean("mobileView", mobileView).apply()
@@ -4943,27 +4950,30 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
  * page in view, down each page's side. A phone fits the page to its width, no rulers.
  */
 @Composable
-private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null, covered: Dp = 0.dp) {
+private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null, covered: Dp = 0.dp,
+    /** View › Two pages: pages side by side; View › Fit width: the page as wide as the screen (a tablet's too). */
+    across: Int = 1, fitWidth: Boolean = false) {
     var zoom by remember { mutableFloatStateOf(1f) }
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     val coveredPx = with(LocalDensity.current) { covered.toPx() }
     // Navigation: a heading's page. A page as -(n + 1): its foot, clear of a strip [covered] at the bottom (a footer's gallery).
     LaunchedEffect(goTo) { goTo?.let { (page, _) ->
-        val p = (if (page < 0) -page - 1 else page).coerceIn(0, pages.lastIndex)
+        val p = (if (page < 0) -page - 1 else page).coerceIn(0, pages.lastIndex) / across
         list.animateScrollToItem(p)
         if (page < 0) list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == p }?.let { item ->
             list.animateScrollBy(item.offset + item.size - (list.layoutInfo.viewportEndOffset - coveredPx)) }
     } }
     BoxWithConstraints(modifier) {
-        val rulers = maxWidth >= 700.dp
+        val rulers = maxWidth >= 700.dp && across == 1
         val ruler = if (rulers) 18.dp else 0.dp
         val gap = if (rulers) 6.dp else 0.dp
+        val between = 12.dp // between pages side by side
         val widest = pages.maxOf { it.page.width }
-        val fit = (maxWidth - ruler - gap - 24.dp) / widest
-        val scale = (if (rulers) minOf(perPt, fit) else fit) * zoom // on screen, per point
-        val content = maxOf(maxWidth, widest * scale + ruler + gap + 24.dp)
+        val fit = (maxWidth - ruler - gap - 24.dp - between * (across - 1)) / (widest * across)
+        val scale = (if (rulers && !fitWidth) minOf(perPt, fit) else fit) * zoom // on screen, per point
+        val content = maxOf(maxWidth, widest * scale * across + between * (across - 1) + ruler + gap + 24.dp)
         val sideways = rememberScrollState()
-        val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
+        val at by remember(across) { derivedStateOf { (list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0) * across } }
         Column(Modifier.fillMaxSize()) {
             if (rulers) {
                 val page = pages[at.coerceIn(0, pages.lastIndex)].page
@@ -4978,15 +4988,16 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = maxOf(72.dp, covered + 16.dp)),
             ) {
-                items(pages.size) { i ->
-                    val laid = pages[i]
-                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        if (rulers) VerticalRuler(laid.page, scale, Modifier.width(ruler).height(scale * laid.page.height))
-                        androidx.compose.foundation.Canvas(Modifier.width(scale * laid.page.width).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
-                            drawIntoCanvas { c ->
-                                val n = c.nativeCanvas
-                                val k = size.width / laid.page.width
-                                n.save(); n.scale(k, k); laid.draw(n); n.restore()
+                items((pages.size + across - 1) / across) { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(if (across > 1) between else gap), verticalAlignment = Alignment.Top) {
+                        for (laid in pages.subList(row * across, minOf(pages.size, row * across + across))) {
+                            if (rulers) VerticalRuler(laid.page, scale, Modifier.width(ruler).height(scale * laid.page.height))
+                            androidx.compose.foundation.Canvas(Modifier.width(scale * laid.page.width).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
+                                drawIntoCanvas { c ->
+                                    val n = c.nativeCanvas
+                                    val k = size.width / laid.page.width
+                                    n.save(); n.scale(k, k); laid.draw(n); n.restore()
+                                }
                             }
                         }
                     }

@@ -202,7 +202,8 @@ one pass once the tabs' features are done.
 
 ### View
 - [x] Zoom
-- [ ] Fit to width; multiple pages
+- [x] Fit to width (View: the page as wide as the screen, a tablet's too; a phone's pages always are), two pages side by
+      side (View › Two pages, and the pages' bar) — 16 Oct
 - [x] Reading mode (no ribbon, bigger text): View › Reading mode or the book over the pages; text reflowed at 140 %, − / +, read only (15 Oct)
 - [x] Navigation pane: jump to a heading
 

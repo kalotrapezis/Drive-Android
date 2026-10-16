@@ -2006,13 +2006,18 @@ internal class SheetPainter(
                 if (bmp != null) c.drawBitmap(bmp, null, box, fill.apply { color = 0xFFFFFFFF.toInt(); isFilterBitmap = true })
             }
             else -> {
-                d.fill?.let { fill.color = it; c.drawRect(box, fill) }
-                line.color = d.line ?: 0xFF7F7F7F.toInt(); line.strokeWidth = 1f / s; line.pathEffect = null
-                if (d.line != null || d.fill == null) c.drawRect(box, line)
+                if (d.shape != null) d.shape.drawAt(c, box.left, box.top, box.width(), box.height())
+                else {
+                    d.fill?.let { fill.color = it; c.drawRect(box, fill) }
+                    line.color = d.line ?: 0xFF7F7F7F.toInt(); line.strokeWidth = 1f / s; line.pathEffect = null
+                    if (d.line != null || d.fill == null) c.drawRect(box, line)
+                }
                 d.text?.takeIf { it.isNotEmpty() }?.let { t ->
-                    text.typeface = Typeface.SANS_SERIF; text.textSize = 11 * 4 / 3f; text.color = 0xFF000000.toInt(); text.isUnderlineText = false; text.isStrikeThruText = false
-                    val l = StaticLayout.Builder.obtain(t, 0, t.length, TextPaint(text), max(1, (box.width() - 8).toInt())).setIncludePad(false).build()
-                    c.save(); c.clipRect(box); c.translate(box.left + 4, box.top + 4); l.draw(c); c.restore()
+                    text.typeface = Typeface.SANS_SERIF; text.textSize = 11 * 4 / 3f; text.color = d.textColor ?: 0xFF000000.toInt(); text.isUnderlineText = false; text.isStrikeThruText = false
+                    val l = StaticLayout.Builder.obtain(t, 0, t.length, TextPaint(text), max(1, (box.width() - 8).toInt()))
+                        .setAlignment(if (d.centred) android.text.Layout.Alignment.ALIGN_CENTER else android.text.Layout.Alignment.ALIGN_NORMAL).setIncludePad(false).build()
+                    val top = if (d.centred) box.top + max(4f, (box.height() - l.height) / 2) else box.top + 4
+                    c.save(); c.clipRect(box); c.translate(box.left + 4, top); l.draw(c); c.restore()
                 }
             }
         }

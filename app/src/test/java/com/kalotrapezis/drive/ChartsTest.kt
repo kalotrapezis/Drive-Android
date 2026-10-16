@@ -119,6 +119,10 @@ class ChartsTest {
             assertEquals(listOf("Reading", "Writing", "Maths", "Science", "Art"), radar.categories)
             assertEquals(listOf(6.0, 9.0, 5.0, 8.0, 7.0), radar.series[1].values)
         }
+        for (two in listOf(xlsx(4), ods(4))) {
+            assertEquals(listOf(false, true), two.series.map { it.secondary }) // the margin on its own axis, at the right
+            assertEquals(ChartKind.Line, two.series[1].kind)
+        }
         for (bubble in listOf(xlsx(3), ods(3))) {
             assertEquals(ChartKind.Bubble, bubble.kind)
             assertEquals(listOf("10", "20", "30", "40"), bubble.categories) // x

@@ -267,7 +267,9 @@ slow frames, taps, filters, searches — never a cell's words).
 ### Next (viewer)
 - [x] Charts in more kinds: combo (a line over columns), radar, bubble — from .xlsx and .ods (charts.xlsx/.ods), in Writer too
       (shown, not offered for a new chart; a bubble chart saved from Writer is a scatter of its points)
-- [ ] Shapes' geometry (ShapeGeometry) for Excel's shapes; a combo's second value axis
+- [x] Shapes in their outlines (Writer's 187 presets, their adjustments; LibreOffice's kinds and paths), the theme's look
+      (fill, darker outline, white words) as Excel's default shape, words in the middle (shapes.xlsx/.ods)
+- [x] A combo's second value axis: a line on its own scale, its numbers at the right (charts.xlsx "Two axes")
 - [ ] Tablet: two panes? (check the layout on the tablet)
 - [ ] .xls (Excel 97–2003) — none in the user's files
 

@@ -50,6 +50,8 @@ internal class SheetDrawing(
     val toRow: Int = -1, val toCol: Int = -1, val toDx: Float = 0f, val toDy: Float = 0f,
     val width: Float = 0f, val height: Float = 0f,
     val chart: DocChart? = null, val image: (() -> ByteArray?)? = null, val text: String? = null, val fill: Int? = null, val line: Int? = null,
+    /** A shape in its own outline (an arrow, a star: Excel's presets, LibreOffice's paths); null: a box. */
+    val shape: ShapePicture? = null, val textColor: Int? = null, /** its words in the middle (Excel's shapes), not from the top left (a text box) */ val centred: Boolean = false,
 )
 
 /** A cell's border edge: colour, width in pixels, double or dashed. */
@@ -920,19 +922,45 @@ internal object Sheets {
                     { parts(p) }
                 } ?: continue else null
                 val text = if (body.localName == "sp") body.below("p").joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }.trim() else null
-                fun solid(e: Element?) = e?.kid("solidFill")?.let { f ->
-                    f.kid("srgbClr")?.attr("val")?.toLongOrNull(16)?.toInt()?.or(0xFF000000.toInt())
-                        ?: f.kid("schemeClr")?.attr("val")?.removePrefix("accent")?.toIntOrNull()?.let { theme.getOrNull(3 + it) }
+                // a colour: its own, or the theme's (accent1, lt1…), darker or lighter as it says (shade, tint)
+                fun scheme(c: Element?): Int? {
+                    val own = c?.kid("srgbClr")?.attr("val")?.toLongOrNull(16)?.toInt()?.or(0xFF000000.toInt())
+                    val s = c?.kid("schemeClr")
+                    val base = own ?: s?.attr("val")?.let { n ->
+                        val i = when (n) { "lt1", "bg1" -> 0; "dk1", "tx1" -> 1; "lt2", "bg2" -> 2; "dk2", "tx2" -> 3; else -> n.removePrefix("accent").toIntOrNull()?.plus(3) } ?: return@let null
+                        theme.getOrNull(i) ?: when (i) { 0 -> 0xFFFFFFFF.toInt(); 1 -> 0xFF000000.toInt(); else -> OfficeCharts.PALETTE.getOrNull(i - 4)?.or(0xFF000000.toInt()) }
+                    } ?: return null
+                    val k = (c?.kid("srgbClr") ?: s)!!
+                    k.kid("shade")?.attr("val")?.toIntOrNull()?.let { v -> val f = v / 100_000f
+                        fun ch(x: Int) = (x * f).toInt().coerceIn(0, 255)
+                        return (base and 0xFF000000.toInt()) or (ch(base shr 16 and 255) shl 16) or (ch(base shr 8 and 255) shl 8) or ch(base and 255) }
+                    k.kid("tint")?.attr("val")?.toIntOrNull()?.let { v -> val f = v / 100_000f
+                        fun ch(x: Int) = (255 - (255 - x) * f).toInt().coerceIn(0, 255)
+                        return (base and 0xFF000000.toInt()) or (ch(base shr 16 and 255) shl 16) or (ch(base shr 8 and 255) shl 8) or ch(base and 255) }
+                    return base
                 }
+                fun solid(e: Element?) = e?.kid("solidFill")?.let(::scheme)
                 val spPr = body.kid("spPr")
-                if (body.localName == "sp" && text.isNullOrEmpty() && solid(spPr) == null) continue
+                // A shape's look: its own fill and outline, else its style's (Excel's default shape: the theme's accent, the outline darker).
+                val style = body.kid("style")
+                val fillC = if (spPr?.kid("noFill") != null) null else solid(spPr) ?: scheme(style?.kid("fillRef"))
+                val ln = spPr?.kid("ln")
+                val lineC = if (ln?.kid("noFill") != null) null else solid(ln) ?: scheme(style?.kid("lnRef"))
+                val prst = spPr?.kid("prstGeom")?.attr("prst")
+                val shape = if (body.localName == "sp" && prst != null && prst != "rect" && prst in ShapeGeometry.presets)
+                    ShapePicture(prst, fillC, lineC, ((ln?.attr("w")?.toFloatOrNull() ?: 9525f) / emu).coerceAtLeast(0.5f),
+                        adjust = spPr?.kid("prstGeom")?.below("gd")?.mapNotNull { g -> g.attr("fmla")?.removePrefix("val ")?.trim()?.toDoubleOrNull()?.let { (g.attr("name") ?: "") to it } }?.toMap().orEmpty())
+                    else null
+                val textColor = body.kid("txBody")?.below("rPr")?.firstNotNullOfOrNull { solid(it) } ?: scheme(style?.kid("fontRef"))
+                val centred = body.kid("txBody")?.kid("bodyPr")?.attr("anchor") == "ctr"
+                if (body.localName == "sp" && text.isNullOrEmpty() && fillC == null && shape == null) continue
                 val x = at(from, "colOff") / emu; val y = at(from, "rowOff") / emu
                 out += if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
-                    width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+                    width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
                 else if (to != null) SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, at(to, "row").toInt(), at(to, "col").toInt(), at(to, "colOff") / emu, at(to, "rowOff") / emu,
-                    chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
                 else SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu,
-                    chart = chart, image = image, text = text, fill = solid(spPr), line = solid(spPr?.kid("ln")))
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
             }
             if (out.isNotEmpty()) WriterLog.i("Sheets: ${out.size} drawings (${out.count { it.chart != null }} charts, ${out.count { it.image != null }} pictures)")
             return out
@@ -1204,10 +1232,10 @@ internal object Sheets {
                         if (uri == "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0") data = DataStyle(kind = local).also { d -> at.a("name")?.let { dataStyles[it] = d } }
                     "map" -> data?.let { d -> val c = at.a("condition"); val a = at.a("apply-style-name"); if (c != null && a != null) d.maps += c to a }
                     "default-style" -> current = if (at.a("family") == "table-cell") Raw("table-cell", null).also { defaultCell = it } else null
-                    "table-cell-properties", "text-properties", "paragraph-properties", "table-column-properties", "table-row-properties", "table-properties" -> {
+                    "table-cell-properties", "text-properties", "paragraph-properties", "table-column-properties", "table-row-properties", "table-properties", "graphic-properties" -> {
                         val p = when (local) {
                             "table-cell-properties" -> "c."; "text-properties" -> "t."; "paragraph-properties" -> "p."
-                            "table-column-properties" -> "col."; "table-row-properties" -> "row."; else -> "tab."
+                            "table-column-properties" -> "col."; "table-row-properties" -> "row."; "graphic-properties" -> "g."; else -> "tab."
                         }
                         if (local == "text-properties") data?.let { d -> d.color = hex(at.a("color")) }
                         current?.let { s -> for (i in 0 until at.length) s.props[p + at.getLocalName(i)] = at.getValue(i) }
@@ -1353,6 +1381,9 @@ internal object Sheets {
                 var inNote = false; var inNoteP = false; var inCreator = false; val note = StringBuilder(); val author = StringBuilder()
                 // a picture or chart: where it is, and what it holds
                 var frameDepth = 0; var frame: SheetDrawing? = null; var frameObject: String? = null; var frameImage: String? = null
+                // a shape (draw:custom-shape): its style, its geometry's attributes and equations, its words
+                var shapeStyle: String? = null; var shapeGeo: HashMap<String, String>? = null; val shapeEqs = ArrayList<Pair<String, String>>()
+                val shapeText = StringBuilder(); var shapeSpan: String? = null
                 var drawings = ArrayList<SheetDrawing>()
                 // LibreOffice's conditional formats (calcext:), in the order they come: the first wins
                 var rules = ArrayList<SheetRule>(); var cfRanges = emptyList<SheetRange>(); val entries = ArrayList<Pair<SheetCfvo, Int?>>(); var barColor: Int? = null
@@ -1365,7 +1396,13 @@ internal object Sheets {
                     if (skip > 0) { skip++; return }
                     if (frameDepth > 0) {
                         frameDepth++
-                        when (local) { "object" -> frameObject = frameObject ?: at.a("href"); "image" -> frameImage = frameImage ?: at.a("href") }
+                        when (local) {
+                            "object" -> frameObject = frameObject ?: at.a("href"); "image" -> frameImage = frameImage ?: at.a("href")
+                            "enhanced-geometry" -> shapeGeo = HashMap<String, String>().also { m -> for (i in 0 until at.length) m[at.getLocalName(i)] = at.getValue(i) }
+                            "equation" -> { val n = at.a("name"); val f = at.a("formula"); if (n != null && f != null) shapeEqs += n to f }
+                            "p" -> if (shapeStyle != null && shapeText.isNotEmpty()) shapeText.append('\n')
+                            "span" -> if (shapeStyle != null) shapeSpan = shapeSpan ?: at.a("style-name")
+                        }
                         return
                     }
                     when (local) {
@@ -1411,7 +1448,14 @@ internal object Sheets {
                             frame = SheetDrawing(if (inCell) row else 0, if (inCell) col else 0, odfPx(at.a("x")) ?: 0f, odfPx(at.a("y")) ?: 0f,
                                 width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
                         }
-                        "custom-shape", "line", "rect", "ellipse", "g" -> skip = 1
+                        // a shape: in its own outline (Excel's presets, LibreOffice's kinds and paths), its words in it
+                        "custom-shape" -> {
+                            frameDepth = 1; frameObject = null; frameImage = null
+                            shapeStyle = at.a("style-name") ?: "Default"; shapeGeo = null; shapeEqs.clear(); shapeText.setLength(0); shapeSpan = null
+                            frame = SheetDrawing(if (inCell) row else 0, if (inCell) col else 0, odfPx(at.a("x")) ?: 0f, odfPx(at.a("y")) ?: 0f,
+                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
+                        }
+                        "line", "rect", "ellipse", "g" -> skip = 1
                         "conditional-format" -> cfRanges = ranges(at.a("target-range-address"))
                         "condition" -> odsRule(at.a("value").orEmpty(), at.a("apply-style-name"), rules.size)?.let { rules += it }
                         "color-scale", "data-bar", "icon-set" -> {
@@ -1489,6 +1533,26 @@ internal object Sheets {
 
                 fun endFrame() {
                     val f = frame ?: return
+                    shapeStyle?.let { st ->
+                        shapeStyle = null
+                        val g = props(st)
+                        val geo = shapeGeo.orEmpty()
+                        // Excel's shapes come back as "ooxml-<preset>" with their adjustments; LibreOffice's own by name, else their path
+                        val preset = geo["type"]?.let { ShapePicture.presetOf(it) }
+                        val mods = geo["modifiers"]?.trim()?.split(Regex("\\s+"))?.mapNotNull { it.toDoubleOrNull() }.orEmpty()
+                        val adjust = preset?.let { ShapeGeometry.presets[it]?.adjustNames?.zip(mods)?.toMap() }.orEmpty()
+                        fun esc(v: String) = v.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;")
+                        val own = if (preset == null) ShapeGeometry.ofOdf("<draw:enhanced-geometry" +
+                            listOf("enhanced-path" to "draw", "viewBox" to "svg", "modifiers" to "draw").joinToString("") { (n, ns) -> geo[n]?.let { " $ns:$n=\"${esc(it)}\"" }.orEmpty() } +
+                            ">" + shapeEqs.joinToString("") { (n, fm) -> "<draw:equation draw:name=\"${esc(n)}\" draw:formula=\"${esc(fm)}\"/>" } + "</draw:enhanced-geometry>") else null
+                        val fill = if (g["g.fill"] == "none") null else hex(g["g.fill-color"]) ?: 0xFF729FCF.toInt() // LibreOffice's own blue
+                        val line = if (g["g.stroke"] == "none") null else hex(g["g.stroke-color"]) ?: 0xFF3465A4.toInt()
+                        val width = (odfPx(g["g.stroke-width"]) ?: 1f).coerceAtLeast(0.5f)
+                        val shape = if (preset != null && preset != "rect" || own != null) ShapePicture(preset ?: "custom", fill, line, width, own, adjust) else null
+                        drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, text = shapeText.toString().trim().ifEmpty { null },
+                            fill = fill, line = line, shape = shape, textColor = shapeSpan?.let { hex(props(it)["t.color"]) }, centred = g["g.textarea-vertical-align"] == "middle")
+                        return
+                    }
                     // A chart is LibreOffice's object ("./Object 1"); a picture its file; a chart we cannot read is left out.
                     val chart = frameObject?.removePrefix("./")?.let { parts("$it/content.xml") }?.let { OfficeCharts.readOdf(it) }
                     val image = frameImage?.removePrefix("./")?.takeIf { chart == null && frameObject == null }?.let { p -> { parts(p) } }
@@ -1496,6 +1560,7 @@ internal object Sheets {
                 }
 
                 override fun characters(ch: CharArray, start: Int, length: Int) {
+                    if (frameDepth > 0 && shapeStyle != null && skip == 0) { shapeText.appendRange(ch, start, start + length); return }
                     if (skip > 0 || frameDepth > 0) return
                     when { inCreator -> author.appendRange(ch, start, start + length); inNoteP -> note.appendRange(ch, start, start + length); inP -> text.appendRange(ch, start, start + length) }
                 }

@@ -20,7 +20,7 @@ internal enum class ChartKind(val label: String, val made: Boolean = true) {
  * [kind]: drawn as another kind than the chart's (a combo's line over columns); [sizes]: a bubble chart's bubbles.
  */
 internal data class ChartSeries(val name: String, val values: List<Double?>, val color: Int? = null, val pointColors: Map<Int, Int> = emptyMap(),
-    val kind: ChartKind? = null, val sizes: List<Double?> = emptyList())
+    val kind: ChartKind? = null, val sizes: List<Double?> = emptyList(), /** on the second value axis, at the right */ val secondary: Boolean = false)
 
 /**
  * A chart. Scatter: [categories] are the x values (numbers as text), each series the y values. [catTitle] and [valTitle]:
@@ -100,6 +100,10 @@ internal object OfficeCharts {
         val group = groups.firstOrNull() ?: return null
         fun kindOf(g: Element) = types.getValue(g.localName).let { if (it == ChartKind.Column && g.kid(C, "barDir")?.getAttribute("val") == "bar") ChartKind.Bar else it }
         val kind = kindOf(group)
+        // A group on the second value axis: one that crosses at the far end (Excel puts it at the right).
+        val axisById = plot.kids().filter { it.localName == "valAx" || it.localName == "catAx" || it.localName == "dateAx" }.associateBy { it.kid(C, "axId")?.getAttribute("val") }
+        fun secondary(g: Element) = g !== group && g.kids().filter { it.localName == "axId" }.mapNotNull { axisById[it.getAttribute("val")] }
+            .any { it.localName == "valAx" && (it.kid(C, "axPos")?.getAttribute("val") == "r" || it.kid(C, "crosses")?.getAttribute("val") == "max") }
         val stacked = group.kid(C, "grouping")?.getAttribute("val").let { it == "stacked" || it == "percentStacked" }
         fun points(e: Element?): Map<Int, String> = e?.all(C, "pt")?.associate { p -> p.getAttribute("idx").toInt() to (p.kid(C, "v")?.textContent ?: "") }.orEmpty()
         fun color(spPr: Element?): Int? {
@@ -119,7 +123,8 @@ internal object OfficeCharts {
                 color(spPr),
                 s.kids().filter { it.localName == "dPt" }.mapNotNull { d -> d.kid(C, "idx")?.getAttribute("val")?.toIntOrNull()?.let { i -> color(d.kid(C, "spPr"))?.let { i to it } } }.toMap(),
                 kindOf(g).takeIf { g !== group && it != kind },
-                points(s.kid(C, "bubbleSize")).let { b -> (0 until n).map { b[it]?.toDoubleOrNull() } }.takeIf { kind == ChartKind.Bubble }.orEmpty())
+                points(s.kid(C, "bubbleSize")).let { b -> (0 until n).map { b[it]?.toDoubleOrNull() } }.takeIf { kind == ChartKind.Bubble }.orEmpty(),
+                secondary(g))
         }
         if (series.isEmpty()) return null
         fun titleOf(e: Element?) = e?.kid(C, "title")?.all(A, "t")?.joinToString("") { it.textContent }?.takeIf { it.isNotBlank() }
@@ -175,7 +180,8 @@ internal object OfficeCharts {
             return@runCatching DocChart(kind, chart.kid(CHART, "title")?.textContent?.trim()?.takeIf { it.isNotEmpty() }, column(1).map { it?.let { v -> ChartWriter.num(v) } ?: "" },
                 bubbles, legend = chart.first(CHART, "legend") != null)
         }
-        val series = (1..count).map { k -> ChartSeries(words(header.getOrNull(k)), column(k), colors.getOrNull(k - 1), kind = kinds.getOrNull(k - 1)) }
+        val second = plot?.kids()?.filter { it.localName == "series" }?.map { it.getAttributeNS(CHART, "attached-axis") == "secondary-y" }.orEmpty()
+        val series = (1..count).map { k -> ChartSeries(words(header.getOrNull(k)), column(k), colors.getOrNull(k - 1), kind = kinds.getOrNull(k - 1), secondary = second.getOrNull(k - 1) == true) }
         fun axisTitle(dim: String) = plot?.kids()?.firstOrNull { it.localName == "axis" && it.getAttributeNS(CHART, "dimension") == dim }
             ?.kids()?.firstOrNull { it.localName == "title" }?.textContent?.trim()?.takeIf { it.isNotEmpty() }
         val labels = plot?.kids()?.filter { it.localName == "series" }?.any { s ->
@@ -393,9 +399,14 @@ internal class ChartDrawable(val chart: DocChart) : android.graphics.drawable.Dr
         if (chart.kind == ChartKind.Radar) { drawRadar(c, w, top, bottom, text); return }
 
         // The values' range, from 0, gridlines at round steps.
-        val sums = chart.categories.indices.map { i -> chart.series.sumOf { it.values.getOrNull(i) ?: 0.0 } }
-        val all = if (chart.stacked) sums else chart.series.flatMap { it.values.filterNotNull() }
+        val first = chart.series.filter { !it.secondary }
+        val sums = chart.categories.indices.map { i -> first.sumOf { it.values.getOrNull(i) ?: 0.0 } }
+        val all = if (chart.stacked) sums else first.flatMap { it.values.filterNotNull() }
         val (lo, hi, step) = range(all)
+        // The second value axis (a combo's line on its own scale): its numbers at the right.
+        val second = chart.series.filter { it.secondary }.flatMap { it.values.filterNotNull() }
+        val (lo2, hi2, step2) = range(second)
+        val ticks2 = if (second.isEmpty() || chart.kind == ChartKind.Bar) emptyList() else generateSequence(lo2) { it + step2 }.takeWhile { it <= hi2 + step2 / 2 }.toList()
         val ticks = generateSequence(lo) { it + step }.takeWhile { it <= hi + step / 2 }.toList()
         val horizontal = chart.kind == ChartKind.Bar
         val scatter = chart.kind == ChartKind.Scatter || chart.kind == ChartKind.Bubble
@@ -411,7 +422,7 @@ internal class ChartDrawable(val chart: DocChart) : android.graphics.drawable.Dr
         val left = 6f + (if (sideTitle != null) 14f else 0f) + if (horizontal) catW + 4f else ticks.maxOf { text.measureText(label(it)) } + 4f
         val plotTop = top + 4f + if (chart.dataLabels) 8f else 0f
         val plotBottom = bottom - (if (horizontal) 12f else 14f) - (if (footTitle != null) 14f else 0f)
-        val right = w - 10f - if (chart.dataLabels && horizontal) 18f else 0f
+        val right = w - 10f - (if (chart.dataLabels && horizontal) 18f else 0f) - (ticks2.maxOfOrNull { text.measureText(label(it)) + 4f } ?: 0f)
         footTitle?.let { t -> c.drawText(t, (left + right - titlePaint.measureText(t)) / 2, bottom - 3f, titlePaint) }
         sideTitle?.let { t -> c.save(); c.rotate(-90f, 6f, (plotTop + plotBottom) / 2); c.drawText(t, 6f - titlePaint.measureText(t) / 2, (plotTop + plotBottom) / 2 + 9f, titlePaint); c.restore() }
         val grid = Paint().apply { color = 0xFFD9D9D9.toInt(); strokeWidth = 0.5f }
@@ -419,6 +430,8 @@ internal class ChartDrawable(val chart: DocChart) : android.graphics.drawable.Dr
         // Where value v stands along the value axis.
         fun at(v: Double) = if (horizontal) (left + (v - lo) / (hi - lo) * (right - left)).toFloat() else (plotBottom - (v - lo) / (hi - lo) * (plotBottom - plotTop)).toFloat()
         fun atX(v: Double) = (left + (v - xlo) / (xhi - xlo) * (right - left)).toFloat()
+        fun at2(v: Double) = (plotBottom - (v - lo2) / (hi2 - lo2) * (plotBottom - plotTop)).toFloat()
+        for (t in ticks2) c.drawText(label(t), right + 4f, at2(t) + 3f, text)
         for (t in ticks) {
             val p = at(t)
             if (horizontal) { c.drawLine(p, plotTop, p, plotBottom, grid); val s = label(t); c.drawText(s, p - text.measureText(s) / 2, plotBottom + 10f, text) }
@@ -475,21 +488,22 @@ internal class ChartDrawable(val chart: DocChart) : android.graphics.drawable.Dr
             val stack = chart.stacked && s.kind == null
             val pts = s.values.mapIndexedNotNull { i, v -> v?.takeIf { i < n && (!scatter || xs[i] != null) }?.let { i to (if (stack) lineUnder[i] + it else it) } }
             fun px(i: Int) = if (scatter) atX(xs[i]!!) else left + (i + 0.5f) * band
+            fun y(v: Double) = if (s.secondary && ticks2.isNotEmpty()) at2(v) else at(v)
             val path = android.graphics.Path()
-            pts.forEachIndexed { j, (i, v) -> if (j == 0) path.moveTo(px(i), at(v)) else path.lineTo(px(i), at(v)) }
+            pts.forEachIndexed { j, (i, v) -> if (j == 0) path.moveTo(px(i), y(v)) else path.lineTo(px(i), y(v)) }
             if (kind == ChartKind.Area && pts.isNotEmpty()) {
                 path.lineTo(px(pts.last().first), zero); path.lineTo(px(pts.first().first), zero); path.close()
                 fill.color = col; fill.alpha = 200; fill.style = Paint.Style.FILL; c.drawPath(path, fill); fill.alpha = 255
             } else if (kind == ChartKind.Bubble) {
                 fill.color = col
                 for ((i, v) in pts) { val size = s.sizes.getOrNull(i) ?: continue; if (biggest == null || size <= 0) continue
-                    c.drawCircle(px(i), at(v), (bubbleR * Math.sqrt(size / biggest)).toFloat().coerceAtLeast(1.5f), fill) }
+                    c.drawCircle(px(i), y(v), (bubbleR * Math.sqrt(size / biggest)).toFloat().coerceAtLeast(1.5f), fill) }
             } else {
                 // A scatter: its points alone, as Word's.
                 if (!scatter) c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = col; style = Paint.Style.STROKE; strokeWidth = 2f; strokeJoin = Paint.Join.ROUND })
-                fill.color = col; for ((i, v) in pts) c.drawCircle(px(i), at(v), if (scatter) 3f else 2.5f, fill)
+                fill.color = col; for ((i, v) in pts) c.drawCircle(px(i), y(v), if (scatter) 3f else 2.5f, fill)
             }
-            for ((i, v) in pts) value(s.values[i]!!, px(i), at(v) - 2f)
+            for ((i, v) in pts) value(s.values[i]!!, px(i), y(v) - 2f)
             if (stack) s.values.forEachIndexed { i, v -> if (i < n) lineUnder[i] += v ?: 0.0 }
         }
         // The axis the bars stand on.

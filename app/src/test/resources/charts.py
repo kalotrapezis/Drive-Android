@@ -1,4 +1,4 @@
-# Chart kinds test workbook: a combo (columns and a line), a radar, a bubble chart — one sheet each.
+# Chart kinds test workbook: a combo (columns and a line), a radar, a bubble chart, a combo on two value axes — one sheet each.
 import sys
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, LineChart, RadarChart, BubbleChart, Reference, Series
@@ -27,4 +27,14 @@ s = Series(values=Reference(b, min_col=2, min_row=2, max_row=5), xvalues=Referen
            zvalues=Reference(b, min_col=3, min_row=2, max_row=5), title="Shops")
 bc.series.append(s)
 b.add_chart(bc, "E2")
+t = wb.create_sheet("Two axes")
+t.append(["Month", "Sales", "Margin"])
+for row in [["Jan", 1200, 0.12], ["Feb", 900, 0.18], ["Mar", 1500, 0.25], ["Apr", 1300, 0.21]]: t.append(row)
+tb = BarChart(); tb.title = "Sales and margin"
+tb.add_data(Reference(t, min_col=2, min_row=1, max_row=5), titles_from_data=True)
+tb.set_categories(Reference(t, min_col=1, min_row=2, max_row=5))
+tl = LineChart(); tl.add_data(Reference(t, min_col=3, min_row=1, max_row=5), titles_from_data=True)
+tl.y_axis.axId = 200; tl.y_axis.crosses = "max" # the margin on its own axis, at the right
+tb += tl
+t.add_chart(tb, "E2")
 wb.save(sys.argv[1])

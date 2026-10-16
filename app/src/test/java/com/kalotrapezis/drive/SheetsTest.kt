@@ -443,4 +443,22 @@ class SheetsTest {
         assertEquals("25,0%", typed(1, "25")) // a percent cell: 25 is 25%, as Excel
         assertEquals("01/02/2026", typed(2, "1/2/2026"))
     }
+
+    /** Excel's shapes in their outlines (shapes.py's workbook, and LibreOffice's .ods of it): the theme's look, their own, an adjustment. */
+    @Test fun `shapes in their outlines from both kinds of file`() {
+        for (name in listOf("shapes.xlsx", "shapes.ods")) {
+            val b = Sheets.read(File("src/test/resources/$name"), ',', '.')
+            val d = b.sheet(0).drawings.sortedWith(compareBy({ it.row }, { it.col })) // LibreOffice keeps them cell by cell
+            assertEquals(name, listOf("roundRect", "rightArrow", "ellipse", "star5", "heart", "rightArrow"), d.map { it.shape?.geometry })
+            val box = d[0]
+            assertEquals(name, "Theme look", box.text)
+            assertEquals(name, 0xFF4F81BD.toInt(), box.shape!!.fill) // the theme's accent 1 (openpyxl's theme: Office 2007's)
+            assertTrue(name, box.shape.line != null && box.shape.line != box.shape.fill) // its outline darker
+            assertEquals(name, 0xFFFFFFFF.toInt(), box.textColor) // the theme's light 1, as Excel writes on its shapes
+            assertTrue(name, box.centred)
+            assertEquals(name, 0xFF70AD47.toInt(), d[1].shape!!.fill)
+            assertEquals(name, 20000.0, d[5].shape!!.adjust["adj1"]) // the thin arrow
+            assertEquals(name, "Oval", d[2].text)
+        }
+    }
 }

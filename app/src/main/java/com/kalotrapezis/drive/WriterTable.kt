@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -870,6 +871,44 @@ internal val SHAPE_GROUPS = listOf(
         "accentCallout1", "accentCallout2", "accentCallout3", "callout1", "callout2", "callout3", "accentBorderCallout1", "accentBorderCallout2", "accentBorderCallout3"),
 )
 
+/** The colours a shape's fill and outline are chosen from: Office's theme accents, black, white and its standard ones. */
+internal val SHAPE_COLOURS = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFF000000, 0xFFFFFFFF,
+    0xFFC00000, 0xFFFF0000, 0xFF00B050, 0xFF7030A0).map { it.toInt() }
+
+/**
+ * Word's Shape Styles (asked 16 Oct: more than seven choices): seven colours in four looks — outline only, filled, a
+ * light fill with its outline, a dark fill — each tile drawn as the shape will be; a tap sets both fill and outline.
+ */
+@Composable
+internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) -> Unit) {
+    fun mix(c: Int, toward: Int, k: Float): Int {
+        fun ch(s: Int) = ((((c shr s) and 255) * (1 - k) + ((toward shr s) and 255) * k).toInt() and 255) shl s
+        return 0xFF000000.toInt() or ch(16) or ch(8) or ch(0)
+    }
+    val base = listOf(0xFF000000, 0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47).map { it.toInt() }
+    val looks = listOf<(Int) -> Pair<Int?, Int?>>(
+        { c -> null to c },                                        // outline only
+        { c -> c to mix(c, 0xFF000000.toInt(), 0.3f) },            // filled, a darker outline
+        { c -> mix(c, 0xFFFFFFFF.toInt(), 0.8f) to c },            // light fill, its outline
+        { c -> mix(c, 0xFF000000.toInt(), 0.5f) to null },         // dark fill
+    )
+    Section("Styles") {
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 7) {
+            for (look in looks) for (c in base) {
+                val (f, l) = look(c)
+                val on = f?.or(0xFF000000.toInt()) == fill?.or(0xFF000000.toInt()) && l == line
+                // seven to a row: each row one look, each column one colour
+                Box(Modifier.weight(1f).widthIn(max = 48.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
+                    .border(if (on) 3.dp else 0.dp, if (on) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable { pick(f, l) }.padding(6.dp)) {
+                    val preview = remember(f, l) { ShapePicture("roundRect", f, l, 1.5f) }
+                    androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { cv -> preview.drawAt(cv.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) } }
+                }
+            }
+        }
+    }
+}
+
 /**
  * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
  * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
@@ -879,7 +918,7 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
     val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" } }
-    val colors = listOf(0xFF4472C4, 0xFFFFC114, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFF000000).map { it.toInt() }
+    val colors = SHAPE_COLOURS
     var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
     var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
     fun put(kind: String) {
@@ -897,6 +936,7 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
+                    ShapeStyles(fill, line) { f, l -> fill = f; line = l }
                     swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
                     swatches("Outline", line) { line = it }
                     (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
@@ -930,7 +970,7 @@ internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: 
 internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply: (ShapeOptions) -> Unit) {
     var o by remember { mutableStateOf(start) }
     var locked by remember { mutableStateOf(true) }
-    val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFFE53935, 0xFF8E24AA, 0xFF000000, 0xFFFFFFFF).map { it.toInt() }
+    val colors = SHAPE_COLOURS
     val unit = WriterUnits.pt
     val unitName = WriterUnits.name
     fun shown(pt: Float) = "%.2f".format(java.util.Locale.ROOT, pt / unit).trimEnd('0').trimEnd('.')
@@ -948,6 +988,7 @@ internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply:
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
+                    ShapeStyles(o.fill, o.line) { f, l -> o = o.copy(fill = f, line = l) }
                     swatches("Fill", o.fill) { o = o.copy(fill = it) }
                     swatches("Outline", o.line) { o = o.copy(line = it) }
                     if (o.line != null) Section("Outline width") {

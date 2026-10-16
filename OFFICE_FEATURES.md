@@ -127,7 +127,8 @@ one pass once the tabs' features are done.
       margin/page, lock proportions), Rotation, Text wrapping, Position, Lines & arrows, Text box, Alt text. Fill and
       outline colour/width on the ribbon when a shape is selected.
       Done (29 Sep): Insert › Shapes — 17 kinds (rectangle, rounded, ellipse, triangles, diamond, pentagon, hexagon,
-      octagon, star, four arrows, plus, heart, line), fill (or none) and outline from six colours; written as Word's
+      octagon, star, four arrows, plus, heart, line), fill (or none) and outline from six colours (16 Oct: twelve, and Word's
+      Shape Styles — seven colours in four looks, in Insert › Shapes and Shape options); written as Word's
       wps:wsp / LibreOffice's custom shape (its look in an automatic graphic style); drawn in the editor, on the pages
       and PDF; the Picture tab sizes, wraps, replaces… it (wrapping now shows on the pages at once). Shapes in a file
       of those kinds are drawn too. Not yet: the full gallery, moving a floating shape, rotation, the settings page,

@@ -1360,6 +1360,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
         try { return block() } finally { if (--changing == 0) { state.history.clear(); base = snapshot() } }
     }
+    /**
+     * Find › Replace: letters [a]..[b] made [with], in their look (Word's: the replacement takes the replaced words' bold,
+     * italic, colour…) — put in after the first of them, which it takes its look from, then the old letters taken out.
+     * The library's replaceTextRange wrote it plain (found 16 Oct on the emulator: "Bold: Sample" lost its bold).
+     */
+    fun replaceKeepingLook(a: Int, b: Int, with: String) {
+        if (with.isEmpty() || b <= a) { state.removeTextRange(androidx.compose.ui.text.TextRange(a, b)); return }
+        state.addTextAtIndex(a + 1, with)
+        state.removeTextRange(androidx.compose.ui.text.TextRange(a + 1 + with.length, b + with.length))
+        state.removeTextRange(androidx.compose.ui.text.TextRange(a, a + 1))
+    }
     fun undo() {
         WriterLog.i("undo")
         if (state.history.canUndo) { state.history.undo(); WriterBridge.reflow(state, current(), pictures, documentStyles); return }
@@ -3050,10 +3061,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         OutlinedTextField(replacement, { replacement = it }, singleLine = true, placeholder = { Text("Replace with") }, modifier = Modifier.weight(1f))
                         RibbonButton("Replace", w, enabled = matches.isNotEmpty()) {
                             val m = matches.getOrNull(at) ?: return@RibbonButton
-                            state.replaceTextRange(androidx.compose.ui.text.TextRange(m.first, m.last + 1), replacement)
+                            replaceKeepingLook(m.first, m.last + 1, replacement)
                         }
                         RibbonButton("All", w, enabled = matches.isNotEmpty()) {
-                            state.history.group { matches.asReversed().forEach { m -> state.replaceTextRange(androidx.compose.ui.text.TextRange(m.first, m.last + 1), replacement) } }
+                            state.history.group { matches.asReversed().forEach { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } }
                             message = "Replaced ${matches.size}"
                         }
                     }

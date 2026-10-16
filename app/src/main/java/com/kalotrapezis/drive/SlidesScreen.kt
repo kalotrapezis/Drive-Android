@@ -186,9 +186,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         change(e.copy(looks = e.looks + (k to f(e.looks[k] ?: SlidesEdit.Look())))); WriterLog.i("Slides: a shape's colours changed")
     }
     // Picture: the phone's photo picker; a copy kept on the phone until Save puts it in the file
-    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
-        val d = deck ?: return@rememberLauncherForActivityResult
-        if (uri == null) return@rememberLauncherForActivityResult
+    fun putPicture(uri: android.net.Uri) {
+        val d = deck ?: return
         scope.launch {
             val made = withContext(Dispatchers.IO) { runCatching {
                 val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
@@ -210,6 +209,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             WriterLog.i("Slides: a picture put on a slide")
         }
     }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::putPicture) }
     fun leave() { if (changed) leaving = true else back() }
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
@@ -457,6 +457,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     /** Slide [i] as it is edited: chosen with a tap, its items tapped, moved and sized (the phone's list, the tablet's big slide). */
                     @Composable fun SlideBox(i: Int, s: Slide) {
                         Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
+                            // a picture dragged in from another app goes on this slide (in its middle)
+                            .dropPictures(editing) { uri -> chosen = i; item = null; putPicture(uri) }
                             // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
                             .pointerInput(editing, chosen, i, item) {
                                 if (!editing || chosen != i || item == null) return@pointerInput

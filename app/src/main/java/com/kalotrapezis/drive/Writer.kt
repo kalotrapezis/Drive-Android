@@ -2,6 +2,9 @@
 
 package com.kalotrapezis.drive
 
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -1747,8 +1750,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         placePicture(img)
     }
     // Insert › Picture: from the phone's photos, at the cursor.
-    val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
-        if (picked != null) scope.launch {
+    fun insertPicture(picked: android.net.Uri) {
+        scope.launch {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
             if (img == null) { message = "Could not add that picture."; return@launch }
             pictures[img.key] = img
@@ -1756,6 +1759,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             state.selection = androidx.compose.ui.text.TextRange(at + 1) // the cursor after it
         }
     }
+    val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> picked?.let(::insertPicture) }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
     fun changePicture(key: String, img: DocImage) = change {
         WriterLog.i("picture $key: ${PictureXml.wrapOf(img)}, ${img.widthPt.toInt()}×${img.heightPt.toInt()} pt${img.onPage?.let { " at ${it.first.toInt()},${it.second.toInt()}" } ?: ""}")
@@ -3179,7 +3183,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         layout = it; editorLayout = it
                                     }
                                     editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                                // a picture dragged in from another app: at the cursor, as Insert › Picture
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).dropPictures(!viewing && !reading && loaded) { insertPicture(it) }.padding(margins))
                             }
                             if (printPhone && selectedPicture == null) layout?.let { l ->
                                 val d = LocalDensity.current
@@ -4834,6 +4839,27 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
             }
         }
     }
+}
+
+/**
+ * A picture dragged in from another app (split screen, a tablet's or a desktop's windows — asked 16 Oct): [onDrop] gets
+ * its address, read with the permission Android grants for the drop.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+internal fun Modifier.dropPictures(enabled: Boolean, onDrop: (android.net.Uri) -> Unit): Modifier = if (!enabled) this else composed {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = remember(context) { generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? android.app.Activity } }
+    val latest = androidx.compose.runtime.rememberUpdatedState(onDrop)
+    val target = remember { object : androidx.compose.ui.draganddrop.DragAndDropTarget {
+        override fun onDrop(event: androidx.compose.ui.draganddrop.DragAndDropEvent): Boolean {
+            val e = event.toAndroidDragEvent(); val clip = e.clipData ?: return false
+            val uri = (0 until clip.itemCount).firstNotNullOfOrNull { clip.getItemAt(it).uri } ?: return false
+            activity?.requestDragAndDropPermissions(e)
+            WriterLog.i("a picture dropped in")
+            latest.value(uri); return true
+        }
+    } }
+    dragAndDropTarget(shouldStartDragAndDrop = { ev -> ev.mimeTypes().any { it.startsWith("image/") } }, target = target)
 }
 
 /** Whether the file is saved, for a tablet's top bar (asked 16 Oct: the room there for what is going on). */

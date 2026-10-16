@@ -373,7 +373,8 @@ LibreOffice works them out).
 - [x] The ribbon with tabs, as Tables' (asked 16 Oct): Selection (what is chosen on the slide), File (Save, Share, Open
       in another app), Slide, Insert, Design, Transitions, Animations, Slide show (From the beginning, From this slide,
       Hide slide — 16 Oct); a tab's groups apart by a thin line, a short tab's tools centred (Tables' too); on a tablet (16 Oct) the slides in a sidebar, the chosen one big beside it, the ribbon floating as Words'; a tablet's top bar says what is going on (16 Oct): Words' counts and Saved / Not saved, Slides' slide of the deck,
-      hidden ones, saved and its type, Tables' sheet of the book, cells filled, saved and its type; Tables' ribbon floats too; a tap chooses a text box, shape or
+      hidden ones, saved and its type, Tables' sheet of the book, cells filled, saved and its type; Tables' ribbon floats too; a picture dragged in from another app (split screen, a desktop's windows — 16 Oct) goes in at Words' cursor or on the
+      slide it is dropped on, as Insert › Picture (checked with Files in a window beside Tetra on the emulator); a tap chooses a text box, shape or
       picture, a second tap types in it. Tools on one sliding line; Animations › Effect is a catalog strip with a line
       each for In, Emphasis and Out
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard

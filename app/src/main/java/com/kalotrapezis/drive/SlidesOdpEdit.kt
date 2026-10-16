@@ -78,7 +78,12 @@ internal object SlidesOdpEdit {
         fun type(el: Element, lines: List<String>) {
             val h = holder(el) ?: return
             var ps = paras(h)
-            if (ps.isEmpty()) h.insertBefore(doc.createElementNS(TEXT, "text:p"), h.kids().firstOrNull { it.localName == "enhanced-geometry" }).also { ps = paras(h) }
+            if (ps.isEmpty()) {
+                val p = doc.createElementNS(TEXT, "text:p")
+                // an empty text placeholder: its lines a list, as LibreOffice's bullets are
+                val unit = if (el.a(PRES, "class") == "outline") doc.createElementNS(TEXT, "text:list").also { l -> l.appendChild(doc.createElementNS(TEXT, "text:list-item").also { it.appendChild(p) }) } else p
+                h.insertBefore(unit, h.kids().firstOrNull { it.localName == "enhanced-geometry" }); ps = paras(h)
+            }
             lines.forEachIndexed { i, line ->
                 val p = ps.getOrNull(i) ?: run {
                     // another paragraph: a copy of the last (in a list, its list item)
@@ -206,13 +211,13 @@ internal object SlidesOdpEdit {
         fun timingRoot(page: Element): Element = page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }
             ?: fragment("""<anim:par $ans smil:dur="indefinite" smil:restart="never" presentation:node-type="timing-root"/>""").also { r -> page.insertBefore(r, page.kids().firstOrNull { it.localName == "notes" }) }
 
-        /** Page [page] (slide [src] of the deck, [uid] in the edit) with its edits. */
-        fun apply(page: Element, src: Int, uid: Int) {
+        /** Page [page] (showing [slide] as read, [uid] in the edit) with its edits. */
+        fun apply(page: Element, slide: Slide, uid: Int) {
             fun at(id: String): Element? { var el: Element? = page; for (k in id.removePrefix("o").split('.')) el = el?.kids()?.getOrNull(k.toIntOrNull() ?: return null); return el }
             // found before anything moves: the places name the page as it was read
             val texts = edit.texts.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
             val looks = edit.looks.filterKeys { it.first == uid && it.second.startsWith("o") }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
-            val frames = edit.frames.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { Triple(it, v, SlidesEdit.box(deck.slides[src], k.second)) } }
+            val frames = edit.frames.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { Triple(it, v, SlidesEdit.box(slide, k.second)) } }
             val removed = edit.removed.filter { it.first == uid }.mapNotNull { at(it.second) }
             val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }
@@ -249,13 +254,19 @@ internal object SlidesOdpEdit {
                 if (clicks.isNotEmpty()) r.appendChild(fragment("""<anim:seq $ans smil:dur="indefinite" presentation:node-type="main-sequence">${clicks.joinToString("")}</anim:seq>"""))
             }
             page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }?.let { if (it.kids().isEmpty()) page.removeChild(it) }
-            edit.hidden[uid]?.let { h -> if (h != deck.slides[src].hidden)
+            edit.hidden[uid]?.let { h -> if (h != slide.hidden)
                 page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "hidden $h") { props(it, "drawing-page-properties").setAttributeNS(PRES, "presentation:visibility", if (h) "hidden" else "visible") }) }
         }
 
         val used = HashSet<Int>()
         val ordered = ArrayList<Element>()
         for (e in edit.order) {
+            // a new slide: its layout's page (empty boxes in the master's places)
+            if (e.layout >= 0) {
+                val l = deck.layouts.getOrNull(e.layout) ?: continue
+                val page = fragment(String(l.xml)).also { it.setAttributeNS(DRAW, "draw:name", fresh("page")) }
+                apply(page, l.preview, e.uid); ordered += page; continue
+            }
             val orig = pages.getOrNull(e.src) ?: continue
             val page = if (used.add(e.src)) orig else (orig.cloneNode(true) as Element).also { copy ->
                 // a copy: its own name, and ids of its own (its animations follow them)
@@ -268,7 +279,7 @@ internal object SlidesOdpEdit {
                     if (at.localName == "begin" && at.nodeValue.endsWith(".begin")) renamed[at.nodeValue.removeSuffix(".begin")]?.let { at.nodeValue = "$it.begin" }
                 }
             }
-            apply(page, e.src, e.uid)
+            apply(page, deck.slides[e.src], e.uid)
             ordered += page
         }
         // the pages in their order where they were (before the presentation's settings)

@@ -140,9 +140,11 @@ internal object SlidesOdp {
                     "list" -> walkList(inner, level + 1, inner.a(TEXT, "style-name") ?: name)
                 }
             }
+            // a list without a style of its own takes its outline's (the presentation style's own list style, LibreOffice's bullets)
+            val outlineList = generateSequence(presStyle) { all["presentation:$it"]?.parent }.take(12).firstOrNull { it in lists }
             for (k in holder.kids()) when (k.localName) {
                 "p", "h" -> para(k, 0, null)
-                "list" -> walkList(k, 0, k.a(TEXT, "style-name"))
+                "list" -> walkList(k, 0, k.a(TEXT, "style-name") ?: outlineList)
             }
             if (paras.none { p -> p.runs.any { it.text.isNotBlank() } }) return null
             fun g(key: String) = shapeProp("g.$key")
@@ -236,7 +238,34 @@ internal object SlidesOdp {
             }
             Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", transition = transition, steps = steps)
         }
-        Deck(width, height, slides)
+        // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
+        // placeholders as a page's empty boxes (grey hints); a deck of one master gets Title only and Blank as well
+        val presStyles = styles?.getElementsByTagNameNS(STYLE, "style")?.let { l -> (0 until l.length).map { l.item(it) as Element } }.orEmpty()
+            .filter { it.a(STYLE, "family") == "presentation" }.mapNotNull { it.a(STYLE, "name") }.toSet()
+        fun layout(m: Element, name: String, kinds: Set<String>): SlideLayout {
+            val mn = m.a(STYLE, "name").orEmpty()
+            val boxes = m.kids().filter { it.localName == "frame" && it.a(PRES, "class") in kinds }
+                .let { f -> val rest = f.filter { it.a(PRES, "class") != "title" }
+                    // the layout's own boxes (a PowerPoint layout's, moved by it) before LibreOffice's generic placeholder
+                    listOfNotNull(f.firstOrNull { it.a(PRES, "class") == "title" }) + rest.filter { it.a(PRES, "placeholder") != "true" }.ifEmpty { rest }.take(2) }
+            val items = ArrayList<SlideItem>().also { shapes(m, it, true) }
+            fun hint(words: String, size: Float, align: Char) = SlideText(listOf(SlidePara(listOf(SlideRun(words, size, false, false, false, 0xFF888888.toInt(), null)), align, 0, null, null, 0f, 0f, 0f, 0f, 1f)), 'm', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
+            boxes.forEachIndexed { k, f -> val b = box(f); val title = f.a(PRES, "class") == "title"
+                items += SlideItem.Shape(b[0], b[1], b[2], b[3], 0f, null, hint(if (title) "Title" else "Text", if (title) 32f else 20f, if (title) 'c' else 'l'), id = "o$k", hint = true).also { it.anim = "o$k" } }
+            // the page saved: these boxes empty, in the master's places and styles
+            val frames = boxes.joinToString("") { f ->
+                val cls = f.a(PRES, "class") ?: "outline"
+                val st = "$mn-${if (cls == "outline") "outline1" else cls}".takeIf { it in presStyles }?.let { """ presentation:style-name="$it"""" }.orEmpty()
+                """<draw:frame$st draw:layer="layout" svg:width="${f.a(SVG, "width")}" svg:height="${f.a(SVG, "height")}" svg:x="${f.a(SVG, "x")}" svg:y="${f.a(SVG, "y")}" presentation:class="$cls" presentation:placeholder="true"><draw:text-box/></draw:frame>"""
+            }
+            val xml = """<draw:page xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:presentation="$PRES" draw:master-page-name="$mn">$frames</draw:page>"""
+            val bg = prop("drawing-page", m.a(DRAW, "style-name"), "d.fill-color")?.let(::hex) ?: 0xFFFFFFFF.toInt()
+            return SlideLayout(name, mn, Slide(items, bg, ""), xml.toByteArray())
+        }
+        val placeholders = setOf("title", "outline", "subtitle")
+        val kinds = masters.values.filterNotNull().map { m -> layout(m, m.a(STYLE, "display-name") ?: odfDisplayName(m.a(STYLE, "name").orEmpty()), placeholders) }.toMutableList()
+        if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
+        Deck(width, height, slides, kinds)
     }
 }
 

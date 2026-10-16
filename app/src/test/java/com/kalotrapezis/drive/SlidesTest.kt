@@ -152,11 +152,19 @@ class SlidesTest {
                 SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path))),
             transitions = mapOf(2 to SlideTransition("push", "u", 1000)),
             anims = mapOf(2 to listOf(SlideEffect("o0", "fade", 'd', 0, 500), SlideEffect("9100", "fly", 'l', 0, 1000), SlideEffect("o0", "fade", 'd', 0, 500, exit = true))))
+        // a new page of "Title and Content" at the end: its title and two points typed
+        val layout = deck.layouts.indexOfFirst { it.name == "Title and Content" }
+        assertTrue(deck.layouts.size >= 5 && layout >= 0)
+        assertEquals(listOf("Title", "Text"), deck.layouts[layout].preview.items.filterIsInstance<SlideItem.Shape>().filter { it.hint }.map { words(it) })
+        e = e.copy(order = e.order + SlidesEdit.Entry(-1, 5, layout), texts = e.texts + mapOf((5 to "o0") to listOf("A new page"), (5 to "o1") to listOf("First point", "Second point")))
         val out = File.createTempFile("edited", ".odp")
         SlidesEdit.view(deck, e) // as it shows while editing (no failure)
         SlidesOdpEdit.save(src, deck, e, out)
         fun check(d: Deck, odp: Boolean) {
-            assertEquals(4, d.slides.size)
+            assertEquals(5, d.slides.size)
+            assertTrue(d.slides[4].items.any { words(it) == "A new page" })
+            assertEquals(listOf("First point", "Second point"), (d.slides[4].items.first { words(it)?.startsWith("First") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
+            assertEquals("•", (d.slides[4].items.first { words(it)?.startsWith("First") == true } as SlideItem.Shape).text!!.paras[0].bullet?.trim()?.take(1)?.let { if (it.isNotEmpty()) "•" else it })
             val shapes = d.slides[0].items.filterIsInstance<SlideItem.Shape>()
             val box = shapes.first { words(it) == "A rounded box" }
             assertEquals(0xFFC00000.toInt(), box.shape!!.fill); assertEquals(0xFFFFFFFF.toInt(), box.text!!.paras[0].runs[0].color)

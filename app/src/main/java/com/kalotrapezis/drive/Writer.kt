@@ -1090,7 +1090,7 @@ internal fun versions(context: Context, file: File): List<File> =
     versionsDir(context, file).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name.substringBefore('.').toLongOrNull() ?: 0 }.orEmpty()
 
 /** Before Writer saves over a document, the file as it was is kept (the last 3), so a save can be undone. */
-private fun keepPrevious(context: Context, file: File) {
+internal fun keepPrevious(context: Context, file: File) {
     val dir = versionsDir(context, file).apply { mkdirs() }
     file.copyTo(File(dir, "${System.currentTimeMillis()}.${file.extension}"), overwrite = true)
     versions(context, file).drop(3).forEach { it.delete() }

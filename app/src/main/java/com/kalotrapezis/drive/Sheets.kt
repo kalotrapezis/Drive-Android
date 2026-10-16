@@ -199,6 +199,8 @@ internal class Workbook(
     val format: SheetFormat = SheetFormat(),
     /** A .csv's separator and letters, to save it as it came. */
     val csv: Pair<Char, java.nio.charset.Charset>? = null,
+    /** An .xlsx's parts: "workbook", "styles", and each sheet's by its number ("0", "1"…), to save into. */
+    val parts: Map<String, String> = emptyMap(),
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
@@ -449,7 +451,9 @@ internal object Sheets {
             if (found.isEmpty()) error("No sheets.")
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
-                kind = "xlsx", format = format) { i ->
+                kind = "xlsx", format = format,
+                parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
+                    found.mapIndexed { i, f -> "$i" to f.second }) { i ->
                 val (tab, path) = found[i]
                 runCatching { readSheet(tab.name, path, stream(path) ?: error("No such part."), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)

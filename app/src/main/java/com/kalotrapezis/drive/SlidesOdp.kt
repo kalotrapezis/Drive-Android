@@ -249,14 +249,17 @@ internal object SlidesOdp {
             val main = root?.getElementsByTagNameNS(ANIM, "seq")?.let { l -> (0 until l.length).map { l.item(it) as Element } }?.firstOrNull { it.a(PRES, "node-type") == "main-sequence" }
             val steps = main?.kids().orEmpty().mapNotNull { click ->
                 val effects = click.getElementsByTagNameNS(ANIM, "par").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                    .filter { it.a(PRES, "preset-class") == "entrance" || it.a(PRES, "preset-class") == "exit" }.mapNotNull { fx ->
+                    .filter { it.a(PRES, "preset-class") in setOf("entrance", "exit", "emphasis") }.mapNotNull { fx ->
                         val kids = fx.kids()
                         val target = kids.firstNotNullOfOrNull { it.a(SMIL, "targetElement") }?.let(named::get) ?: return@mapNotNull null
-                        val ms = kids.mapNotNull { secs(it.a(SMIL, "dur")) }.filter { it > 0.01f }.maxOrNull()?.let { (it * 1000).toInt() } ?: 500
+                        // played there and back (autoReverse): twice its length
+                        val ms = kids.mapNotNull { k -> secs(k.a(SMIL, "dur"))?.let { if (k.a(SMIL, "autoReverse") == "true") it * 2 else it } }.filter { it > 0.01f }.maxOrNull()?.let { (it * 1000).toInt() } ?: 500
                         val id = fx.a(PRES, "preset-id").orEmpty()
                         // when it starts within its click: its par's begin (LibreOffice groups effects by it)
                         val at = secs((fx.parentNode as? Element)?.a(SMIL, "begin"))?.let { (it * 1000).toInt() } ?: 0
-                        SlideEffect(target, if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade", OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit")
+                        val kind = if (fx.a(PRES, "preset-class") == "emphasis") (if ("spin" in id) "spin" else if ("grow" in id) "grow" else "pulse")
+                            else if ("appear" in id) "appear" else if ("fly" in id) "fly" else "fade"
+                        SlideEffect(target, kind, OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit")
                     }
                 if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
             }

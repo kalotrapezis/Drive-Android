@@ -223,6 +223,26 @@ class SlidesTest {
         lo(oout, "pptx")?.let { two(Slides.read(it)) }
     }
 
+    /** Emphasis — pulse, spin, grow — saved in both formats, read back here and by LibreOffice. */
+    @Test fun `emphasis effects saved`() {
+        fun lo(file: File, to: String): File? {
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
+            return dir.listFiles()!!.single { it.extension == to }
+        }
+        fun check(d: Deck) = assertEquals(listOf("pulse 1000", "spin 2000", "grow 2000"), d.slides[2].steps.map { it.effects.single().let { f -> "${f.kind} ${f.ms}" } })
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.anim!!
+        val list = listOf(SlideEffect(box, "pulse", 'd', 0, 1000), SlideEffect("9100", "spin", 'd', 0, 2000), SlideEffect(box, "grow", 'd', 0, 2000))
+        val star = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5")))
+        val out = File.createTempFile("emph", ".pptx"); SlidesEdit.save(src, deck, SlidesEdit.start(deck).copy(added = star, anims = mapOf(2 to list)), out)
+        check(Slides.read(out)); lo(out, "odp")?.let { check(Slides.read(it)) }
+        val osrc = File("src/test/resources/slides.odp"); val odeck = Slides.read(osrc)
+        val oout = File.createTempFile("emph", ".odp"); SlidesOdpEdit.save(osrc, odeck, SlidesEdit.start(odeck).copy(added = star, anims = mapOf(2 to list.map { if (it.target == box) it.copy(target = "o0") else it })), oout)
+        check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

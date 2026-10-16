@@ -272,17 +272,21 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
                 val id = item
                 fun set(to: List<SlideEffect>) { change(e.copy(anims = e.anims + (uid to to))); WriterLog.i("Slides: ${to.size} animations on a slide") }
-                val inK = list.indexOfFirst { it.target == id && !it.exit }; val outK = list.indexOfFirst { it.target == id && it.exit }
-                /** The item's entrance ([exit] false) or exit made [kind] (null: none), in its place in the clicks or last. */
-                fun choose(exit: Boolean, kind: String?) {
-                    val k = if (exit) outK else inK; val id2 = id ?: return
+                val inK = list.indexOfFirst { it.target == id && !it.exit && !it.emphasis }; val outK = list.indexOfFirst { it.target == id && it.exit }
+                val emK = list.indexOfFirst { it.target == id && it.emphasis }
+                /** The item's entrance ('i'), emphasis ('m') or exit ('o') made [kind] (null: none), in its place in the clicks or last. */
+                fun choose(which: Char, kind: String?) {
+                    val k = when (which) { 'o' -> outK; 'm' -> emK; else -> inK }; val id2 = id ?: return
                     val old = list.getOrNull(k)
-                    val fx = kind?.let { SlideEffect(id2, it, old?.from ?: 'd', 0, old?.ms ?: 500, exit) }
+                    val fx = kind?.let { SlideEffect(id2, it, old?.from ?: 'd', 0, old?.ms ?: if (which == 'm') 1000 else 500, which == 'o') }
                     set(when { fx == null -> list.filterIndexed { i, _ -> i != k }; k >= 0 -> list.toMutableList().also { it[k] = fx }; else -> list + fx })
                 }
                 when {
-                    id == null -> Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                    effectOptions && (inK >= 0 || outK >= 0) -> {
+                    id == null -> {
+                        Text("Choose a text box, shape or picture on the slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                        RibbonButton("Play", w, R.drawable.ic_play) { presenting = c }
+                    }
+                    effectOptions && (inK >= 0 || outK >= 0 || emK >= 0) -> {
                         IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         // the side a fly comes from (or goes to), and how long each of the item's effects takes
                         fun all(f: (SlideEffect) -> SlideEffect) = set(list.map { if (it.target == id) f(it) else it })
@@ -296,17 +300,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             RibbonButton(label, w, on = list[k].start == c) { set(list.toMutableList().also { it[k] = it[k].copy(start = c) }) }
                     }
                     else -> {
-                        val first = listOf(inK, outK).filter { it >= 0 }.minOrNull() ?: -1
+                        val first = listOf(inK, emK, outK).filter { it >= 0 }.minOrNull() ?: -1
                         // which click brings it (several effects can share one)
                         val groups = SlidesEdit.group(list); val g = groups.indexOfFirst { st -> st.effects.any { it.target == id } }
                         Text(when { first < 0 -> "No animation"; groups[g].auto -> "By itself"; else -> "Click ${groups.take(g + 1).count { !it.auto }} of ${groups.count { !it.auto }}" },
                             style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                         Text("In", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
                         for ((label, kind) in listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly"))
-                            RibbonButton(label, w, on = if (inK < 0) kind == null else list[inK].kind == kind) { choose(false, kind) }
+                            RibbonButton(label, w, on = if (inK < 0) kind == null else list[inK].kind == kind) { choose('i', kind) }
+                        Text("Emphasis", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
+                        for ((label, kind) in listOf("None" to null, "Pulse" to "pulse", "Spin" to "spin", "Grow" to "grow"))
+                            RibbonButton(label, w, on = if (emK < 0) kind == null else list[emK].kind == kind) { choose('m', kind) }
                         Text("Out", style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.padding(start = 6.dp))
                         for ((label, kind) in listOf("None" to null, "Disappear" to "appear", "Fade out" to "fade", "Fly out" to "fly"))
-                            RibbonButton(label, w, on = if (outK < 0) kind == null else list[outK].kind == kind) { choose(true, kind) }
+                            RibbonButton(label, w, on = if (outK < 0) kind == null else list[outK].kind == kind) { choose('o', kind) }
                         RibbonButton("Options", w, R.drawable.ic_tune, enabled = first >= 0) { effectOptions = true }
                         if (first >= 0) {
                             RibbonButton("Earlier", w, R.drawable.ic_keyboard_arrow_up, enabled = first > 0) { set(list.toMutableList().apply { add(first - 1, removeAt(first)) }) }
@@ -629,20 +636,31 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
         val done = if (p == page) step else sl.steps.size
         val play = if (p == page) playing else null
         val shown = floatArrayOf(1f, 0f, 0f)
+        // an emphasis turns or scales about the middle of what it names (a group's, for a group)
+        val middle = HashMap<String, Pair<Float, Float>>()
+        fun about(id: String) = middle.getOrPut(id) { SlidesEdit.box(sl, id)?.let { it.x + it.w / 2 to it.y + it.h / 2 } ?: (0f to 0f) }
         return { item ->
             val list = item.anim?.let(mine::get)
             if (list == null) shown else {
+                val (cx, cy) = about(item.anim!!)
+                fun emph(scale: Float, deg: Float) = floatArrayOf(1f, 0f, 0f, scale, deg, cx, cy)
                 // before its first effect: hidden if that brings it in, else there
-                var r: FloatArray? = if (list.first().second.exit) shown else null
+                val first = list.first().second
+                var r: FloatArray? = if (first.exit || first.emphasis) shown else null
                 for ((g, e) in list) {
-                    if (g < done) { r = if (e.exit) null else shown; continue }
+                    // done: in, gone, or (grown) bigger
+                    if (g < done) { r = if (e.exit) null else if (e.kind == "grow") emph(1.5f, 0f) else shown; continue }
                     if (play?.first == g) {
                         val t = (ms(play.second) - e.delay).toFloat() / e.ms.coerceAtLeast(1)
                         if (t >= 0f) {
                             val k = t.coerceAtMost(1f)
                             // an entrance eases in to where it stands; an exit eases out from there
                             val away = if (e.exit) k * k else (1 - k) * (1 - k)
+                            val ease = 1 - (1 - k) * (1 - k)
                             r = when (e.kind) {
+                                "pulse" -> emph(1f + 0.1f * kotlin.math.sin(Math.PI * k).toFloat(), 0f)
+                                "spin" -> emph(1f, 360f * ease)
+                                "grow" -> emph(1f + 0.5f * ease, 0f)
                                 "appear" -> if (e.exit) null else shown
                                 "fly" -> when (e.from) {
                                     'l' -> floatArrayOf(1f, -(item.x + item.w) * away, 0f); 'r' -> floatArrayOf(1f, (deck.width - item.x) * away, 0f)

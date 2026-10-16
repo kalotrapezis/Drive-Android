@@ -50,7 +50,11 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
 internal data class SlideTransition(val kind: String, val dir: String?, val ms: Int)
 /** An effect on a click: [target] the shape's id; [kind] appear, fade, fly; [from] fly's side (l, r, u, d); its delay and length; [exit]: it goes (disappear, fade out, fly out to [from]). */
 internal data class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int, val exit: Boolean = false,
-    /** while editing: when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c')
+    /** while editing: when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c') {
+    /** An emphasis (pulse, spin, grow): on something already there, neither bringing it nor taking it away. */
+    val emphasis get() = kind in EMPHASES
+    companion object { val EMPHASES = setOf("pulse", "spin", "grow") }
+}
 /** One click's effects ([auto]: they start by themselves, with the slide or after the step before). */
 internal class SlideStep(val auto: Boolean, val effects: List<SlideEffect>)
 
@@ -235,7 +239,7 @@ internal object Slides {
          * The slide's click animations: its main sequence's groups, each a click (or starting by itself), each effect an
          * entrance or an exit — appear (1), fly (2, its subtype the side: 1 top, 2 right, 4 bottom, 8 left), the rest as a fade.
          */
-        // shortcut: entrances and exits only (emphasis is left out, the shapes simply stay); paragraph by paragraph builds animate the whole box
+        // shortcut: emphasis read as pulse, spin or grow (others as a pulse); paragraph by paragraph builds animate the whole box
         fun steps(s: Element): List<SlideStep> {
             val main = s.kid("timing")?.below("cTn")?.firstOrNull { it.attr("nodeType") == "mainSeq" } ?: return emptyList()
             fun delay(c: Element?) = c?.kid("stCondLst")?.kids("cond")?.firstNotNullOfOrNull { it.attr("delay")?.toIntOrNull() } ?: 0
@@ -246,10 +250,12 @@ internal object Slides {
                 val auto = conds.any { it.attr("evt") == "onBegin" } || (conds.isNotEmpty() && conds.none { it.attr("delay") == "indefinite" })
                 val effects = gc.kid("childTnLst")?.kids("par").orEmpty().flatMap { inner ->
                     val ic = inner.kid("cTn"); val at = delay(ic)
-                    ic?.below("cTn").orEmpty().filter { it.attr("presetClass") == "entr" || it.attr("presetClass") == "exit" }.mapNotNull { e ->
+                    ic?.below("cTn").orEmpty().filter { it.attr("presetClass") in setOf("entr", "exit", "emph") }.mapNotNull { e ->
                         val target = e.below("spTgt").firstOrNull()?.attr("spid") ?: return@mapNotNull null
-                        val ms = e.below("cTn").mapNotNull { it.attr("dur")?.toIntOrNull() }.filter { it > 1 }.maxOrNull() ?: 500
-                        val kind = when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; else -> "fade" }
+                        // a behaviour played there and back (autoRev) lasts twice its length
+                        val ms = e.below("cTn").mapNotNull { c -> c.attr("dur")?.toIntOrNull()?.let { if (c.attr("autoRev") == "1") it * 2 else it } }.filter { it > 1 }.maxOrNull() ?: 500
+                        val kind = if (e.attr("presetClass") == "emph") when (e.attr("presetID")) { "8" -> "spin"; "6" -> "grow"; else -> "pulse" }
+                            else when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; else -> "fade" }
                         val from = when (e.attr("presetSubtype")) { "1" -> 'u'; "2" -> 'r'; "4" -> 'd'; "8" -> 'l'; else -> 'd' }
                         SlideEffect(target, kind, from, at + delay(e), ms, exit = e.attr("presetClass") == "exit")
                     }
@@ -475,7 +481,7 @@ internal object Slides {
     fun moves(slide: Slide) = slide.items.any { it is SlideItem.Picture && isGif(it) }
 
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
-    /** [look]: an item's state in an animation — null hidden, else its opacity and how far it is moved (points). */
+    /** [look]: an item's state in an animation — null hidden, else its opacity and how far it is moved (points), and (an emphasis) its scale and turn in degrees about a point. */
     fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false, look: ((SlideItem) -> FloatArray?)? = null) {
         c.save(); c.scale(k, k)
         c.clipRect(0f, 0f, deck.width, deck.height)
@@ -487,6 +493,7 @@ internal object Slides {
             val saved = c.save()
             if (state != null) {
                 c.translate(state[1], state[2])
+                if (state.size >= 7) { c.rotate(state[4], state[5], state[6]); c.scale(state[3], state[3], state[5], state[6]) }
                 if (state[0] < 1f) c.saveLayerAlpha(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4, (state[0] * 255).toInt().coerceIn(0, 255))
             }
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)

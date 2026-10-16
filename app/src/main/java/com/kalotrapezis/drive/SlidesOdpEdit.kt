@@ -208,12 +208,19 @@ internal object SlidesOdpEdit {
         fun secs(ms: Int) = String.format(Locale.ROOT, "%.3fs", ms / 1000f)
         /** [fx] on [target], in LibreOffice's presets, starting [node] (on-click, with-previous, after-previous). */
         fun effect(fx: SlideEffect, target: String, node: String): String {
-            val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"; else -> if (fx.exit) "fade-out" else "fade-in" }
-            val cls = if (fx.exit) "exit" else "entrance"
+            val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"
+                "spin" -> "spin"; "grow" -> "grow-and-shrink"; "pulse" -> "flash-bulb"; else -> if (fx.exit) "fade-out" else "fade-in" }
+            val cls = if (fx.emphasis) "emphasis" else if (fx.exit) "exit" else "entrance"
             val sub = if (fx.kind == "fly") """ presentation:preset-sub-type="${OdpEffects.subtype(fx.from)}"""" else ""
             val begin = if (fx.exit && fx.kind != "appear") secs(fx.ms - 1) else "0s"
-            val set = """<anim:set smil:begin="$begin" smil:dur="0.001s" smil:fill="hold" smil:targetElement="$target" smil:attributeName="visibility" smil:to="${if (fx.exit) "hidden" else "visible"}"/>"""
+            val set = if (fx.emphasis) "" else """<anim:set smil:begin="$begin" smil:dur="0.001s" smil:fill="hold" smil:targetElement="$target" smil:attributeName="visibility" smil:to="${if (fx.exit) "hidden" else "visible"}"/>"""
+            fun transform(type: String, by: String, back: Boolean = false) =
+                """<anim:animateTransform xmlns:svg="$SVG" smil:dur="${secs(if (back) (fx.ms / 2).coerceAtLeast(1) else fx.ms)}" smil:fill="hold"${if (back) " smil:autoReverse=\"true\"" else ""} smil:targetElement="$target" smil:by="$by" smil:attributeName="transform" svg:type="$type"/>"""
             val move = when (fx.kind) {
+                // emphasis as LibreOffice writes PowerPoint's: a whole turn, half as big again, a little bigger and back
+                "spin" -> transform("rotate", "360")
+                "grow" -> transform("scale", "0.5,0.5")
+                "pulse" -> transform("scale", "0.1,0.1", back = true)
                 "appear" -> ""
                 "fly" -> {
                     val edge = when (fx.from) { 'l' -> "x" to "0-width/2"; 'r' -> "x" to "1+width/2"; 'u' -> "y" to "0-height/2"; else -> "y" to "1+height/2" }
@@ -277,7 +284,7 @@ internal object SlidesOdpEdit {
                 if (smil != null) r.insertBefore(fragment("""<anim:par $ans smil:begin="${idOf(page)}.begin"><anim:transitionFilter smil:dur="${secs(t.ms)}" smil:type="${smil.first}" smil:subtype="${smil.second}"${if (smil.third) " smil:direction=\"reverse\"" else ""}/></anim:par>"""), r.firstChild)
             }
             // the clicks: the main sequence written again (what is still on the page)
-            // shortcut: rewrites the whole main sequence, so its emphasis effects (not read here) are lost when its animations are changed
+            // shortcut: rewrites the whole main sequence, so an effect of a kind not offered here comes back as its nearest (a pulse, a fade) when its animations are changed
             if (anims != null) {
                 val r = timingRoot(page)
                 r.kids().filter { it.localName == "seq" && it.a(PRES, "node-type") == "main-sequence" }.forEach { r.removeChild(it) }

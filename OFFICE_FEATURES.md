@@ -355,8 +355,10 @@ LibreOffice works them out).
 - [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Options: its side and speed; Apply to
       all; Play) and an item's entrance and exit (Appear/Disappear, Fade in/out, Fly in/out; Options: the fly's side,
       Fast/Medium/Slow; Earlier/Later in the clicks; Play), saved as PowerPoint's XML; files' exits read and played —
-      LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left) — [ ] emphasis effects (changing a
-      slide's animations rewrites its timing, so emphasis there is dropped); Start — on a click, with the one before, after it
+      LibreOffice reads them (its wipe, its clicks, fade-in, fly-out from the left); emphasis — Pulse, Spin, Grow — read,
+      played (about the item's or group's middle; a grown one stays grown), chosen and saved (PowerPoint's animRot and
+      animScale, LibreOffice's animateTransform) — [ ] other kinds of effect (changing a slide's animations writes them
+      as their nearest: a fade, a pulse); Start — on a click, with the one before, after it
       (Options; the label counts clicks), in both formats (LibreOffice's "by itself" read in its .pptx too)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,

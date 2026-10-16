@@ -276,7 +276,7 @@ internal object SlidesEdit {
      * disappear (preset 1), fade (10), fly (2, its subtype the side: 1 top, 2 right, 4 bottom, 8 left); [sps] the
      * targets that are shapes (they take a build entry).
      */
-    // shortcut: rewrites the slide's whole timing, so its emphasis effects (not read here) are lost when its animations are changed
+    // shortcut: rewrites the slide's whole timing, so an effect of a kind not offered here comes back as its nearest (a pulse, a fade) when its animations are changed
     fun timing(anims: List<SlideEffect>, sps: Set<String>): String {
         var n = 2
         fun id() = ++n
@@ -295,12 +295,17 @@ internal object SlidesEdit {
                     last = fx
                     val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
                     val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
-                    val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }; else -> 10 to 0 }
+                    val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }
+                        "spin" -> 8 to 0; "grow" -> 6 to 0; "pulse" -> 26 to 0; else -> 10 to 0 }
                     val c = id()
                     // shown at the start of an entrance; hidden at the end of an exit (at once for disappear)
                     val at = if (fx.exit && fx.kind != "appear") ms - 1 else 0
-                    val set = """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="$at"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="${if (fx.exit) "hidden" else "visible"}"/></p:to></p:set>"""
+                    val set = if (fx.emphasis) "" else """<p:set><p:cBhvr><p:cTn id="${id()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="$at"/></p:stCondLst></p:cTn>${tgt(s)}<p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val="${if (fx.exit) "hidden" else "visible"}"/></p:to></p:set>"""
                     val move = when (fx.kind) {
+                        // emphasis: a whole turn; half as big again (and stays so); a little bigger and back
+                        "spin" -> """<p:animRot by="21600000"><p:cBhvr><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}<p:attrNameLst><p:attrName>r</p:attrName></p:attrNameLst></p:cBhvr></p:animRot>"""
+                        "grow" -> """<p:animScale><p:cBhvr><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}</p:cBhvr><p:by x="150000" y="150000"/></p:animScale>"""
+                        "pulse" -> """<p:animScale><p:cBhvr><p:cTn id="${id()}" dur="${(ms / 2).coerceAtLeast(1)}" autoRev="1" fill="hold"/>${tgt(s)}</p:cBhvr><p:by x="110000" y="110000"/></p:animScale>"""
                         "appear" -> ""
                         "fly" -> {
                             // off the slide on its side, and where it stands
@@ -313,7 +318,7 @@ internal object SlidesEdit {
                         }
                         else -> """<p:animEffect transition="${if (fx.exit) "out" else "in"}" filter="fade"><p:cBhvr><p:cTn id="${id()}" dur="$ms"/>${tgt(s)}</p:cBhvr></p:animEffect>"""
                     }
-                    """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="$node"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>"""
+                    """<p:par><p:cTn id="$c" presetID="$preset" presetClass="${if (fx.emphasis) "emph" else if (fx.exit) "exit" else "entr"}" presetSubtype="$sub" fill="hold"${if (s in sps) " grpId=\"$grp\"" else ""} nodeType="$node"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>$set$move</p:childTnLst></p:cTn></p:par>"""
                 } + "</p:childTnLst></p:cTn></p:par>"
             }
             """<p:par><p:cTn id="$a" fill="hold"><p:stCondLst>$begin</p:stCondLst><p:childTnLst>$inner</p:childTnLst></p:cTn></p:par>"""

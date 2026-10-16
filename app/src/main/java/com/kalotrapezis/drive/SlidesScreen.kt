@@ -164,6 +164,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
+    var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
     var slideMenu by remember { mutableStateOf<Triple<Boolean, Int, androidx.compose.ui.geometry.Offset>?>(null) } // a right-click's menu: on the sidebar?, which slide, where
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
@@ -338,6 +339,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
                     RibbonButton("Open in another app", w, R.drawable.ic_open_with) { if (changed) save { openElsewhere(context, f) } else openElsewhere(context, f) }
                 }
+                RibbonDivider(w)
+                RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
             }
             "Slide show" -> {
                 // PowerPoint's and LibreOffice's Slide Show tab (asked 16 Oct: where presenting starts)
@@ -604,10 +607,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
-                        slideMenu?.takeIf { !it.first && it.second == i }?.let { (_, _, at) -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
-                            DropdownMenu(expanded = true, onDismissRequest = { slideMenu = null }) {
-                                @Composable fun entry(label: String, icon: Int, action: () -> Unit) = DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(icon), null) },
-                                    onClick = { slideMenu = null; WriterLog.i("Slides: menu › $label"); action() })
+                        slideMenu?.takeIf { !it.first && it.second == i }?.let { (_, _, at) -> OfficeMenu(at, { slideMenu = null }) {
+                                @Composable fun entry(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { slideMenu = null; WriterLog.i("Slides: menu › $label"); action() }
                                 val hit = item?.let { id -> s.items.lastOrNull { it.anim == id } }
                                 val ownWords = hit is SlideItem.Shape && !hit.grouped && hit.id != null && hit.text != null && edit?.let { ee -> ee.added[ee.order[i].uid]?.none { it.id == item } } != false
                                 if (ownWords) entry("Edit text", R.drawable.ic_edit) { typeInto(hit as SlideItem.Shape) }
@@ -621,13 +622,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     if (deck?.layouts?.isNotEmpty() == true) entry("New slide", R.drawable.ic_add) { layouts = true }
                                     entry("Duplicate slide", R.drawable.ic_copy) { duplicateSlide(i) }
                                 }
-                            }
                         } }
                         }
                     }
                     // a tablet editing (asked 16 Oct): the slides in a sidebar, the chosen one big beside it, as PowerPoint's and LibreOffice's
                     if (wide && editing) Row(Modifier.fillMaxSize()) {
-                        LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 150.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(d.slides) { i, s ->
                                 Row(verticalAlignment = Alignment.Top) {
                                     Text("${i + 1}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(22.dp))
@@ -640,10 +640,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             if (!currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
                                             down.consume(); chosen = i; typing = null; item = null; slideMenu = Triple(true, i, down.position)
                                         } })
-                                    slideMenu?.takeIf { it.first && it.second == i }?.let { (_, _, at) -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
-                                        DropdownMenu(expanded = true, onDismissRequest = { slideMenu = null }) {
-                                            @Composable fun entry(label: String, icon: Int, enabled: Boolean = true, action: () -> Unit) = DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(icon), null) },
-                                                enabled = enabled, onClick = { slideMenu = null; WriterLog.i("Slides: slide menu › $label"); action() })
+                                    slideMenu?.takeIf { it.first && it.second == i }?.let { (_, _, at) -> OfficeMenu(at, { slideMenu = null }) {
+                                            @Composable fun entry(label: String, icon: Int, enabled: Boolean = true, action: () -> Unit) = OfficeMenuItem(label, icon, enabled) { slideMenu = null; WriterLog.i("Slides: slide menu › $label"); action() }
                                             val ee = edit
                                             if (deck?.layouts?.isNotEmpty() == true) entry("New slide", R.drawable.ic_add) { layouts = true }
                                             entry("Duplicate", R.drawable.ic_copy) { duplicateSlide(i) }
@@ -654,18 +652,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                                 entry(if (hidden) "Show slide" else "Hide slide", if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(ee.copy(hidden = ee.hidden + (uid to !hidden))) }
                                                 entry("Delete slide", R.drawable.ic_delete, enabled = ee.order.size > 1) { change(ee.copy(order = ee.order.filterIndexed { k, _ -> k != i })); chosen = i.coerceAtMost(ee.order.size - 2) }
                                             }
-                                        }
                                     } }
                                 }
                             }
                         }
                         // the chosen slide as big as the room above the floating ribbon lets it be
-                        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 150.dp), contentAlignment = Alignment.TopCenter) {
+                        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 24.dp, top = if (OfficeUi.top) 150.dp else 16.dp, bottom = if (OfficeUi.top) 16.dp else 150.dp), contentAlignment = Alignment.TopCenter) {
                             val c = (chosen ?: 0).coerceIn(0, d.slides.lastIndex)
                             Column(Modifier.width(minOf(maxWidth, maxHeight * (d.width / d.height)))) { SlideBox(c, d.slides[c]) }
                         }
                     } else
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 130.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
                             Column(Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = fit)) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
@@ -682,7 +679,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's ribbon, its tabs as Tables' (asked 16 Oct): what is chosen on it, the slide, Insert, Transitions, Animations
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null,
+                        // at the bottom for a finger; at the top while a mouse is in use (or as Settings say), as a PC's PowerPoint
+                        Modifier.align(if (OfficeUi.top) Alignment.TopCenter else Alignment.BottomCenter),
+                        enter = if (OfficeUi.top) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
+                        exit = if (OfficeUi.top) androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut() else SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations", "Slide show")
@@ -811,6 +812,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         } })
     val d = view
     presenting?.let { start -> if (d != null) Present(d, start, notes) { presenting = null } }
+    if (officeSettings) OfficeSettingsDialog { officeSettings = false }
 }
 
 /** PowerPoint's standard colours, and white, black and grey. */

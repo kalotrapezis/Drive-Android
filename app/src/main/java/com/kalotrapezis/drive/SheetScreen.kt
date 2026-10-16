@@ -147,6 +147,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     // Search: the words, the cells found (in the order drawn), the one shown.
     var searching by remember { mutableStateOf(false) }
+    var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
     var cellMenu by remember { mutableStateOf<Offset?>(null) } // a right-click's menu, where it was clicked
     // Search in every sheet (asked for the user's tables: a sheet for each specialty): the finds, how far it has got.
     var everywhere by remember { mutableStateOf(false) }
@@ -804,6 +805,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                             RibbonButton("About this file", w) { about = true }
                             RibbonButton("Send log", w) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                            RibbonDivider(w)
+                            RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
                         }
                         shown == "Insert" -> {
                             RibbonButton("Row above", w) { shift(true, cr, 1) }
@@ -962,6 +965,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 if (pins.isNotEmpty() || filters.isNotEmpty() || sort != null) ToolChips(view)
             }
         }
+        // the ribbon at the top while a mouse is in use (or as Settings say): under the cell bar, as a PC's Excel has it
+        run {
+            val rs = sheet; val rb = book; val rl = layout
+            androidx.compose.animation.AnimatedVisibility(OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) {
+                if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl)
+            }
+        }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.White)) {
             val s = sheet; val b = book; val l = layout
             when {
@@ -990,10 +1001,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                         }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at })
                     // a right-click's menu, where it was clicked: the cells' Cut, Copy, Paste, Clear, and their rows and columns
-                    cellMenu?.let { at -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
-                        DropdownMenu(expanded = true, onDismissRequest = { cellMenu = null }) {
-                            @Composable fun item(label: String, icon: Int? = null, action: () -> Unit) = DropdownMenuItem(text = { Text(label) },
-                                leadingIcon = icon?.let { { Icon(painterResource(it), null) } }, onClick = { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() })
+                    cellMenu?.let { at -> OfficeMenu(at, { cellMenu = null }) {
+                            @Composable fun item(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() }
                             val g = view.range
                             val (cr, cc) = chosen(s)
                             val rows = g?.let { l.rows[it.r1] to it.r2 - it.r1 + 1 } ?: (cr to 1)
@@ -1012,7 +1021,6 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 item("Insert column right", R.drawable.ic_add_column_right) { shift(false, cols.first + cols.second, cols.second) }
                                 item(if (cols.second > 1) "Delete ${cols.second} columns" else "Delete column", R.drawable.ic_delete_column) { shift(false, cols.first, -cols.second) }
                             }
-                        }
                     } }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
@@ -1020,7 +1028,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         val rs = sheet; val rb = book; val rl = layout
         // The ribbon slides down and up, as Writer's; Home › Font's gallery takes its place (asked 16 Oct, as Page numbers).
-        androidx.compose.animation.AnimatedVisibility(rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
+        androidx.compose.animation.AnimatedVisibility(!OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
             enter = SLIDE_IN, exit = SLIDE_OUT) { if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl) }
         // Typing in the cell bar: the functions for the letters typed (asked 16 Oct), or what the one the cursor is in takes.
         val d = draft
@@ -1082,6 +1090,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
+    if (officeSettings) OfficeSettingsDialog { officeSettings = false }
     if (naming) {
         var typed by remember { mutableStateOf("New spreadsheet") }
         val dir = remember { TextEditorStore(context).saveDirectory() }

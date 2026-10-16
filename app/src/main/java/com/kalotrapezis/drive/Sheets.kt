@@ -959,7 +959,8 @@ internal object Sheets {
                     ?.let(::cellsOf)?.map { it?.value } ?: return@mapIndexed s
                 range((e.kid("cat") ?: e.kid("xVal"))?.below("f")?.firstOrNull()?.textContent)?.let(::cellsOf)?.map { it?.text.orEmpty() }?.let { if (it.size >= categories.size) categories = it }
                 val name = range(e.kid("tx")?.below("f")?.firstOrNull()?.textContent)?.let(::cellsOf)?.firstOrNull()?.text
-                s.copy(values = values, name = name ?: s.name)
+                val sizes = if (chart.kind == ChartKind.Bubble) range(e.kid("bubbleSize")?.below("f")?.firstOrNull()?.textContent)?.let(::cellsOf)?.map { it?.value } else null
+                s.copy(values = values, name = name ?: s.name, sizes = sizes ?: s.sizes)
             }
             if (categories.size < (series.maxOfOrNull { it.values.size } ?: 0)) categories = (1..series.maxOf { it.values.size }).map { "$it" }
             return chart.copy(categories = categories, series = series)

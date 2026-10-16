@@ -76,7 +76,7 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
                     n.restore()
                 } }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ChartKind.entries.forEach { k -> FilterChip(kind == k, { kind = k }, label = { Text(k.label) }) }
+                    ChartKind.entries.filter { it.made || it == kind }.forEach { k -> FilterChip(kind == k, { kind = k }, label = { Text(k.label) }) }
                 }
                 OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
                 // Word's Chart elements: axis titles (not for a pie), data labels; and stacked.

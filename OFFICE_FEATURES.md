@@ -265,7 +265,9 @@ slow frames, taps, filters, searches — never a cell's words).
       its sheets, shortcut noted); the school timetable's 168,039 cells read in 0.85 s
 
 ### Next (viewer)
-- [ ] Charts in more kinds (radar, bubble, combo); shapes' geometry (ShapeGeometry) for Excel's shapes
+- [x] Charts in more kinds: combo (a line over columns), radar, bubble — from .xlsx and .ods (charts.xlsx/.ods), in Writer too
+      (shown, not offered for a new chart; a bubble chart saved from Writer is a scatter of its points)
+- [ ] Shapes' geometry (ShapeGeometry) for Excel's shapes; a combo's second value axis
 - [ ] Tablet: two panes? (check the layout on the tablet)
 - [ ] .xls (Excel 97–2003) — none in the user's files
 

@@ -301,6 +301,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
+    var slidesOpen by remember { mutableStateOf<String?>(null) } // the presentation PowerPoint's viewer shows (its back: writerBack)
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -508,6 +509,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             sheetOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Sheet
             return@runCatching
         }
+        // A presentation opens in PowerPoint's viewer (the same switch).
+        if (!forceChooser && Slides.isSlides(file.name) && TextEditorStore(context).opensOffice) {
+            WriterLog.i("open from Files: a presentation")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            slidesOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Slides
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -597,6 +605,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Office -> Unit
                 Screen.Writer -> Unit
                 Screen.Sheet -> Unit
+                Screen.Slides -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -677,10 +686,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                     OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                     }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer },
-                    openSheet = { sheetOpen = it; writerBack = Screen.Office; screen = Screen.Sheet })
+                    openSheet = { sheetOpen = it; writerBack = Screen.Office; screen = Screen.Sheet },
+                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides })
                 }
                 Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -750,7 +761,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }

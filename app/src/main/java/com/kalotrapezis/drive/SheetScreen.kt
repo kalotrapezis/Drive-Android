@@ -1071,7 +1071,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 /** [SheetScreen]'s open for a new spreadsheet (the Office home's Excel card). */
 internal const val NEW_SHEET = "tetra:new-spreadsheet"
 
-private fun openElsewhere(context: android.content.Context, file: File) {
+internal fun openElsewhere(context: android.content.Context, file: File) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
     val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
     runCatching {

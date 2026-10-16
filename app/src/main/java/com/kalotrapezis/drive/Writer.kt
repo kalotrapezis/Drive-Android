@@ -988,13 +988,13 @@ private const val OFFICE_RECENT = 50
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
-    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name) || Sheets.isSheet(it.name)) && !it.name.startsWith("~$") }
+    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name) || Sheets.isSheet(it.name) || Slides.isSlides(it.name)) && !it.name.startsWith("~$") }
     .map { OfficeFile(it, it.relativeTo(root).path) }
     .sortedByDescending { it.file.lastModified() }
     .toList()
 
 @Composable
-internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit, openSheet: (String) -> Unit) {
+internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit, openSheet: (String) -> Unit, openSlides: (String) -> Unit) {
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
     var total by remember { mutableIntStateOf(0) }
@@ -1007,7 +1007,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NewDocCard("Word", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
                     NewDocCard("Excel", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
-                    NewDocCard("PowerPoint", "Coming later", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
+                    NewDocCard("PowerPoint", "Viewer: open one below", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
                 }
             }
             item {
@@ -1025,10 +1025,11 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 null -> item { Text("Looking…", style = MaterialTheme.typography.bodyMedium) }
                 else -> if (list.isEmpty()) item { Text("No Word, Excel or OpenDocument files in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
                 else items(list, key = { it.relative }) { f ->
-                    val sheet = Sheets.isSheet(f.file.name)
-                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (sheet) openSheet(it) else open(it) } }) {
+                    val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name)
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            Icon(painterResource(if (sheet) R.drawable.ic_table else R.drawable.ic_file_text), contentDescription = null, tint = if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
+                            Icon(painterResource(if (deck) R.drawable.ic_play else if (sheet) R.drawable.ic_table else R.drawable.ic_file_text), contentDescription = null,
+                                tint = if (deck) POWERPOINT_ORANGE else if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.file.lastModified())),

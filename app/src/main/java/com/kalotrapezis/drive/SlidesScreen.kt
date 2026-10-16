@@ -151,7 +151,23 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
     var tool by remember { mutableStateOf<String?>(null) }
     var black by remember { mutableStateOf(false) }
     val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
-    var laser by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    var laser by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) } // as a part of the slide (0–1)
+    // a TV (HDMI, a cast screen): the slide shown there, the phone the presenter's — the slide and its notes
+    val displays = remember { context.getSystemService(android.hardware.display.DisplayManager::class.java) }
+    var tvDisplay by remember { mutableStateOf(displays?.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION)?.firstOrNull()) }
+    DisposableEffect(displays) {
+        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
+            fun again() { tvDisplay = displays?.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION)?.firstOrNull() }
+            override fun onDisplayAdded(id: Int) = again()
+            override fun onDisplayRemoved(id: Int) = again()
+            override fun onDisplayChanged(id: Int) = Unit
+        }
+        displays?.registerDisplayListener(listener, null)
+        onDispose { displays?.unregisterDisplayListener(listener) }
+    }
+    val tv = remember(tvDisplay) { tvDisplay?.let { d -> runCatching { TvSlides(context, d, deck).also { it.show(); WriterLog.i("Slides: on a second screen") } }
+        .onFailure { WriterLog.w("Slides: the second screen could not show", it) }.getOrNull() } }
+    DisposableEffect(tv) { onDispose { tv?.dismiss() } }
     DisposableEffect(Unit) {
         val activity = context as? Activity
         val was = activity?.requestedOrientation
@@ -180,12 +196,13 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                     Box(Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true).pointerInput(page, tool) {
                         // the pen draws (points as parts of the slide, so the ink stays put); the laser follows the finger
                         if (tool != null) detectDragGestures(
-                            onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height))) else laser = o },
+                            onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)))
+                                else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height) },
                             onDragEnd = { laser = null }, onDragCancel = { laser = null },
                         ) { change, _ ->
                             val o = change.position
                             if (tool == "pen") ink[page] = ink[page].orEmpty().let { strokes -> strokes.dropLast(1) + listOf(strokes.last() + androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)) }
-                            else laser = o
+                            else laser = androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)
                         }
                     }) {
                         SlideCanvas(deck, s, Modifier.fillMaxSize())
@@ -193,15 +210,23 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                             for (stroke in ink[page].orEmpty()) for (i in 1 until stroke.size)
                                 drawLine(Color(0xFFE53935), androidx.compose.ui.geometry.Offset(stroke[i - 1].x * size.width, stroke[i - 1].y * size.height),
                                     androidx.compose.ui.geometry.Offset(stroke[i].x * size.width, stroke[i].y * size.height), strokeWidth = size.width / 250, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                            if (pager.currentPage == page) laser?.let { p -> drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
+                            if (pager.currentPage == page) laser?.let { l -> val p = androidx.compose.ui.geometry.Offset(l.x * size.width, l.y * size.height)
+                                drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
                         }
                     }
-                    if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    if ((notes || tv != null) && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = if (tv != null) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
+                        maxLines = if (tv != null) 8 else 3, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(8.dp))
                 }
             }
             Text("${pager.currentPage + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
+            // the TV shows what the phone does: the slide (black when the phone's is), its ink, the laser
+            LaunchedEffect(tv, pager.currentPage, black, ink.toMap(), laser) {
+                tv?.apply { slide = if (black) null else deck.slides[shown[pager.currentPage]]; strokes = ink[pager.currentPage].orEmpty(); dot = laser; update() }
+            }
+            if (tv != null) Text("On the second screen", color = Color(0xFF6FCF97), style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp))
             // the tools, faint in a corner: Pen, Laser, Black screen (a tap on the black brings the slide back)
             Row(Modifier.align(Alignment.TopStart).padding(4.dp)) {
                 @Composable fun tool(name: String, icon: Int, on: Boolean, click: () -> Unit) = IconButton(onClick = click) {
@@ -215,4 +240,28 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
             if (black) Box(Modifier.fillMaxSize().background(Color.Black).clickable { black = false })
         }
     }
+}
+
+/** The slides on a second screen (a TV by HDMI or a cast): drawn as the phone shows them, with the pen's ink and the laser. */
+private class TvSlides(context: android.content.Context, display: android.view.Display, val deck: Deck) : android.app.Presentation(context, display) {
+    var slide: Slide? = null
+    var strokes: List<List<androidx.compose.ui.geometry.Offset>> = emptyList()
+    var dot: androidx.compose.ui.geometry.Offset? = null
+    private val view = object : android.view.View(context) {
+        val red = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt(); strokeCap = android.graphics.Paint.Cap.ROUND }
+        override fun onDraw(c: android.graphics.Canvas) {
+            c.drawColor(android.graphics.Color.BLACK)
+            val s = slide ?: return
+            val k = minOf(width / deck.width, height / deck.height)
+            val w = deck.width * k; val h = deck.height * k
+            c.save(); c.translate((width - w) / 2, (height - h) / 2)
+            Slides.draw(c, deck, s, k)
+            red.strokeWidth = w / 250; red.alpha = 255
+            for (st in strokes) for (i in 1 until st.size) c.drawLine(st[i - 1].x * w, st[i - 1].y * h, st[i].x * w, st[i].y * h, red)
+            dot?.let { d -> red.alpha = 0x55; c.drawCircle(d.x * w, d.y * h, w / 60, red); red.alpha = 255; c.drawCircle(d.x * w, d.y * h, w / 140, red) }
+            c.restore()
+        }
+    }
+    override fun onCreate(savedInstanceState: android.os.Bundle?) { super.onCreate(savedInstanceState); setContentView(view) }
+    fun update() = view.invalidate()
 }

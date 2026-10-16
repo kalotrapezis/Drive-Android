@@ -328,8 +328,8 @@ LibreOffice works them out).
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
-- [ ] Present: speaker notes on a second screen
-- [ ] Present to a TV (Android's cast / HDMI)
+- [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,
+      the phone the presenter's (the notes large) — written 16 Oct, **not yet tried on a TV** (to test with the user)
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 
 ## To test on the phone, with the user
@@ -347,6 +347,7 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Text size −/+ and zoom; undo/redo
 - [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
 - [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer
+- [ ] PowerPoint: present to a TV (HDMI or cast) — the slide on the TV, the notes on the phone
 - [ ] Αναπιρία.odt (or any of his): edit + Enter + Save → open on the computer: same layout, spacing, lines, bullets
 
 ## Sources

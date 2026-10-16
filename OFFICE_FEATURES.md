@@ -332,7 +332,8 @@ LibreOffice works them out).
 - [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
       everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —
       saved into the file (LibreOffice opens it)
-- [ ] Insert table on a slide; a GIF playing on the TV too (it shows its first frame there)
+- [x] Insert table on a slide (2×2 to 5×4, PowerPoint's default banded style; a cell tapped is typed into); GIFs play on
+      the TV too; the words' box takes the keyboard at once (16 Oct)
 - [ ] Transitions and animations (show; later edit)
 - [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
 - [x] Present to a TV (HDMI, a cast screen: Android's presentation display): the slide there with its ink and laser,

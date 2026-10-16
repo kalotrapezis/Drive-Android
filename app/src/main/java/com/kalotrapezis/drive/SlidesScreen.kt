@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -123,6 +124,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
+    var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
+    var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture or shape put on the chosen slide, to move, size or delete
     /** [a] put on the chosen slide, then chosen. */
     fun put(a: SlidesEdit.Added) {
@@ -160,7 +163,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     fun leave() { if (changed) leaving = true else back() }
-    BackHandler { when { typing != null -> typing = null; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
+    BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
@@ -242,7 +245,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
                                             val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
                                             // a picture or shape put on it: chosen, to move or size
-                                            edit?.let { ee -> ee.added[ee.order[i].uid].orEmpty().lastOrNull { a -> x in a.x..(a.x + a.w) && y in a.y..(a.y + a.h) } }?.let { a -> item = a.id; typing = null; return@detectTapGestures }
+                                            edit?.let { ee -> ee.added[ee.order[i].uid].orEmpty().lastOrNull { a -> x in a.x..(a.x + a.w) && y in a.y..(a.y + a.h) } }?.let { a ->
+                                                // a table already chosen: the cell tapped is typed into
+                                                if (a.prst == "table" && item == a.id) {
+                                                    val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
+                                                    val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
+                                                    cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
+                                                } else { item = a.id; typing = null }
+                                                return@detectTapGestures }
                                             val hit = s.items.lastOrNull { it is SlideItem.Shape && it.id != null && it.text != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) } as SlideItem.Shape?
                                             if (hit != null) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
                                             else message = "Tap a text box on the slide to change its words"
@@ -267,7 +277,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's tools, in a strip that slides up (as Writer's galleries)
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && !shapes && item == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && !shapes && !tables && item == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
@@ -279,6 +289,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
                                     RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                                     RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
+                                    RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                                     RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next(), entry.layout)) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
                                     RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                                     RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
@@ -329,8 +340,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                     }
+                    // Table: its size; the table goes in the middle, four fifths of the slide wide, a row 36 pt high
+                    androidx.compose.animation.AnimatedVisibility(editing && tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val w = islandContentColor()
+                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { tables = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                                for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
+                                    val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
+                                    val tw = dd.width * 0.8f; val th = rows * 36f
+                                    put(SlidesEdit.Added(ee.newId(ee.order[c].uid), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
+                                    tables = false; message = "Tap a cell to type in it"; WriterLog.i("Slides: a table put on a slide ($rows × $cols)")
+                                }
+                            }
+                        }
+                    }
                     // a picture or shape put on the slide: moved, made bigger or smaller, deleted
-                    androidx.compose.animation.AnimatedVisibility(editing && item != null && typing == null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && item != null && typing == null && cellEdit == null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val w = islandContentColor(); val dd = deck
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -347,12 +373,28 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // a text box's words: a line a paragraph, ✕ leaves them, ✓ puts them in (one step of Undo)
-                    androidx.compose.animation.AnimatedVisibility(typing != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(typing != null || cellEdit != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val cell = cellEdit
+                        if (cell != null) Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { cellEdit = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
+                                // the keyboard at once: the box opened to be typed in
+                                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                                LaunchedEffect(cell.first) { focus.requestFocus() }
+                                androidx.compose.material3.OutlinedTextField(cell.second, { cellEdit = cell.first to it }, singleLine = true, modifier = Modifier.weight(1f).focusRequester(focus),
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), label = { Text("The cell's words") })
+                                IconButton(onClick = { alter { a -> a.copy(cells = a.cells.toMutableList().also { it[cell.first] = cell.second.text }) }; cellEdit = null }) {
+                                    Icon(painterResource(R.drawable.ic_check), contentDescription = "Put them in") }
+                            }
+                        }
                         val t = typing
+                        if (cell == null)
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
-                                if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp),
+                                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                                LaunchedEffect(t?.first) { if (t != null) focus.requestFocus() }
+                                if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp).focusRequester(focus),
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), label = { Text("The words (a line a paragraph)") })
                                 IconButton(onClick = {
                                     val ee = edit; val c = chosen
@@ -519,6 +561,7 @@ private class TvSlides(context: android.content.Context, display: android.view.D
             for (st in strokes) for (i in 1 until st.size) c.drawLine(st[i - 1].x * w, st[i - 1].y * h, st[i].x * w, st[i].y * h, red)
             dot?.let { d -> red.alpha = 0x55; c.drawCircle(d.x * w, d.y * h, w / 60, red); red.alpha = 255; c.drawCircle(d.x * w, d.y * h, w / 140, red) }
             c.restore()
+            if (Slides.moves(s)) postInvalidateOnAnimation() // a GIF plays on the TV too
         }
     }
     override fun onCreate(savedInstanceState: android.os.Bundle?) { super.onCreate(savedInstanceState); setContentView(view) }

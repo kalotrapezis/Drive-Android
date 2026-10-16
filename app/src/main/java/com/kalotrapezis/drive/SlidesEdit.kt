@@ -13,7 +13,8 @@ internal object SlidesEdit {
     data class Entry(val src: Int, val uid: Int, val layout: Int = -1)
     /** A picture ([image]: a copy on the phone, [ext] png/jpeg) or a shape ([prst], [fill]) put on a slide, where it is (points). */
     data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
-        val prst: String? = null, val fill: Int = 0xFF4472C4.toInt())
+        val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
+        /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList())
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
         val added: Map<Int, List<Added>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
@@ -43,10 +44,21 @@ internal object SlidesEdit {
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
-            if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { pictureIds[it] = a.id }
+            if (a.prst == "table") table(a) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { pictureIds[it] = a.id }
             else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)
         }
         return Slide(items + added, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part)
+    }
+    /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
+    fun table(a: Added): SlideItem.Table {
+        fun cell(r: Int, c: Int): Pair<Int?, SlideText?> {
+            val head = r == 0
+            val words = a.cells.getOrNull(r * a.cols + c).orEmpty()
+            val run = SlideRun(words, 14f, head, false, false, if (head) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(), null)
+            val fill = if (head) 0xFF4472C4.toInt() else if (r % 2 == 1) 0xFFCFD5EA.toInt() else 0xFFE9EBF5.toInt()
+            return fill to SlideText(listOf(SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)), 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
+        }
+        return SlideItem.Table(a.x, a.y, a.w, a.h, List(a.cols) { a.w / a.cols }, List(a.rows) { a.h / a.rows }, List(a.rows) { r -> List(a.cols) { c -> cell(r, c) } }, 0xFFFFFFFF.toInt())
     }
     /** A picture put on a slide → its id (pictures have none of their own here). */
     val pictureIds = java.util.WeakHashMap<SlideItem, String>()
@@ -81,7 +93,13 @@ internal object SlidesEdit {
         for (a in added) {
             val xfrm = """<a:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></a:xfrm>"""
             val ns = """xmlns:p="$P" xmlns:a="$A" xmlns:r="$R""""
-            val x = if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
+            fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            val x = if (a.prst == "table") """<p:graphicFrame $ns><p:nvGraphicFramePr><p:cNvPr id="${a.id}" name="Table ${a.id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr><a:tblGrid>""" +
+                    (0 until a.cols).joinToString("") { """<a:gridCol w="${emu(a.w / a.cols)}"/>""" } + "</a:tblGrid>" +
+                    (0 until a.rows).joinToString("") { r -> """<a:tr h="${emu(a.h / a.rows)}">""" + (0 until a.cols).joinToString("") { c ->
+                        """<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>""" + (a.cells.getOrNull(r * a.cols + c)?.takeIf { it.isNotEmpty() }?.let { """<a:r><a:rPr lang="el-GR" sz="1400"/><a:t>${esc(it)}</a:t></a:r>""" } ?: """<a:endParaRPr lang="el-GR" sz="1400"/>""") + "</a:p></a:txBody><a:tcPr/></a:tc>"
+                    } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+                else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
             tree?.appendChild(doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true))
         }

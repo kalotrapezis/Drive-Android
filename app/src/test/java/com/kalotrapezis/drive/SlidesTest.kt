@@ -61,7 +61,8 @@ class SlidesTest {
         e = e.copy(order = e.order + SlidesEdit.Entry(-1, uid, layout), texts = e.texts + ((uid to titleId) to listOf("A new slide")))
         // a picture and a star put on the shapes' slide (uid 2)
         val png = File.createTempFile("pic", ".png").apply { writeBytes(File("src/test/resources/slides.pptx").let { java.util.zip.ZipFile(it).use { z -> z.getInputStream(z.entries().asSequence().first { en -> en.name.startsWith("ppt/media/") }).readBytes() } }) }
-        e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added(e.newId(2), 400f, 300f, 120f, 80f, image = png.path), SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()))))
+        e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added(e.newId(2), 400f, 300f, 120f, 80f, image = png.path), SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()),
+            SlidesEdit.Added("9101", 60f, 360f, 300f, 72f, prst = "table", rows = 2, cols = 2, cells = listOf("Name", "Score", "Anna", "18")))))
         val out = File.createTempFile("edited", ".pptx")
         SlidesEdit.save(src, deck, e, out)
         val back = Slides.read(out)
@@ -70,6 +71,9 @@ class SlidesTest {
         assertTrue(back.slides[4].items.none { words(it) == "Text" && !(it as SlideItem.Shape).hint }) // the hint not saved: an empty box again
         assertTrue(back.slides[0].items.any { words(it) == "A rounded box" }) // moved first
         assertEquals(2, back.slides[0].items.count { it is SlideItem.Picture }) // its own and the one put on it
+        val table = back.slides[0].items.filterIsInstance<SlideItem.Table>().single()
+        assertEquals(listOf("Name", "Score", "Anna", "18"), table.cells.flatten().map { (_, t) -> t?.paras?.joinToString { p -> p.runs.joinToString("") { it.text } }.orEmpty() })
+        assertEquals(0xFF4F81BD.toInt(), table.cells[0][0].first) // PowerPoint's default style: the first row in the theme's accent (this deck's: Office 2007's)
         assertEquals(0xFFFFC000.toInt(), back.slides[0].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
         assertTrue(back.slides[0].items.filterIsInstance<SlideItem.Picture>().any { it.bytes()?.size == png.length().toInt() })
         assertTrue(back.slides[1].hidden)

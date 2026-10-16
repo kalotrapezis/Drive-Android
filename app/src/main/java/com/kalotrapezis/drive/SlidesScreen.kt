@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -146,6 +147,11 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
     val shown = remember(deck) { deck.slides.indices.filter { !deck.slides[it].hidden || it == start } }
     val pager = rememberPagerState(initialPage = shown.indexOf(start).coerceAtLeast(0)) { shown.size }
     val scope = rememberCoroutineScope()
+    // PowerPoint's presenting tools: the pen (ink kept per slide while presenting), the laser (a red dot under the finger), a black screen
+    var tool by remember { mutableStateOf<String?>(null) }
+    var black by remember { mutableStateOf(false) }
+    val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
+    var laser by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
     DisposableEffect(Unit) {
         val activity = context as? Activity
         val was = activity?.requestedOrientation
@@ -166,18 +172,47 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
             onDispose { }
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
+            HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = tool == null) { page ->
                 val s = deck.slides[shown[page]]
-                Box(Modifier.fillMaxSize().pointerInput(page) {
-                    detectTapGestures { o -> scope.launch { if (o.x > size.width / 2) { if (page < shown.lastIndex) pager.animateScrollToPage(page + 1) else close() } else if (page > 0) pager.animateScrollToPage(page - 1) } }
+                Box(Modifier.fillMaxSize().pointerInput(page, tool) {
+                    if (tool == null) detectTapGestures { o -> scope.launch { if (o.x > size.width / 2) { if (page < shown.lastIndex) pager.animateScrollToPage(page + 1) else close() } else if (page > 0) pager.animateScrollToPage(page - 1) } }
                 }, contentAlignment = Alignment.Center) {
-                    SlideCanvas(deck, s, Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true))
+                    Box(Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true).pointerInput(page, tool) {
+                        // the pen draws (points as parts of the slide, so the ink stays put); the laser follows the finger
+                        if (tool != null) detectDragGestures(
+                            onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height))) else laser = o },
+                            onDragEnd = { laser = null }, onDragCancel = { laser = null },
+                        ) { change, _ ->
+                            val o = change.position
+                            if (tool == "pen") ink[page] = ink[page].orEmpty().let { strokes -> strokes.dropLast(1) + listOf(strokes.last() + androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)) }
+                            else laser = o
+                        }
+                    }) {
+                        SlideCanvas(deck, s, Modifier.fillMaxSize())
+                        Canvas(Modifier.fillMaxSize()) {
+                            for (stroke in ink[page].orEmpty()) for (i in 1 until stroke.size)
+                                drawLine(Color(0xFFE53935), androidx.compose.ui.geometry.Offset(stroke[i - 1].x * size.width, stroke[i - 1].y * size.height),
+                                    androidx.compose.ui.geometry.Offset(stroke[i].x * size.width, stroke[i].y * size.height), strokeWidth = size.width / 250, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                            if (pager.currentPage == page) laser?.let { p -> drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
+                        }
+                    }
                     if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(8.dp))
                 }
             }
             Text("${pager.currentPage + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
+            // the tools, faint in a corner: Pen, Laser, Black screen (a tap on the black brings the slide back)
+            Row(Modifier.align(Alignment.TopStart).padding(4.dp)) {
+                @Composable fun tool(name: String, icon: Int, on: Boolean, click: () -> Unit) = IconButton(onClick = click) {
+                    Icon(painterResource(icon), contentDescription = name, tint = if (on) Color(0xFFFF5252) else Color.White.copy(alpha = 0.45f))
+                }
+                tool("Pen", R.drawable.ic_ink_pen, tool == "pen") { tool = if (tool == "pen") null else "pen"; WriterLog.i("Slides: pen ${tool != null}") }
+                tool("Laser", R.drawable.ic_highlighter, tool == "laser") { tool = if (tool == "laser") null else "laser" }
+                if (ink[pager.currentPage].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(pager.currentPage) }
+                tool("Black screen", R.drawable.ic_visibility_off, black) { black = true }
+            }
+            if (black) Box(Modifier.fillMaxSize().background(Color.Black).clickable { black = false })
         }
     }
 }

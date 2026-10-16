@@ -327,7 +327,8 @@ LibreOffice works them out).
 - [ ] Edit text on a slide; layouts and themes from the file
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)
-- [ ] Present: pen and laser on the slide, blank screen, speaker notes on a second screen
+- [x] Present: pen (ink kept on each slide while presenting, wiped with the eraser), laser, black screen (16 Oct)
+- [ ] Present: speaker notes on a second screen
 - [ ] Present to a TV (Android's cast / HDMI)
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 

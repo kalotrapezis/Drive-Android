@@ -21,6 +21,7 @@ internal object SlidesOdpEdit {
     private const val XLINK = "http://www.w3.org/1999/xlink"
     private const val XML = "http://www.w3.org/XML/1998/namespace"
     private const val MANIFEST = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"
+    private const val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
     private const val ANIM = "urn:oasis:names:tc:opendocument:xmlns:animation:1.0"
     private const val SMIL = "urn:oasis:names:tc:opendocument:xmlns:smil-compatible:1.0"
     private const val LOEXT = "urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0"
@@ -178,7 +179,26 @@ internal object SlidesOdpEdit {
                 } }
                 val geometry = ShapeGeometry.odfGeometry(a.prst, a.w, a.h) ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(a.prst)}"/>"""
                 """<draw:custom-shape $ns draw:style-name="$st" draw:layer="layout" $box><text:p/>$geometry</draw:custom-shape>"""
-            } else return null // shortcut: a table put on an .odp slide is not offered yet (LibreOffice's tables need their own templates)
+            } else if (a.prst == "table") {
+                // PowerPoint's default look, as LibreOffice keeps it: the first row in the accent, the others banded, white lines
+                val co = derive("table-column", null, "col ${a.w / a.cols}") { props(it, "table-column-properties").setAttributeNS(STYLE, "style:column-width", cm(a.w / a.cols)) }
+                val ro = derive("table-row", null, "row ${a.h / a.rows}") { props(it, "table-row-properties").setAttributeNS(STYLE, "style:row-height", cm(a.h / a.rows)) }
+                fun cell(r: Int) = SlidesEdit.cellFill(look?.fill, r).let { fill ->
+                    derive("table-cell", null, "cell $fill") { st ->
+                        st.appendChild(doc.createElementNS(LOEXT, "loext:graphic-properties").apply { setAttributeNS(DRAW, "draw:fill", "solid"); setAttributeNS(DRAW, "draw:fill-color", hex(fill))
+                            setAttributeNS(FO, "fo:padding-top", "0.127cm"); setAttributeNS(FO, "fo:padding-bottom", "0.127cm"); setAttributeNS(FO, "fo:padding-left", "0.254cm"); setAttributeNS(FO, "fo:padding-right", "0.254cm") })
+                        props(st, "paragraph-properties").setAttributeNS(FO, "fo:border", "0.48pt solid #ffffff")
+                    } }
+                fun words(head: Boolean) = derive("text", null, "cell words $head ${look?.text}") { st -> props(st, "text-properties").apply {
+                    setAttributeNS(FO, "fo:font-size", "14pt"); setAttributeNS(FO, "fo:color", hex(look?.text ?: if (head) 0xFFFFFFFF.toInt() else 0xFF000000.toInt())); if (head) setAttributeNS(FO, "fo:font-weight", "bold") } }
+                fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                val st = derive("graphic", null, "table") { }
+                """<draw:frame $ns xmlns:table="$TABLE" draw:style-name="$st" draw:layer="layout" $box><table:table><table:table-column table:style-name="$co" table:number-columns-repeated="${a.cols}"/>""" +
+                    (0 until a.rows).joinToString("") { r -> """<table:table-row table:style-name="$ro" table:default-cell-style-name="${cell(r)}">""" + (0 until a.cols).joinToString("") { c ->
+                        val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
+                        """<table:table-cell><text:p>${if (t.isEmpty()) "" else """<text:span text:style-name="${words(r == 0)}">${esc(t)}</text:span>"""}</text:p></table:table-cell>"""
+                    } + "</table:table-row>" } + "</table:table></draw:frame>"
+            } else return null
             return doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true) as Element
         }
 

@@ -52,7 +52,8 @@ internal object SlidesOdp {
                 val s = l.item(i) as Element
                 val props = HashMap<String, String>()
                 for (k in s.kids()) {
-                    val p = when (k.localName) { "text-properties" -> "t."; "paragraph-properties" -> "p."; "graphic-properties" -> "g."; "drawing-page-properties" -> "d."; else -> continue }
+                    val p = when (k.localName) { "text-properties" -> "t."; "paragraph-properties" -> "p."; "graphic-properties" -> "g."; "drawing-page-properties" -> "d."
+                        "table-column-properties" -> "c."; "table-row-properties" -> "r."; else -> continue }
                     k.attrs().forEach { (n, v) -> props[p + n] = v }
                 }
                 all[s.a(STYLE, "family") + ":" + s.a(STYLE, "name")] = Style(s.a(STYLE, "parent-style-name"), props)
@@ -153,6 +154,26 @@ internal object SlidesOdp {
                 shrink = g("shrink-to-fit") == "true" || g("fit-to-size") == "shrink-to-fit")
         }
 
+        /** A table in its frame's box [b]: its columns' and rows' sizes (from their styles, fitted to the box), each cell's fill and words. */
+        fun table(t: Element, b: FloatArray): SlideItem.Table {
+            val TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+            fun repeat(e: Element) = e.a(TABLE, "number-columns-repeated")?.toIntOrNull()?.coerceIn(1, 64) ?: 1
+            val cols = t.kids().filter { it.localName == "table-column" }.flatMap { c -> List(repeat(c)) { c } }
+            val rows = t.kids().filter { it.localName == "table-row" }
+            fun fit(sizes: List<Float?>, total: Float) = sizes.map { it ?: (total / sizes.size.coerceAtLeast(1)) }.let { l -> val sum = l.sum(); if (sum > 0) l.map { it * total / sum } else l }
+            val widths = fit(cols.map { pt(prop("table-column", it.a(TABLE, "style-name"), "c.column-width")) }, b[2])
+            val heights = fit(rows.map { pt(prop("table-row", it.a(TABLE, "style-name"), "r.row-height")) }, b[3])
+            var line: Int? = null
+            val cells = rows.map { r ->
+                r.kids().filter { it.localName == "table-cell" || it.localName == "covered-table-cell" }.flatMap { c -> List(repeat(c)) { c } }.take(widths.size.coerceAtLeast(1)).mapIndexed { k, c ->
+                    val st = c.a(TABLE, "style-name") ?: r.a(TABLE, "default-cell-style-name") ?: cols.getOrNull(k)?.a(TABLE, "default-cell-style-name")
+                    val fill = if (prop("table-cell", st, "g.fill") == "none") null else hex(prop("table-cell", st, "g.fill-color"))
+                    if (line == null) line = prop("table-cell", st, "p.border")?.let { Regex("#[0-9a-fA-F]{6}").find(it)?.value }?.let(::hex)
+                    fill to text(c, null, null)
+                }
+            }
+            return SlideItem.Table(b[0], b[1], b[2], b[3], widths, heights, cells, line)
+        }
         /**
          * The shapes under [parent]; a page's own named by their place on it ("o3": the page's fourth element, "o3.1" the
          * second in that group) — what editing finds them by again in the file ([top]: the group's, what moves with it).
@@ -183,6 +204,7 @@ internal object SlidesOdp {
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { part(p) } }
+                            "table" -> out += table(inner, b)
                             "object" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }?.let(OfficeCharts::readOdf)?.let { out += SlideItem.Chart(b[0], b[1], b[2], b[3], it) }
                         }
                     }

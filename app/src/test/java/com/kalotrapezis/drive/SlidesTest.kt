@@ -149,7 +149,8 @@ class SlidesTest {
             hidden = mapOf(0 to true), texts = mapOf((0 to "o0") to listOf("Tetra Slides, edited"), (1 to "o1") to listOf("One", "Two")),
             looks = mapOf((2 to "o0") to SlidesEdit.Look(fill = 0xFFC00000.toInt(), text = 0xFFFFFFFF.toInt())), frames = mapOf((2 to "o1") to listOf(100f, 400f, 150f, 60f)),
             removed = setOf(2 to "o3"), added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5", fill = 0xFFFFC000.toInt()),
-                SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path))),
+                SlidesEdit.Added("9101", 400f, 300f, 120f, 80f, image = png.path),
+                SlidesEdit.Added("9102", 360f, 420f, 300f, 72f, prst = "table", rows = 2, cols = 2, cells = listOf("Name", "Score", "Anna", "18")))),
             transitions = mapOf(2 to SlideTransition("push", "u", 1000)),
             anims = mapOf(2 to listOf(SlideEffect("o0", "fade", 'd', 0, 500), SlideEffect("9100", "fly", 'l', 0, 1000), SlideEffect("o0", "fade", 'd', 0, 500, exit = true))))
         // a new page of "Title and Content" at the end: its title and two points typed
@@ -171,6 +172,10 @@ class SlidesTest {
             assertTrue(shapes.any { Math.abs(it.x - 100f) < 1 && Math.abs(it.y - 400f) < 1 && Math.abs(it.w - 150f) < 1 }) // moved and sized
             assertEquals(1, d.slides[0].items.count { it is SlideItem.Picture }) // its own deleted, one put on
             assertTrue(shapes.any { it.shape?.fill == 0xFFFFC000.toInt() && Math.abs(it.x - 550f) < 1 }) // the star
+            val table = d.slides[0].items.filterIsInstance<SlideItem.Table>().single()
+            assertEquals(listOf("Name", "Score", "Anna", "18"), table.cells.flatten().map { (_, t) -> t?.paras?.joinToString { p -> p.runs.joinToString("") { it.text } }.orEmpty() })
+            assertEquals(0xFF4472C4.toInt(), table.cells[0][0].first); assertEquals(0xFFCFD5EA.toInt(), table.cells[1][1].first)
+            assertEquals(0xFFFFFFFF.toInt(), table.cells[0][0].second!!.paras[0].runs[0].color); assertEquals(150f, table.cols[0], 1f)
             assertTrue(d.slides[1].hidden); assertTrue(d.slides[1].items.any { words(it) == "Tetra Slides, edited" })
             for (k in 2..3) assertEquals(listOf("One", "Two"), (d.slides[k].items.first { words(it)?.startsWith("One") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
             assertTrue(d.slides.none { s -> s.items.any { it is SlideItem.Chart } })

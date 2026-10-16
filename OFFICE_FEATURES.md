@@ -335,7 +335,7 @@ LibreOffice works them out).
       push, cover, uncover, wipe, fade — no cut), saved into content.xml (LibreOffice opens it, and its .pptx of it
       agrees); New slide from its master pages (LibreOffice's copies of PowerPoint's layouts; one master: Title only and
       Blank too), their title and text boxes empty with grey hints, a text box's lines a list (LibreOffice's bullets)
-      — [ ] an .odp's tables put on
+      ; tables read (their columns, rows, cells' fills and words) and put on (PowerPoint's banded look, as LibreOffice keeps it)
 - [x] Edit text on a slide (above); layouts and themes from the file (as shown)
 - [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
       everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —

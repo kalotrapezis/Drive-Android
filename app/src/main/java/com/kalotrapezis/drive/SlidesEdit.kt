@@ -111,7 +111,7 @@ internal object SlidesEdit {
         return SlideItem.Table(a.x, a.y, a.w, a.h, List(a.cols) { a.w / a.cols }, List(a.rows) { a.h / a.rows }, List(a.rows) { r -> List(a.cols) { c -> cell(r, c) } }, 0xFFFFFFFF.toInt())
     }
     /** A table's cell colour: the first row in [accent] (PowerPoint's default style's, else the chosen colour), the others banded in its tints. */
-    private fun cellFill(accent: Int?, r: Int): Int {
+    internal fun cellFill(accent: Int?, r: Int): Int {
         if (accent == null || accent == NONE) return if (r == 0) 0xFF4472C4.toInt() else if (r % 2 == 1) 0xFFCFD5EA.toInt() else 0xFFE9EBF5.toInt()
         if (r == 0) return accent
         val k = if (r % 2 == 1) 0.75f else 0.87f // toward white

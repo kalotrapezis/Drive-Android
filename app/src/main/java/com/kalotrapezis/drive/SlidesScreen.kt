@@ -245,7 +245,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Insert" -> {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
-                if (!odp) RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+                RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side and speed; Play shows it from the slide before

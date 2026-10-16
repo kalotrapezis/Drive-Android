@@ -2187,12 +2187,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         reshow()
     }
     fun saveNote(old: DocNote, text: String?) = change {
-        val new = text?.let { t ->
-            val keep = old.paras.firstOrNull()?.keep
-            // Unchanged words keep the note's own formatting; changed ones are its paragraphs anew, in its style.
-            if (t == old.paras.joinToString("\n") { it.text }) old
-            else DocNote(old.end, t.split('\n').map { line -> DocPara(if (line.isEmpty()) emptyList() else listOf(DocRun(line)), keep = keep) })
-        }
+        val new = text?.let { OfficeFormats.noteEdited(old, it) }
         meta = OfficeFormats.replaceNote(current(), old, new)
         dirty = true
         reshow()

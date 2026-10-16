@@ -535,6 +535,32 @@ class OfficeFormatsTest {
         assertEquals(listOf("*", "†", "‡", "§", "**"), (1..5).map { NoteFormats.number(it, NoteFormats.CHICAGO) })
     }
 
+    /** A note's words edited keep its letters' looks (they became plain before); LibreOffice has them bold and italic. */
+    @Test fun `a note keeps its formatting when its words are edited`() {
+        val note = DocNote(false, listOf(DocPara(listOf(DocRun("A "), DocRun("bold", bold = true), DocRun(" note.", italic = true)), keep = DocKeep("FootnoteText"))))
+        val edited = OfficeFormats.noteEdited(note, "A bold note, changed.\nA second line")
+        assertEquals(listOf("A bold note, changed.", "A second line"), edited.paras.map { it.text })
+        assertEquals(true, edited.paras[0].runs.single { it.text == "bold" }.bold)
+        assertEquals(true, edited.paras[0].runs.last().italic) // typed after the italic words: italic
+        assertEquals("FootnoteText", edited.paras[1].keep?.style)
+        assertEquals(note, OfficeFormats.noteEdited(note, "A bold note."))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val n = edited.copy(paras = edited.paras.map { it.copy(keep = if (kind == OfficeKind.Docx) DocKeep("FootnoteText") else DocKeep("Footnote")) })
+            val bytes = OfficeFormats.write(OfficeFormats.numberNotes(OfficeDoc(listOf(DocPara(listOf(DocRun("Text"), DocRun("1", note = n, script = 1)))))), kind)
+            val back = OfficeFormats.notesOf(OfficeFormats.read(bytes, kind)).single()
+            assertEquals(kind.name, true, back.paras[0].runs.single { it.text == "bold" }.bold)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.notesOf(OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)).single()
+                assertEquals(kind.name, true, lo.paras[0].runs.first { "bold" in it.text }.bold)
+                assertEquals(kind.name, true, lo.paras[0].runs.first { "changed" in it.text }.italic)
+            }
+        }
+    }
+
     /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
     @Test fun `track changes is remembered in a Word file`() {
         val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)

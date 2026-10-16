@@ -856,6 +856,13 @@ internal object OfficeFormats {
         })
     }
     /** [old] changed to [new] wherever it is (null: its reference taken out, the note with it). */
+    /** A note's words changed in its dialog: each line keeps the paragraph it came from, each letter kept its run's look, typed ones the look beside them (as a text box's words). */
+    fun noteEdited(old: DocNote, text: String): DocNote {
+        if (text == old.paras.joinToString("\n") { it.text }) return old
+        val fresh = (old.paras.firstOrNull() ?: DocPara(emptyList())).copy(runs = emptyList())
+        val laid = PictureXml.relaid(old.paras.map { p -> p to p.runs.map { it to it.text } }, text.split('\n'), fresh, null)
+        return DocNote(old.end, laid.map { (p, runs) -> p.copy(runs = tidy(runs.filter { it.second.isNotEmpty() }.map { (r, t) -> (r ?: DocRun("")).copy(text = t) })) })
+    }
     fun replaceNote(doc: OfficeDoc, old: DocNote, new: DocNote?): OfficeDoc {
         fun walk(ps: List<DocPara>): List<DocPara> = ps.map { p ->
             if (p.table != null) p.copy(table = p.table.copy(rows = p.table.rows.map { row -> row.copy(cells = row.cells.map { c -> c.copy(paras = walk(c.paras)) }) }))

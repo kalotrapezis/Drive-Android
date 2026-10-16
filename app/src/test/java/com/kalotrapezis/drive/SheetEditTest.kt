@@ -90,4 +90,29 @@ class SheetEditTest {
         assertEquals("=1+SUM()*2" to 7, SheetFunctions.insert("=1+su()*2", 5, sum))
         assertEquals("=TODAY()" to 8, SheetFunctions.insert("=tod", 4, SheetFunctions.all.first { it.name == "TODAY" }))
     }
+
+    @Test fun `the fill handle`() {
+        val f = SheetFormat()
+        fun num(v: Double, code: String = "General") = SheetCell(f.format(v, code).text, SheetKind.Number, v, format = code.takeIf { it != "General" })
+        fun text(t: String) = SheetCell(t, SheetKind.Text)
+        fun fill(src: List<SheetCell?>, count: Int, down: Int = 1) = SheetFill.series(src, count, f, { it.format ?: "General" }) { fm, j, i -> SheetFill.moved(fm, (src.size + i - j) * down, 0) }
+        assertEquals(listOf(3.0, 4.0, 5.0), fill(listOf(num(1.0), num(2.0)), 3).map { it.value })
+        assertEquals(listOf(30.0, 40.0), fill(listOf(num(10.0), num(20.0)), 2).map { it.value })
+        assertEquals(listOf(7.0, 7.0), fill(listOf(num(7.0)), 2).map { it.value }) // one number: copied, as Excel
+        val day = SheetCalc.serial(java.time.LocalDate.of(2026, 10, 16).atStartOfDay())
+        assertEquals(listOf(day + 1, day + 2), fill(listOf(num(day, "d/m/yyyy")), 2).map { it.value }) // a date: the next days
+        assertEquals("17/10/2026", fill(listOf(num(day, "d/m/yyyy")), 1)[0].text)
+        assertEquals(listOf("Week 2", "Week 3"), fill(listOf(text("Week 1")), 2).map { it.text })
+        assertEquals(listOf("Week 5", "Week 7"), fill(listOf(text("Week 1"), text("Week 3")), 2).map { it.text })
+        assertEquals(listOf("A2", "B2", "A3"), fill(listOf(text("A1"), text("B1")), 3).map { it.text })
+        assertEquals(listOf("Item 010"), fill(listOf(text("Item 009")), 1).map { it.text })
+        assertEquals(listOf("yes", "no", "yes"), fill(listOf(text("yes"), text("no")), 3).map { it.text })
+        // formulas: relative references follow, $ ones stay; up past row 1 is #REF!
+        val sum = SheetCell("", SheetKind.Number, 3.0, formula = "=SUM(B3:B12)*\$A\$1+Rows!C3")
+        assertEquals(listOf("=SUM(B4:B13)*\$A\$1+Rows!C4", "=SUM(B5:B14)*\$A\$1+Rows!C5"), fill(listOf(sum), 2).map { it.formula })
+        assertEquals("=A1&\"B3\"", SheetFill.moved("=A2&\"B3\"", -1, 0)) // words in quotes alone
+        assertEquals("=#REF!+1", SheetFill.moved("=A1+1", -1, 0))
+        assertEquals("=C1+\$B2", SheetFill.moved("=B1+\$B1", 1, 1).let { SheetFill.moved("=B1+\$B2", 0, 1) })
+        assertEquals("=LOG10(B2)", SheetFill.moved("=LOG10(A2)", 0, 1)) // a function's name is not a cell
+    }
 }

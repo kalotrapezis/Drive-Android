@@ -441,3 +441,65 @@ object SheetFunctions {
         return out to at
     }
 }
+
+/**
+ * Excel's fill handle (asked 16 Oct; on the phone a dot at the chosen cells' corner, dragged): the chosen cells carried
+ * on — numbers as their series (1, 2 → 3, 4), a date day by day, "Week 1" → "Week 2", formulas with their relative
+ * references moved ($ ones kept), anything else copied over and over.
+ */
+internal object SheetFill {
+    private val REF = Regex("""(?<![\p{L}\p{N}_.$'])(?:('(?:[^']|'')+'|[\p{L}_][\p{L}\p{N}_.]*)!)?(\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?)(?![\p{L}\p{N}_(!])""")
+    private val CELL = Regex("""(\$?)([A-Za-z]{1,3})(\$?)(\d+)""")
+    private val NUMBERED = Regex("""^(.*?)(\d+)$""")
+
+    /** A formula copied [dr] rows and [dc] columns away: its relative references follow; one moved off the sheet is #REF!. */
+    // shortcut: whole columns and rows (A:A, 3:3) stay as they are; move them too if fills of such formulas come up
+    fun moved(f: String, dr: Int, dc: Int): String = f.split('"').mapIndexed { i, part ->
+        if (i % 2 == 1) part else REF.replace(part) { m ->
+            var off = false
+            val ref = CELL.replace(m.groupValues[2]) { c ->
+                val (cAbs, col, rAbs, row) = c.destructured
+                val index = col.uppercase().fold(0) { a, ch -> a * 26 + (ch - 'A' + 1) } - 1
+                val cc = if (cAbs.isEmpty()) index + dc else index
+                val rr = if (rAbs.isEmpty()) row.toInt() + dr else row.toInt()
+                if (cc < 0 || rr < 1) off = true
+                if (off) "" else cAbs + Sheets.colName(cc) + rAbs + rr
+            }
+            if (off) "#REF!" else (m.groupValues[1].takeIf { it.isNotEmpty() }?.let { "$it!" } ?: "") + ref
+        }
+    }.joinToString("\"")
+
+    /**
+     * The [count] cells after [src] (one line of the fill, in its direction), [move] giving source cell j's formula as it
+     * reads in new cell i, [codeOf] a cell's number format.
+     */
+    fun series(src: List<SheetCell?>, count: Int, f: SheetFormat, codeOf: (SheetCell) -> String, move: (String, Int, Int) -> String): List<SheetCell> {
+        val n = src.size
+        val numbers = src.all { it != null && it.formula == null && it.kind == SheetKind.Number && it.value != null }
+        // a straight line through the numbers (Excel's trend: 1, 2 → 3, 4; 10, 20 → 30)
+        val xs = src.indices.map { it.toDouble() }; val ys = src.map { it?.value ?: 0.0 }
+        val mx = xs.average(); val my = ys.average()
+        val slope = if (n < 2) 0.0 else xs.indices.sumOf { (xs[it] - mx) * (ys[it] - my) } / xs.sumOf { (it - mx) * (it - mx) }
+        val texts = src.map { c -> c?.takeIf { it.formula == null && it.kind == SheetKind.Text }?.let { NUMBERED.matchEntire(it.text) } }
+        val samePrefix = n >= 2 && texts.all { it != null } && texts.map { it!!.groupValues[1] }.distinct().size == 1
+        val textSlope = if (samePrefix) texts.last()!!.groupValues[2].toDouble() - texts[n - 2]!!.groupValues[2].toDouble() else 1.0
+        fun shown(s: SheetCell, v: Double) = f.format(v, codeOf(s)).let { s.copy(value = v, text = it.text, color = it.color, note = null, link = null) }
+        return (0 until count).map { i ->
+            val j = i % n; val at = n + i
+            val s = src[j] ?: return@map SheetCell("", SheetKind.Empty)
+            val t = texts[j]
+            when {
+                s.formula != null -> s.copy(formula = move(s.formula, j, i), text = "", kind = SheetKind.Empty, value = null, note = null, link = null)
+                numbers && n >= 2 -> shown(s, my + slope * (at - mx))
+                numbers && f.isDate(codeOf(s)) -> shown(s, s.value!! + at) // a date: the next days
+                t != null -> {
+                    val digits = t.groupValues[2]
+                    // one prefix: its numbers' step on from the last (Week 1, Week 3 → Week 5); else each one up by one a round
+                    val k = if (samePrefix) texts.last()!!.groupValues[2].toLong() + (textSlope * (at - (n - 1))).toLong() else digits.toLong() + (i / n + 1)
+                    s.copy(text = t.groupValues[1] + k.toString().padStart(digits.length, '0'), note = null, link = null)
+                }
+                else -> s.copy(note = null)
+            }
+        }
+    }
+}

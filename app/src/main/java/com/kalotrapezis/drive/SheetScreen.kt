@@ -391,6 +391,34 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         })
     }
 
+    /**
+     * The fill handle let go: [to] (as drawn, [src] in it) filled from [src] — each column carried down or up, or each row
+     * right or left — one step of Undo; the filled cells are then the ones chosen, as Excel's.
+     */
+    fun fillCells(src: SheetRange, to: SheetRange) {
+        val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        val vertical = to.r1 != src.r1 || to.r2 != src.r2
+        val forward = if (vertical) to.r2 > src.r2 else to.c2 > src.c2
+        // the source line and the new cells, as the sheet has them, in the fill's direction
+        val from = (if (vertical) src.r1..src.r2 else src.c1..src.c2).let { if (forward) it.toList() else it.reversed().toList() }
+        val fresh = if (vertical) (if (forward) (src.r2 + 1..to.r2).toList() else (to.r1 until src.r1).reversed().toList()) else (if (forward) (src.c2 + 1..to.c2).toList() else (to.c1 until src.c1).reversed().toList())
+        fun sheetIndex(i: Int) = if (vertical) l.rows[i] else l.cols[i]
+        fun codeOf(cell: SheetCell) = cell.format ?: s.look(cell.style, b.styles)?.format ?: "General"
+        val changes = LinkedHashMap<Long, SheetCell>()
+        for (across in if (vertical) src.c1..src.c2 else src.r1..src.r2) {
+            fun key(along: Int) = if (vertical) Sheet.key(l.rows[along], l.cols[across]) else Sheet.key(l.rows[across], l.cols[along])
+            val made = SheetFill.series(from.map { s.cells[key(it)] }, fresh.size, b.format, ::codeOf) { fm, j, i ->
+                val d = sheetIndex(fresh[i]) - sheetIndex(from[j])
+                SheetFill.moved(fm, if (vertical) d else 0, if (vertical) 0 else d)
+            }
+            fresh.forEachIndexed { i, along -> changes[key(along)] = made[i] }
+        }
+        if (changes.isEmpty()) return
+        history.apply(b, index, changes); version++
+        view.range = to
+        WriterLog.i("Sheets: filled ${changes.size} cells ${if (vertical) (if (forward) "down" else "up") else (if (forward) "right" else "left")}")
+    }
+
     /** File › Versions: the file as it was before a save, in the editor in place of what is there (Undo goes back). */
     fun openVersion(v: File) = fileStep("version opened", { _, next, _ -> v.copyTo(next, overwrite = true) }) { message = "This version is open. Save keeps it, Undo goes back." }
 
@@ -621,7 +649,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         RibbonButton("Z → A", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, false) }
                         if (view.sort != null) RibbonButton("Clear sort", w) { view.sort = null }
                         if (col in view.pins) RibbonButton("Unpin", w, R.drawable.ic_push_pin) { view.pins.remove(col) }
-                        else RibbonButton("Pin to compare", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f } // beside the others pinned, at the start; the file unchanged
+                        else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
                     }
                     when {
                         shown == "Sheet" -> {
@@ -832,7 +860,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 editing && s.merge(r, c)?.let { it.r1 to it.c1 } ?: (r to c) == chosen(s) -> { startTyping(); barFocus.requestFocus(); true }
                                 else -> false
                             }
-                        })
+                        }, filled = if (editing && draft == null) ::fillCells else null)
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
             }
@@ -1008,6 +1036,7 @@ internal class SheetView {
     var sort by mutableStateOf<SheetSort?>(null)
     var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
+    var fill by mutableStateOf<SheetRange?>(null) // the fill handle being dragged: the cells it would fill, as drawn
 }
 
 /** Copies [text] to Android's clipboard. */
@@ -1242,7 +1271,8 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit
 
 @Composable
 private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, version: Int,
-                      column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null) {
+                      column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null,
+                      filled: ((SheetRange, SheetRange) -> Unit)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
@@ -1257,6 +1287,20 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     fling?.cancel()
+                    // The fill handle (Excel's black cross; here a dot at the chosen cells' corner, while editing): dragged, it fills.
+                    val src = if (filled != null) painter.chosen(view) else null
+                    if (src != null && painter.onHandle(view, src, down.position)) {
+                        down.consume(); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            val p = e.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!p.pressed) break
+                            view.fill = painter.fillTarget(view, src, p.position); p.consume()
+                        }
+                        val to = view.fill; view.fill = null
+                        if (to != null) filled?.invoke(src, to)
+                        return@awaitEachGesture
+                    }
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
                     var moved = false; var pinched = false; var travel = Offset.Zero; var released = false
@@ -1307,6 +1351,7 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
     ) {
         // Read here, so a scroll or a zoom redraws without recomposing.
         val x = view.x; val y = view.y; val zoom = view.zoom; val r = view.row; val col = view.col; val range = view.range
+        painter.handle = filled != null; painter.filling = view.fill
         drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, r, col, marks, range) }
     }
 }
@@ -1451,6 +1496,35 @@ internal class SheetPainter(
     }
 
     private var anchor = 0 to 0
+
+    var handle = false // the fill handle drawn at the chosen cells' corner
+    var filling: SheetRange? = null // where it is being dragged to
+
+    /** The chosen cells as drawn: the range, else the chosen cell (a merged one whole). */
+    fun chosen(view: SheetView): SheetRange? = view.range ?: run {
+        val dr = layout.row(view.row); val dc = layout.col(view.col)
+        if (dr < 0 || dc < 0) null else merge(dr, dc) ?: SheetRange(dr, dc, dr, dc)
+    }
+
+    /** A drawn column's or row's edge on the screen. */
+    private fun screenX(view: SheetView, c: Int): Float { val s = scale(view.zoom); return headerW + if (c <= fc) colX[c] * s else (colX[c] - view.x) * s }
+    private fun screenY(view: SheetView, r: Int): Float { val s = scale(view.zoom); return headerH + if (r <= fr) rowY[r] * s else (rowY[r] - view.y) * s }
+
+    /** A touch on the fill handle: near [g]'s bottom right corner (a finger's width). */
+    fun onHandle(view: SheetView, g: SheetRange, at: Offset): Boolean =
+        Offset(screenX(view, min(g.c2 + 1, cols)), screenY(view, min(g.r2 + 1, rows))).minus(at).getDistance() < 24f * density
+
+    /** The fill handle dragged to [at]: [g] with the cells it reaches down, up, right or left (the farther way). */
+    fun fillTarget(view: SheetView, g: SheetRange, at: Offset): SheetRange? {
+        val (r, c) = cellAt(view, at)
+        val dr = if (r > g.r2) r - g.r2 else if (r < g.r1) r - g.r1 else 0
+        val dc = if (c > g.c2) c - g.c2 else if (c < g.c1) c - g.c1 else 0
+        return when {
+            dr != 0 && kotlin.math.abs(dr) >= kotlin.math.abs(dc) -> SheetRange(min(g.r1, r), g.c1, max(g.r2, r), g.c2)
+            dc != 0 -> SheetRange(g.r1, min(g.c1, c), g.r2, max(g.c2, c))
+            else -> null
+        }
+    }
 
     /** A long press on a cell starts a range there (not on the letters or numbers). */
     fun startRange(view: SheetView, at: Offset): Boolean {
@@ -1745,6 +1819,16 @@ internal class SheetPainter(
             if (ranged) { fill.color = 0x2E107C41; c.drawRect(colX[sel.c1], rowY[sel.r1], colX[min(sel.c2 + 1, cols)], rowY[min(sel.r2 + 1, rows)], fill) }
             line.color = EXCEL_GREEN_ARGB; line.strokeWidth = 2.5f * density / s
             c.drawRect(colX[sel.c1], rowY[sel.r1], colX[min(sel.c2 + 1, cols)], rowY[min(sel.r2 + 1, rows)], line)
+            filling?.let { g ->
+                line.pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f * density / s, 3f * density / s), 0f)
+                c.drawRect(colX[g.c1], rowY[g.r1], colX[min(g.c2 + 1, cols)], rowY[min(g.r2 + 1, rows)], line)
+                line.pathEffect = null
+            }
+            if (handle) {
+                val hx = colX[min(sel.c2 + 1, cols)]; val hy = rowY[min(sel.r2 + 1, rows)]
+                fill.color = android.graphics.Color.WHITE; c.drawCircle(hx, hy, 8f * density / s, fill)
+                fill.color = EXCEL_GREEN_ARGB; c.drawCircle(hx, hy, 6f * density / s, fill)
+            }
         }
         if (marks.current >= 0) {
             val r = layout.row(Sheet.row(marks.current)); val k = layout.col(Sheet.col(marks.current))

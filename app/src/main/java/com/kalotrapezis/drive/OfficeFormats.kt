@@ -366,8 +366,13 @@ internal object PictureXml {
             val between = xml.substring(start, end).replace(Regex("""<text:(p|list|h)\b[\s\S]*?</text:\1>|<text:p\b[^>]*/>"""), "")
             return xml.substring(0, start) + between + paras + xml.substring(end)
         }
+        // A shape with no words yet (asked 16 Oct: a shape's own text): a text area of its own, its words in the middle, centred
+        val shaped = "<w:txbxContent>" !in xml
+        if (shaped && "<wps:bodyPr" !in xml) return xml
+        val src = if (!shaped) xml else xml.replaceFirst("<wps:bodyPr", "<wps:txbx><w:txbxContent></w:txbxContent></wps:txbx><wps:bodyPr")
+            .replace("<wps:bodyPr/>", """<wps:bodyPr rot="0" vert="horz" wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="ctr"><a:noAutofit/></wps:bodyPr>""")
         // Word: every copy of its words (the older-Word fallback has one too), from the first copy's paragraphs and runs.
-        val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(xml)?.groupValues?.get(1) ?: return xml
+        val first = Regex("""<w:txbxContent>([\s\S]*?)</w:txbxContent>""").find(src)?.groupValues?.get(1) ?: return xml
         val old = Regex("""<w:p\b[^>]*?(/>|>([\s\S]*?)</w:p>)""").findAll(first).map { m ->
             val pPr = Regex("""<w:pPr>[\s\S]*?</w:pPr>""").find(m.groupValues[2])?.value ?: ""
             val runs = Regex("""<w:r\b[^>]*>([\s\S]*?)</w:r>""").findAll(m.groupValues[2]).mapNotNull { r ->
@@ -378,10 +383,10 @@ internal object PictureXml {
             pPr to runs
         }.toList()
         val artPr = art?.let { """<w:rPr><w:b/><w:bCs/><w:color w:val="${"%06X".format(it and 0xFFFFFF)}"/><w:sz w:val="${(ART_PT * 2).toInt()}"/><w:szCs w:val="${(ART_PT * 2).toInt()}"/>${effects.docx()}</w:rPr>""" } ?: ""
-        val paras = relaid(old, lines, "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
+        val paras = relaid(old, lines, if (shaped) """<w:pPr><w:jc w:val="center"/></w:pPr>""" else "", artPr.ifEmpty { null }).joinToString("") { (pPr, runs) ->
             "<w:p>$pPr" + runs.joinToString("") { (rPr, t) -> "<w:r>${rPr ?: ""}" + t.split('\t').joinToString("<w:tab/>") { "<w:t xml:space=\"preserve\">${esc(it)}</w:t>" } + "</w:r>" } + "</w:p>"
         }
-        return xml.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
+        return src.replace(Regex("""<w:txbxContent>[\s\S]*?</w:txbxContent>"""), Regex.escapeReplacement("<w:txbxContent>$paras</w:txbxContent>"))
     }
 
     /**

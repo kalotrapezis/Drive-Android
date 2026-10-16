@@ -3825,6 +3825,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
                         img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
                         img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to paras.joinToString("\n") { it.text } } }
+                        // a shape's own words (Word's Add Text): typed in the box's window, in the shape's middle
+                        if (img != null && img.box == null && img.group == null && ShapePicture.of(img)?.geometry?.let { it != "line" && it != "straightConnector1" } == true)
+                            RibbonButton("Add text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to "" }
                         // A shape (or a text box's frame): its fill, outline, size, angle and alt text in one page.
                         if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton("Shape options", w, R.drawable.ic_tune, enabled = editable) { shapeOptions = key }
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
@@ -4534,11 +4537,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** A new text box (WordArt: [art], its words' colour) at the cursor, the text around it (Square); Position places it. */
     boxing?.let { (key, words) ->
-        TextBoxDialog(words, { boxing = null }) { text, _, _, _ ->
+        // a shape's own words: named as such, and Done (it is there already)
+        val shape = key?.let { pictures[it] }?.takeIf { it.box == null && ShapePicture.of(it) != null }
+        TextBoxDialog(words, { boxing = null }, title = shape?.let { "Words in the shape" }, confirm = if (key != null) "Done" else null) { text, _, _, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
-            if (old?.raw != null) changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines), box = PictureXml.boxParas(old, lines)))
+            // a shape's first words centred, as the file has them
+            if (old?.raw != null) changePicture(old.key, old.with(raw = PictureXml.boxText(old.raw, kind, lines),
+                box = PictureXml.boxParas(old, lines).let { ps -> if (old.box == null) ps.map { it.copy(align = DocAlign.Center) } else ps }))
             else putTextBox(lines, null)
         }
     }
@@ -4693,7 +4700,8 @@ private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 e
 
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, done: (String, Int, TextEffects, TextWarp?) -> Unit) {
+private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, title: String? = null, confirm: String? = null,
+    done: (String, Int, TextEffects, TextWarp?) -> Unit) {
     var bend by remember { mutableStateOf<TextWarp?>(null) }
     // A gallery's WordArt: "Your text here" chosen, so the first letter typed replaces it (as Word does).
     var field by remember { mutableStateOf(TextFieldValue(initial, androidx.compose.ui.text.TextRange(if (initial == "Your text here") 0 else initial.length, initial.length))) }
@@ -4704,7 +4712,7 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
     var color by remember { mutableIntStateOf(colors[0]) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title ?: if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(field, { field = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
@@ -4727,7 +4735,7 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
                 TextWarp.entries.forEach { b -> Choice(b.label, bend == b) { bend = b } }
             }
         } },
-        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(if (initial.isEmpty()) "Insert" else "Done") } },
+        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(confirm ?: if (initial.isEmpty()) "Insert" else "Done") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 

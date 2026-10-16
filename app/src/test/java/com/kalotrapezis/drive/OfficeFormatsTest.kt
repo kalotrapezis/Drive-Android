@@ -567,6 +567,30 @@ class OfficeFormatsTest {
         }
     }
 
+    /** A shape's own words (Word's Add Text): put in a shape made here, read back as its words, and LibreOffice has them in the shape. */
+    @Test fun `a shape takes words of its own`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val xml = PictureXml.newShape("ellipse", kind, 0xFF4472C4.toInt(), 0xFF2F528F.toInt(), 1f, 144f, 72f)
+            val withWords = PictureXml.boxText(xml, kind, listOf("Inside", "the oval"))
+            val img = DocImage("s1", null, 144f, 72f, withWords)
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Before "), DocRun(OBJECT_MARK.toString(), image = img))))), kind)
+            val back = OfficeFormats.read(bytes, kind).paras.flatMap { it.runs }.mapNotNull { it.image }.single()
+            assertEquals(kind.name, listOf("Inside", "the oval"), back.box?.map { it.text })
+            assertEquals(kind.name, "ellipse", ShapePicture.of(back)?.geometry)
+            // and again: its words changed, still one shape
+            assertEquals(kind.name, listOf("Changed"), OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(),
+                image = back.with(raw = PictureXml.boxText(back.raw!!, kind, listOf("Changed")))))))), kind), kind).paras.flatMap { it.runs }.mapNotNull { it.image }.single().box?.map { it.text })
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val pdfText = ProcessBuilder("pdftotext", java.io.File(dir, "s.pdf").path, "-").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+                assert("Inside" in pdfText && "the oval" in pdfText) { "$kind: LibreOffice's page has no words in the shape: $pdfText" }
+            }
+        }
+    }
+
     @Test fun `a shape made in Writer is written as the file's own and read back as one`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val yellow = 0x0DFFC114 // mostly see-through fill, as the keyboard's circles

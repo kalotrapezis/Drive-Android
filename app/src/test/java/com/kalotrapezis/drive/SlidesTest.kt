@@ -63,8 +63,8 @@ class SlidesTest {
         SlidesEdit.save(src, deck, e, out)
         val back = Slides.read(out)
         assertEquals(5, back.slides.size)
-        assertEquals("A new slide", back.slides[4].items.firstNotNullOf { words(it) }) // its title; the empty body is no text
-        assertTrue(back.slides[4].items.none { words(it) == "Text" })
+        assertEquals("A new slide", back.slides[4].items.firstNotNullOf { i -> words(i)?.takeIf { !(i as SlideItem.Shape).hint } }) // its title
+        assertTrue(back.slides[4].items.none { words(it) == "Text" && !(it as SlideItem.Shape).hint }) // the hint not saved: an empty box again
         assertTrue(back.slides[0].items.any { words(it) == "A rounded box" }) // moved first
         assertTrue(back.slides[1].hidden)
         assertEquals("Tetra Slides, edited", back.slides[1].items.firstNotNullOf { words(it)?.takeIf { w -> w.startsWith("Tetra") } })

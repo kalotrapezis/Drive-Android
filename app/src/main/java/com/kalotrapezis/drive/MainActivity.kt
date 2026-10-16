@@ -1861,7 +1861,7 @@ private fun DriveTab(
     // New (asked 14 Oct): made in the folder open in Files (Drive's top elsewhere, never in Trash), then opened.
     if (newOpen) {
         val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
-        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root) }, { newOpen = false }) { kind, name ->
+        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root, runCatching { context.assets.open("blank.pptx").use { it.readBytes() } }.getOrNull()) }, { newOpen = false }) { kind, name ->
             val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
             newOpen = false
             if (kind.extension != null) JustMade.mark(File(root, made)) // it opens editing

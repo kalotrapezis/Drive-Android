@@ -326,7 +326,8 @@ LibreOffice works them out).
 - [x] Editing a .pptx (16 Oct): Edit → a slide tapped is chosen, its strip at the bottom: Duplicate, Move up/down, Hide/Show,
       Delete; a text box tapped on it: its words (a line a paragraph, each keeping its look); Undo, Save (the file before
       kept as a version; LibreOffice opens it); New slide: the deck's layouts in a strip, grey hints in their empty boxes
-      (not saved) — [ ] .odp saving
+      (not saved); a slide's own empty boxes the same; a new presentation (the Office home's card, Files › New: an empty title
+      slide, opened editing) — [ ] .odp saving
 - [x] Edit text on a slide (above); layouts and themes from the file (as shown)
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)

@@ -271,11 +271,17 @@ internal object Slides {
                         val shape = if (fillC != null || lineC != null) ShapePicture(geom?.takeIf { it in ShapeGeometry.presets || it in ShapePicture.KINDS } ?: "rect", fillC, lineC, width,
                             adjust = spPr?.kid("prstGeom")?.below("gd")?.mapNotNull { g -> g.attr("fmla")?.removePrefix("val ")?.trim()?.toDoubleOrNull()?.let { (g.attr("name") ?: "") to it } }?.toMap().orEmpty()) else null
                         val fontColor = style?.kid("fontRef")?.let(::color)
+                        // a slide's own empty placeholder: a grey hint to tap and type into (PowerPoint's "Click to add title"), never shown in a show
+                        val ph = if (ctx != null) e.kid("nvSpPr")?.kid("nvPr")?.kid("ph") else null
+                        val empty = ph != null && ph.attr("type") !in setOf("dt", "ftr", "sldNum", "hdr", "sldImg") &&
+                            e.kid("txBody")?.below("t")?.none { it.textContent.isNotEmpty() } != false
                         val paths = spPr?.kid("custGeom")?.let(::custom).orEmpty()
-                        val text = e.kid("txBody")?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor) }
+                        val hintBody = if (empty) OfficeFormats.parse(("""<p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>""" +
+                            (when (ph?.attr("type")) { "title", "ctrTitle" -> "Title"; "subTitle" -> "Subtitle"; else -> "Text" }) + "</a:t></a:r></a:p></p:txBody>").toByteArray()).documentElement else null
+                        val text = (hintBody ?: e.kid("txBody"))?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor) }
                         if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text, paths,
                             xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad,
-                            id = if (ctx != null && group == null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null)
+                            id = if (ctx != null && group == null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null, hint = empty)
                     }
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p -> out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { part(p) } }
                     "graphicFrame" -> {

@@ -996,6 +996,7 @@ internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
 @Composable
 internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit, openSheet: (String) -> Unit, openSlides: (String) -> Unit) {
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
+    val context = LocalContext.current
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
@@ -1009,7 +1010,16 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NewDocCard("Word", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
                     NewDocCard("Excel", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
-                    NewDocCard("PowerPoint", "Viewer: open one below", POWERPOINT_ORANGE, false, Modifier.weight(1f)) {}
+                    // a new presentation: the app's empty deck (a title slide) in Documents, opened editing
+                    NewDocCard("PowerPoint", "New presentation", POWERPOINT_ORANGE, true, Modifier.weight(1f)) {
+                        runCatching {
+                            val dir = File(root, "Documents").apply { mkdirs() }
+                            val f = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "Presentation.pptx" else "Presentation ($it).pptx") }.first { !it.exists() }
+                            f.writeBytes(context.assets.open("blank.pptx").use { it.readBytes() })
+                            JustMade.mark(f); WriterLog.i("Slides: a new presentation")
+                            openSlides(Uri.fromFile(f).toString())
+                        }.onFailure { WriterLog.e("Slides: a new presentation could not be made", it) }
+                    }
                 }
             }
             item {

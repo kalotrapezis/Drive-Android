@@ -141,10 +141,11 @@ object DriveRules {
      * What New can make (asked 14 Oct): a folder, each file in Drive's hidden .templates (copied as it is), and a text
      * file and a Word document of Writer's own where .templates has none of that kind.
      */
-    fun newKinds(root: File): List<DriveNew> {
+    fun newKinds(root: File, blankDeck: ByteArray? = null): List<DriveNew> {
         val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
-        val built = listOf(DriveNew("Text file", "txt"), DriveNew("Word document", "docx"), DriveNew("Excel spreadsheet", "xlsx")).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        val built = listOfNotNull(DriveNew("Text file", "txt"), DriveNew("Word document", "docx"), DriveNew("Excel spreadsheet", "xlsx"),
+            blankDeck?.let { DriveNew("PowerPoint presentation", "pptx", bytes = it) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
         return listOf(DriveNew("Folder", null)) + templates + built
     }
 
@@ -160,6 +161,7 @@ object DriveRules {
             kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
             kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
             kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty())
+            kind.bytes != null -> target.writeBytes(kind.bytes)
             else -> target.writeBytes(ByteArray(0))
         }
         return relative(root, target)
@@ -256,7 +258,7 @@ private const val TRASH_FOLDER = "Trash"
 private const val TEMPLATES_FOLDER = ".templates"
 
 /** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
-data class DriveNew(val label: String, val extension: String?, val template: File? = null)
+data class DriveNew(val label: String, val extension: String?, val template: File? = null, /** the file's bytes as made (the app's empty deck) */ val bytes: ByteArray? = null)
 
 /**
  * Files just made with New (asked 16 Oct: "enter edit mode automatically, he does not want to see an empty page"):

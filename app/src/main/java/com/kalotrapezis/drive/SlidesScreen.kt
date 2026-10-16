@@ -414,6 +414,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     Text((file?.name ?: "Presentation") + if (changed) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     view?.let { Text(if (editing) "Editing" else "${it.slides.size} slide${if (it.slides.size == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
                 }
+                if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) view?.let { v ->
+                    val hidden = v.slides.count { it.hidden }
+                    TopInfo(listOfNotNull(chosen?.let { "Slide ${it + 1} of ${v.slides.size}" } ?: "${v.slides.size} slide${if (v.slides.size == 1) "" else "s"}",
+                        "$hidden hidden".takeIf { hidden > 0 }, if (editing) saveState(saving, changed) else null, file?.extension?.let { ".$it" }), islandContentColor())
+                }
                 if (editing) {
                     IconButton(onClick = { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }, enabled = undos.isNotEmpty()) {
                         Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }

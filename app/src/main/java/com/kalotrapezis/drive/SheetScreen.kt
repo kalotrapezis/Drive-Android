@@ -675,7 +675,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                             } else listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
                 .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
         }
-        Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+        // a phone: solid across the bottom; a tablet: floating, as Words' and Slides' (asked 16 Oct)
+        val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
+        Surface(color = islandColor(), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
@@ -874,6 +876,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     Column(Modifier.weight(1f)) {
                         Text((file?.name ?: "New spreadsheet") + if (unsaved) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(if (saving) "Saving…" else if (editing) "Editing" else "View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
+                    }
+                    val b0 = book
+                    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700 && b0 != null && index in b0.tabs.indices) {
+                        val shownTabs = b0.tabs.count { !it.hidden }
+                        TopInfo(listOfNotNull(if (shownTabs > 1) "${b0.tabs[index].name} (sheet ${b0.tabs.take(index + 1).count { !it.hidden }} of $shownTabs)" else b0.tabs[index].name,
+                            remember(sheet, version) { sheet?.let { sh -> var n = 0; sh.cells.forEach { _, c -> if (c.kind != SheetKind.Empty) n++ }; "%,d cells filled".format(n) } },
+                            if (editing) saveState(saving, unsaved || draft != null) else null, file?.extension?.let { ".$it" }), islandContentColor())
                     }
                     if (editing) {
                         IconButton(onClick = { undoOrRedo(false) }, enabled = version >= 0 && history.canUndo) { Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }

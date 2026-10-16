@@ -2992,8 +2992,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         modifier = Modifier.clickable { details = true })
                 }
                 if (!phone && loaded) {
-                    Text(if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
-                        else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces),
+                    Text((if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
+                        else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces))
+                        + (if (file != null && !viewing) " · " + saveState(saving, dirty) + (if (autoSave && dirty && !saving) " (AutoSave on)" else "") else ""),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
@@ -4834,6 +4835,13 @@ private fun preparePicture(context: Context, uri: Uri): DocImage {
         }
     }
 }
+
+/** Whether the file is saved, for a tablet's top bar (asked 16 Oct: the room there for what is going on). */
+internal fun saveState(saving: Boolean, unsaved: Boolean) = if (saving) "Saving…" else if (unsaved) "Not saved" else "Saved"
+
+/** A tablet's top bar: what is going on with the file, between its name and its tools. */
+@Composable internal fun TopInfo(parts: List<String>, tint: Color, modifier: Modifier = Modifier) =
+    Text(parts.joinToString(" · "), color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = modifier.padding(horizontal = 8.dp))
 
 /** A thin line between a ribbon's groups of tools (Words', Slides' and Tables'). */
 @Composable internal fun RibbonDivider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))

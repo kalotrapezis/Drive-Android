@@ -1223,6 +1223,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var insertingTable by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<TableCellRef?>(null) }
     var cellEdit by remember { mutableStateOf<TableCellEdit?>(null) }
+    var bordersPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Borders: its panel, for which paragraphs
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home's ⋯ page: for which paragraphs, as they look
     // The pictures' keys in the order they stand in the text.
     val keys by remember { derivedStateOf { state.annotatedString.let { state.toRichTextDocument().blocks.flatMap { b -> b.spans.filterIsInstance<RichTextSpanMark.Image>().sortedBy { it.range.first }.map { it.url.removePrefix(PICTURE_URL) } } } } }
@@ -3542,6 +3543,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
             Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
+            // a phone: a solid bar across the bottom, as Tables' and Slides' ribbons (asked 16 Oct); a tablet: the floating island
+            else if (!tablet) Modifier.background(islandColor()).then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(vertical = 4.dp)
             else Modifier.then(if (imeOpen) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             // A note's number, the cursor at it: the note's words (Edit opens them).
@@ -3747,26 +3750,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         }
                     }
                 }, {
-                    // Borders (Word's menu, for paragraphs): each side on or off, a box, none, a horizontal line.
-                    Box {
-                        var bordering by remember { mutableStateOf(false) }
-                        RibbonButton("Borders", w, R.drawable.ic_border_bottom) { bordering = true }
-                        DropdownMenu(bordering, { bordering = false }) {
-                            val thin = Border(0.5f, 0)
-                            @Composable fun icon(id: Int) = Icon(painterResource(id), contentDescription = null, modifier = Modifier.size(20.dp))
-                            listOf<Triple<String, Int, (ParaBox) -> ParaBox>>(
-                                Triple("Bottom border", R.drawable.ic_border_bottom) { b -> b.copy(bottom = if (b.bottom == null) thin else null) },
-                                Triple("Top border", R.drawable.ic_border_top) { b -> b.copy(top = if (b.top == null) thin else null) },
-                                Triple("Left border", R.drawable.ic_border_left) { b -> b.copy(left = if (b.left == null) thin else null) },
-                                Triple("Right border", R.drawable.ic_border_right) { b -> b.copy(right = if (b.right == null) thin else null) },
-                                Triple("No border", R.drawable.ic_border_clear) { _ -> ParaBox() },
-                                Triple("All borders", R.drawable.ic_border_all) { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = thin) },
-                                Triple("Outside borders", R.drawable.ic_border_outer) { b -> b.copy(top = thin, left = thin, bottom = thin, right = thin, between = null) },
-                                Triple("Inside horizontal border", R.drawable.ic_border_horizontal) { b -> b.copy(between = if (b.between == null) thin else null) },
-                            ).forEach { (label, id, f) -> DropdownMenuItem(text = { Text(label) }, leadingIcon = { icon(id) }, onClick = { bordering = false; chooseParagraphs { at, look -> setBorders(at, f(look.box ?: ParaBox())) } }) }
-                            DropdownMenuItem(text = { Text("Horizontal line") }, leadingIcon = { icon(R.drawable.ic_horizontal_rule) }, onClick = { bordering = false; horizontalLine() })
-                        }
-                    }
+                    // Borders (Word's, for paragraphs): a centred panel with a preview — the sides, their line, thickness and colour
+                    RibbonButton("Borders", w, R.drawable.ic_border_bottom) { chooseParagraphs { at, look -> bordersPage = at to look } }
                     RibbonButton("More…", w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                 })
                 // Word's groups, in its order: Pages, Tables, Illustrations, Links, Comments, Header & Footer, Text, Symbols.
@@ -4606,6 +4591,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     editingStyle?.let { entry ->
         StyleDialog(entry, documentStyles.look(DocPara(emptyList(), heading = entry.heading, keep = entry.id?.let { DocKeep(style = it) })), meta.basePt,
             { editingStyle = null }) { change -> editingStyle = null; editStyle(entry, change) }
+    }
+    bordersPage?.let { (at, look) ->
+        BordersDialog(look, { bordersPage = null }, line = { bordersPage = null; horizontalLine() }) { box -> bordersPage = null; setBorders(at, box) }
     }
     paragraphPage?.let { (at, look) ->
         ParagraphDialog(look, { paragraphPage = null }) { now -> paragraphPage = null; setSpacing(at, look, now) }

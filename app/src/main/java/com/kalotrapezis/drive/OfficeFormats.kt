@@ -787,11 +787,13 @@ internal object OfficeFormats {
         val b = box?.takeIf { !it.isEmpty }
         val rest = k.parts.filter { (name, xml) -> name != "pBdr" && !(name == "@" && (xml.startsWith(" fo:border") || xml.startsWith(" fo:padding") || xml.startsWith(" style:join-border"))) }
         val set = if (b == null) emptyList() else if (kind == OfficeKind.Docx) {
-            fun side(tag: String, e: Border?, pad: Float) = e?.let { """<w:$tag w:val="single" w:sz="${Math.round(it.width * 8).coerceIn(2, 96)}" w:space="${Math.round(pad)}" w:color="${if (it.color == 0) "auto" else "%06X".format(it.color and 0xFFFFFF)}"/>""" }.orEmpty()
+            // its line as chosen (solid, double, dotted, dashed); a double's width is its whole, Word's size one of its three lines
+            fun side(tag: String, e: Border?, pad: Float) = e?.let { val double = it.style == "double"
+                """<w:$tag w:val="${if (it.style == "dashed") "dashed" else it.style}" w:sz="${Math.round((if (double) it.width / 3 else it.width) * 8).coerceIn(2, 96)}" w:space="${Math.round(pad)}" w:color="${if (it.color == 0) "auto" else "%06X".format(it.color and 0xFFFFFF)}"/>""" }.orEmpty()
             listOf("pBdr" to "<w:pBdr>" + side("top", b.top, b.padTop) + side("left", b.left, b.padLeft) + side("bottom", b.bottom, b.padBottom) +
                 side("right", b.right, b.padRight) + side("between", b.between, b.padTop) + "</w:pBdr>")
         } else {
-            fun side(name: String, e: Border?) = e?.let { "@" to " fo:border-$name=\"${"%.2f".format(java.util.Locale.ROOT, it.width).trimEnd('0').trimEnd('.')}pt solid #${"%06X".format(it.color and 0xFFFFFF)}\"" }
+            fun side(name: String, e: Border?) = e?.let { "@" to " fo:border-$name=\"${"%.2f".format(java.util.Locale.ROOT, it.width).trimEnd('0').trimEnd('.')}pt ${if (it.style == "single") "solid" else it.style} #${"%06X".format(it.color and 0xFFFFFF)}\"" }
             listOfNotNull(side("top", b.top ?: b.between), side("left", b.left), side("bottom", b.bottom ?: b.between), side("right", b.right)) +
                 listOf("@" to " fo:padding-top=\"${OdtWriter.fmt(b.padTop)}pt\"", "@" to " fo:padding-bottom=\"${OdtWriter.fmt(b.padBottom)}pt\"",
                     "@" to " fo:padding-left=\"${OdtWriter.fmt(b.padLeft)}pt\"", "@" to " fo:padding-right=\"${OdtWriter.fmt(b.padRight)}pt\"") +

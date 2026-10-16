@@ -205,6 +205,8 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Paragraph", style = MaterialTheme.typography.titleLarge)
+                // what it will look like, in sight while the choices below scroll (asked 16 Oct: a preview)
+                ParagraphPreview(draft, draft.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Line spacing") {
                         LINE_SPACINGS.forEach { m ->
@@ -239,6 +241,111 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }
                     TextButton(onClick = { apply(draft) }) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A paragraph as it will look, between the ones before and after it (grey): its space before and after, indents, first
+ * line, line spacing and borders, the lines drawn as bars (asked 16 Oct: a preview in a centred panel).
+ */
+@Composable
+internal fun ParagraphPreview(look: ParaLook, box: ParaBox?, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(10.dp)).background(Color.White)) {
+        val page = 451f // a page's text width, points
+        val k = (size.width - 32.dp.toPx()) / page
+        val x0 = 16.dp.toPx()
+        val line = (if (look.lineExact != null) look.lineExact else 12f * look.lineMultiple.coerceIn(0.5f, 3f)) * k * 1.4f
+        val bar = 6f * k * 1.4f
+        val grey = Color(0xFFD0D0D0); val ink = Color(0xFF555555)
+        var y = 10.dp.toPx()
+        fun lines(n: Int, color: Color, left: Float, right: Float, first: Float, step: Float) { for (i in 0 until n) {
+            val start = x0 + (left + if (i == 0) first else 0f) * k
+            val end = x0 + (page - right) * k - if (i == n - 1) (page - right - left) * k * 0.35f else 0f
+            drawRoundRect(color, androidx.compose.ui.geometry.Offset(start, y), androidx.compose.ui.geometry.Size((end - start).coerceAtLeast(4f), bar), androidx.compose.ui.geometry.CornerRadius(bar / 2))
+            y += step } }
+        lines(2, grey, 0f, 0f, 0f, 12f * k * 1.4f)
+        y += look.before * k * 1.4f
+        val top = y - (line - bar) / 2
+        lines(4, ink, look.left, look.right, look.firstLine, line)
+        val bottom = y - line + bar + (line - bar) / 2
+        // its borders, each side in its line (double: two, dotted, dashed)
+        box?.let { b ->
+            val l = x0 + look.left * k - 4.dp.toPx(); val r = x0 + (page - look.right) * k + 4.dp.toPx()
+            fun edge(e: Border?, a: androidx.compose.ui.geometry.Offset, z: androidx.compose.ui.geometry.Offset, out: androidx.compose.ui.geometry.Offset) {
+                e ?: return
+                val c = if (e.color == 0) Color.Black else Color(0xFF000000.toInt() or e.color)
+                // drawn a little bolder than to scale, so a thin one and a double read as what they are
+                val w = (e.width * k * 2.5f).coerceIn(2.5f, 12f)
+                val fx = when (e.style) { "dotted" -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w, w * 1.5f)); "dashed" -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w * 4, w * 2)); else -> null }
+                if (e.style == "double") { val t = (w / 3).coerceAtLeast(2f)
+                    drawLine(c, a, z, t); drawLine(c, a + out * (t * 2.5f), z + out * (t * 2.5f), t) }
+                else drawLine(c, a, z, w, pathEffect = fx)
+            }
+            edge(b.top ?: b.between, androidx.compose.ui.geometry.Offset(l, top),androidx.compose.ui.geometry.Offset(r, top),androidx.compose.ui.geometry.Offset(0f, -1f)); edge(b.bottom ?: b.between, androidx.compose.ui.geometry.Offset(l, bottom),androidx.compose.ui.geometry.Offset(r, bottom),androidx.compose.ui.geometry.Offset(0f, 1f))
+            edge(b.left, androidx.compose.ui.geometry.Offset(l, top),androidx.compose.ui.geometry.Offset(l, bottom),androidx.compose.ui.geometry.Offset(-1f, 0f)); edge(b.right, androidx.compose.ui.geometry.Offset(r, top),androidx.compose.ui.geometry.Offset(r, bottom),androidx.compose.ui.geometry.Offset(1f, 0f))
+        }
+        y += look.after * k * 1.4f + (12f * k * 1.4f - line).coerceAtLeast(0f)
+        lines(2, grey, 0f, 0f, 0f, 12f * k * 1.4f)
+    }
+}
+
+/**
+ * Home › Borders (asked 16 Oct: too many choices for a strip — a centred panel with a preview): the sides, their
+ * line, thickness and colour; the line chosen restyles the sides there and is what a side tapped takes.
+ */
+@Composable
+internal fun BordersDialog(look: ParaLook, dismiss: () -> Unit, line: () -> Unit, apply: (ParaBox) -> Unit) {
+    var box by remember { mutableStateOf(look.box ?: ParaBox()) }
+    var pen by remember { mutableStateOf(listOfNotNull(look.box?.bottom, look.box?.top, look.box?.left, look.box?.right).firstOrNull() ?: Border(0.5f, 0)) }
+    fun restyle(to: Border) {
+        pen = to
+        fun s(e: Border?) = e?.let { to }
+        box = box.copy(top = s(box.top), left = s(box.left), bottom = s(box.bottom), right = s(box.right), between = s(box.between))
+    }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Borders", style = MaterialTheme.typography.titleLarge)
+                ParagraphPreview(look, box, Modifier.padding(top = 10.dp))
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Section("Sides") {
+                        Choice("Top", box.top != null) { box = box.copy(top = if (box.top == null) pen else null) }
+                        Choice("Bottom", box.bottom != null) { box = box.copy(bottom = if (box.bottom == null) pen else null) }
+                        Choice("Left", box.left != null) { box = box.copy(left = if (box.left == null) pen else null) }
+                        Choice("Right", box.right != null) { box = box.copy(right = if (box.right == null) pen else null) }
+                        Choice("Between", box.between != null) { box = box.copy(between = if (box.between == null) pen else null) }
+                    }
+                    Section("All at once") {
+                        Choice("Box", box.top != null && box.bottom != null && box.left != null && box.right != null && box.between == null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen) }
+                        Choice("All", box.between != null && box.top != null && box.left != null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen, between = pen) }
+                        Choice("None", box.isEmpty) { box = ParaBox() }
+                    }
+                    Section("Line") {
+                        for ((label, st) in listOf("Solid" to "single", "Double" to "double", "Dotted" to "dotted", "Dashed" to "dashed"))
+                            Choice(label, pen.style == st) { restyle(pen.copy(style = st, width = if (st == "double") maxOf(pen.width, 1.5f) else pen.width)) }
+                    }
+                    Section("Thickness") {
+                        for ((label, pt) in listOf("Thin" to 0.5f, "Medium" to 1.5f, "Thick" to 3f)) Choice(label, pen.width == pt) { restyle(pen.copy(width = pt)) }
+                    }
+                    Section("Colour") {
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            for (c in listOf(0x000000, 0x7F7F7F, 0xC00000, 0xED7D31, 0xFFC000, 0x70AD47, 0x4472C4, 0x2F5496, 0x7030A0)) {
+                                val on = (pen.color and 0xFFFFFF) == c
+                                Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c))
+                                    .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color.Gray, CircleShape)
+                                    .clickable { restyle(pen.copy(color = c)) })
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = line) { Text("Horizontal line") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(box) }) { Text("OK") }
                 }
             }
         }

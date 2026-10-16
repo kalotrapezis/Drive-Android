@@ -260,6 +260,23 @@ class WriterBridgeTest {
             assert(looks[3]!!.between != null) { kind.name }
             // Taken off again.
             assertEquals(kind.name, null, OfficeFormats.withBorders(OfficeFormats.read(bytes, kind).paras[1].keep, kind, null)?.let { styles.look(DocPara(emptyList(), keep = it)).box })
+            // Their lines as chosen (16 Oct: style and colour): double red, dotted, dashed — read back here, and by LibreOffice
+            val lines = ParaBox(top = Border(1.5f, 0xC00000, "double"), bottom = Border(1.5f, 0x4472C4, "dotted"), left = Border(3f, 0, "dashed"))
+            val styled = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("lines")), keep = OfficeFormats.withBorders(null, kind, lines)))), kind)
+            fun check(b: ParaBox?, how: String) {
+                assertEquals("$kind $how", listOf("double", "dotted", "dashed"), listOf(b!!.top!!.style, b.bottom!!.style, b.left!!.style))
+                assertEquals("$kind $how", listOf(0xC00000, 0x4472C4), listOf(b.top!!.color, b.bottom!!.color))
+                assertEquals("$kind $how", 1.5f, b.top!!.width, 0.2f)
+            }
+            check(DocStyles.of(kind, styled).look(OfficeFormats.read(styled, kind).paras.single()).box, "read back")
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "b.${kind.extension}").apply { writeBytes(styled) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = java.io.File(dir, "b.${other.extension}").readBytes()
+                check(DocStyles.of(other, again).look(OfficeFormats.read(again, other).paras.first { it.text == "lines" }).box, "by LibreOffice")
+            }
         }
     }
 

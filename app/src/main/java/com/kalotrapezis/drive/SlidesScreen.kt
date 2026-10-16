@@ -467,8 +467,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         }
                                     }
                                 }
-                                val scroll = remember(shown, item, effectOptions) { androidx.compose.foundation.ScrollState(0) }
-                                Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                // the tab's tools all in sight, on as many lines as they take (asked 16 Oct: no scrolling through a long row)
+                                androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    itemVerticalAlignment = Alignment.CenterVertically) {
                                     if (e != null) SlideRibbon(shown, c, e, w)
                                 }
                             }

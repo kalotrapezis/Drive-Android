@@ -69,7 +69,9 @@ one pass once the tabs' features are done.
 - [x] Clear formatting (the eraser after Highlight: the chosen letters, or the paragraph at the cursor, back to their style's look — LibreOffice's "clear direct formatting"; the style stays; the letters' font is kept)
 - [x] Borders (Home, after line spacing): bottom, top, left, right, none, all, outside, inside horizontal; horizontal
       line (an empty paragraph with a line under it). Word's pBdr / ODT fo:border (+ join-border); drawn on the pages
-      (and PDF) as Word groups them, outlined in the editor — [ ] border style and colour (behind ⋯)
+      (and PDF) as Word groups them, outlined in the editor; (16 Oct) a centred Borders panel with a preview — the sides, their line (solid, double, dotted,
+      dashed), thickness and colour (Word's w:val/sz/color, ODT's fo:border; LibreOffice reads them); the Paragraph panel has
+      the preview too; on a phone the ribbon is a solid bar, as Tables' and Slides'
 - [x] Change case (Aa beside the eraser: Sentence case, lowercase, UPPERCASE, Capitalise Each Word; the chosen letters or the word at the cursor; looks kept; Greek capitals without accents, final ς)
 - [x] Multilevel list — Home › Multilevel: 1. 2. 3. / 1. a. i. / 1. 1.1. 1.1.1.; "2.1." shown in Edit as on the pages (14 Oct)
 - Not on the ribbon: the font name (the space is needed; a style's page sets fonts)

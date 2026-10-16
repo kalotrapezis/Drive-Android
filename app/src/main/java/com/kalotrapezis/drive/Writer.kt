@@ -2070,8 +2070,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), "Ask Claude for sources"))
     }
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
-    fun insertCitation(chosenSources: List<DocSource>, page: String) = change {
-        val cite = Citations.cite(kind, chosenSources.map { it.tag }, page)
+    fun insertCitation(chosenSources: List<DocSource>, page: String, hide: Set<Char> = emptySet()) = change {
+        val cite = Citations.cite(kind, chosenSources.map { it.tag }, page, hide)
         val text = Citations.text(cite, meta.sources, meta.citeStyle)
         if (!state.selection.collapsed) state.removeSelectedText()
         // After a word, a space first (Word's), not part of the citation.
@@ -2081,6 +2081,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val t = state.annotatedString.text
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), start, start + text.length)
         meta = OfficeFormats.withCite(current(), spans, cite)
+        if (meta.citeStyle == CiteStyle.IEEE) { meta = Citations.update(meta, kind); reshow() } // the numbers after it move up one
         dirty = true
     }
     fun insertReferenceList() = change {
@@ -4180,7 +4181,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         var styling by remember { mutableStateOf(false) }
                         RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { styling = true }
                         DropdownMenu(styling, { styling = false }) {
-                            CiteStyle.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; setCiteStyle(c) }) }
+                            CiteStyle.entries.filter { it != CiteStyle.IEEE || kind == OfficeKind.Docx }.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; setCiteStyle(c) }) }
                         }
                     }
                 }, {
@@ -4347,7 +4348,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         pageBordering = false; setDesign(sheet.color, b, sides); WriterLog.i("page border: ${b?.let { "${it.style} ${it.width}pt #%06X".format(it.color) } ?: "none"} on $sides")
     }
     if (standards) StandardsDialog(meta.citeStyle, { standards = false }, paper = { standards = false; apaPage = true },
-        runIn = { level -> standards = false; apaRunIn(level) }, citeStyle = { c -> standards = false; setCiteStyle(c) })
+        runIn = { level -> standards = false; apaRunIn(level) }, citeStyle = { c -> standards = false; setCiteStyle(c) }, styles = CiteStyle.entries.filter { it != CiteStyle.IEEE || kind == OfficeKind.Docx })
     shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
         ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
             shapeOptions = null
@@ -4402,15 +4403,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.LONG)), { apaPage = false }) { clean, title, abstract, head ->
         apaPage = false; applyApa(clean, title, abstract, head)
     }
-    if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page ->
-        citing = false; insertCitation(list, page)
+    if (citing) CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citing = false }, { sourceNew = true }) { list, page, hide ->
+        citing = false; insertCitation(list, page, hide)
     }
     citeChanging?.let { (c, r) ->
         val (tags, page) = Citations.parse(c)
-        CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citeChanging = null }, { sourceNew = true }, tags, page) { list, newPage ->
+        CitationDialog(meta.sources, pages = kind == OfficeKind.Docx, multiple = kind == OfficeKind.Docx, { citeChanging = null }, { sourceNew = true }, tags, page, Citations.hidden(c)) { list, newPage, hide ->
             citeChanging = null
             state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1) // the old citation, replaced by the new
-            insertCitation(list, newPage)
+            insertCitation(list, newPage, hide)
             WriterLog.i("citation changed: $c -> ${list.map { it.tag }} p.$newPage")
         }
     }

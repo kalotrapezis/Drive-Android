@@ -247,7 +247,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> Unit, runIn: (Int) -> Unit, citeStyle: (CiteStyle) -> Unit) {
+internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> Unit, runIn: (Int) -> Unit, citeStyle: (CiteStyle) -> Unit, styles: List<CiteStyle> = CiteStyle.entries) {
     @Composable fun card(title: String, says: String, click: () -> Unit) = Column(Modifier.width(200.dp).clip(RoundedCornerShape(12.dp))
         .background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = click).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
@@ -266,7 +266,7 @@ internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> 
                     }
                     Text("Citations and the reference list", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CiteStyle.entries.forEach { c -> Choice(c.label, c == cite) { citeStyle(c) } }
+                        styles.forEach { c -> Choice(c.label, c == cite) { citeStyle(c) } }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }

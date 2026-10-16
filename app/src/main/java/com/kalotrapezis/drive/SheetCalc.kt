@@ -35,6 +35,8 @@ internal object SheetCalc {
     data class Call(val name: String, val args: List<Node>) : Node
     data class Unary(val op: Char, val x: Node) : Node
     data class Binary(val op: String, val a: Node, val b: Node) : Node
+    /** A defined name ("scores"): the range the workbook gives it. */
+    data class Name(val name: String) : Node
 
     private class Parser(val s: String) {
         var i = 0
@@ -119,7 +121,7 @@ internal object SheetCalc {
                 }
                 return Call(name.uppercase().removePrefix("_XLFN.").removePrefix("_XLWS."), args)
             }
-            return when (name.uppercase()) { "TRUE" -> Bool(true); "FALSE" -> Bool(false); else -> throw Unknown("name $name") }
+            return when (name.uppercase()) { "TRUE" -> Bool(true); "FALSE" -> Bool(false); else -> Name(name) }
         }
         fun rows(sheet: String?, v: String): Node {
             val (a, b) = v.replace("$", "").split(':').map { it.toInt() - 1 }
@@ -135,12 +137,13 @@ internal object SheetCalc {
     }
 
     /** Every cell range a formula reads, with its sheet (null: its own). */
-    fun refs(n: Node, out: MutableList<Ref> = ArrayList()): List<Ref> {
+    fun refs(n: Node, out: MutableList<Ref> = ArrayList(), names: Map<String, String> = emptyMap(), depth: Int = 0): List<Ref> {
         when (n) {
             is Ref -> out += n
-            is Call -> n.args.forEach { refs(it, out) }
-            is Unary -> refs(n.x, out)
-            is Binary -> { refs(n.a, out); refs(n.b, out) }
+            is Name -> names[n.name.lowercase()]?.takeIf { depth < 10 }?.let { runCatching { refs(parse(it), out, names, depth + 1) } }
+            is Call -> n.args.forEach { refs(it, out, names, depth) }
+            is Unary -> refs(n.x, out, names, depth)
+            is Binary -> { refs(n.a, out, names, depth); refs(n.b, out, names, depth) }
             else -> Unit
         }
         return out
@@ -151,7 +154,7 @@ internal object SheetCalc {
     /** Where a formula's cells come from: a cell's value (Double, String, Boolean, Err, or null when empty). */
     fun interface Cells { fun value(sheet: String?, r: Int, c: Int): Any? }
 
-    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat()) {
+    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat(), val names: Map<String, String> = emptyMap()) {
         fun cell(sheet: String?, r: Int, c: Int): Any? = cells.value(sheet, r, c)
     }
 
@@ -167,6 +170,7 @@ internal object SheetCalc {
         is Str -> n.v
         is Bool -> n.v
         is ErrNode -> n.e
+        is Name -> ctx.names[n.name.lowercase()]?.let { runCatching { parse(it) }.getOrNull() }?.let { calc(it, ctx) } ?: throw Unknown("name ${n.name}")
         is Ref -> if (n.single) (ctx.cell(n.sheet, n.range.r1, n.range.c1) ?: 0.0) else Area(n.sheet, n.range)
         is Unary -> { val x = num(value(n.x, ctx)); if (x is Err) x else if (n.op == '-') -(x as Double) else x }
         is Binary -> binary(n.op, value(n.a, ctx), value(n.b, ctx), ctx)

@@ -146,12 +146,16 @@ internal class Sheet(
     /** Pictures, charts and text boxes over the cells. */
     val drawings: List<SheetDrawing> = emptyList(),
     /** Conditional formatting's data bars, by cell. */
-    val bars: Map<Long, SheetBar> = emptyMap(),
+    var bars: Map<Long, SheetBar> = emptyMap(),
     /** Conditional formatting's icons, by cell. */
-    val icons: Map<Long, SheetIcon> = emptyMap(),
+    var icons: Map<Long, SheetIcon> = emptyMap(),
     /** How the file prints it: page setup, print area, rows on every page. */
     val print: SheetPrint = SheetPrint(),
 ) {
+    /** Its conditional formatting, and the looks its rules covered (to lay them again after an edit). */
+    var rules: List<SheetRule> = emptyList()
+    val ruleBase = HashMap<Long, Int>()
+
     /** A cell's look: the workbook's [styles], or this sheet's own [looks]. */
     fun look(i: Int, styles: List<SheetStyle>): SheetStyle? = if (i >= LOOKS) looks.getOrNull(i - LOOKS) else styles.getOrNull(i)
 
@@ -201,6 +205,8 @@ internal class Workbook(
     val csv: Pair<Char, java.nio.charset.Charset>? = null,
     /** An .xlsx's parts: "workbook", "styles", and each sheet's by its number ("0", "1"…), to save into. */
     val parts: Map<String, String> = emptyMap(),
+    /** Defined names (in small letters) and what they stand for ("rows!$b$3:$b$12"), for formulas. */
+    val names: Map<String, String> = emptyMap(),
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
@@ -213,6 +219,11 @@ internal class Workbook(
         kept.remove(i)?.let { kept[i] = it; return it }
         WriterLog.timed("Sheets: sheet ${i + 1} of ${tabs.size} read") { load(i) }.also { s ->
             edits[i]?.forEach { (k, c) -> s.put(k, c) }
+            // formulas a file keeps no value for (openpyxl and other programs write none): worked out, as Excel does on opening
+            val missing = ArrayList<Long>()
+            s.cells.forEach { k, c -> if (c.formula != null && c.kind == SheetKind.Empty) missing += k }
+            if (missing.isNotEmpty()) runCatching { SheetRecalc.run(this, i, s, missing).forEach { (k, c) -> s.put(k, c) } }
+                .onSuccess { WriterLog.i("Sheets: ${missing.size} formulas without a value worked out") }.onFailure { WriterLog.w("Sheets: formulas without a value", it) }
             if (edits.isNotEmpty()) laid?.invoke(i, s)
             kept[i] = s; while (kept.size > 2) kept.remove(kept.keys.first())
         }
@@ -452,6 +463,7 @@ internal object Sheets {
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
                 kind = "xlsx", format = format,
+                names = names.filter { it.attr("name")?.startsWith("_xlnm.") == false }.associate { it.attr("name")!!.lowercase() to it.textContent.trim() },
                 parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
                     found.mapIndexed { i, f -> "$i" to f.second }) { i ->
                 val (tab, path) = found[i]
@@ -846,8 +858,8 @@ internal object Sheets {
                 .onFailure { WriterLog.w("Sheets: comments could not be read", it) }
             val looks = ArrayList<SheetStyle>()
             tableParts.forEach { p -> runCatching { parts(p)?.let { table(it, cells, looks) } }.onFailure { WriterLog.w("Sheets: a table could not be read", it) } }
-            val icons = HashMap<Long, SheetIcon>()
-            val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons) }
+            val icons = HashMap<Long, SheetIcon>(); val ruleBase = HashMap<Long, Int>()
+            val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons, ruleBase) }
                 .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
             if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
@@ -856,7 +868,7 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path]))
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase }
         }
 
         /** Excel's page setup and the sheet's print names as a [SheetPrint]. */
@@ -947,7 +959,7 @@ internal object Sheets {
          */
         fun notes(rels: Map<String, String>): Map<Long, String> {
             val out = HashMap<Long, String>()
-            rels.values.firstOrNull { it.substringAfterLast('/').startsWith("comments") }?.let(parts)?.let { bytes ->
+            rels.values.firstOrNull { it.substringAfterLast('/').let { n -> n.startsWith("comment") && n.endsWith(".xml") } }?.let(parts)?.let { bytes ->
                 val root = OfficeFormats.parse(bytes).documentElement
                 val authors = root.kid("authors")?.kids("author")?.map { it.textContent }.orEmpty()
                 root.kid("commentList")?.kids("comment")?.forEach { c ->
@@ -1475,8 +1487,8 @@ internal object Sheets {
 
                 fun endTable() {
                     val looks = ArrayList<SheetStyle>()
-                    val icons = HashMap<Long, SheetIcon>()
-                    val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons) }
+                    val icons = HashMap<Long, SheetIcon>(); val ruleBase = HashMap<Long, Int>()
+                    val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons, ruleBase) }
                         .onFailure { WriterLog.w("Sheets: conditional formatting could not be laid", it) }.getOrDefault(emptyMap())
                     if (rules.isNotEmpty()) WriterLog.i("Sheets: ${rules.size} conditional rules (${rules.map { it.type }.distinct().joinToString()})")
                     merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
@@ -1497,7 +1509,7 @@ internal object Sheets {
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
-                    )
+                    ).also { it.rules = rules; it.ruleBase += ruleBase }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read
                 }
@@ -1534,7 +1546,9 @@ internal object Sheets {
 
     /** LibreOffice's "of:=SUM([.A1:.B2])" as Excel writes it: "=SUM(A1:B2)". */
     fun odfFormula(f: String): String {
-        val body = f.substringAfter(':', f).let { if (f.startsWith("of:") || f.startsWith("oooc:") || f.startsWith("msoxl:")) it else f }
+        val body0 = f.substringAfter(':', f).let { if (f.startsWith("of:") || f.startsWith("oooc:") || f.startsWith("msoxl:")) it else f }
+        // ; between arguments (LibreOffice's) as Excel's commas, outside words in quotes
+        val body = body0.split('"').mapIndexed { i, p -> if (i % 2 == 1) p else p.replace(';', ',') }.joinToString("\"")
         return body.replace(Regex("""\[([^\]]*)]""")) { m ->
             m.groupValues[1].split(':').joinToString(":") { part ->
                 val sheet = part.substringBefore('.', "").removePrefix("$").trim('\'')

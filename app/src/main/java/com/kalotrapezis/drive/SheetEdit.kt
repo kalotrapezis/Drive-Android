@@ -152,7 +152,7 @@ internal object SheetRecalc {
         val formulas = HashMap<Long, List<SheetCalc.Ref>>()
         sheet.cells.forEach { k, cell ->
             val f = cell.formula ?: return@forEach
-            formulas[k] = try { SheetCalc.refs(SheetCalc.parse(f)) } catch (_: SheetCalc.Unknown) { return@forEach }
+            formulas[k] = try { SheetCalc.refs(SheetCalc.parse(f), names = book.names) } catch (_: SheetCalc.Unknown) { return@forEach }
         }
         val affected = LinkedHashSet<Long>()
         changed.filter { it in formulas }.forEach { affected += it }
@@ -180,7 +180,7 @@ internal object SheetRecalc {
         ctx = SheetCalc.Context(SheetCalc.Cells { s, r, c ->
             if (s == null || s.equals(name, true)) { val k = Sheet.key(r, c); if (k in affected) result(k) else valueOf(sheet.cells[k]) }
             else book.tabs.indexOfFirst { it.name.equals(s, true) }.let { i -> if (i < 0) SheetCalc.Err("#REF!") else valueOf(book.sheet(i)[r, c]) }
-        }, format = book.format)
+        }, format = book.format, names = book.names)
         val out = LinkedHashMap<Long, SheetCell>()
         for (k in affected) {
             val old = sheet.cells[k] ?: continue
@@ -201,7 +201,14 @@ internal object SheetRecalc {
 
 /** Undo and redo of edits: each step the cells as they were and as they became (the formulas worked out again too). */
 internal class SheetHistory {
-    class Step(val sheet: Int, val before: Map<Long, SheetCell>, val after: Map<Long, SheetCell>)
+    /** Cells changed: as they were, as they became. */
+    open class Step(val sheet: Int, val before: Map<Long, SheetCell>, val after: Map<Long, SheetCell>)
+    /**
+     * A change to the whole file (rows or columns inserted, deleted): the copy before it and the edits not yet in it,
+     * and the copy after.
+     */
+    class FileStep(sheet: Int, val from: java.io.File, val edits: Map<Int, LinkedHashMap<Long, SheetCell>>, val to: java.io.File, val focus: Long) :
+        Step(sheet, mapOf(focus to SheetCell("", SheetKind.Empty)), mapOf(focus to SheetCell("", SheetKind.Empty)))
     private val undos = ArrayDeque<Step>(); private val redos = ArrayDeque<Step>()
     /** Steps since the file was saved (undoing them all is a saved file again). */
     var unsaved = 0; private set
@@ -216,12 +223,23 @@ internal class SheetHistory {
         changes.forEach { (k, c) -> before[k] = was(k); book.edit(index, k, c) }
         val worked = SheetRecalc.run(book, index, sheet, changes.keys)
         worked.forEach { (k, c) -> before.putIfAbsent(k, was(k)); book.edit(index, k, c) }
+        SheetRules.again(sheet, book.styles) // a value crossing a rule's line changes its look
         undos.addLast(Step(index, before, changes + worked)); if (undos.size > 200) undos.removeFirst()
         redos.clear(); unsaved++
         WriterLog.i("Sheets: ${changes.size} cells changed, ${worked.size} formulas worked out again")
     }
 
-    fun undo(book: Workbook): Step? = undos.removeLastOrNull()?.also { s -> s.before.forEach { (k, c) -> book.edit(s.sheet, k, c) }; redos.addLast(s); unsaved-- }
-    fun redo(book: Workbook): Step? = redos.removeLastOrNull()?.also { s -> s.after.forEach { (k, c) -> book.edit(s.sheet, k, c) }; undos.addLast(s); unsaved++ }
+    /** A whole-file change done: one step. */
+    fun file(step: FileStep) { undos.addLast(step); if (undos.size > 200) undos.removeFirst(); redos.clear(); unsaved++ }
+
+    /** Undone: a cell step's cells put back here; a [FileStep] is for the screen to read its copy again. */
+    fun undo(book: Workbook): Step? = undos.removeLastOrNull()?.also { s ->
+        if (s !is FileStep) { s.before.forEach { (k, c) -> book.edit(s.sheet, k, c) }; SheetRules.again(book.sheet(s.sheet), book.styles) }
+        redos.addLast(s); unsaved--
+    }
+    fun redo(book: Workbook): Step? = redos.removeLastOrNull()?.also { s ->
+        if (s !is FileStep) { s.after.forEach { (k, c) -> book.edit(s.sheet, k, c) }; SheetRules.again(book.sheet(s.sheet), book.styles) }
+        undos.addLast(s); unsaved++
+    }
     fun saved() { unsaved = 0; undos.clear(); redos.clear() }
 }

@@ -144,10 +144,24 @@ internal object SheetRules {
     }
 
     /**
+     * The sheet's rules laid again after its cells changed (an edit, an undo): each cell given back the look under its
+     * rule, then the rules worked out on the new values.
+     */
+    fun again(sheet: Sheet, styles: List<SheetStyle>) {
+        if (sheet.rules.isEmpty()) return
+        for ((k, style) in sheet.ruleBase) sheet.cells[k]?.let { if (it.style != style) sheet.cells[k] = it.copy(style = style) }
+        val looks = sheet.looks as? ArrayList<SheetStyle> ?: return
+        val icons = HashMap<Long, SheetIcon>()
+        sheet.bars = apply(sheet.rules, sheet.cells, { i -> sheet.look(i, styles) ?: SheetStyle() }, looks, icons, sheet.ruleBase)
+        sheet.icons = icons
+    }
+
+    /**
      * Lays [rules] on [cells]: each cell's new look goes in [looks] (numbered from [Sheet.LOOKS], as an Excel Table's);
      * the data bars are returned. A rule's look wins over the cell's own, a higher priority's over a lower's.
      */
-    fun apply(rules: List<SheetRule>, cells: CellMap, styleOf: (Int) -> SheetStyle, looks: ArrayList<SheetStyle>, icons: MutableMap<Long, SheetIcon> = HashMap()): Map<Long, SheetBar> {
+    fun apply(rules: List<SheetRule>, cells: CellMap, styleOf: (Int) -> SheetStyle, looks: ArrayList<SheetStyle>, icons: MutableMap<Long, SheetIcon> = HashMap(),
+              base: MutableMap<Long, Int>? = null): Map<Long, SheetBar> {
         if (rules.isEmpty()) return emptyMap()
         class Hit(val priority: Int, val dxf: SheetDxf, val stop: Boolean)
         val hits = HashMap<Long, MutableList<Hit>>()
@@ -253,6 +267,7 @@ internal object SheetRules {
                 left = d.left ?: own.left, right = d.right ?: own.right, top = d.top ?: own.top, bottom = d.bottom ?: own.bottom,
             )
             if (look == own) continue
+            base?.putIfAbsent(k, cell.style) // the look under the rule, to lay the rules again after an edit
             cells[k] = cell.copy(style = Sheet.LOOKS + (looks.indexOf(look).takeIf { it >= 0 } ?: index.getOrPut(look) { looks += look; looks.lastIndex }), own = cell.fileStyle)
         }
         return bars

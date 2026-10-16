@@ -154,6 +154,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var version by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf<TextFieldValue?>(null) }
     var saving by remember { mutableStateOf(false) }
+    // The working copy after rows or columns were inserted or deleted (null: the file itself, with edits in memory);
+    // copies in the app's cache, gone when the screen is.
+    var work by remember { mutableStateOf<File?>(null) }
+    val workDir = remember { File(context.cacheDir, "sheet-work").apply { deleteRecursively(); mkdirs() } }
+    DisposableEffect(Unit) { onDispose { workDir.deleteRecursively() } }
     var leaving by remember { mutableStateOf(false) }
     val barFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -269,11 +274,67 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
+    /** A working copy read as the workbook, with [edits] not yet in it (an undone file step's). */
+    suspend fun reread(f: File, edits: Map<Int, LinkedHashMap<Long, SheetCell>>) {
+        val nb = withContext(Dispatchers.IO) { DecimalFormatSymbols.getInstance().let { Sheets.read(f, it.decimalSeparator, it.groupingSeparator) } }
+        edits.forEach { (i, m) -> nb.edits[i] = LinkedHashMap(m) }
+        prepare(nb); book = nb; version++
+    }
+
+    /**
+     * Rows ([rows]) or columns inserted ([count] > 0) or deleted at [at] of this sheet: the edits written into a copy,
+     * the copy changed (every reference moved), read again; one step to undo.
+     */
+    fun shift(rows: Boolean, at: Int, count: Int) {
+        val b = book ?: return; val f = file ?: return; val i = index
+        if (view.filters.isNotEmpty() || view.sort != null) { message = "Clear the filter and the sort first: rows are moved as the file has them."; return }
+        commit(false)
+        saving = true
+        scope.launch {
+            val from = work ?: f
+            val ext = f.extension.lowercase()
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val baked = File(workDir, "${System.nanoTime()}.edits.$ext")
+                    val next = File(workDir, "${System.nanoTime()}.$ext")
+                    try {
+                        if (b.edits.isNotEmpty() || b.kind == "csv") SheetSave.save(b, from, baked) else from.copyTo(baked, overwrite = true)
+                        val sh = SheetShift(b.tabs[i].name, rows, at, count)
+                        WriterLog.timed("Sheets: ${if (count > 0) "inserted" else "deleted"} ${kotlin.math.abs(count)} ${if (rows) "rows" else "columns"}") {
+                            when (b.kind) {
+                                "xlsx" -> sh.xlsx(baked, next, i, b.parts, b.tabs.map { it.name })
+                                "ods" -> sh.ods(baked, next, i, b.tabs.map { it.name })
+                                else -> {
+                                    val old = DecimalFormatSymbols.getInstance().let { Sheets.read(baked, it.decimalSeparator, it.groupingSeparator) }.sheet(0)
+                                    val cells = sh.cells(old)
+                                    val moved = Sheet(old.name, cells, maxOf(0, old.rows + if (rows) count else 0), maxOf(0, old.cols + if (rows) 0 else count), emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
+                                    SheetSave.save(Workbook(b.tabs, b.styles, kind = "csv", format = b.format, csv = b.csv) { moved }, baked, next)
+                                }
+                            }
+                        }
+                    } finally { baked.delete() }
+                    next
+                }
+            }
+            saving = false
+            result.onSuccess { next ->
+                history.file(SheetHistory.FileStep(i, from, b.edits.mapValues { LinkedHashMap(it.value) }, next, Sheet.key(view.row, view.col)))
+                work = next
+                reread(next, emptyMap())
+                view.range = null
+            }.onFailure { WriterLog.e("Sheets: rows or columns could not be moved", it); message = it.message ?: "Could not do that." }
+        }
+    }
+
     fun undoOrRedo(redo: Boolean) {
         val b = book ?: return
         draft = null
         val step = (if (redo) history.redo(b) else history.undo(b)) ?: return
         version++
+        // a whole-file step: its copy read again (undone: the copy before, with the edits that were not in it)
+        if (step is SheetHistory.FileStep) scope.launch {
+            if (redo) { work = step.to; reread(step.to, emptyMap()) } else { work = step.from.takeIf { it != file }; reread(step.from, step.edits) }
+        }
         WriterLog.i("Sheets: ${if (redo) "redo" else "undo"}")
         val k = step.after.keys.firstOrNull() ?: return
         views.getOrPut(step.sheet) { SheetView() }.let { v -> v.row = Sheet.row(k); v.col = Sheet.col(k); v.reveal++ }
@@ -294,7 +355,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 runCatching {
                     val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                     try {
-                        WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, f, temp) }
+                        // from the working copy when rows or columns were moved, else from the file
+                        WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, work ?: f, temp) }
                         keepPrevious(context, f)
                         check(temp.renameTo(f)) { "Could not save ${f.name}." }
                     } finally { temp.delete() }
@@ -303,7 +365,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
             }
             saving = false
-            result.onSuccess { nb -> prepare(nb); history.saved(); book = nb; version++; message = "Saved"; then?.invoke() }
+            result.onSuccess { nb -> prepare(nb); history.saved(); work = null; workDir.listFiles()?.forEach { it.delete() }; book = nb; version++; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Sheets: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -458,8 +520,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 else -> false
                             }
                         })
-                    columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col }) }
-                    rowMenu?.let { (r, y) -> RowMenu(r, y, view, l) { rowMenu = null } }
+                    columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col },
+                        shift = if (editing) ({ at, n -> shift(false, at, n) }) else null) }
+                    rowMenu?.let { (r, y) -> RowMenu(r, y, view, l, shift = if (editing) ({ at, n -> shift(true, at, n) }) else null) { rowMenu = null } }
                     view.range?.let { g ->
                         RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter), copy = {
                             copy(context, "Cells", sheetText(s, l, g)); WriterLog.i("Sheets: ${(g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1)} cells copied")
@@ -640,11 +703,20 @@ private fun ToolChips(view: SheetView) {
 
 /** A tap on a column's letter: its filter, sort and pin, as Excel's header menu. */
 @Composable
-private fun ColumnMenu(col: Int, x: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit, filter: () -> Unit) {
+private fun ColumnMenu(col: Int, x: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit, filter: () -> Unit, shift: ((Int, Int) -> Unit)? = null) {
     val density = LocalDensity.current
     Box(Modifier.offset { IntOffset(x.roundToInt(), (28 * density.density).roundToInt()) }) {
         DropdownMenu(expanded = true, onDismissRequest = dismiss) {
             Text("Column ${Sheets.colName(col)}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            // while editing: columns in and out (the chosen columns, when whole columns are chosen through this one)
+            if (shift != null) {
+                val chosen = view.range?.takeIf { it.r1 == 0 && it.r2 == layout.rows.lastIndex && layout.col(col) in it.c1..it.c2 }?.let { g -> (g.c1..g.c2).map { layout.cols[it] } }?.takeIf { it.zipWithNext().all { (a, b) -> b == a + 1 } }
+                val first = chosen?.first() ?: col; val n = chosen?.size ?: 1
+                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n columns" else "a column"} to the left") }, onClick = { dismiss(); shift(first, n) })
+                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n columns" else "a column"} to the right") }, onClick = { dismiss(); shift(first + n, n) })
+                DropdownMenuItem(text = { Text(if (n > 1) "Delete columns ${Sheets.colName(first)}–${Sheets.colName(first + n - 1)}" else "Delete column ${Sheets.colName(col)}") },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_delete_column), null) }, onClick = { dismiss(); shift(first, -n) })
+            }
             DropdownMenuItem(text = { Text("Select column") }, leadingIcon = { Icon(painterResource(R.drawable.ic_check_box_outline_blank), null) }, onClick = {
                 dismiss(); val c = layout.col(col); if (c >= 0) view.range = SheetRange(0, c, layout.rows.lastIndex, c); WriterLog.i("Sheets: column chosen")
             })
@@ -665,10 +737,19 @@ private fun ColumnMenu(col: Int, x: Float, view: SheetView, layout: SheetLayout,
 
 /** A tap on a row's number: keep the rows down to it at the top while scrolling (Excel's Freeze Panes), or choose the row. */
 @Composable
-private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, dismiss: () -> Unit) {
+private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, shift: ((Int, Int) -> Unit)? = null, dismiss: () -> Unit) {
     Box(Modifier.offset { IntOffset(0, y.roundToInt()) }) {
         DropdownMenu(expanded = true, onDismissRequest = dismiss) {
             Text("Row ${layout.rows[row] + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            // while editing: rows in and out (the chosen rows, when whole rows are chosen through this one)
+            if (shift != null) {
+                val chosen = view.range?.takeIf { it.c1 == 0 && it.c2 == layout.cols.lastIndex && row in it.r1..it.r2 }?.let { g -> (g.r1..g.r2).map { layout.rows[it] } }?.takeIf { it.zipWithNext().all { (a, b) -> b == a + 1 } }
+                val first = chosen?.first() ?: layout.rows[row]; val n = chosen?.size ?: 1
+                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n rows" else "a row"} above") }, onClick = { dismiss(); shift(first, n) })
+                DropdownMenuItem(text = { Text("Insert ${if (n > 1) "$n rows" else "a row"} below") }, onClick = { dismiss(); shift(first + n, n) })
+                DropdownMenuItem(text = { Text(if (n > 1) "Delete rows ${first + 1}–${first + n}" else "Delete row ${first + 1}") },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_delete_row), null) }, onClick = { dismiss(); shift(first, -n) })
+            }
             DropdownMenuItem(text = { Text("Keep rows up to here at the top") }, leadingIcon = { Icon(painterResource(R.drawable.ic_push_pin), null) }, onClick = {
                 dismiss(); view.freeze = row + 1; view.y = 0f; WriterLog.i("Sheets: ${row + 1} rows frozen")
             })

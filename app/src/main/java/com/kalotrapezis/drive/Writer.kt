@@ -302,6 +302,8 @@ internal object WriterBridge {
     var pictureGlyph = 1f
     /** A line of the editor's text, top to bottom, for each point of its size. */
     var lineRatio = 1.17f
+    /** A capital's height for each point of its size (about, in most fonts): a drop cap's letters sized by it. */
+    private const val DROP_CAP_RATIO = 0.7f
 
     /** A picture's own run as the file had it (its letter formatting), by the picture's key. */
     val pictureRuns = HashMap<String, DocRun>()
@@ -319,6 +321,7 @@ internal object WriterBridge {
         // which a line never goes below — a gap under each small table, the user's CV).
         runs.firstOrNull { it.image?.table != null }?.image?.let { return shownSize(it, scale).second.sp }
         if (p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
+        if (DropCap.of(p.keep) != null) return androidx.compose.ui.unit.TextUnit.Unspecified // its first line as tall as the drop cap
         look.lineExact?.takeIf { !look.lineAtLeast }?.let { return (it * scale).sp }
         val mark = if (runs.isEmpty()) OfficeFormats.markSize(p) else null
         if (look.lineMultiple == 1f && mark == null && look.lineExact == null) return androidx.compose.ui.unit.TextUnit.Unspecified
@@ -341,6 +344,16 @@ internal object WriterBridge {
                         }
                     }
                     at += run.text.length
+                }
+                // A drop cap: its letters as tall as the lines they drop through, standing on the first line — the editor
+                // cannot wrap lines beside them (the pages drop them); shown only, never saved as the letters' size
+                DropCap.of(p.keep)?.let { drop ->
+                    val r0 = p.runs.firstOrNull()?.takeIf { it.image == null && it.text.isNotBlank() } ?: return@let
+                    val size = r0.sizePt ?: look.sizePt ?: doc.basePt
+                    val pt = ((drop.lines - 1) * size * lineRatio * look.lineMultiple + size * DROP_CAP_RATIO) / DROP_CAP_RATIO
+                    editorSpans(places, para, 0, drop.length.coerceAtMost(r0.text.length)).forEach { range ->
+                        addStyle(SpanStyle(fontSize = (pt * BASE_SP / doc.basePt).sp), range.first, range.last + 1)
+                    }
                 }
             }
             places.forEach { b ->

@@ -147,7 +147,7 @@ one pass once the tabs' features are done.
       the user's 322 .docx files have them, 16 Oct)
 - [x] A shape's own words (16 Oct): Shape › Add text, in its middle, centred (Word's txbx in the wps:wsp, LibreOffice's
       words in the custom shape; LibreOffice shows them); Edit text after
-- [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages — [ ] shown in the editor
+- [x] Drop cap (Insert › Drop cap: none, dropped, in the margin — Word only; options: lines to drop, distance from text, the letter's font and colour) — Word's framed letter paragraph, read in and written out; ODT's style:drop-cap; drawn on the pages; shown in the editor (16 Oct: its letters as tall as the lines they drop, standing on the first line — the editor cannot wrap lines beside them, as Word's Draft view; the pages drop them)
 - [x] **Floating objects** (1 Oct): Picture › **Position** drags a floating picture, shape, text box or chart on its page
       (the page as laid out, the text re-flowing on letting go), saved from the page's corner (Word positionH/V
       relativeFrom="page", ODT svg:x/y page-relative); **Square wrap flows the text beside it** on the pages (the side

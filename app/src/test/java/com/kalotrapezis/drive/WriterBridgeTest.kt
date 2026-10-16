@@ -328,6 +328,37 @@ class WriterBridgeTest {
         assertEquals(doc.paras.map { it.copy(keep = null, runs = it.runs.map { r -> r.copy(font = null) }) }, WriterBridge.fromEditor(before, doc.basePt))
     }
 
+    /** A drop cap shown in the editor (asked 16 Oct): its letter drawn as tall as the lines it drops, never saved as its size; LibreOffice still has the drop cap. */
+    @Test fun `a drop cap is shown big in the editor and saved as it was`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val drop = DropCap(lines = 3)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Once upon a time there was a drop cap.")), keep = OfficeFormats.withDropCap(null, kind, drop)), DocPara(listOf(DocRun("Next.")))), basePt = 11f)
+            val state = com.mohamedrejeb.richeditor.model.RichTextState()
+            val rich = WriterBridge.toEditor(doc)
+            state.setRichTextDocument(rich)
+            val shown = WriterBridge.displayText(state.annotatedString, rich, doc, DocStyles.Plain) { null }
+            assertEquals(state.annotatedString.text, shown.text)
+            val big = shown.spanStyles.filter { it.item.fontSize.isSp }.maxBy { it.item.fontSize.value }
+            assertEquals(kind.name, true, big.item.fontSize.value > 40f) // about four lines of 11 pt
+            assertEquals(kind.name, "O", shown.text.substring(big.start, big.end))
+            assertEquals(kind.name, true, rich.blocks[0].lineHeight == androidx.compose.ui.unit.TextUnit.Unspecified)
+            // saved from the editor: the letters' own size untouched, the drop cap kept, and LibreOffice reads it as one
+            val back = WriterBridge.fromEditor(state.toRichTextDocument(), 11f)
+            assertEquals(kind.name, listOf(null), back[0].runs.map { it.sizePt }.distinct())
+            val bytes = OfficeFormats.write(doc.copy(paras = back.mapIndexed { i, p -> p.copy(keep = doc.paras[i].keep) }), kind)
+            assertEquals(kind.name, drop, DropCap.of(OfficeFormats.read(bytes, kind).paras[0].keep))
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "d.${kind.extension}").apply { writeBytes(bytes) }
+                val out = java.io.File(dir, "out").apply { mkdirs() }
+                // as an .odt: LibreOffice's own .docx export leaves drop caps out
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", out.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = OfficeFormats.read(java.io.File(out, "d.odt").readBytes(), OfficeKind.Odt)
+                assertEquals(kind.name, 3, DropCap.of(again.paras.first { it.text.endsWith("drop cap.") }.keep)?.lines)
+            }
+        }
+    }
+
     @Test fun `heading and at least line spacing follow the same paragraph rules as body text`() {
         val styles = object : DocStyles() {
             override fun look(p: DocPara) = if (p.heading > 0) ParaLook(sizePt = 24f, lineExact = 36f)

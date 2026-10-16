@@ -165,15 +165,38 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var naming by remember { mutableStateOf(false) } // a new spreadsheet's first Save: its name
     var renamingSheet by remember { mutableStateOf(false) }
     var deletingSheet by remember { mutableStateOf(false) }
+    var showVersions by remember { mutableStateOf(false) }
     val barFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    fun leave() { if (history.unsaved > 0) leaving = true else back() }
+    fun leave() { if (history.unsaved > 0) leaving = true else { file?.let { sheetDraft(context, it).delete() }; back() } } // a draft of changes since undone: gone
     BackHandler {
         when {
             draft != null -> { draft = null; focusManager.clearFocus() }
             searching -> { searching = false; query = "" }
             else -> leave()
         }
+    }
+
+    // The app sent to the background with changes not saved (Android may close it then): they are kept as a draft.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            val f = file; val b = book
+            if (e != androidx.lifecycle.Lifecycle.Event.ON_STOP || f == null || b == null || saving) return@LifecycleEventObserver
+            if (index >= 0) views[index]?.let { SheetPlaces.save(context, f, index, it) } // where it was, should Android close it
+            val unsaved = history.unsaved > 0; val from = work ?: f
+            scope.launch(Dispatchers.IO) { runCatching {
+                val d = sheetDraft(context, f)
+                if (!unsaved) { d.delete(); return@runCatching }
+                d.parentFile?.mkdirs()
+                val temp = File(d.parentFile, ".${d.name}.saving")
+                if (b.edits.isNotEmpty() || b.kind == "csv") SheetSave.save(b, from, temp) else from.copyTo(temp, overwrite = true)
+                check(temp.renameTo(d)) { "Could not keep the draft." }
+                WriterLog.i("Sheets: recovery draft kept, ${d.length() / 1024} KB")
+            }.onFailure { WriterLog.e("Sheets: recovery draft", it) } }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     /** A workbook ready for edits: a sheet read again has the formulas that read other sheets' edits worked out. */
@@ -199,12 +222,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 val sym = DecimalFormatSymbols.getInstance()
                 WriterLog.timed("Sheets: workbook read") { Sheets.read(f, sym.decimalSeparator, sym.groupingSeparator) }
             }
-        }.onSuccess { b ->
+        }.onSuccess { b0 ->
+            // Changes not saved when the app was closed: the draft opened in their place, one step Undo takes back.
+            val kept = sheetDraft(context, f).takeIf { it.isFile }
+            val b = kept?.takeIf { it.lastModified() > f.lastModified() }?.let { d -> withContext(Dispatchers.IO) { runCatching {
+                val copy = d.copyTo(File(workDir, "${System.nanoTime()}.${f.extension}"))
+                DecimalFormatSymbols.getInstance().let { Sheets.read(copy, it.decimalSeparator, it.groupingSeparator) } to copy
+            }.onFailure { WriterLog.e("Sheets: recovery draft", it) }.getOrNull() } }?.let { (rb, copy) ->
+                work = copy; editing = true
+                message = "Your unsaved changes are back. Undo shows the file as saved."
+                WriterLog.i("Sheets: recovery draft opened")
+                rb
+            } ?: b0.also { kept?.delete() } // a draft older than the file (saved since): gone
             prepare(b)
             book = b
             index = if (b.tabs[b.active].hidden) b.tabs.indexOfFirst { !it.hidden }.coerceAtLeast(0) else b.active
             // Where it was left, when it was opened before.
             SheetPlaces.load(context, f)?.let { (i, v) -> if (i in b.tabs.indices && !b.tabs[i].hidden) { index = i; views[i] = v; WriterLog.i("Sheets: back where it was left") } }
+            if (b !== b0) history.file(SheetHistory.FileStep(index, f, emptyMap(), work!!, 0L))
         }.onFailure {
             WriterLog.e("Sheets: could not open", it)
             failed = if (it is OutOfMemoryError) "This spreadsheet is too big to open on this device." else "This spreadsheet could not be opened."
@@ -346,6 +381,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         })
     }
 
+    /** File › Versions: the file as it was before a save, in the editor in place of what is there (Undo goes back). */
+    fun openVersion(v: File) = fileStep("version opened", { _, next, _ -> v.copyTo(next, overwrite = true) }) { message = "This version is open. Save keeps it, Undo goes back." }
+
     /** A sheet added after this one, renamed, deleted, or moved to place [to]. */
     fun sheetStep(add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null) {
         val i = index
@@ -398,7 +436,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
             }
             saving = false
-            result.onSuccess { nb -> prepare(nb); history.saved(); work = null; workDir.listFiles()?.forEach { it.delete() }; book = nb; version++; message = "Saved"; then?.invoke() }
+            result.onSuccess { nb -> sheetDraft(context, f).delete(); prepare(nb); history.saved(); work = null; workDir.listFiles()?.forEach { it.delete() }; book = nb; version++; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Sheets: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -611,6 +649,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Share", w, R.drawable.ic_share) { shareDriveFile(context, f) }
                                 RibbonButton("Open in another app", w, R.drawable.ic_open_with) { openElsewhere(context, f) }
                             }
+                            if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                             RibbonButton("About this file", w) { about = true }
                             RibbonButton("Send log", w) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
                         }
@@ -730,6 +769,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (f != null && sheet != null) {
                                 DropdownMenuItem(text = { Text("Export PDF") }, leadingIcon = { Icon(painterResource(R.drawable.ic_file), null) }, onClick = { menu = false; exportPdf() })
                                 DropdownMenuItem(text = { Text("Print") }, onClick = { menu = false; printIt() })
+                                DropdownMenuItem(text = { Text("Versions") }, leadingIcon = { Icon(painterResource(R.drawable.ic_history), null) }, onClick = { menu = false; showVersions = true })
                             }
                             DropdownMenuItem(text = { Text("Show formulas") }, leadingIcon = { Icon(painterResource(R.drawable.ic_functions), null) },
                                 trailingIcon = { if (formulas) Icon(painterResource(R.drawable.ic_check), null) },
@@ -837,13 +877,33 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(onClick = { deletingSheet = false; sheetStep(delete = true) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deletingSheet = false }) { Text("Cancel") } })
     }
+    if (showVersions) file?.let { f ->
+        val list = remember { versions(context, f) }
+        val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+        AlertDialog(onDismissRequest = { showVersions = false }, title = { Text("Versions") },
+            text = {
+                Column {
+                    Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else "The file as it was before a save. Opening one puts it in the editor; Save keeps it, Undo goes back.",
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                    list.forEach { v ->
+                        Row(Modifier.fillMaxWidth().clickable { showVersions = false; editing = true; openVersion(v) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
+                            Text(format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())) + " · ${(v.length() + 1023) / 1024} KB",
+                                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
+                            Text("Open", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Close") } })
+    }
     if (leaving) AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
         text = { Text("${history.unsaved} change${if (history.unsaved == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },
         confirmButton = { TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
         dismissButton = {
             Row {
-                TextButton(onClick = { leaving = false; WriterLog.i("Sheets: left without saving"); back() }) { Text("Don't save") }
+                TextButton(onClick = { leaving = false; file?.let { sheetDraft(context, it).delete() }; WriterLog.i("Sheets: left without saving"); back() }) { Text("Don't save") }
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
             }
         })
@@ -1843,3 +1903,7 @@ internal class SheetPainter(
         }
     }
 }
+
+/** Changes not yet saved, kept when the app went to the background: one per spreadsheet (by its path), in the app's storage. */
+private fun sheetDraft(context: android.content.Context, file: File) =
+    File(File(context.filesDir, "sheet-drafts"), "${file.absolutePath.hashCode().toUInt()}.${file.extension}")

@@ -55,6 +55,18 @@ class DriveFilesTest {
         assertTrue(File(root, "Documents/Scanned Documents").isDirectory)
     }
 
+    @Test fun aChosenFolderIsASystemFolderUntilItIsLeftOut() {
+        try {
+            DriveRules.chosenFolders = setOf("Music")
+            assertTrue(DriveRules.isSystem("Music"))
+            assertFalse(DriveRules.isSystem("Work"))
+            assertTrue(DriveRules.isSystem("Documents"))
+            DriveRules.chosenFolders = emptySet()
+            assertFalse(DriveRules.isSystem("Music"))
+            assertTrue(DriveRules.isSystem("Documents/Scanned Documents"))
+        } finally { DriveRules.chosenFolders = emptySet() }
+    }
+
     @Test fun aNameAlreadyInTrashNeverBlocksADelete() {
         val root = Files.createTempDirectory("drive-root").toFile()
         repeat(2) { File(root, "QA").mkdirs(); File(root, "a.txt").writeText("x") ; DriveRules.moveToTrash(root, "QA"); DriveRules.moveToTrash(root, "a.txt") }

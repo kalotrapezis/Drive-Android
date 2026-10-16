@@ -67,9 +67,33 @@ internal object PageDesign {
         val path = settings(parts, documentPath(parts))
         var s = String(parts.getValue(path), Charsets.UTF_8).replace(Regex("""<w:autoHyphenation\b[^>]*/>"""), "")
         if (on) {
-            val later = Regex("""<w:(consecutiveHyphenLimit|hyphenationZone|doNotHyphenateCaps|showEnvelope|summaryLength|clickAndTypeStyle|defaultTableStyle|evenAndOddHeaders|bookFold\w*|drawingGrid\w*|display\w*DrawingGridEvery|doNotUseMarginsForDrawingGridOrigin|doNotShadeFormData|noPunctuationKerning|characterSpacingControl|printTwoOnOne|strictFirstAndLastChars|noLineBreaks\w*|savePreviewPicture|doNotValidateAgainstSchema|saveInvalidXml|ignoreMixedContent|alwaysShowPlaceholderText|doNotDemarcateInvalidXml|saveXmlDataOnly|useXSLTWhenSaving|saveThroughXslt|showXMLTags|alwaysMergeEmptyNamespace|updateFields|hdrShapeDefaults|footnotePr|endnotePr|compat|docVars|rsids|mathPr|attachedSchema|themeFontLang|clrSchemeMapping|doNotIncludeSubdocsInStats|doNotAutoCompressPictures|forceUpgrade|captions|readModeInkLockDown|smartTagType|schemaLibrary|shapeDefaults|doNotEmbedSmartTags|decimalSymbol|listSeparator)\b""").find(s)?.range?.first
+            val later = Regex("""<w:(${AFTER_HYPHENATION})\b""").find(s)?.range?.first
                 ?: s.lastIndexOf("</w:settings>").takeIf { it >= 0 }
             s = if (later != null) s.substring(0, later) + "<w:autoHyphenation/>" + s.substring(later) else s.replace(Regex("""<w:settings\b([^>]*)/>"""), "<w:settings$1><w:autoHyphenation/></w:settings>")
+        }
+        parts[path] = s.toByteArray()
+        return parts
+    }
+
+    /** Word's settings that come after its automatic hyphenation, in the schema's order. */
+    private const val AFTER_HYPHENATION = """consecutiveHyphenLimit|hyphenationZone|doNotHyphenateCaps|showEnvelope|summaryLength|clickAndTypeStyle|defaultTableStyle|evenAndOddHeaders|bookFold\w*|drawingGrid\w*|display\w*DrawingGridEvery|doNotUseMarginsForDrawingGridOrigin|doNotShadeFormData|noPunctuationKerning|characterSpacingControl|printTwoOnOne|strictFirstAndLastChars|noLineBreaks\w*|savePreviewPicture|doNotValidateAgainstSchema|saveInvalidXml|ignoreMixedContent|alwaysShowPlaceholderText|doNotDemarcateInvalidXml|saveXmlDataOnly|useXSLTWhenSaving|saveThroughXslt|showXMLTags|alwaysMergeEmptyNamespace|updateFields|hdrShapeDefaults|footnotePr|endnotePr|compat|docVars|rsids|mathPr|attachedSchema|themeFontLang|clrSchemeMapping|doNotIncludeSubdocsInStats|doNotAutoCompressPictures|forceUpgrade|captions|readModeInkLockDown|smartTagType|schemaLibrary|shapeDefaults|doNotEmbedSmartTags|decimalSymbol|listSeparator"""
+
+    /** Whether a Word document says to track changes (its settings' w:trackRevisions): Review › Track changes comes on when it opens. */
+    fun tracksRevisions(bytes: ByteArray?): Boolean = runCatching {
+        val parts = OfficeFormats.unzip(bytes!!)
+        parts[documentPath(parts).substringBeforeLast('/') + "/settings.xml"]?.let { Regex("""<w:trackRevisions\b([^>]*)/>""").find(String(it, Charsets.UTF_8)) }
+            ?.let { m -> Regex("""w:val="(0|false|off)"""").find(m.groupValues[1]) == null } ?: false
+    }.getOrDefault(false)
+
+    /** Review › Track changes, remembered in a Word document as Word does (w:trackRevisions, in the schema's place: before the tracking options, the protection and the default tab stop). */
+    fun trackRevisions(source: Map<String, ByteArray>, on: Boolean): LinkedHashMap<String, ByteArray> {
+        val parts = LinkedHashMap(source)
+        val path = settings(parts, documentPath(parts))
+        var s = String(parts.getValue(path), Charsets.UTF_8).replace(Regex("""<w:trackRevisions\b[^>]*/>"""), "")
+        if (on) {
+            val later = Regex("""<w:(doNotTrackMoves|doNotTrackFormatting|documentProtection|autoFormatOverride|styleLockTheme|styleLockQFSet|defaultTabStop|autoHyphenation|$AFTER_HYPHENATION)\b""").find(s)?.range?.first
+                ?: s.lastIndexOf("</w:settings>").takeIf { it >= 0 }
+            s = if (later != null) s.substring(0, later) + "<w:trackRevisions/>" + s.substring(later) else s.replace(Regex("""<w:settings\b([^>]*)/>"""), "<w:settings$1><w:trackRevisions/></w:settings>")
         }
         parts[path] = s.toByteArray()
         return parts

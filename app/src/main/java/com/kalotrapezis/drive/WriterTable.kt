@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -199,12 +200,14 @@ internal fun plain(v: Float) = if (v % 1f == 0f) v.toInt().toString() else v.toS
  * before and after (pt, as Word counts them) and indents (cm). [apply] gets the new look; what was not touched stays.
  */
 @Composable
-internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLook) -> Unit) {
+internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, style: String? = null, editStyle: (() -> Unit)? = null, apply: (ParaLook) -> Unit) {
     var draft by remember { mutableStateOf(look) }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text("Paragraph", style = MaterialTheme.typography.titleLarge)
+                // what it will look like, in sight while the choices below scroll (asked 16 Oct: a preview)
+                ParagraphPreview(draft, draft.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Line spacing") {
                         LINE_SPACINGS.forEach { m ->
@@ -236,9 +239,117 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, apply: (ParaLo
                         draft = draft.copy(firstLine = if (draft.firstLine < 0f) -v else v)
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Word's Modify Style from here: the style itself changed, so every paragraph in it follows
+                    if (editStyle != null && style != null) TextButton(onClick = editStyle) { Text("Edit style “$style”", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                    Spacer(Modifier.weight(1f))
                     TextButton(onClick = dismiss) { Text("Cancel") }
                     TextButton(onClick = { apply(draft) }) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A paragraph as it will look, between the ones before and after it (grey): its space before and after, indents, first
+ * line, line spacing and borders, the lines drawn as bars (asked 16 Oct: a preview in a centred panel).
+ */
+@Composable
+internal fun ParagraphPreview(look: ParaLook, box: ParaBox?, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(10.dp)).background(Color.White)) {
+        val page = 451f // a page's text width, points
+        val k = (size.width - 32.dp.toPx()) / page
+        val x0 = 16.dp.toPx()
+        val line = (if (look.lineExact != null) look.lineExact else 12f * look.lineMultiple.coerceIn(0.5f, 3f)) * k * 1.4f
+        val bar = 6f * k * 1.4f
+        val grey = Color(0xFFD0D0D0); val ink = Color(0xFF555555)
+        var y = 10.dp.toPx()
+        fun lines(n: Int, color: Color, left: Float, right: Float, first: Float, step: Float) { for (i in 0 until n) {
+            val start = x0 + (left + if (i == 0) first else 0f) * k
+            val end = x0 + (page - right) * k - if (i == n - 1) (page - right - left) * k * 0.35f else 0f
+            drawRoundRect(color, androidx.compose.ui.geometry.Offset(start, y), androidx.compose.ui.geometry.Size((end - start).coerceAtLeast(4f), bar), androidx.compose.ui.geometry.CornerRadius(bar / 2))
+            y += step } }
+        lines(2, grey, 0f, 0f, 0f, 12f * k * 1.4f)
+        y += look.before * k * 1.4f
+        val top = y - (line - bar) / 2
+        lines(4, ink, look.left, look.right, look.firstLine, line)
+        val bottom = y - line + bar + (line - bar) / 2
+        // its borders, each side in its line (double: two, dotted, dashed)
+        box?.let { b ->
+            val l = x0 + look.left * k - 4.dp.toPx(); val r = x0 + (page - look.right) * k + 4.dp.toPx()
+            fun edge(e: Border?, a: androidx.compose.ui.geometry.Offset, z: androidx.compose.ui.geometry.Offset, out: androidx.compose.ui.geometry.Offset) {
+                e ?: return
+                val c = if (e.color == 0) Color.Black else Color(0xFF000000.toInt() or e.color)
+                // drawn a little bolder than to scale, so a thin one and a double read as what they are
+                val w = (e.width * k * 2.5f).coerceIn(2.5f, 12f)
+                val fx = when (e.style) { "dotted" -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w, w * 1.5f)); "dashed" -> androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w * 4, w * 2)); else -> null }
+                if (e.style == "double") { val t = (w / 3).coerceAtLeast(2f)
+                    drawLine(c, a, z, t); drawLine(c, a + out * (t * 2.5f), z + out * (t * 2.5f), t) }
+                else drawLine(c, a, z, w, pathEffect = fx)
+            }
+            edge(b.top ?: b.between, androidx.compose.ui.geometry.Offset(l, top),androidx.compose.ui.geometry.Offset(r, top),androidx.compose.ui.geometry.Offset(0f, -1f)); edge(b.bottom ?: b.between, androidx.compose.ui.geometry.Offset(l, bottom),androidx.compose.ui.geometry.Offset(r, bottom),androidx.compose.ui.geometry.Offset(0f, 1f))
+            edge(b.left, androidx.compose.ui.geometry.Offset(l, top),androidx.compose.ui.geometry.Offset(l, bottom),androidx.compose.ui.geometry.Offset(-1f, 0f)); edge(b.right, androidx.compose.ui.geometry.Offset(r, top),androidx.compose.ui.geometry.Offset(r, bottom),androidx.compose.ui.geometry.Offset(1f, 0f))
+        }
+        y += look.after * k * 1.4f + (12f * k * 1.4f - line).coerceAtLeast(0f)
+        lines(2, grey, 0f, 0f, 0f, 12f * k * 1.4f)
+    }
+}
+
+/**
+ * Home › Borders (asked 16 Oct: too many choices for a strip — a centred panel with a preview): the sides, their
+ * line, thickness and colour; the line chosen restyles the sides there and is what a side tapped takes.
+ */
+@Composable
+internal fun BordersDialog(look: ParaLook, dismiss: () -> Unit, line: () -> Unit, apply: (ParaBox) -> Unit) {
+    var box by remember { mutableStateOf(look.box ?: ParaBox()) }
+    var pen by remember { mutableStateOf(listOfNotNull(look.box?.bottom, look.box?.top, look.box?.left, look.box?.right).firstOrNull() ?: Border(0.5f, 0)) }
+    fun restyle(to: Border) {
+        pen = to
+        fun s(e: Border?) = e?.let { to }
+        box = box.copy(top = s(box.top), left = s(box.left), bottom = s(box.bottom), right = s(box.right), between = s(box.between))
+    }
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Borders", style = MaterialTheme.typography.titleLarge)
+                ParagraphPreview(look, box, Modifier.padding(top = 10.dp))
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Section("Sides") {
+                        Choice("Top", box.top != null) { box = box.copy(top = if (box.top == null) pen else null) }
+                        Choice("Bottom", box.bottom != null) { box = box.copy(bottom = if (box.bottom == null) pen else null) }
+                        Choice("Left", box.left != null) { box = box.copy(left = if (box.left == null) pen else null) }
+                        Choice("Right", box.right != null) { box = box.copy(right = if (box.right == null) pen else null) }
+                        Choice("Between", box.between != null) { box = box.copy(between = if (box.between == null) pen else null) }
+                    }
+                    Section("All at once") {
+                        Choice("Box", box.top != null && box.bottom != null && box.left != null && box.right != null && box.between == null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen) }
+                        Choice("All", box.between != null && box.top != null && box.left != null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen, between = pen) }
+                        Choice("None", box.isEmpty) { box = ParaBox() }
+                    }
+                    Section("Line") {
+                        for ((label, st) in listOf("Solid" to "single", "Double" to "double", "Dotted" to "dotted", "Dashed" to "dashed"))
+                            Choice(label, pen.style == st) { restyle(pen.copy(style = st, width = if (st == "double") maxOf(pen.width, 1.5f) else pen.width)) }
+                    }
+                    Section("Thickness") {
+                        for ((label, pt) in listOf("Thin" to 0.5f, "Medium" to 1.5f, "Thick" to 3f)) Choice(label, pen.width == pt) { restyle(pen.copy(width = pt)) }
+                    }
+                    Section("Colour") {
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            for (c in listOf(0x000000, 0x7F7F7F, 0xC00000, 0xED7D31, 0xFFC000, 0x70AD47, 0x4472C4, 0x2F5496, 0x7030A0)) {
+                                val on = (pen.color and 0xFFFFFF) == c
+                                Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c))
+                                    .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color.Gray, CircleShape)
+                                    .clickable { restyle(pen.copy(color = c)) })
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = line) { Text("Horizontal line") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = { apply(box) }) { Text("OK") }
                 }
             }
         }
@@ -262,6 +373,7 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
             Column(Modifier.padding(20.dp)) {
                 Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
                 Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ParagraphPreview(d, d.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Section("Font") {
                         (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }
@@ -741,7 +853,7 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
 
 /** Word's Insert › Shapes gallery, its groups in its order (DrawingML's preset names). */
 internal val SHAPE_GROUPS = listOf(
-    "Lines" to listOf("line"),
+    "Lines" to listOf("line", "lineArrow", "lineArrows"),
     "Rectangles" to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
     "Basic shapes" to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
         "dodecagon", "pie", "chord", "teardrop", "frame", "halfFrame", "corner", "diagStripe", "plus", "plaque", "can", "cube", "bevel", "donut", "noSmoking",
@@ -763,6 +875,44 @@ internal val SHAPE_GROUPS = listOf(
         "accentCallout1", "accentCallout2", "accentCallout3", "callout1", "callout2", "callout3", "accentBorderCallout1", "accentBorderCallout2", "accentBorderCallout3"),
 )
 
+/** The colours a shape's fill and outline are chosen from: Office's theme accents, black, white and its standard ones. */
+internal val SHAPE_COLOURS = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFF000000, 0xFFFFFFFF,
+    0xFFC00000, 0xFFFF0000, 0xFF00B050, 0xFF7030A0).map { it.toInt() }
+
+/**
+ * Word's Shape Styles (asked 16 Oct: more than seven choices): seven colours in four looks — outline only, filled, a
+ * light fill with its outline, a dark fill — each tile drawn as the shape will be; a tap sets both fill and outline.
+ */
+@Composable
+internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) -> Unit) {
+    fun mix(c: Int, toward: Int, k: Float): Int {
+        fun ch(s: Int) = ((((c shr s) and 255) * (1 - k) + ((toward shr s) and 255) * k).toInt() and 255) shl s
+        return 0xFF000000.toInt() or ch(16) or ch(8) or ch(0)
+    }
+    val base = listOf(0xFF000000, 0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47).map { it.toInt() }
+    val looks = listOf<(Int) -> Pair<Int?, Int?>>(
+        { c -> null to c },                                        // outline only
+        { c -> c to mix(c, 0xFF000000.toInt(), 0.3f) },            // filled, a darker outline
+        { c -> mix(c, 0xFFFFFFFF.toInt(), 0.8f) to c },            // light fill, its outline
+        { c -> mix(c, 0xFF000000.toInt(), 0.5f) to null },         // dark fill
+    )
+    Section("Styles") {
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 7) {
+            for (look in looks) for (c in base) {
+                val (f, l) = look(c)
+                val on = f?.or(0xFF000000.toInt()) == fill?.or(0xFF000000.toInt()) && l == line
+                // seven to a row: each row one look, each column one colour
+                Box(Modifier.weight(1f).widthIn(max = 48.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color.White)
+                    .border(if (on) 3.dp else 0.dp, if (on) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable { pick(f, l) }.padding(6.dp)) {
+                    val preview = remember(f, l) { ShapePicture("roundRect", f, l, 1.5f) }
+                    androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { cv -> preview.drawAt(cv.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) } }
+                }
+            }
+        }
+    }
+}
+
 /**
  * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
  * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
@@ -771,8 +921,8 @@ internal val SHAPE_GROUPS = listOf(
 internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: String, fill: Int?, line: Int?) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
-    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" } }
-    val colors = listOf(0xFF4472C4, 0xFFFFC114, 0xFFE53935, 0xFF43A047, 0xFF8E24AA, 0xFF000000).map { it.toInt() }
+    val recent = remember { prefs.getString("recentShapes", "").orEmpty().split(',').filter { it in ShapeGeometry.presets || it == "line" || it.startsWith("lineArrow") } }
+    val colors = SHAPE_COLOURS
     var fill by remember { mutableStateOf<Int?>(0xFF4472C4.toInt()) }
     var line by remember { mutableStateOf<Int?>(0xFF2F528F.toInt()) }
     fun put(kind: String) {
@@ -790,10 +940,11 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
+                    ShapeStyles(fill, line) { f, l -> fill = f; line = l }
                     swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
                     swatches("Outline", line) { line = it }
                     (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
-                        val shown = kinds.filter { !odt || it != "line" }
+                        val shown = kinds.filter { !odt || (it != "line" && !it.startsWith("lineArrow")) }
                         if (shown.isNotEmpty()) Section(title) {
                             shown.forEach { kind ->
                                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
@@ -823,7 +974,7 @@ internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: 
 internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply: (ShapeOptions) -> Unit) {
     var o by remember { mutableStateOf(start) }
     var locked by remember { mutableStateOf(true) }
-    val colors = listOf(0xFF4472C4, 0xFFED7D31, 0xFFA5A5A5, 0xFFFFC000, 0xFF5B9BD5, 0xFF70AD47, 0xFFE53935, 0xFF8E24AA, 0xFF000000, 0xFFFFFFFF).map { it.toInt() }
+    val colors = SHAPE_COLOURS
     val unit = WriterUnits.pt
     val unitName = WriterUnits.name
     fun shown(pt: Float) = "%.2f".format(java.util.Locale.ROOT, pt / unit).trimEnd('0').trimEnd('.')
@@ -841,6 +992,7 @@ internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply:
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
+                    ShapeStyles(o.fill, o.line) { f, l -> o = o.copy(fill = f, line = l) }
                     swatches("Fill", o.fill) { o = o.copy(fill = it) }
                     swatches("Outline", o.line) { o = o.copy(line = it) }
                     if (o.line != null) Section("Outline width") {

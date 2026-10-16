@@ -7,16 +7,23 @@ package com.kalotrapezis.drive
 internal enum class CiteStyle(val label: String, val heading: String, val wordName: String, val wordXsl: String) {
     APA("APA 7", "References", "APA", "\\APASixthEditionOfficeOnline.xsl"),
     MLA("MLA 9", "Works Cited", "MLA", "\\MLASeventhEditionOfficeOnline.xsl"),
-    Chicago("Chicago (author-date)", "References", "Chicago", "\\CHICAGO.XSL");
+    Chicago("Chicago (author-date)", "References", "Chicago", "\\CHICAGO.XSL"),
+    Harvard("Harvard", "Reference list", "Harvard - Anglia", "\\HarvardAnglia2008OfficeOnline.xsl"),
+    /** Numbered in the order first cited: Word files only (LibreOffice's marks show their names). */
+    IEEE("IEEE", "References", "IEEE", "\\IEEE2006OfficeOnline.xsl");
 
-    fun parenthetical(sources: List<DocSource>, page: String = ""): String = when (this) {
-        APA -> Apa.parenthetical(sources, page)
-        MLA -> Mla.parenthetical(sources, page)
-        Chicago -> ChicagoAD.parenthetical(sources, page)
+    /** [hide]: Word's citation options — 'n' no author, 'y' no year; [order]: the sources' tags as first cited (IEEE's numbers). */
+    fun parenthetical(sources: List<DocSource>, page: String = "", hide: Set<Char> = emptySet(), order: List<String> = emptyList()): String = when (this) {
+        APA -> Apa.parenthetical(sources, page, hide)
+        MLA -> Mla.parenthetical(sources, page, hide)
+        Chicago -> ChicagoAD.parenthetical(sources, page, hide)
+        Harvard -> HarvardCtr.parenthetical(sources, page, hide)
+        IEEE -> Ieee.parenthetical(sources, page, order)
     }
-    fun entry(s: DocSource): List<DocRun> = when (this) { APA -> Apa.entry(s); MLA -> Mla.entry(s); Chicago -> ChicagoAD.entry(s) }
-    /** The list's order: by the first author's surname (or the title), then the year — the same in all three. */
-    fun sorted(sources: List<DocSource>) = Apa.sorted(sources)
+    fun entry(s: DocSource): List<DocRun> = when (this) { APA -> Apa.entry(s); MLA -> Mla.entry(s); Chicago -> ChicagoAD.entry(s); Harvard -> HarvardCtr.entry(s); IEEE -> Ieee.entry(s) }
+    /** The list's order: by the first author's surname (or the title), then the year; IEEE's as first cited. */
+    fun sorted(sources: List<DocSource>, order: List<String> = emptyList()) =
+        if (this == IEEE) sources.sortedBy { s -> order.indexOf(s.tag).let { if (it < 0) Int.MAX_VALUE else it } } else Apa.sorted(sources)
 
     companion object {
         val HEADINGS = entries.map { it.heading }.toSet()
@@ -28,6 +35,7 @@ internal enum class CiteStyle(val label: String, val heading: String, val wordNa
          */
         fun infer(doc: OfficeDoc): CiteStyle {
             if (doc.paras.any { it.text.trim() == MLA.heading }) return MLA
+            if (doc.paras.any { it.text.trim() == Harvard.heading }) return Harvard
             val shown = doc.paras.asSequence().flatMap { p -> p.runs.asSequence().filter { it.cite != null && !isField(it.cite) }.map { it.text } }.firstOrNull() ?: return APA
             return when {
                 Regex("""\p{L}, (\d{4}|n\.d\.)""").containsMatchIn(shown) -> APA
@@ -63,8 +71,8 @@ internal object Mla {
         2 -> "${s.authors[0].last} and ${s.authors[1].last}"
         else -> "${s.authors[0].last} et al."
     }
-    fun parenthetical(sources: List<DocSource>, page: String = ""): String =
-        "(" + sources.joinToString("; ") { citeNames(it) } + (if (page.isNotBlank() && sources.size == 1) " ${Cite.pages(page)}" else "") + ")"
+    fun parenthetical(sources: List<DocSource>, page: String = "", hide: Set<Char> = emptySet()): String =
+        "(" + listOf(if ('n' in hide) "" else sources.joinToString("; ") { citeNames(it) }, if (page.isNotBlank() && sources.size == 1) Cite.pages(page) else "").filter { it.isNotEmpty() }.joinToString(" ") + ")"
     /** Smith, John. / Smith, John, and Ann Jones. / Smith, John, et al. */
     fun authors(people: List<DocSource.Person>) = when (people.size) {
         0 -> ""
@@ -109,8 +117,10 @@ internal object ChicagoAD {
         3 -> "${s.authors[0].last}, ${s.authors[1].last}, and ${s.authors[2].last}"
         else -> "${s.authors[0].last} et al."
     }
-    fun parenthetical(sources: List<DocSource>, page: String = ""): String =
-        "(" + sources.joinToString("; ") { "${citeNames(it)} ${Cite.year(it)}" } + (if (page.isNotBlank() && sources.size == 1) ", ${Cite.pages(page)}" else "") + ")"
+    fun parenthetical(sources: List<DocSource>, page: String = "", hide: Set<Char> = emptySet()): String {
+        val each = sources.joinToString("; ") { listOfNotNull(citeNames(it).takeIf { 'n' !in hide }, Cite.year(it).takeIf { 'y' !in hide }).joinToString(" ") }
+        return "(" + listOf(each, if (page.isNotBlank() && sources.size == 1) Cite.pages(page) else "").filter { it.isNotEmpty() }.joinToString(", ") + ")"
+    }
     /** Smith, John, Ann Jones, and Bo Lee — up to ten; more: the first seven, then "et al." */
     fun authors(people: List<DocSource.Person>): String {
         val names = (if (people.size > 10) people.take(7) else people).mapIndexed { i, p -> if (i == 0) Cite.inverted(p) else Cite.full(p) }
@@ -160,5 +170,107 @@ internal object ChicagoAD {
             }
         }
         plain(link)
+    }
+}
+
+/** Harvard (Cite Them Right, the UK universities' usual): (Smith and Jones, 2020, p. 12), the reference list. */
+internal object HarvardCtr {
+    fun citeNames(s: DocSource): String = when (s.authors.size) {
+        0 -> s.title.split(' ').take(4).joinToString(" ").ifBlank { "Anon." }
+        1 -> s.authors[0].last
+        2 -> "${s.authors[0].last} and ${s.authors[1].last}"
+        3 -> "${s.authors[0].last}, ${s.authors[1].last} and ${s.authors[2].last}"
+        else -> "${s.authors[0].last} et al."
+    }
+    fun parenthetical(sources: List<DocSource>, page: String = "", hide: Set<Char> = emptySet()): String {
+        val each = sources.joinToString("; ") { listOfNotNull(citeNames(it).takeIf { 'n' !in hide }, Cite.year(it).takeIf { 'y' !in hide }).joinToString(", ") }
+        val p = if (page.isNotBlank() && sources.size == 1) (if ('-' in page || '–' in page) "pp. " else "p. ") + Cite.pages(page) else ""
+        return "(" + listOf(each, p).filter { it.isNotEmpty() }.joinToString(", ") + ")"
+    }
+    /** Smith, J.R., Jones, A. and Brown, K. */
+    fun authors(people: List<DocSource.Person>): String {
+        val names = people.map { p -> if (p.first.isBlank()) p.last else "${p.last}, ${p.initials.replace(" ", "")}" }
+        return if (names.size <= 1) names.firstOrNull().orEmpty() else names.dropLast(1).joinToString(", ") + " and " + names.last()
+    }
+    fun entry(s: DocSource): List<DocRun> = Cite.runs { plain, italic ->
+        val who = authors(s.authors)
+        plain("${who.ifEmpty { s.title }} (${Cite.year(s)}) ")
+        val link = Cite.link(s)
+        val title = if (who.isEmpty()) "" else s.title
+        when (s.type) {
+            DocSource.Type.Book, DocSource.Type.Report, DocSource.Type.Thesis -> {
+                italic(title); plain(if (title.isEmpty()) "" else ". ")
+                if (s.edition.isNotBlank()) plain("${s.edition} edn. ")
+                if (s.type == DocSource.Type.Thesis) plain(Cite.end(s.container.ifBlank { "PhD thesis" }) + " ")
+                if (s.publisher.isNotBlank()) plain(Cite.end(s.publisher) + " ")
+            }
+            DocSource.Type.Article -> {
+                plain("‘$title’, "); italic(s.container)
+                if (s.volume.isNotBlank()) plain(", ${s.volume}" + (if (s.issue.isNotBlank()) "(${s.issue})" else ""))
+                plain(if (s.pages.isNotBlank()) ", pp. ${Cite.pages(s.pages)}. " else ". ")
+            }
+            DocSource.Type.Chapter -> {
+                plain("‘$title’, in ")
+                if (s.editors.isNotEmpty()) plain(authors(s.editors) + (if (s.editors.size > 1) " (eds) " else " (ed.) "))
+                italic(s.container); plain(". ")
+                if (s.publisher.isNotBlank()) plain(s.publisher + (if (s.pages.isNotBlank()) ", pp. ${Cite.pages(s.pages)}. " else ". "))
+            }
+            DocSource.Type.Web, DocSource.Type.Video -> {
+                italic(title); plain(if (title.isEmpty()) "" else ". ")
+                if (s.type == DocSource.Type.Video) plain("[Video]. ")
+                if (s.container.isNotBlank()) plain(Cite.end(s.container) + " ")
+            }
+        }
+        if (link.isNotEmpty()) plain("Available at: $link")
+    }
+}
+
+/** IEEE: [1], [1, p. 12], [1], [3]; the list numbered as first cited. */
+internal object Ieee {
+    fun parenthetical(sources: List<DocSource>, page: String = "", order: List<String> = emptyList()): String {
+        fun n(s: DocSource) = (order.indexOf(s.tag) + 1).takeIf { it > 0 }?.toString() ?: "?"
+        if (sources.size == 1 && page.isNotBlank()) return "[${n(sources[0])}, ${if ('-' in page || '–' in page) "pp." else "p."} ${Cite.pages(page)}]"
+        return sources.joinToString(", ") { "[${n(it)}]" }
+    }
+    /** J. R. Smith, A. Jones, and K. Brown; more than six: the first, et al. */
+    fun authors(people: List<DocSource.Person>): String {
+        val names = people.map { p -> if (p.first.isBlank()) p.last else "${p.initials} ${p.last}" }
+        return when {
+            names.isEmpty() -> ""
+            names.size > 6 -> "${names[0]} et al."
+            names.size == 1 -> names[0]
+            names.size == 2 -> "${names[0]} and ${names[1]}"
+            else -> names.dropLast(1).joinToString(", ") + ", and " + names.last()
+        }
+    }
+    fun entry(s: DocSource): List<DocRun> = Cite.runs { plain, italic ->
+        val who = authors(s.authors)
+        if (who.isNotEmpty()) plain("$who, ")
+        val link = Cite.link(s)
+        when (s.type) {
+            DocSource.Type.Book, DocSource.Type.Report -> {
+                italic(s.title); plain(if (s.edition.isNotBlank()) ", ${s.edition} ed. " else ". ")
+                plain(Cite.end(listOf(s.publisher, s.year).filter { it.isNotBlank() }.joinToString(", ")) + " ")
+            }
+            DocSource.Type.Article -> {
+                plain("“${s.title},” "); italic(s.container)
+                val tail = listOfNotNull(s.volume.takeIf { it.isNotBlank() }?.let { "vol. $it" }, s.issue.takeIf { it.isNotBlank() }?.let { "no. $it" },
+                    s.pages.takeIf { it.isNotBlank() }?.let { "pp. ${Cite.pages(it)}" }, s.year.takeIf { it.isNotBlank() })
+                plain((if (tail.isEmpty()) "" else ", " + tail.joinToString(", ")) + (if (link.isNotEmpty()) ", doi: ${s.doi.removePrefix("https://doi.org/")}." else ". "))
+                return@runs
+            }
+            DocSource.Type.Chapter -> {
+                plain("“${s.title},” in "); italic(s.container)
+                if (s.editors.isNotEmpty()) plain(", ${authors(s.editors)}, Ed${if (s.editors.size > 1) "s" else ""}.")
+                plain(" " + Cite.end(listOf(s.publisher, s.year, s.pages.takeIf { it.isNotBlank() }?.let { "pp. ${Cite.pages(it)}" } ?: "").filter { it.isNotBlank() }.joinToString(", ")) + " ")
+            }
+            DocSource.Type.Thesis -> plain("“${s.title},” " + Cite.end(listOf(s.container.ifBlank { "Ph.D. dissertation" }, s.publisher, s.year).filter { it.isNotBlank() }.joinToString(", ")) + " ")
+            DocSource.Type.Web, DocSource.Type.Video -> {
+                plain("“${s.title}.” ")
+                if (s.container.isNotBlank()) italic(s.container + ". ")
+                plain("[Online]. ")
+            }
+        }
+        if (link.isNotEmpty()) plain("Available: $link")
     }
 }

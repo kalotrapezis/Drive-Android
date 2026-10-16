@@ -111,9 +111,10 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
  */
 @Composable
 internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: Boolean, dismiss: () -> Unit, newSource: () -> Unit,
-    startTags: List<String> = emptyList(), startPage: String = "", insert: (List<DocSource>, String) -> Unit) {
+    startTags: List<String> = emptyList(), startPage: String = "", startHide: Set<Char> = emptySet(), insert: (List<DocSource>, String, Set<Char>) -> Unit) {
     val chosen = remember { mutableStateListOf<String>().apply { addAll(startTags) } }
     var page by remember { mutableStateOf(startPage) }
+    var hide by remember { mutableStateOf(startHide) } // Word's Suppress: 'n' the author, 'y' the year
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text(if (startTags.isEmpty()) "Insert citation" else "Change citation") },
@@ -132,9 +133,14 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
                 }
                 Choice("+ New source…", false, newSource)
                 if (pages && chosen.size == 1) OutlinedTextField(page, { page = it }, singleLine = true, label = { Text("Page(s), for a quotation (e.g. 12 or 12-14)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                // Word's Edit Citation › Suppress (the author named in the sentence already, say): Word files' citations only
+                if (pages && chosen.isNotEmpty()) Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Choice("No author", 'n' in hide) { hide = if ('n' in hide) hide - 'n' else hide + 'n' }
+                    Choice("No year", 'y' in hide) { hide = if ('y' in hide) hide - 'y' else hide + 'y' }
+                }
             }
         },
-        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim()) }) { Text(if (startTags.isEmpty()) "Insert" else "Change") } },
+        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim(), hide) }) { Text(if (startTags.isEmpty()) "Insert" else "Change") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }

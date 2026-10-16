@@ -1,0 +1,124 @@
+package com.kalotrapezis.drive
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
+class SheetEditTest {
+    private val gr = SheetFormat(',', '.', language = java.util.Locale.forLanguageTag("el"))
+
+    @Test fun `typed entries`() {
+        fun cell(s: String, format: String = "General") = SheetInput.cell(s, null, 0, format, gr)
+        assertEquals(1234.5, cell("1.234,5").value); assertEquals("1234,5", cell("1.234,5").text)
+        assertEquals(12.5, cell("12,5").value)
+        assertEquals(12.5, cell("12.5").value) // one dot, no comma: a decimal point
+        assertEquals(1234567.0, cell("1.234.567").value)
+        assertEquals(-3.0, cell("-3").value); assertEquals(30.0, cell("€30").value)
+        assertEquals(SheetKind.Text, cell("12a").kind)
+        assertEquals(SheetKind.Text, cell("'007").kind); assertEquals("007", cell("'007").text)
+        assertEquals(SheetKind.Bool, cell("true").kind)
+        cell("25%").let { assertEquals(0.25, it.value!!, 1e-12); assertEquals("0%", it.format); assertEquals("25%", it.text) }
+        cell("12,5%").let { assertEquals(0.125, it.value!!, 1e-12); assertEquals("0.0%", it.format); assertEquals("12,5%", it.text) }
+        cell("15/3/2026").let { assertEquals(SheetCalc.serial(java.time.LocalDate.of(2026, 3, 15).atStartOfDay()), it.value!!, 1e-9); assertEquals("d/m/yyyy", it.format); assertEquals("15/3/2026", it.text) }
+        cell("15/3/2026", "dd/mm/yyyy").let { assertNull(it.format); assertEquals("15/03/2026", it.text) } // the cell's own date format
+        cell("9:30").let { assertEquals(9.5 / 24, it.value!!, 1e-12); assertEquals("9:30", it.text) }
+        assertEquals("=SUM(A1,B2)", cell("=sum(a1;b2)").formula)
+        assertEquals("=IF(A1=\"ναι\",1,'my sheet'!B2)", cell("=if(a1=\"ναι\";1;'my sheet'!b2)").formula) // words and sheet names as typed
+        assertEquals(SheetKind.Empty, cell("").kind)
+    }
+
+    @Test fun `the formula bar shows the value as typed`() {
+        fun bar(c: SheetCell, f: String = "General") = SheetInput.text(c, f, gr)
+        assertEquals("1234,5", bar(SheetCell("1.234,50", SheetKind.Number, 1234.5)))
+        assertEquals("15/3/2026", bar(SheetCell("15/03/2026", SheetKind.Number, 46096.0), "dd/mm/yyyy"))
+        assertEquals("25%", bar(SheetCell("25,0%", SheetKind.Number, 0.25), "0.0%"))
+        assertEquals("=A1*2", bar(SheetCell("4", SheetKind.Number, 4.0, formula = "=A1*2")))
+        assertEquals("0,1", bar(SheetCell("0,1", SheetKind.Number, 0.1 + 0.2 - 0.2)))
+    }
+
+    /** A1 = 2, A2 = A1*3, A3 = SUM(A1:A2), B1 = Other!A1+A3; editing A1 works them out; undo puts them back. */
+    @Test fun `formulas worked out again, and undo`() {
+        fun sheet(name: String, vararg cells: Pair<Long, SheetCell>) = Sheet(name, CellMap().apply { cells.forEach { (k, c) -> set(k, c) } }, 3, 2, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
+        val main = sheet("Main",
+            Sheet.key(0, 0) to SheetCell("2", SheetKind.Number, 2.0),
+            Sheet.key(1, 0) to SheetCell("6", SheetKind.Number, 6.0, formula = "=A1*3"),
+            Sheet.key(2, 0) to SheetCell("8", SheetKind.Number, 8.0, formula = "=SUM(A1:A2)"),
+            Sheet.key(0, 1) to SheetCell("18", SheetKind.Number, 18.0, formula = "=Other!A1+A3"),
+            Sheet.key(0, 2) to SheetCell("x", SheetKind.Number, 7.0, formula = "=UNKNOWNFN(A1)"))
+        val other = sheet("Other", Sheet.key(0, 0) to SheetCell("10", SheetKind.Number, 10.0))
+        val book = Workbook(listOf(SheetTab("Main"), SheetTab("Other")), listOf(SheetStyle()), format = gr) { i -> if (i == 0) main else other }
+        val history = SheetHistory()
+        history.apply(book, 0, mapOf(Sheet.key(0, 0) to SheetInput.cell("5", main[0, 0], 0, "General", gr)))
+        assertEquals(15.0, main[1, 0]!!.value); assertEquals(20.0, main[2, 0]!!.value); assertEquals(30.0, main[0, 1]!!.value)
+        assertEquals("x", main[0, 2]!!.text) // a function it does not know: the file's value stays
+        assertTrue(history.canUndo); assertEquals(1, history.unsaved)
+        // another sheet's change reaches a formula that reads it
+        history.apply(book, 1, mapOf(Sheet.key(0, 0) to SheetInput.cell("100", other[0, 0], 0, "General", gr)))
+        history.apply(book, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("=B1/0", null, 0, "General", gr)))
+        assertEquals("#DIV/0!", main[1, 1]!!.text)
+        history.undo(book); history.undo(book); history.undo(book)
+        assertEquals(2.0, main[0, 0]!!.value); assertEquals(6.0, main[1, 0]!!.value); assertEquals(18.0, main[0, 1]!!.value)
+        assertFalse(history.canUndo); assertEquals(0, history.unsaved)
+        history.redo(book)
+        assertEquals(5.0, main[0, 0]!!.value); assertEquals(30.0, main[0, 1]!!.value)
+    }
+
+    @Test fun `the functions the bar offers`() {
+        // every one is worked out by the engine (none unknown)
+        val ctx = SheetCalc.Context({ _, _, _ -> null })
+        for (f in SheetFunctions.all) {
+            val e = runCatching { SheetCalc.eval("${f.name}(1,1,1)", ctx) }.exceptionOrNull()
+            assertFalse(f.name, e is SheetCalc.Unknown && e.message == f.name)
+        }
+        fun names(t: String, at: Int = t.length) = SheetFunctions.matching(t, at).map { it.name }
+        assertEquals(listOf("SUM", "SUMIF", "SUMIFS", "SUBSTITUTE"), names("su"))
+        assertEquals("SUM", names("=1+su").first())
+        assertTrue("COUNTIF" in names("=countif"))
+        assertTrue("SUMIFS" in names("=IFS")) // inside the name
+        assertEquals(SheetFunctions.all.size, names("=").size)
+        assertEquals(emptyList<String>(), names("=B12")) // a cell, not a function
+        assertEquals(emptyList<String>(), names("12"))
+        assertEquals(emptyList<String>(), names("=SUM(")) // in the brackets: what SUM takes instead
+        assertEquals("SUM", SheetFunctions.inside("=SUM(B3:B12", 11)?.name)
+        assertEquals("IF", SheetFunctions.inside("=IF(SUM(A1), \"(\"", 18)?.name)
+        assertNull(SheetFunctions.inside("=SUM(A1)+", 9))
+        val sum = SheetFunctions.all.first { it.name == "SUM" }
+        assertEquals("=SUM(" to 5, SheetFunctions.insert("su", 2, sum))
+        assertEquals("=1+SUM()*2" to 7, SheetFunctions.insert("=1+su()*2", 5, sum))
+        assertEquals("=TODAY()" to 8, SheetFunctions.insert("=tod", 4, SheetFunctions.all.first { it.name == "TODAY" }))
+    }
+
+    @Test fun `the fill handle`() {
+        val f = SheetFormat()
+        fun num(v: Double, code: String = "General") = SheetCell(f.format(v, code).text, SheetKind.Number, v, format = code.takeIf { it != "General" })
+        fun text(t: String) = SheetCell(t, SheetKind.Text)
+        fun fill(src: List<SheetCell?>, count: Int, down: Int = 1) = SheetFill.series(src, count, f, { it.format ?: "General" }) { fm, j, i -> SheetFill.moved(fm, (src.size + i - j) * down, 0) }
+        assertEquals(listOf(3.0, 4.0, 5.0), fill(listOf(num(1.0), num(2.0)), 3).map { it.value })
+        assertEquals(listOf(30.0, 40.0), fill(listOf(num(10.0), num(20.0)), 2).map { it.value })
+        assertEquals(listOf(7.0, 7.0), fill(listOf(num(7.0)), 2).map { it.value }) // one number: copied, as Excel
+        val day = SheetCalc.serial(java.time.LocalDate.of(2026, 10, 16).atStartOfDay())
+        assertEquals(listOf(day + 1, day + 2), fill(listOf(num(day, "d/m/yyyy")), 2).map { it.value }) // a date: the next days
+        assertEquals("17/10/2026", fill(listOf(num(day, "d/m/yyyy")), 1)[0].text)
+        assertEquals(listOf("Week 2", "Week 3"), fill(listOf(text("Week 1")), 2).map { it.text })
+        assertEquals(listOf("Week 5", "Week 7"), fill(listOf(text("Week 1"), text("Week 3")), 2).map { it.text })
+        assertEquals(listOf("A2", "B2", "A3"), fill(listOf(text("A1"), text("B1")), 3).map { it.text })
+        assertEquals(listOf("Item 010"), fill(listOf(text("Item 009")), 1).map { it.text })
+        assertEquals(listOf("yes", "no", "yes"), fill(listOf(text("yes"), text("no")), 3).map { it.text })
+        // formulas: relative references follow, $ ones stay; up past row 1 is #REF!
+        val sum = SheetCell("", SheetKind.Number, 3.0, formula = "=SUM(B3:B12)*\$A\$1+Rows!C3")
+        assertEquals(listOf("=SUM(B4:B13)*\$A\$1+Rows!C4", "=SUM(B5:B14)*\$A\$1+Rows!C5"), fill(listOf(sum), 2).map { it.formula })
+        assertEquals("=A1&\"B3\"", SheetFill.moved("=A2&\"B3\"", -1, 0)) // words in quotes alone
+        assertEquals("=#REF!+1", SheetFill.moved("=A1+1", -1, 0))
+        assertEquals("=C1+\$B2", SheetFill.moved("=B1+\$B1", 1, 1).let { SheetFill.moved("=B1+\$B2", 0, 1) })
+        assertEquals("=LOG10(B2)", SheetFill.moved("=LOG10(A2)", 0, 1)) // a function's name is not a cell
+    }
+
+    @Test fun `text pasted from another app`() {
+        assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
+        assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))
+        assertEquals(listOf(listOf("one")), SheetPaste.table("one"))
+    }
+}

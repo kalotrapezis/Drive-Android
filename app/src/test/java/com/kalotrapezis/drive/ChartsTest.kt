@@ -25,7 +25,7 @@ class ChartsTest {
 
     @Test fun `a new chart is written as each program keeps one, and reads back the same`() {
         val data = DocChart(ChartKind.Column, "Sales & costs", listOf("Q1", "Q2", "Q3"), listOf(ChartSeries("North", listOf(4.3, 2.5, 3.5)), ChartSeries("South", listOf(2.4, null, 1.8), 0x70AD47)))
-        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for (chartKind in ChartKind.entries) for (stacked in listOf(false, true)) {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for (chartKind in ChartKind.entries.filter { it.made }) for (stacked in listOf(false, true)) {
             if (stacked && (chartKind == ChartKind.Pie || chartKind == ChartKind.Doughnut)) continue
             if (chartKind == ChartKind.Scatter) continue // its x values are numbers: below
             val chart = data.copy(kind = chartKind, stacked = stacked)
@@ -98,6 +98,37 @@ class ChartsTest {
             val back = OfficeFormats.read(bytes, OfficeKind.Docx).paras[0].runs.single().image!!.chart!!
             assertEquals(chart.series.map { it.name to it.values }, back.series.map { it.name to it.values })
             assertEquals(chart.categories, back.categories)
+        }
+    }
+
+    /** Excel's other charts (asked 16 Oct), from charts.py's workbook and LibreOffice's .ods of it: a combo, a radar, bubbles. */
+    @Test fun `combo, radar and bubble charts read from both kinds of file`() {
+        // as a sheet reads them (openpyxl keeps no values in the chart: they are read from the cells)
+        val book = Sheets.read(java.io.File("src/test/resources/charts.xlsx"), ',', '.')
+        fun xlsx(n: Int) = book.sheet(n - 1).drawings.firstNotNullOf { it.chart }
+        val ods = java.util.zip.ZipFile(java.io.File("src/test/resources/charts.ods"))
+        fun ods(n: Int) = OfficeCharts.readOdf(ods.getInputStream(ods.getEntry("Object $n/content.xml")).readBytes())!!
+        for (combo in listOf(xlsx(1), ods(1))) {
+            assertEquals(ChartKind.Column, combo.kind)
+            assertEquals(listOf("Sales", "Target"), combo.series.map { it.name })
+            assertEquals(listOf(null, ChartKind.Line), combo.series.map { it.kind }) // the target a line over the columns
+            assertEquals(listOf(100.0, 110.0, 120.0, 130.0, 140.0), combo.series[1].values)
+        }
+        for (radar in listOf(xlsx(2), ods(2))) {
+            assertEquals(ChartKind.Radar, radar.kind)
+            assertEquals(listOf("Reading", "Writing", "Maths", "Science", "Art"), radar.categories)
+            assertEquals(listOf(6.0, 9.0, 5.0, 8.0, 7.0), radar.series[1].values)
+        }
+        for (two in listOf(xlsx(4), ods(4))) {
+            assertEquals(listOf(false, true), two.series.map { it.secondary }) // the margin on its own axis, at the right
+            assertEquals(ChartKind.Line, two.series[1].kind)
+        }
+        for (bubble in listOf(xlsx(3), ods(3))) {
+            assertEquals(ChartKind.Bubble, bubble.kind)
+            assertEquals(listOf("10", "20", "30", "40"), bubble.categories) // x
+            assertEquals(listOf(50.0, 35.0, 42.0, 20.0), bubble.series[0].values) // y
+            assertEquals(listOf(3.0, 8.0, 5.0, 12.0), bubble.series[0].sizes)
+            assertEquals("Shops", bubble.series[0].name)
         }
     }
 }

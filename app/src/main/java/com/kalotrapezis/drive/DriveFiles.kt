@@ -52,7 +52,15 @@ object DriveRules {
      * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
      * are always there, marked with an emblem, and cannot be renamed, moved or put in the Trash — their contents can.
      */
-    val SYSTEM_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    private val REQUIRED_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    /**
+     * Folders to sort things into, each with its own emblem (asked 16 Oct), chosen in Files tools › System folders.
+     * A chosen one is a system folder like Documents; one no longer chosen stays, as an ordinary folder.
+     */
+    val OPTIONAL_FOLDERS = listOf("Music", "Videos", "Finance", "Work", "Education", "Games", "Development", "AI",
+        "Health", "Travel", "Family", "Books", "Others")
+    @Volatile var chosenFolders: Set<String> = emptySet()
+    val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
     fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
     private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }
@@ -144,10 +152,11 @@ object DriveRules {
      * What New can make (asked 14 Oct): a folder, each file in Drive's hidden .templates (copied as it is), and a text
      * file and a Word document of Writer's own where .templates has none of that kind.
      */
-    fun newKinds(root: File): List<DriveNew> {
+    fun newKinds(root: File, blankDeck: ByteArray? = null): List<DriveNew> {
         val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
-        val built = listOf(DriveNew("Text file", "txt"), DriveNew("Word document", "docx")).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        val built = listOfNotNull(DriveNew("Text file", "txt"), DriveNew("Words document", "docx"), DriveNew("Tables spreadsheet", "xlsx"),
+            blankDeck?.let { DriveNew("Slides presentation", "pptx", bytes = it) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
         return listOf(DriveNew("Folder", null)) + templates + built
     }
 
@@ -162,6 +171,8 @@ object DriveRules {
             kind.extension == null -> require(target.mkdir()) { "Could not make the folder." }
             kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
             kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
+            kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty())
+            kind.bytes != null -> target.writeBytes(kind.bytes)
             else -> target.writeBytes(ByteArray(0))
         }
         return relative(root, target)
@@ -258,7 +269,18 @@ private const val TRASH_FOLDER = "Trash"
 private const val TEMPLATES_FOLDER = ".templates"
 
 /** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
-data class DriveNew(val label: String, val extension: String?, val template: File? = null)
+data class DriveNew(val label: String, val extension: String?, val template: File? = null, /** the file's bytes as made (the app's empty deck) */ val bytes: ByteArray? = null)
+
+/**
+ * Files just made with New (asked 16 Oct: "enter edit mode automatically, he does not want to see an empty page"):
+ * Writer, Excel and PowerPoint open them editing, once.
+ */
+internal object JustMade {
+    private val paths = HashSet<String>()
+    fun mark(file: File) = synchronized(paths) { paths += file.absolutePath }
+    /** Whether [open] (a file:// address) was just made; asked once, it is then a file like the others. */
+    fun take(open: String?): Boolean = synchronized(paths) { open?.let { android.net.Uri.parse(it).path }?.let { paths.remove(it) } == true }
+}
 
 fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath)

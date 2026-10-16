@@ -41,8 +41,10 @@ internal object Apa {
     }
 
     /** Parenthetical: (Smith, 2020), (Smith & Jones, 2020; Brown et al., 2019), with pages: (Smith, 2020, p. 12). */
-    fun parenthetical(sources: List<DocSource>, page: String = ""): String =
-        "(" + sources.joinToString("; ") { "${citeNames(it)}, ${yearOf(it)}" } + (if (page.isNotBlank() && sources.size == 1) ", ${pageLabel(page)}" else "") + ")"
+    fun parenthetical(sources: List<DocSource>, page: String = "", hide: Set<Char> = emptySet()): String {
+        val each = sources.joinToString("; ") { listOfNotNull(citeNames(it).takeIf { 'n' !in hide }, yearOf(it).takeIf { 'y' !in hide }).joinToString(", ") }
+        return "(" + listOf(each, if (page.isNotBlank() && sources.size == 1) pageLabel(page) else "").filter { it.isNotEmpty() }.joinToString(", ") + ")"
+    }
     /** Narrative: Smith (2020). */
     fun narrative(s: DocSource, page: String = "") = "${citeNames(s)} (${yearOf(s)}${if (page.isNotBlank()) ", ${pageLabel(page)}" else ""})"
     private fun pageLabel(p: String) = if (p.contains('-') || p.contains('–')) "pp. ${p.replace('-', '–')}" else "p. $p"
@@ -254,20 +256,25 @@ internal object Citations {
         if (words.isNotEmpty() && !words[0].startsWith("\\")) { tags += words[0]; k = 1 }
         while (k < words.size) {
             when (words[k]) { "\\m" -> words.getOrNull(k + 1)?.let { tags += it }; "\\p" -> page = words.getOrNull(k + 1).orEmpty() }
-            k += if (words[k] in setOf("\\m", "\\p", "\\l", "\\s", "\\v", "\\f", "\\y", "\\t")) 2 else 1
+            k += if (words[k] in setOf("\\m", "\\p", "\\l", "\\s", "\\v", "\\f")) 2 else 1 // \n, \y, \t stand alone
         }
         return tags to page
     }
+    /** Word's citation options: 'n' its author left out, 'y' its year (Edit Citation › Suppress). */
+    fun hidden(cite: String): Set<Char> = if (!cite.startsWith("CITATION")) emptySet()
+        else Regex("""\\([ny])(?=\s|$)""").findAll(cite).map { it.groupValues[1][0] }.toSet()
     /** The citation as each kind keeps it: Word's field instruction, or the one source's tag. */
-    fun cite(kind: OfficeKind, tags: List<String>, page: String): String = if (kind == OfficeKind.Odt) tags.first()
-        else "CITATION ${tags.first()} \\l 1033" + tags.drop(1).joinToString("") { " \\m $it" } + (if (page.isNotBlank()) " \\p $page" else "")
+    fun cite(kind: OfficeKind, tags: List<String>, page: String, hide: Set<Char> = emptySet()): String = if (kind == OfficeKind.Odt) tags.first()
+        else "CITATION ${tags.first()} \\l 1033" + tags.drop(1).joinToString("") { " \\m $it" } + (if (page.isNotBlank()) " \\p $page" else "") + hide.sorted().joinToString("") { " \\$it" }
 
     /** What a citation shows: its [style]'s parenthetical, from its sources (a missing one by its tag). */
-    fun text(cite: String, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA): String {
+    fun text(cite: String, sources: List<DocSource>, style: CiteStyle = CiteStyle.APA, order: List<String> = emptyList()): String {
         val (tags, page) = parse(cite)
         val found = tags.mapNotNull { t -> sources.firstOrNull { it.tag == t } }
-        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else style.parenthetical(found, page)
+        return if (found.isEmpty()) "(${tags.joinToString("; ")})" else style.parenthetical(found, page, hidden(cite), order)
     }
+    /** The sources' tags in the order they are first cited (IEEE's numbers). */
+    fun order(doc: OfficeDoc): List<String> = doc.paras.flatMap { p -> p.runs.mapNotNull { it.cite?.takeIf { c -> !isField(c) } } }.flatMap { parse(it).first }.distinct()
 
     /** Where the reference list is (its heading, if it has one, and its entries), or null. */
     fun find(doc: OfficeDoc, kind: OfficeKind): IntRange? {
@@ -285,7 +292,12 @@ internal object Citations {
         val list = doc.sources.filter { it.tag in used }.ifEmpty { doc.sources }
         // APA, MLA and Chicago alike: on a new page, its heading centred (APA's bold; MLA's and Chicago's plain).
         val heading = DocPara(listOf(DocRun(doc.citeStyle.heading, bold = doc.citeStyle == CiteStyle.APA)), align = DocAlign.Center, keep = OfficeFormats.withPageBreak(null, kind, true))
-        val entries = doc.citeStyle.sorted(list).map { DocPara(doc.citeStyle.entry(it), keep = DocKeep(style = entryStyle(kind))) }
+        val order = order(doc)
+        val entries = doc.citeStyle.sorted(list, order).mapIndexed { i, s ->
+            // IEEE: each entry its number first, as cited
+            val runs = doc.citeStyle.entry(s).let { if (doc.citeStyle == CiteStyle.IEEE) listOf(DocRun("[${i + 1}]\t")) + it else it }
+            DocPara(runs, keep = DocKeep(style = entryStyle(kind)))
+        }
         return listOf(heading) + entries.ifEmpty { listOf(DocPara(listOf(DocRun("No sources yet — References › Insert citation adds them")), keep = DocKeep(style = entryStyle(kind)))) }
     }
 
@@ -301,6 +313,8 @@ internal object Citations {
             CiteStyle.APA -> "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
             CiteStyle.MLA -> Mla.citeNames(s)
             CiteStyle.Chicago -> "${ChicagoAD.citeNames(s)} ${s.year.ifBlank { "n.d." }}"
+            CiteStyle.Harvard -> "${HarvardCtr.citeNames(s)}, ${s.year.ifBlank { "n.d." }}"
+            CiteStyle.IEEE -> "${Apa.citeNames(s)}, ${s.year.ifBlank { "n.d." }}" // IEEE is offered for Word files only
         }
         return (sequenceOf(base) + ('a'..'z').asSequence().map { "$base$it" }).first { it !in taken }
     }
@@ -314,6 +328,7 @@ internal object Citations {
             doc0.copy(sources = doc0.sources.map { it.copy(tag = renamed.getValue(it.tag)) },
                 paras = doc0.paras.map { p -> if (p.runs.none { it.cite in renamed }) p else p.copy(runs = p.runs.map { r -> r.cite?.let { c -> renamed[c]?.let { r.copy(cite = it) } } ?: r }) })
         }
+        val order = order(doc)
         val paras = doc.paras.map { p ->
             if (p.runs.none { it.cite != null }) p else {
                 val out = ArrayList<DocRun>()
@@ -324,7 +339,7 @@ internal object Citations {
                     if (c == null || isField(c)) { out += runs[k]; k++; continue }
                     var e = k
                     while (e < runs.size && runs[e].cite == c) e++
-                    out += runs[k].copy(text = text(c, doc.sources, doc.citeStyle))
+                    out += runs[k].copy(text = text(c, doc.sources, doc.citeStyle, order))
                     k = e
                 }
                 p.copy(runs = out)

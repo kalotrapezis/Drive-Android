@@ -105,6 +105,21 @@ internal enum class TextWarp(val label: String, val word: String, val fontwork: 
             if ("draw:text-path=\"true\"" in raw) Regex("""draw:type="(fontwork-[\w-]+)"""").find(raw)?.groupValues?.get(1)?.let { t -> return entries.firstOrNull { it.fontwork == t } }
             return null
         }
+        /** [xml] straight again: Word's prstTxWarp taken out; LibreOffice's rectangle back in place of the fontwork. */
+        fun removed(xml: String, odt: Boolean): String =
+            if (odt) xml.replace(Regex("""<draw:enhanced-geometry\b[^>]*draw:text-path="true"[^>]*/>"""), Regex.escapeReplacement("""<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle"/>"""))
+            else xml.replace(Regex("""<a:prstTxWarp\b[\s\S]*?</a:prstTxWarp>|<a:prstTxWarp\b[^>]*/>"""), "")
+        /** A WordArt's look as Writer wrote it ([raw]: Word's runs' w14 effects, or LibreOffice's Tetra_20_art style's name): its colour (RGB) and effects; null: not one of Writer's. */
+        fun art(raw: String?): Pair<Int, TextEffects>? {
+            raw ?: return null
+            Regex("""Tetra_20_art_([0-9A-F]{6})(_o)?(_s)?""").find(raw)?.let { m ->
+                val c = m.groupValues[1].toInt(16)
+                return c to TextEffects(if (m.groupValues[2].isNotEmpty()) c else null, m.groupValues[3].isNotEmpty())
+            }
+            if ("<w:txbxContent>" !in raw || !Regex("""<w:sz w:val="${(PictureXml.ART_PT * 2).toInt()}"/>""").containsMatchIn(raw)) return null
+            val c = Regex("""<w:color w:val="([0-9A-Fa-f]{6})"/>""").find(raw)?.groupValues?.get(1)?.toInt(16) ?: return null
+            return c to TextEffects.of(raw)
+        }
         /** [xml] (a WordArt Writer made) bent as [warp]: Word's prstTxWarp in its bodyPr; LibreOffice's fontwork geometry. */
         fun applied(xml: String, warp: TextWarp, odt: Boolean): String {
             if (odt) return xml.replace(Regex("""<draw:enhanced-geometry\b[^>]*/>|<draw:enhanced-geometry\b[^>]*[^/]>[\s\S]*?</draw:enhanced-geometry>"""),

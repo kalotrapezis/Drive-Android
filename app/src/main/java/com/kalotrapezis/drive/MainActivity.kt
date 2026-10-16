@@ -216,8 +216,15 @@ class MainActivity : ComponentActivity() {
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
-        val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
-        setContent { LocalDriveApp(external) }
+        // a document, spreadsheet or presentation another app opens here (Open with › Tetra Office); else a photo or video
+        val type = intent.data?.let { intent.type ?: runCatching { contentResolver.getType(it) }.getOrNull() }
+        val office = intent.takeIf { it.action == Intent.ACTION_VIEW || it.action == Intent.ACTION_EDIT }?.data
+            ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
+        val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
+        OfficeUi.load(this)
+        DriveRules.chosenFolders = getSharedPreferences("drive", MODE_PRIVATE).getStringSet("systemFolders", null).orEmpty().toSet()
+        // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
+        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office) } }
     }
 }
 
@@ -288,7 +295,7 @@ private sealed interface DriveListState {
 }
 
 @Composable
-private fun LocalDriveApp(external: ExternalMedia? = null) {
+private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null) {
     val context = LocalContext.current
     // A MediaStore item opens in the full Gallery viewer; anything else (another app's file) in a single-item viewer.
     val externalMediaId = external?.uri?.takeIf { it.authority == MediaStore.AUTHORITY }?.lastPathSegment
@@ -300,6 +307,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
+    var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
+    var slidesOpen by remember { mutableStateOf<String?>(null) } // the presentation PowerPoint's viewer shows (its back: writerBack)
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -502,6 +511,20 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             writerOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Writer
             return@runCatching
         }
+        // A spreadsheet opens in Tables (Settings › Office: its own switch).
+        if (!forceChooser && Sheets.isSheet(file.name) && TextEditorStore(context).opensSheets) {
+            WriterLog.i("open from Files: a spreadsheet")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            sheetOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Sheet
+            return@runCatching
+        }
+        // A presentation opens in Slides (its own switch).
+        if (!forceChooser && Slides.isSlides(file.name) && TextEditorStore(context).opensSlides) {
+            WriterLog.i("open from Files: a presentation")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            slidesOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Slides
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -550,6 +573,20 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
         else { unlockScannerOrientation(); screen = Screen.Home }
     }
+    // a file another app opened here: in Words, Tables or Slides, its back to Office
+    LaunchedEffect(office) {
+        val o = office ?: return@LaunchedEffect
+        val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, o.uri, Environment.getExternalStorageDirectory(), File(driveRoot(), "Documents/From other apps"), o.mimeType) }
+            .onFailure { WriterLog.e("Office: a file from another app could not be read", it) }.getOrNull() }
+        if (f == null) { Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show(); return@LaunchedEffect }
+        WriterLog.i("Office: opened from another app (${f.extension})")
+        val at = Uri.fromFile(f).toString(); writerBack = Screen.Office
+        when {
+            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
+            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
+            else -> { writerOpen = at; screen = Screen.Writer }
+        }
+    }
     LaunchedEffect(external) {
         if (external == null) return@LaunchedEffect
         if (externalMediaId != null && canReadPhotos()) {
@@ -590,6 +627,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.TextEditor -> Unit
                 Screen.Office -> Unit
                 Screen.Writer -> Unit
+                Screen.Sheet -> Unit
+                Screen.Slides -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -676,9 +715,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
                 Screen.Office -> androidx.compose.runtime.key(officeVersion) {
                     OfficeHome(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                    }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer })
+                    }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer },
+                    openSheet = { sheetOpen = it; writerBack = Screen.Office; screen = Screen.Sheet },
+                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides })
                 }
                 Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
+                Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -748,7 +791,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -791,7 +834,8 @@ private fun Home(
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val groups: List<@Composable () -> Unit> = listOf(
         {
-            HomeGroup(MaterialTheme.colorScheme.primaryContainer) {
+            // Gallery's green, as the new Gallery picture in the Photos card (asked 16 Oct), the way Notes and Office have theirs
+            HomeGroup(Category.Gallery.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -899,11 +943,10 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         Box(Modifier.fillMaxSize()) {
             photo?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
-            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                // Same slot either way, so the title always sits at the bottom like the Files card.
-                if (hasBackdrop) Spacer(Modifier.size(38.dp))
-                else Icon(painterResource(R.drawable.ic_gallery), contentDescription = "Photos", modifier = Modifier.size(38.dp))
-                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge)
+            // Laid out like HomeArtCard: the Gallery tile top-right (only without the photo backdrop), the title at the bottom.
+            Box(Modifier.fillMaxSize().padding(18.dp)) {
+                if (!hasBackdrop) Image(painterResource(R.drawable.gallery_art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
             }
         }
     }
@@ -1514,19 +1557,36 @@ private fun SettingsTab(
             val officeContext = LocalContext.current
             val office = remember { TextEditorStore(officeContext) }
             var opens by remember { mutableStateOf(office.opensOffice) }
+            var sheets by remember { mutableStateOf(office.opensSheets) }
+            var slides by remember { mutableStateOf(office.opensSlides) }
             SettingsCard("Office", Category.Office) {
+                // Tetra in other apps' Open with (asked 16 Oct): Android's own Always there makes it the default
+                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets and presentations; choose Always there to open them here every time.",
+                    style = MaterialTheme.typography.bodySmall)
+                @Composable fun OpensHere(title: String, on: Boolean, here: String, elsewhere: String, set: (Boolean) -> Unit) =
+                    Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleSmall)
+                            Text(if (on) here else elsewhere, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = on, onCheckedChange = set)
+                    }
                 Row(Modifier.fillMaxWidth().clickable { opens = !opens; office.opensOffice = opens }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Open Word documents here", style = MaterialTheme.typography.titleSmall)
-                        Text(if (opens) "Files opens a .docx or .odt in Writer. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
+                        Text(if (opens) "Files opens a .docx or .odt in Words. Open with… still offers other apps." else "Files opens a .docx or .odt in the app you chose for it.", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
                 }
+                OpensHere("Open spreadsheets here", sheets, "Files opens an .xlsx, .ods, .csv or .xls in Tables. Open with… still offers other apps.",
+                    "Files opens a spreadsheet in the app you chose for it.") { sheets = it; office.opensSheets = it }
+                OpensHere("Open presentations here", slides, "Files opens a .pptx or .odp in Slides. Open with… still offers other apps.",
+                    "Files opens a presentation in the app you chose for it.") { slides = it; office.opensSlides = it }
                 var auto by remember { mutableStateOf(office.autoSave) }
                 Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("AutoSave", style = MaterialTheme.typography.titleSmall)
-                        Text(if (auto) "Writer saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Writer saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
+                        Text(if (auto) "Words saves a document by itself a few seconds after you stop typing. The file as you opened it stays in Versions." else "Words saves only when you press Save. Changes are still kept as a recovery draft.", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = auto, onCheckedChange = { auto = it; office.autoSave = it })
                 }
@@ -1534,6 +1594,17 @@ private fun SettingsTab(
                 Text("Read aloud speed", style = MaterialTheme.typography.titleSmall)
                 Text("How fast Review › Read aloud speaks (1× is normal).", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
+                // the ribbon's place and size for Words, Tables and Slides (asked 16 Oct: one Office section; File › Settings opens the same)
+                Text("The ribbon", style = MaterialTheme.typography.titleSmall)
+                Text("By itself: at the top while a mouse is in use, as on a computer; at the bottom, in reach of a hand, when you touch.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("auto" to "By itself", "bottom" to "Bottom", "top" to "Top"), OfficeUi.place) { OfficeUi.set(officeContext, place = it) }
+                Text("Its tools", style = MaterialTheme.typography.titleSmall)
+                Text("By itself: smaller while a mouse is in use.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact"), OfficeUi.size) { OfficeUi.set(officeContext, size = it) }
+                LaunchedEffect(Unit) { WriterUnits.load(officeContext) }
+                Text("Lengths in", style = MaterialTheme.typography.titleSmall)
+                Text("Words' rulers, margins, indents and sizes.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(false to "Centimetres", true to "Inches"), WriterUnits.inches) { WriterUnits.set(officeContext, it) }
             }
         }
         item {
@@ -1687,6 +1758,7 @@ private fun DriveTab(
     var grid by remember { mutableStateOf(false) }
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
+    var systemFoldersOpen by remember { mutableStateOf(false) }
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
     var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
@@ -1833,9 +1905,16 @@ private fun DriveTab(
         setSort = { sort = it },
         openTags = { toolsOpen = false; tagsOpen = true },
         openTrash = { selectedTag = null; searchQuery = ""; setPane(DrivePane.Files); toolsOpen = false; openFolder("Trash") },
+        openSystemFolders = { toolsOpen = false; systemFoldersOpen = true },
         usage = spaceUsage,
         dismiss = { toolsOpen = false },
     )
+    if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
+        DriveRules.chosenFolders = chosen
+        context.getSharedPreferences("drive", android.content.Context.MODE_PRIVATE).edit().putStringSet("systemFolders", chosen).apply()
+        systemFoldersOpen = false
+        refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+    }
     if (tagsOpen) DriveTagsSheet(
         tags = metadata.allTags(root),
         selectedTag = selectedTag,
@@ -1849,9 +1928,10 @@ private fun DriveTab(
     // New (asked 14 Oct): made in the folder open in Files (Drive's top elsewhere, never in Trash), then opened.
     if (newOpen) {
         val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
-        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root) }, { newOpen = false }) { kind, name ->
+        NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root, runCatching { context.assets.open("blank.pptx").use { it.readBytes() } }.getOrNull()) }, { newOpen = false }) { kind, name ->
             val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
             newOpen = false
+            if (kind.extension != null) JustMade.mark(File(root, made)) // it opens editing
             refresh()
             if (kind.extension == null) openFolder(made) else error = openFile(made, false)
             null
@@ -2305,6 +2385,7 @@ private fun driveItemIcon(item: DriveItem): Int = when {
     // System folders carry their emblem in the folder itself, so they read as different at a glance.
     item.relativePath == "Documents" -> R.drawable.ic_folder_documents
     item.relativePath == "Documents/Scanned Documents" -> R.drawable.ic_folder_scans
+    DriveRules.isSystem(item.relativePath) -> systemFolderLook(item.relativePath)?.first ?: R.drawable.ic_folder
     item.isDirectory -> R.drawable.ic_folder
     else -> R.drawable.ic_file
 }
@@ -2347,7 +2428,64 @@ private fun driveItemIconDescription(item: DriveItem): String = if (item.relativ
 
 private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
 
-@Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = if (item.relativePath == "Trash") DriveTrashAccent else driveItemColor(item, folderColor)
+@Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = when {
+    item.relativePath == "Trash" -> DriveTrashAccent
+    folderColor == null && DriveRules.isSystem(item.relativePath) -> systemFolderLook(item.relativePath)?.second ?: driveItemColor(item, null)
+    else -> driveItemColor(item, folderColor)
+}
+
+/** A chosen system folder's emblem and colour, told apart at a glance (asked 16 Oct). */
+private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
+    "Music" -> R.drawable.ic_folder_music to Color(0xFFE5739D)
+    "Videos" -> R.drawable.ic_folder_videos to Color(0xFFE3685F)
+    "Finance" -> R.drawable.ic_folder_finance to Color(0xFF55A96B)
+    "Work" -> R.drawable.ic_folder_work to Color(0xFFA1887F)
+    "Education" -> R.drawable.ic_folder_education to Color(0xFF4F86E8)
+    "Games" -> R.drawable.ic_folder_games to Color(0xFF9C7BE0)
+    "Development" -> R.drawable.ic_folder_development to Color(0xFF4DB6AC)
+    "AI" -> R.drawable.ic_folder_ai to Color(0xFFD08CE8)
+    "Health" -> R.drawable.ic_folder_health to Color(0xFFEF5350)
+    "Travel" -> R.drawable.ic_folder_travel to Color(0xFF29B6F6)
+    "Family" -> R.drawable.ic_folder_family to Color(0xFFE0A030)
+    "Books" -> R.drawable.ic_folder_books to Color(0xFFC0884F)
+    "Others" -> R.drawable.ic_folder_others to Color(0xFF9AA3A4)
+    else -> null
+}
+
+/** Files tools › System folders: every folder's emblem, tap to choose or leave it, OK to keep the choice (asked 16 Oct). */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable private fun SystemFoldersSheet(dismiss: () -> Unit, save: (Set<String>) -> Unit) {
+    var chosen by remember { mutableStateOf(DriveRules.chosenFolders) }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("System folders", style = MaterialTheme.typography.titleLarge)
+            Text("Folders Tetra keeps in Files for sorting things into, each with its own picture. Documents is always there. " +
+                "A folder left out later stays, as an ordinary folder, with everything in it.", style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DriveRules.OPTIONAL_FOLDERS.forEach { name ->
+                    val (icon, tint) = systemFolderLook(name) ?: (R.drawable.ic_folder to Color.Gray)
+                    val on = name in chosen
+                    Surface(color = if (on) tint.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f), shape = MaterialTheme.shapes.large,
+                        border = androidx.compose.foundation.BorderStroke(if (on) 2.dp else 1.dp, if (on) tint else Color.White.copy(alpha = 0.15f)),
+                        modifier = Modifier.width(96.dp).clickable { chosen = if (on) chosen - name else chosen + name }) {
+                        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box {
+                                Icon(painterResource(icon), null, tint = tint, modifier = Modifier.size(44.dp))
+                                if (on) Icon(painterResource(R.drawable.ic_check), "Chosen", tint = Color.White,
+                                    modifier = Modifier.align(Alignment.TopEnd).size(18.dp).background(tint, CircleShape).padding(2.dp))
+                            }
+                            Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = dismiss) { Text("Cancel", color = islandContentColor()) }
+                TextButton(onClick = { save(chosen) }) { Text("OK", color = islandContentColor()) }
+            }
+        }
+    }
+}
 
 @Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, new: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
     IslandBottomBar(expand, visible, modifier) {
@@ -2403,6 +2541,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
     setSort: (DriveSort) -> Unit,
     openTags: () -> Unit,
     openTrash: () -> Unit,
+    openSystemFolders: () -> Unit,
     usage: DriveSpaceUsage?,
     dismiss: () -> Unit,
 ) {
@@ -2413,6 +2552,7 @@ private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath 
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DriveActionTile(R.drawable.ic_tag, "Tags") { openTags() }
                 DriveActionTile(R.drawable.ic_delete, "Trash") { openTrash() }
+                DriveActionTile(R.drawable.ic_folder_others, "System folders") { openSystemFolders() }
             } }
             item { Text("Sort Files", style = MaterialTheme.typography.titleMedium) }
             item { DriveWideAction(R.drawable.ic_sort_name, if (sort == DriveSort.Name) "Name ✓" else "Name") { setSort(DriveSort.Name); dismiss() } }
@@ -2533,7 +2673,8 @@ private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "
 @Composable internal fun driveExtensionColor(extension: String): Color {
     return when (extension.lowercase(Locale.ROOT)) {
         "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
-        "xls", "xlsx", "csv" -> Color(0xFF55A96B)
+        "xls", "xlsx", "xlsm", "ods", "csv" -> Color(0xFF55A96B)
+        "ppt", "pptx", "ppsx", "odp" -> Color(0xFFE0784F) // PowerPoint's orange, light enough for the dark list
         "pdf" -> Color(0xFFE3685F)
         "txt", "md" -> Color(0xFF9AA3A4)
         "excalidraw" -> Color(0xFFAD68CF)

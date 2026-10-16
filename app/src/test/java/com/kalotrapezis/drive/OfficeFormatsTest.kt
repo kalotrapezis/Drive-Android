@@ -508,6 +508,137 @@ class OfficeFormatsTest {
         }
     }
 
+    /** The notes' numbers in other formats (References › Note numbers): kept in each kind, and LibreOffice numbers them so. */
+    @Test fun `footnotes and endnotes are numbered in the document's formats`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            fun note(end: Boolean) = DocRun("1", note = DocNote(end, listOf(DocPara(listOf(DocRun(if (end) "An endnote." else "A footnote."))))), script = 1)
+            val plain = OfficeDoc(listOf(DocPara(listOf(DocRun("One"), note(false), DocRun(" two"), note(false), DocRun(" three"), note(true)))))
+            assertEquals(kind.name, listOf("1", "2", "i"), OfficeFormats.numberNotes(plain).paras[0].runs.filter { it.note != null }.map { it.text })
+            val doc = OfficeFormats.numberNotes(plain.copy(footFormat = "lowerLetter", endFormat = "upperRoman"))
+            assertEquals(kind.name, listOf("a", "b", "I"), doc.paras[0].runs.filter { it.note != null }.map { it.text })
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, "lowerLetter" to "upperRoman", back.footFormat to back.endFormat)
+            assertEquals(kind.name, listOf("a", "b", "I"), back.paras[0].runs.filter { it.note != null }.map { it.text })
+            // back to the defaults: the file says so again
+            val again = OfficeFormats.read(OfficeFormats.write(back.copy(footFormat = NoteFormats.FOOT, endFormat = NoteFormats.END), kind, bytes), kind)
+            assertEquals(kind.name, NoteFormats.FOOT to NoteFormats.END, again.footFormat to again.endFormat)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)
+                assertEquals(kind.name, "lowerLetter" to "upperRoman", lo.footFormat to lo.endFormat)
+            }
+        }
+        assertEquals(listOf("*", "†", "‡", "§", "**"), (1..5).map { NoteFormats.number(it, NoteFormats.CHICAGO) })
+    }
+
+    /** A note's words edited keep its letters' looks (they became plain before); LibreOffice has them bold and italic. */
+    @Test fun `a note keeps its formatting when its words are edited`() {
+        val note = DocNote(false, listOf(DocPara(listOf(DocRun("A "), DocRun("bold", bold = true), DocRun(" note.", italic = true)), keep = DocKeep("FootnoteText"))))
+        val edited = OfficeFormats.noteEdited(note, "A bold note, changed.\nA second line")
+        assertEquals(listOf("A bold note, changed.", "A second line"), edited.paras.map { it.text })
+        assertEquals(true, edited.paras[0].runs.single { it.text == "bold" }.bold)
+        assertEquals(true, edited.paras[0].runs.last().italic) // typed after the italic words: italic
+        assertEquals("FootnoteText", edited.paras[1].keep?.style)
+        assertEquals(note, OfficeFormats.noteEdited(note, "A bold note."))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val n = edited.copy(paras = edited.paras.map { it.copy(keep = if (kind == OfficeKind.Docx) DocKeep("FootnoteText") else DocKeep("Footnote")) })
+            val bytes = OfficeFormats.write(OfficeFormats.numberNotes(OfficeDoc(listOf(DocPara(listOf(DocRun("Text"), DocRun("1", note = n, script = 1)))))), kind)
+            val back = OfficeFormats.notesOf(OfficeFormats.read(bytes, kind)).single()
+            assertEquals(kind.name, true, back.paras[0].runs.single { it.text == "bold" }.bold)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.notesOf(OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)).single()
+                assertEquals(kind.name, true, lo.paras[0].runs.first { "bold" in it.text }.bold)
+                assertEquals(kind.name, true, lo.paras[0].runs.first { "changed" in it.text }.italic)
+            }
+        }
+    }
+
+    /** A picture content control (Word's w:picture; LibreOffice's loext:picture): kept in both kinds (the file was copy-only), filled with another picture; LibreOffice keeps it each way. */
+    @Test fun `a picture control is kept and filled`() {
+        val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+        val (pr, mark) = Forms.newControl(Forms.New.Picture, "Photo")
+        assertEquals(Forms.Kind.Picture, Forms.kind(pr))
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val img = DocImage("p1", null, 108f, 108f, null, png, "png")
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Photo: "), DocRun(mark, image = img, control = pr), DocRun(" end")))))
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind)
+            assertEquals(kind.name, emptySet<String>(), back.blocking)
+            val run = back.paras[0].runs.single { it.image != null }
+            assertEquals(kind.name, Forms.Kind.Picture, run.control?.let(Forms::kind))
+            assertEquals(kind.name, true, "w:showingPlcHdr" in run.control!!)
+            val filled = Forms.pictureFilled(back, run.image!!.key)
+            assertEquals(kind.name, false, "w:showingPlcHdr" in filled.paras[0].runs.single { it.image != null }.control!!)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "p.${kind.extension}").apply { writeBytes(OfficeFormats.write(filled, kind, bytes)) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val lo = OfficeFormats.read(java.io.File(dir, "out/p.${other.extension}").readBytes(), other)
+                assertEquals(kind.name, Forms.Kind.Picture, lo.paras.flatMap { it.runs }.firstNotNullOfOrNull { it.control }?.let(Forms::kind))
+            }
+        }
+    }
+
+    /** Hyphenation options (zone, lines in a row, capitals) kept in each kind's place; LibreOffice reads them each way. */
+    @Test fun `hyphenation options are kept`() {
+        val o = HyphenOptions(zonePt = 36f, limit = 2, caps = false)
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), kind)
+            fun zip(p: Map<String, ByteArray>) = OfficeFormats.zip(LinkedHashMap(p), if (kind == OfficeKind.Odt) "mimetype" else null)
+            assertEquals(kind.name, HyphenOptions(), HyphenOptions.read(OfficeFormats.unzip(bytes), kind))
+            // with automatic hyphenation on, before and after: the options and it both kept
+            val on = zip(PageDesign.hyphenation(OfficeFormats.unzip(bytes), kind, true))
+            val set = zip(HyphenOptions.write(OfficeFormats.unzip(zip(HyphenOptions.write(OfficeFormats.unzip(on), kind, HyphenOptions()))), kind, o))
+            assertEquals(kind.name, o, HyphenOptions.read(OfficeFormats.unzip(set), kind))
+            assertEquals(kind.name, true, DocStyles.of(kind, set).hyphenate)
+            if (kind == OfficeKind.Docx) {
+                val settings = String(OfficeFormats.unzip(set).getValue("word/settings.xml"))
+                assert(settings.indexOf("<w:autoHyphenation") < settings.indexOf("<w:consecutiveHyphenLimit") && settings.indexOf("<w:consecutiveHyphenLimit") < settings.indexOf("<w:hyphenationZone")) { settings }
+            }
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(set) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                assertEquals(kind.name, o, HyphenOptions.read(OfficeFormats.unzip(java.io.File(dir, "out/h.${other.extension}").readBytes()), other))
+            }
+        }
+    }
+
+    /** Track changes remembered in a Word file (its settings' trackRevisions), as Word does; LibreOffice opens it recording. */
+    @Test fun `track changes is remembered in a Word file`() {
+        val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("one"))))), OfficeKind.Docx)
+        fun set(from: ByteArray, on: Boolean) = OfficeFormats.zip(PageDesign.trackRevisions(OfficeFormats.unzip(from), on), null)
+        assertEquals(false, PageDesign.tracksRevisions(bytes))
+        val on = set(set(bytes, true), true)
+        assertEquals(true, PageDesign.tracksRevisions(on))
+        assertEquals(1, Regex("<w:trackRevisions/>").findAll(String(OfficeFormats.unzip(on).getValue("word/settings.xml"))).count())
+        assertEquals(false, PageDesign.tracksRevisions(set(on, false)))
+        // a hyphenation setting already there: trackRevisions goes before it, as the schema says
+        val both = set(OfficeFormats.zip(PageDesign.hyphenation(OfficeFormats.unzip(bytes), OfficeKind.Docx, true), null), true)
+        val settings = String(OfficeFormats.unzip(both).getValue("word/settings.xml"))
+        assert(settings.indexOf("<w:trackRevisions/>") in 0 until settings.indexOf("<w:autoHyphenation/>")) { settings }
+        assertEquals(listOf("one"), OfficeFormats.read(both, OfficeKind.Docx).paras.map { it.text })
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            for ((name, b) in listOf("on" to both, "off" to bytes)) {
+                java.io.File(dir, "$name.docx").writeBytes(b)
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, java.io.File(dir, "$name.docx").path).redirectErrorStream(true).start().waitFor()
+                val content = String(OfficeFormats.unzip(java.io.File(dir, "$name.odt").readBytes()).getValue("content.xml"))
+                assertEquals(name, name == "on", "text:track-changes=\"true\"" in content)
+            }
+        }
+    }
+
     @Test fun `a table of contents lists the headings with their pages, in the file's contents styles, and updates in place`() {
         for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
             val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Title page"))), DocPara(emptyList()),
@@ -516,7 +647,7 @@ class OfficeFormatsTest {
             val styles = DocStyles.of(kind, OfficeFormats.write(doc, kind))
             // A stand-in for the page layout: each paragraph on the page of its index.
             val fake: (OfficeDoc, IntArray) -> Unit = { d, pages -> d.paras.indices.forEach { pages[it] = it + 1 } }
-            val with = Contents.insert(doc, kind, styles, 1, fake)
+            val with = Contents.insert(doc, kind, styles, 1, layout = fake)
             // At the empty paragraph: its title and the three headings of levels 1–3, each with a tab and its page.
             assertEquals(kind.name, listOf("Title page", "Contents", "Εισαγωγή\t6", "Method\t8", "Results\t10"), with.paras.take(5).map { it.text })
             assertEquals(kind.name, listOf(Contents.headingStyle(kind), Contents.levelStyle(kind, 1), Contents.levelStyle(kind, 2)), with.paras.drop(1).take(3).map { it.keep?.style })
@@ -529,9 +660,101 @@ class OfficeFormatsTest {
             assert(tabs.any { it.type == 'r' && it.leader == '.' }) { "$kind $tabs" }
             // A new heading, then Update: the same place, one more line, no second copy.
             val more = back.copy(paras = back.paras + DocPara(listOf(DocRun("Discussion")), heading = 1))
-            val updated = Contents.insert(more, kind, styles, more.paras.size, fake)
+            val updated = Contents.insert(more, kind, styles, more.paras.size, layout = fake)
             assertEquals(kind.name, 1, updated.paras.count { it.text == "Contents" })
             assertEquals(kind.name, "Discussion\t12", updated.paras[5].text)
+            // Levels chosen (Word's Show levels): 1 leaves Method out, 4 takes Deep in, and Update keeps what was chosen
+            val one = Contents.insert(updated, kind, styles, 0, 1, fake)
+            assertEquals(kind.name, listOf("Εισαγωγή", "Results", "Discussion"), one.paras.filter { it.keep?.style?.let { st -> (1..9).any { st == Contents.levelStyle(kind, it) } } == true }.map { it.text.substringBefore('\t') })
+            assertEquals(kind.name, 1, Contents.levelsOf(Contents.insert(one, kind, styles, 0, layout = fake), kind))
+            val four = Contents.insert(updated, kind, styles, 0, 4, fake)
+            assert(four.paras.any { it.text.startsWith("Deep\t") && it.keep?.style == Contents.levelStyle(kind, 4) }) { "$kind: ${four.paras.map { it.text }}" }
+            // saved: its TOC 4 / Contents 4 style is in the file, and read back as level 4
+            val fourBytes = OfficeFormats.write(four, kind)
+            assertEquals(kind.name, 4, Contents.levelsOf(OfficeFormats.read(fourBytes, kind), kind))
+            val stylesPart = java.util.zip.ZipInputStream(fourBytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name == if (kind == OfficeKind.Docx) "word/styles.xml" else "styles.xml" }.let { String(z.readBytes()) } }
+            assert(Contents.levelStyle(kind, 4) in stylesPart) { "$kind: no ${Contents.levelStyle(kind, 4)} in the styles" }
+            // Each entry a link to its heading's bookmark, kept by the file (asked 16 Oct: clickable contents)
+            val linked = OfficeFormats.read(OfficeFormats.write(updated, kind), kind)
+            for (k in 2..5) {
+                val link = linked.paras[k].runs.first().link
+                assert(link?.startsWith("#_Toc") == true) { "$kind ${linked.paras[k].text}: $link" }
+                val heading = linked.paras.first { p -> p.heading > 0 && p.keep?.parts?.firstOrNull { it.first == BOOKMARKS }?.second?.split(' ')?.contains(link!!.substring(1)) == true }
+                assertEquals(kind.name, linked.paras[k].text.substringBefore('\t'), heading.text)
+            }
+            // LibreOffice follows them: its PDF of the file has links inside it, and its other format keeps them as links to bookmarks
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "c.${kind.extension}").apply { writeBytes(OfficeFormats.write(updated, kind)) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val pdf = String(java.io.File(dir, "c.pdf").readBytes(), Charsets.ISO_8859_1)
+                assert(Regex("/Subtype\\s*/Link").findAll(pdf).count() >= 4) { "$kind: LibreOffice's PDF has no links" }
+                val other = if (kind == OfficeKind.Docx) "odt" else "docx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = OfficeFormats.read(java.io.File(dir, "c.$other").readBytes(), if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx)
+                val entry = again.paras.first { it.text.startsWith("Method\t") }
+                assert(entry.runs.any { it.link?.startsWith("#") == true }) { "$kind → $other: ${entry.runs.map { it.link }}" }
+            }
+        }
+    }
+
+    /** Lines with arrowheads (Insert › Shapes › Lines): Word's line ends, read back, kept when the line is recoloured, and LibreOffice draws them. */
+    @Test fun `arrows keep their heads`() {
+        for ((kind, ends) in listOf("lineArrow" to 2, "lineArrows" to 3)) {
+            val img = DocImage("a1", null, 144f, 0.75f, PictureXml.newShape(kind, OfficeKind.Docx, null, 0xFF000000.toInt(), 1.5f, 144f, 0.75f))
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))))), OfficeKind.Docx)
+            val back = OfficeFormats.read(bytes, OfficeKind.Docx).paras.flatMap { it.runs }.mapNotNull { it.image }.single()
+            assertEquals(kind, "line", ShapePicture.of(back)!!.geometry); assertEquals(kind, ends, ShapePicture.of(back)!!.ends)
+            // recoloured red: the heads stay
+            assertEquals(kind, ends, ShapePicture.of(PictureXml.shapeLook(back, null, 0xFFC00000.toInt(), 2f)!!)!!.ends)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "a.docx").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val odt = java.util.zip.ZipFile(java.io.File(dir, "a.odt")).use { z -> listOf("content.xml", "styles.xml").joinToString("") { String(z.getInputStream(z.getEntry(it)).readBytes()) } }
+                assertEquals(kind, if (ends == 3) 2 else 1, Regex("""draw:marker-(start|end)="""").findAll(odt).count())
+            }
+        }
+    }
+
+    /** An optional hyphen (Word's Ctrl + -, a soft hyphen): kept in both kinds, Word's softHyphen, and LibreOffice keeps it too. */
+    @Test fun `an optional hyphen is kept`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val word = "Δια\u00ADδι\u00ADκτυο"
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Το $word μας"))))), kind)
+            if (kind == OfficeKind.Docx) assert(String(java.util.zip.ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name == "word/document.xml" }; z.readBytes() }).contains("<w:softHyphen/>")) { "no softHyphen" }
+            assertEquals(kind.name, "Το $word μας", OfficeFormats.read(bytes, kind).paras.single().text)
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("$kind → LibreOffice", "Το $word μας", OfficeFormats.read(java.io.File(dir, "h.${other.extension}").readBytes(), other).paras.first { it.text.isNotBlank() }.text)
+            }
+        }
+    }
+
+    /** A shape's own words (Word's Add Text): put in a shape made here, read back as its words, and LibreOffice has them in the shape. */
+    @Test fun `a shape takes words of its own`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val xml = PictureXml.newShape("ellipse", kind, 0xFF4472C4.toInt(), 0xFF2F528F.toInt(), 1f, 144f, 72f)
+            val withWords = PictureXml.boxText(xml, kind, listOf("Inside", "the oval"))
+            val img = DocImage("s1", null, 144f, 72f, withWords)
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("Before "), DocRun(OBJECT_MARK.toString(), image = img))))), kind)
+            val back = OfficeFormats.read(bytes, kind).paras.flatMap { it.runs }.mapNotNull { it.image }.single()
+            assertEquals(kind.name, listOf("Inside", "the oval"), back.box?.map { it.text })
+            assertEquals(kind.name, "ellipse", ShapePicture.of(back)?.geometry)
+            // and again: its words changed, still one shape
+            assertEquals(kind.name, listOf("Changed"), OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(),
+                image = back.with(raw = PictureXml.boxText(back.raw!!, kind, listOf("Changed")))))))), kind), kind).paras.flatMap { it.runs }.mapNotNull { it.image }.single().box?.map { it.text })
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val pdfText = ProcessBuilder("pdftotext", java.io.File(dir, "s.pdf").path, "-").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+                assert("Inside" in pdfText && "the oval" in pdfText) { "$kind: LibreOffice's page has no words in the shape: $pdfText" }
+            }
         }
     }
 

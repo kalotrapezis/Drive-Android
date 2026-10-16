@@ -260,6 +260,23 @@ class WriterBridgeTest {
             assert(looks[3]!!.between != null) { kind.name }
             // Taken off again.
             assertEquals(kind.name, null, OfficeFormats.withBorders(OfficeFormats.read(bytes, kind).paras[1].keep, kind, null)?.let { styles.look(DocPara(emptyList(), keep = it)).box })
+            // Their lines as chosen (16 Oct: style and colour): double red, dotted, dashed — read back here, and by LibreOffice
+            val lines = ParaBox(top = Border(1.5f, 0xC00000, "double"), bottom = Border(1.5f, 0x4472C4, "dotted"), left = Border(3f, 0, "dashed"))
+            val styled = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("lines")), keep = OfficeFormats.withBorders(null, kind, lines)))), kind)
+            fun check(b: ParaBox?, how: String) {
+                assertEquals("$kind $how", listOf("double", "dotted", "dashed"), listOf(b!!.top!!.style, b.bottom!!.style, b.left!!.style))
+                assertEquals("$kind $how", listOf(0xC00000, 0x4472C4), listOf(b.top!!.color, b.bottom!!.color))
+                assertEquals("$kind $how", 1.5f, b.top!!.width, 0.2f)
+            }
+            check(DocStyles.of(kind, styled).look(OfficeFormats.read(styled, kind).paras.single()).box, "read back")
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "b.${kind.extension}").apply { writeBytes(styled) }
+                val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = java.io.File(dir, "b.${other.extension}").readBytes()
+                check(DocStyles.of(other, again).look(OfficeFormats.read(again, other).paras.first { it.text == "lines" }).box, "by LibreOffice")
+            }
         }
     }
 
@@ -309,6 +326,65 @@ class WriterBridgeTest {
         assertEquals(true, shown.spanStyles.any { it.start == at && it.end == at + 6 && it.item.fontFamily == androidx.compose.ui.text.font.FontFamily.SansSerif })
         assertEquals(before, state.toRichTextDocument())
         assertEquals(doc.paras.map { it.copy(keep = null, runs = it.runs.map { r -> r.copy(font = null) }) }, WriterBridge.fromEditor(before, doc.basePt))
+    }
+
+    /** A drop cap shown in the editor (asked 16 Oct): its letter drawn as tall as the lines it drops, never saved as its size; LibreOffice still has the drop cap. */
+    @Test fun `a drop cap is shown big in the editor and saved as it was`() {
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val drop = DropCap(lines = 3)
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Once upon a time there was a drop cap.")), keep = OfficeFormats.withDropCap(null, kind, drop)), DocPara(listOf(DocRun("Next.")))), basePt = 11f)
+            val state = com.mohamedrejeb.richeditor.model.RichTextState()
+            val rich = WriterBridge.toEditor(doc)
+            state.setRichTextDocument(rich)
+            val shown = WriterBridge.displayText(state.annotatedString, rich, doc, DocStyles.Plain) { null }
+            assertEquals(state.annotatedString.text, shown.text)
+            val big = shown.spanStyles.filter { it.item.fontSize.isSp }.maxBy { it.item.fontSize.value }
+            assertEquals(kind.name, true, big.item.fontSize.value > 40f) // about four lines of 11 pt
+            assertEquals(kind.name, "O", shown.text.substring(big.start, big.end))
+            assertEquals(kind.name, true, rich.blocks[0].lineHeight == androidx.compose.ui.unit.TextUnit.Unspecified)
+            // saved from the editor: the letters' own size untouched, the drop cap kept, and LibreOffice reads it as one
+            val back = WriterBridge.fromEditor(state.toRichTextDocument(), 11f)
+            assertEquals(kind.name, listOf(null), back[0].runs.map { it.sizePt }.distinct())
+            val bytes = OfficeFormats.write(doc.copy(paras = back.mapIndexed { i, p -> p.copy(keep = doc.paras[i].keep) }), kind)
+            assertEquals(kind.name, drop, DropCap.of(OfficeFormats.read(bytes, kind).paras[0].keep))
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "d.${kind.extension}").apply { writeBytes(bytes) }
+                val out = java.io.File(dir, "out").apply { mkdirs() }
+                // as an .odt: LibreOffice's own .docx export leaves drop caps out
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", out.path, f.path).redirectErrorStream(true).start().waitFor()
+                val again = OfficeFormats.read(java.io.File(out, "d.odt").readBytes(), OfficeKind.Odt)
+                assertEquals(kind.name, 3, DropCap.of(again.paras.first { it.text.endsWith("drop cap.") }.keep)?.lines)
+            }
+        }
+    }
+
+    /** Numbering on an empty bulleted line (Enter after a bullet) makes it "1." at its level, and Bullets back: the library's toggles made it "◦" a level in (16 Oct). LibreOffice numbers it so. */
+    @Test fun `an empty list line switches between bullets and numbers`() {
+        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Point")), list = DocList(false, 0)), DocPara(emptyList(), list = DocList(false, 0))), basePt = 11f)
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        state.setRichTextDocument(WriterBridge.toEditor(doc))
+        val text = state.annotatedString.text
+        val at = WriterBridge.blockPlaces(text, state.toRichTextDocument()).last().from // the empty line
+        val paras = WriterBridge.blockPlaces(text, state.toRichTextDocument()).filter { it.to >= at && it.from <= at }.map { it.para }.toSet()
+        assertEquals(setOf(1), paras)
+        val numbered = WriterBridge.listKind(doc, paras, true)
+        state.setRichTextDocument(WriterBridge.toEditor(numbered))
+        val back = WriterBridge.fromEditor(state.toRichTextDocument(), 11f)
+        assertEquals(listOf(DocList(false, 0), DocList(true, 0)), back.map { it.list })
+        assertEquals(listOf(DocList(false, 0), DocList(false, 0)), WriterBridge.listKind(numbered, paras, false).paras.map { it.list })
+        // typed into, saved: LibreOffice has a bullet, then 1.
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val bytes = OfficeFormats.write(numbered.copy(paras = listOf(numbered.paras[0], numbered.paras[1].copy(runs = listOf(DocRun("Second"))))), kind)
+            assertEquals(kind.name, listOf(false, true), OfficeFormats.read(bytes, kind).paras.map { it.list?.ordered })
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val f = java.io.File(dir, "l.${kind.extension}").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                val lines = java.io.File(dir, "l.txt").readText().lines().filter { it.isNotBlank() }
+                assertEquals(kind.name, true, lines.any { it.trimStart().startsWith("1.") && it.endsWith("Second") } && lines.none { it.trimStart().startsWith("1.") && it.endsWith("Point") })
+            }
+        }
     }
 
     @Test fun `heading and at least line spacing follow the same paragraph rules as body text`() {

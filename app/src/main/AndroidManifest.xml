@@ -49,6 +49,28 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+        <!-- Office: "Open with › Tetra Office" for documents, spreadsheets and presentations from any app (asked 16 Oct);
+             Android's Always makes it the default. -->
+        <activity-alias android:name=".OfficeOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Office" android:icon="@drawable/ic_office">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="text/rtf" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.slideshow" />
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
+            </intent-filter>
+        </activity-alias>
         <!-- Office › Text editor: "Open with Tetra" for text files from any app (asked 2026-09-27). -->
         <activity android:name=".TextEditorActivity" android:exported="true" android:label="Tetra Text editor" android:windowSoftInputMode="adjustResize"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout">

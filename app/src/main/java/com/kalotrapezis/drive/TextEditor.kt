@@ -182,6 +182,13 @@ internal class TextEditorStore(context: Context) {
     var opensOffice: Boolean
         get() = prefs.getBoolean("opens_office", true)
         set(on) { prefs.edit().putBoolean("opens_office", on).apply() }
+    /** Files opens a spreadsheet in Tables, a presentation in Slides (asked 16 Oct: each its own switch). */
+    var opensSheets: Boolean
+        get() = prefs.getBoolean("opens_sheets", opensOffice)
+        set(on) { prefs.edit().putBoolean("opens_sheets", on).apply() }
+    var opensSlides: Boolean
+        get() = prefs.getBoolean("opens_slides", opensOffice)
+        set(on) { prefs.edit().putBoolean("opens_slides", on).apply() }
     /** Writer saves over the file by itself after a pause (Word's AutoSave), when it can save over it at all. */
     var autoSave: Boolean
         get() = prefs.getBoolean("office_autosave", true)

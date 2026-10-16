@@ -216,10 +216,14 @@ class MainActivity : ComponentActivity() {
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
-        val external = intent.takeIf { it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, intent.type ?: contentResolver.getType(it)) }
+        // a document, spreadsheet or presentation another app opens here (Open with › Tetra Office); else a photo or video
+        val type = intent.data?.let { intent.type ?: runCatching { contentResolver.getType(it) }.getOrNull() }
+        val office = intent.takeIf { it.action == Intent.ACTION_VIEW || it.action == Intent.ACTION_EDIT }?.data
+            ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
+        val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
-        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external) } }
+        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office) } }
     }
 }
 
@@ -290,7 +294,7 @@ private sealed interface DriveListState {
 }
 
 @Composable
-private fun LocalDriveApp(external: ExternalMedia? = null) {
+private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null) {
     val context = LocalContext.current
     // A MediaStore item opens in the full Gallery viewer; anything else (another app's file) in a single-item viewer.
     val externalMediaId = external?.uri?.takeIf { it.authority == MediaStore.AUTHORITY }?.lastPathSegment
@@ -504,15 +508,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
             writerOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Writer
             return@runCatching
         }
-        // A spreadsheet opens in Excel's viewer (the same Settings › Office switch).
-        if (!forceChooser && Sheets.isSheet(file.name) && TextEditorStore(context).opensOffice) {
+        // A spreadsheet opens in Tables (Settings › Office: its own switch).
+        if (!forceChooser && Sheets.isSheet(file.name) && TextEditorStore(context).opensSheets) {
             WriterLog.i("open from Files: a spreadsheet")
             driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
             sheetOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Sheet
             return@runCatching
         }
-        // A presentation opens in PowerPoint's viewer (the same switch).
-        if (!forceChooser && Slides.isSlides(file.name) && TextEditorStore(context).opensOffice) {
+        // A presentation opens in Slides (its own switch).
+        if (!forceChooser && Slides.isSlides(file.name) && TextEditorStore(context).opensSlides) {
             WriterLog.i("open from Files: a presentation")
             driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
             slidesOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Slides
@@ -565,6 +569,20 @@ private fun LocalDriveApp(external: ExternalMedia? = null) {
         scanRetake = null
         if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
         else { unlockScannerOrientation(); screen = Screen.Home }
+    }
+    // a file another app opened here: in Words, Tables or Slides, its back to Office
+    LaunchedEffect(office) {
+        val o = office ?: return@LaunchedEffect
+        val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, o.uri, Environment.getExternalStorageDirectory(), File(driveRoot(), "Documents/From other apps"), o.mimeType) }
+            .onFailure { WriterLog.e("Office: a file from another app could not be read", it) }.getOrNull() }
+        if (f == null) { Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show(); return@LaunchedEffect }
+        WriterLog.i("Office: opened from another app (${f.extension})")
+        val at = Uri.fromFile(f).toString(); writerBack = Screen.Office
+        when {
+            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
+            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
+            else -> { writerOpen = at; screen = Screen.Writer }
+        }
     }
     LaunchedEffect(external) {
         if (external == null) return@LaunchedEffect
@@ -1529,7 +1547,20 @@ private fun SettingsTab(
             val officeContext = LocalContext.current
             val office = remember { TextEditorStore(officeContext) }
             var opens by remember { mutableStateOf(office.opensOffice) }
+            var sheets by remember { mutableStateOf(office.opensSheets) }
+            var slides by remember { mutableStateOf(office.opensSlides) }
             SettingsCard("Office", Category.Office) {
+                // Tetra in other apps' Open with (asked 16 Oct): Android's own Always there makes it the default
+                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets and presentations; choose Always there to open them here every time.",
+                    style = MaterialTheme.typography.bodySmall)
+                @Composable fun OpensHere(title: String, on: Boolean, here: String, elsewhere: String, set: (Boolean) -> Unit) =
+                    Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleSmall)
+                            Text(if (on) here else elsewhere, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = on, onCheckedChange = set)
+                    }
                 Row(Modifier.fillMaxWidth().clickable { opens = !opens; office.opensOffice = opens }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Open Word documents here", style = MaterialTheme.typography.titleSmall)
@@ -1537,6 +1568,10 @@ private fun SettingsTab(
                     }
                     Switch(checked = opens, onCheckedChange = { opens = it; office.opensOffice = it })
                 }
+                OpensHere("Open spreadsheets here", sheets, "Files opens an .xlsx, .ods, .csv or .xls in Tables. Open with… still offers other apps.",
+                    "Files opens a spreadsheet in the app you chose for it.") { sheets = it; office.opensSheets = it }
+                OpensHere("Open presentations here", slides, "Files opens a .pptx or .odp in Slides. Open with… still offers other apps.",
+                    "Files opens a presentation in the app you chose for it.") { slides = it; office.opensSlides = it }
                 var auto by remember { mutableStateOf(office.autoSave) }
                 Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

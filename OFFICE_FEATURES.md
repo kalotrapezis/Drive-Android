@@ -381,7 +381,10 @@ LibreOffice works them out).
       columns; Slides' items — Edit text, Cut, Copy, Paste, Delete (a copy keeps what was put here, pictures and shapes
       without words; their words go to the clipboard), an empty spot — Paste, New slide, Duplicate slide, the sidebar's
       slides — New slide, Duplicate, Paste, Hide, Delete; Words' text has Compose's own Cut, Copy, Paste, Select all (its
-      new menu, which could take a Delete, would lose Words' Selection tab); checked with a uinput mouse on the emulator; File › Settings (16 Oct): the ribbon by itself (at the top
+      new menu, which could take a Delete, would lose Words' Selection tab); checked with a uinput mouse on the emulator; Open with › Tetra Office (16 Oct): other apps offer Tetra for
+      documents, spreadsheets and presentations (Android's Always makes it the default) — a file on the phone's storage
+      opens where it is, another app's (an attachment) as a copy in Documents/From other apps; Settings › Office: Files
+      opens documents, spreadsheets and presentations here, each its own switch; File › Settings (16 Oct): the ribbon by itself (at the top
       and smaller while a mouse is in use, as a PC's Office; at the bottom, in reach of a hand, for a finger), always at the
       bottom or always at the top; its tools by itself, normal or compact; right-click menus rounded, with icons, their
       items smaller with a mouse — Tables and Slides (Words' to follow); a tap chooses a text box, shape or

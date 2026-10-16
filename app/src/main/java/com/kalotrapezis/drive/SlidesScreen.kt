@@ -1,5 +1,9 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
@@ -160,6 +164,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
+    var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
+    var slideMenu by remember { mutableStateOf<Triple<Boolean, Int, androidx.compose.ui.geometry.Offset>?>(null) } // a right-click's menu: on the sidebar?, which slide, where
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
     var ribbonTab by remember { mutableStateOf("Slide") }
@@ -236,6 +242,44 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             else e.copy(removed = e.removed + (uid to id), anims = anims))
         item = null; WriterLog.i("Slides: an item deleted")
     }
+    /** Slide [c] copied after itself: its words, what was put on it, its colours, transition and animations. */
+    fun duplicateSlide(c: Int) {
+        val e = edit ?: return; val entry = e.order.getOrNull(c) ?: return; val uid = entry.uid
+        val nu = e.next()
+        fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
+        change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames), removed = e.removed + e.removed.filter { it.first == uid }.map { nu to it.second },
+            added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
+            anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+        chosen = c + 1
+    }
+    /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
+    fun copyItem(): Boolean {
+        val e = edit ?: return false; val c = chosen ?: return false; val id = item ?: return false; val uid = e.order[c].uid
+        val sl = view?.slides?.getOrNull(c) ?: return false
+        val a = e.added[uid]?.firstOrNull { it.id == id }
+        val it0 = sl.items.lastOrNull { it.anim == id }
+        (it0 as? SlideItem.Shape)?.takeIf { it.text != null && !it.hint }?.let { copy(context, "Slide text", SlidesEdit.lines(it).joinToString("\n")) }
+        clip = when {
+            a != null -> a to e.looks[uid to id]
+            it0 is SlideItem.Picture -> it0.bytes()?.let { b ->
+                val png = b.size > 3 && b[1] == 'P'.code.toByte()
+                val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.${if (png) "png" else "jpeg"}").apply { writeBytes(b) }
+                SlidesEdit.Added("", it0.x, it0.y, it0.w, it0.h, image = f.path, ext = if (png) "png" else "jpeg") to null }
+            it0 is SlideItem.Shape && it0.shape != null && it0.text == null -> SlidesEdit.Added("", it0.x, it0.y, it0.w, it0.h, prst = it0.shape.geometry, fill = it0.shape.fill ?: 0xFF4472C4.toInt()) to null
+            else -> null
+        }
+        message = if (clip != null) "Copied" else if (it0 is SlideItem.Shape && it0.text != null) "Its words copied" else "This one cannot be copied yet"
+        WriterLog.i("Slides: an item copied (${if (clip != null) "to paste" else "words only"})")
+        return clip != null
+    }
+    /** Paste: what was copied, on the chosen slide, a little lower and to the right of where it stood. */
+    fun pasteItem() {
+        val (a, look) = clip ?: return; val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
+        val id = e.newId(uid, taken(e, c))
+        put(a.copy(id = id, x = a.x + 12f, y = a.y + 12f))
+        look?.let { l -> edit?.let { now -> edit = now.copy(looks = now.looks + ((uid to id) to l)) } }
+        WriterLog.i("Slides: an item pasted")
+    }
     fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
@@ -271,15 +315,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Slide" -> {
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
-                RibbonButton("Duplicate", w, R.drawable.ic_copy) {
-                    // the copy takes the slide's words, what was put on it, its colours, transition and animations
-                    val nu = e.next()
-                    fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
-                    change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames), removed = e.removed + e.removed.filter { it.first == uid }.map { nu to it.second },
-                        added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-                        anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
-                    chosen = c + 1
-                }
+                RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
                 RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                 RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
@@ -497,6 +533,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
                             // a picture dragged in from another app goes on this slide (in its middle)
                             .dropPictures(editing) { uri -> chosen = i; item = null; putPicture(uri) }
+                            // a mouse's right button (a desktop's, asked 16 Oct): what is under it chosen, and its menu; before the taps see it
+                            .pointerInput(editing, i, s) {
+                                if (!editing) return@pointerInput
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    if (!currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+                                    down.consume()
+                                    val x = down.position.x / size.width * d.width; val y = down.position.y / size.height * d.height
+                                    if (chosen != i) { chosen = i; typing = null }
+                                    item = s.items.lastOrNull { it.anim != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }?.anim
+                                    slideMenu = Triple(false, i, down.position)
+                                }
+                            }
                             // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
                             .pointerInput(editing, chosen, i, item) {
                                 if (!editing || chosen != i || item == null) return@pointerInput
@@ -555,6 +604,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
+                        slideMenu?.takeIf { !it.first && it.second == i }?.let { (_, _, at) -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
+                            DropdownMenu(expanded = true, onDismissRequest = { slideMenu = null }) {
+                                @Composable fun entry(label: String, icon: Int, action: () -> Unit) = DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(icon), null) },
+                                    onClick = { slideMenu = null; WriterLog.i("Slides: menu › $label"); action() })
+                                val hit = item?.let { id -> s.items.lastOrNull { it.anim == id } }
+                                val ownWords = hit is SlideItem.Shape && !hit.grouped && hit.id != null && hit.text != null && edit?.let { ee -> ee.added[ee.order[i].uid]?.none { it.id == item } } != false
+                                if (ownWords) entry("Edit text", R.drawable.ic_edit) { typeInto(hit as SlideItem.Shape) }
+                                if (item != null) {
+                                    entry("Cut", R.drawable.ic_content_cut) { if (copyItem()) deleteItem() }
+                                    entry("Copy", R.drawable.ic_copy) { copyItem() }
+                                }
+                                if (clip != null) entry("Paste", R.drawable.ic_content_paste) { pasteItem() }
+                                if (item != null) entry("Delete", R.drawable.ic_delete) { deleteItem() }
+                                if (item == null) {
+                                    if (deck?.layouts?.isNotEmpty() == true) entry("New slide", R.drawable.ic_add) { layouts = true }
+                                    entry("Duplicate slide", R.drawable.ic_copy) { duplicateSlide(i) }
+                                }
+                            }
+                        } }
                         }
                     }
                     // a tablet editing (asked 16 Oct): the slides in a sidebar, the chosen one big beside it, as PowerPoint's and LibreOffice's
@@ -566,7 +634,28 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     SlideCanvas(d, s, modifier = Modifier.fillMaxWidth().aspectRatio(d.width / d.height).clip(RoundedCornerShape(3.dp))
                                         .then(if (chosen == i) Modifier.border(2.dp, POWERPOINT_ORANGE, RoundedCornerShape(3.dp)) else Modifier)
                                         .then(if (s.hidden) Modifier.alpha(0.5f) else Modifier)
-                                        .clickable { if (chosen != i) { chosen = i; typing = null; item = null } })
+                                        .clickable { if (chosen != i) { chosen = i; typing = null; item = null } }
+                                        .pointerInput(i) { awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                            if (!currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+                                            down.consume(); chosen = i; typing = null; item = null; slideMenu = Triple(true, i, down.position)
+                                        } })
+                                    slideMenu?.takeIf { it.first && it.second == i }?.let { (_, _, at) -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
+                                        DropdownMenu(expanded = true, onDismissRequest = { slideMenu = null }) {
+                                            @Composable fun entry(label: String, icon: Int, enabled: Boolean = true, action: () -> Unit) = DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(painterResource(icon), null) },
+                                                enabled = enabled, onClick = { slideMenu = null; WriterLog.i("Slides: slide menu › $label"); action() })
+                                            val ee = edit
+                                            if (deck?.layouts?.isNotEmpty() == true) entry("New slide", R.drawable.ic_add) { layouts = true }
+                                            entry("Duplicate", R.drawable.ic_copy) { duplicateSlide(i) }
+                                            if (clip != null) entry("Paste", R.drawable.ic_content_paste) { pasteItem() }
+                                            if (ee != null) {
+                                                val uid = ee.order[i].uid
+                                                val hidden = ee.hidden[uid] ?: deck?.slides?.getOrNull(ee.order[i].src)?.hidden ?: false
+                                                entry(if (hidden) "Show slide" else "Hide slide", if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(ee.copy(hidden = ee.hidden + (uid to !hidden))) }
+                                                entry("Delete slide", R.drawable.ic_delete, enabled = ee.order.size > 1) { change(ee.copy(order = ee.order.filterIndexed { k, _ -> k != i })); chosen = i.coerceAtMost(ee.order.size - 2) }
+                                            }
+                                        }
+                                    } }
                                 }
                             }
                         }

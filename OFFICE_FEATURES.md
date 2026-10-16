@@ -376,7 +376,12 @@ LibreOffice works them out).
       hidden ones, saved and its type, Tables' sheet of the book, cells filled, saved and its type; Tables' ribbon floats too; a picture dragged in from another app (split screen, a desktop's windows — 16 Oct) goes in at Words' cursor or on the
       slide it is dropped on, as Insert › Picture (checked with Files in a window beside Tetra on the emulator); a keyboard's shortcuts (16 Oct): Ctrl+S, Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z in all three; Words' Ctrl+B/I/U and Ctrl+F;
       Slides' Delete, arrows (Shift: bigger steps; with nothing chosen, slide to slide), Esc, F5 (Shift+F5 from this slide);
-      Tables' Ctrl+C/X/V and Ctrl+F (checked with keys sent to the emulator); a tap chooses a text box, shape or
+      Tables' Ctrl+C/X/V and Ctrl+F (checked with keys sent to the emulator); a mouse's right button (16 Oct): Tables' cells
+      (the cell under it chosen unless already among those chosen) — Cut, Copy, Paste, Clear, insert or delete rows and
+      columns; Slides' items — Edit text, Cut, Copy, Paste, Delete (a copy keeps what was put here, pictures and shapes
+      without words; their words go to the clipboard), an empty spot — Paste, New slide, Duplicate slide, the sidebar's
+      slides — New slide, Duplicate, Paste, Hide, Delete; Words' text has Compose's own Cut, Copy, Paste, Select all (its
+      new menu, which could take a Delete, would lose Words' Selection tab); checked with a uinput mouse on the emulator; a tap chooses a text box, shape or
       picture, a second tap types in it. Tools on one sliding line; Animations › Effect is a catalog strip with a line
       each for In, Emphasis and Out
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard

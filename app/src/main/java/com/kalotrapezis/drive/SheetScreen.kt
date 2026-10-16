@@ -95,6 +95,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -145,6 +147,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     // Search: the words, the cells found (in the order drawn), the one shown.
     var searching by remember { mutableStateOf(false) }
+    var cellMenu by remember { mutableStateOf<Offset?>(null) } // a right-click's menu, where it was clicked
     // Search in every sheet (asked for the user's tables: a sheet for each specialty): the finds, how far it has got.
     var everywhere by remember { mutableStateOf(false) }
     var hits by remember { mutableStateOf<List<SheetHit>>(emptyList()) }
@@ -646,6 +649,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * Home, Insert, Formulas, Data, View) while editing, and a tab for what is chosen (a column, a row, the sheet)
      * that comes by itself, as Writer's Selection tab does.
      */
+    /** Clear: the chosen cells' contents gone, their looks kept (one step of Undo). */
+    fun clearCells() {
+        val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        val changes = LinkedHashMap<Long, SheetCell>()
+        for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
+        if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
+    }
+
     @Composable fun Ribbon(s: Sheet, b: Workbook, l: SheetLayout) {
         val w = islandContentColor()
         fun look(change: (SheetStyle, Long) -> SheetStyle) {
@@ -707,11 +718,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         if (editing) RibbonButton("Cut", w, R.drawable.ic_content_cut) { copyCells(cut = true) }
                         RibbonButton("Copy", w, R.drawable.ic_copy) { copyCells(cut = false) }
                         if (editing) RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste() }
-                        if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) {
-                            val changes = LinkedHashMap<Long, SheetCell>()
-                            for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
-                            if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
-                        }
+                        if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) { clearCells() }
                     }
                     @Composable fun sortFilter(col: Int) {
                         RibbonButton(if (col in view.filters) "Change filter" else "Filter", w, R.drawable.ic_filter) { filtering = col }
@@ -981,7 +988,32 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 d != null -> { commit(false); focusManager.clearFocus(); false }
                                 else -> false
                             }
-                        }, filled = if (editing && draft == null) ::fillCells else null)
+                        }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at })
+                    // a right-click's menu, where it was clicked: the cells' Cut, Copy, Paste, Clear, and their rows and columns
+                    cellMenu?.let { at -> Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt(), at.y.toInt()) }) {
+                        DropdownMenu(expanded = true, onDismissRequest = { cellMenu = null }) {
+                            @Composable fun item(label: String, icon: Int? = null, action: () -> Unit) = DropdownMenuItem(text = { Text(label) },
+                                leadingIcon = icon?.let { { Icon(painterResource(it), null) } }, onClick = { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() })
+                            val g = view.range
+                            val (cr, cc) = chosen(s)
+                            val rows = g?.let { l.rows[it.r1] to it.r2 - it.r1 + 1 } ?: (cr to 1)
+                            val cols = g?.let { l.cols[it.c1] to it.c2 - it.c1 + 1 } ?: (cc to 1)
+                            if (editing) item("Cut", R.drawable.ic_content_cut) { copyCells(cut = true) }
+                            item("Copy", R.drawable.ic_copy) { copyCells(cut = false) }
+                            if (editing) {
+                                item("Paste", R.drawable.ic_content_paste) { paste() }
+                                item("Clear", R.drawable.ic_delete) { clearCells() }
+                                HorizontalDivider()
+                                item("Insert row above", R.drawable.ic_add_row_above) { shift(true, rows.first, rows.second) }
+                                item("Insert row below", R.drawable.ic_add_row_below) { shift(true, rows.first + rows.second, rows.second) }
+                                item(if (rows.second > 1) "Delete ${rows.second} rows" else "Delete row", R.drawable.ic_delete_row) { shift(true, rows.first, -rows.second) }
+                                HorizontalDivider()
+                                item("Insert column left", R.drawable.ic_add_column_left) { shift(false, cols.first, cols.second) }
+                                item("Insert column right", R.drawable.ic_add_column_right) { shift(false, cols.first + cols.second, cols.second) }
+                                item(if (cols.second > 1) "Delete ${cols.second} columns" else "Delete column", R.drawable.ic_delete_column) { shift(false, cols.first, -cols.second) }
+                            }
+                        }
+                    } }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
             }
@@ -1161,7 +1193,7 @@ internal class SheetView {
 }
 
 /** Copies [text] to Android's clipboard. */
-private fun copy(context: android.content.Context, label: String, text: String) {
+internal fun copy(context: android.content.Context, label: String, text: String) {
     context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
 }
 
@@ -1393,7 +1425,7 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit
 @Composable
 private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, version: Int,
                       column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null,
-                      filled: ((SheetRange, SheetRange) -> Unit)? = null) {
+                      filled: ((SheetRange, SheetRange) -> Unit)? = null, menu: ((Offset) -> Unit)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
@@ -1408,6 +1440,18 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     fling?.cancel()
+                    // A mouse's right button (a desktop's, asked 16 Oct): the cell under it chosen (unless it is among those
+                    // chosen already), and its menu
+                    if (menu != null && currentEvent.buttons.isSecondaryPressed) {
+                        down.consume()
+                        painter.sheetCellAt(view, down.position)?.let { (r, c) ->
+                            val g = view.range
+                            val inside = if (g != null) layout.row(r) in g.r1..g.r2 && layout.col(c) in g.c1..g.c2 else r == view.row && c == view.col
+                            if (!inside) painter.tap(view, down.position)
+                        }
+                        menu(down.position)
+                        return@awaitEachGesture
+                    }
                     // The fill handle (Excel's black cross; here a dot at the chosen cells' corner, while editing): dragged, it fills.
                     val src = if (filled != null) painter.chosen(view) else null
                     if (src != null && painter.onHandle(view, src, down.position)) {

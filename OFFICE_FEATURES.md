@@ -345,6 +345,8 @@ LibreOffice works them out).
 - [x] Insert picture (the photo picker; a GIF stays a GIF and plays, as Google Slides', 16 Oct) and shape (Office's
       everyday shapes); moved and sized with a finger (its corner's handle) or the arrows for exact places; Delete —
       saved into the file (LibreOffice opens it)
+- [x] Insert › Shape: Words' Shapes panel (16 Oct) — all of Word's shapes in their groups, Shape Styles, twelve colours;
+      a new item's id past every one on the slide (a shape saved there before had the same id as the next one put on)
 - [x] Insert table on a slide (2×2 to 5×4, PowerPoint's default banded style; a cell tapped is typed into); GIFs play on
       the TV too; the words' box takes the keyboard at once (16 Oct)
 - [x] Transitions and animations shown when presenting (16 Oct): push, gallery, cover, pull, wipe, cut, fade (any other

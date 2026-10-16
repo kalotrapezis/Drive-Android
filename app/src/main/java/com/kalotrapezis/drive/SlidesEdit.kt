@@ -27,7 +27,9 @@ internal object SlidesEdit {
         /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
-        fun newId(uid: Int) = "${9000 + (added[uid]?.size ?: 0) + added.values.sumOf { it.size }}"
+        // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
+        fun newId(uid: Int, taken: Collection<String> = emptyList()) =
+            ((taken + added.values.flatten().map { it.id }).mapNotNull { it.toIntOrNull() }.filter { it >= 9000 }.maxOrNull()?.plus(1) ?: (9000 + added.values.sumOf { it.size })).toString()
     }
     fun start(deck: Deck) = Edit(deck.slides.indices.map { Entry(it, it) })
     /** [edit] with item [id] of slide [uid] at [x], [y], [w] × [h]: one put on it here, or the file's own. */

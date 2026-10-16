@@ -272,6 +272,15 @@ class SlidesTest {
         check(Slides.read(oout)); lo(oout, "pptx")?.let { check(Slides.read(it)) }
     }
 
+    /** A new item's id is past every one on the slide: one saved there in an earlier session (9000) is not taken again. */
+    @Test fun `a new item's id is free on the slide`() {
+        val e = SlidesEdit.start(Slides.read(File("src/test/resources/slides.pptx")))
+        assertEquals("9004", e.newId(0, listOf("2", "9000", "9003")))
+        assertEquals("9000", e.newId(0, listOf("2", "3")))
+        val more = e.copy(added = mapOf(0 to listOf(SlidesEdit.Added("9004", 0f, 0f, 1f, 1f, prst = "rect"))))
+        assertEquals("9005", more.newId(0, listOf("9000", "9003")))
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

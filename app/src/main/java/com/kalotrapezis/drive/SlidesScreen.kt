@@ -156,6 +156,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val it = current(e, c, id) ?: return
         val (x, y, w, h) = f(it); change(SlidesEdit.framed(e, e.order[c].uid, id, x, y, w, h))
     }
+    /** The ids on slide [c] now (its own items', a group's shapes'), which a new item's must not be. */
+    fun taken(e: SlidesEdit.Edit, c: Int): List<String> = deck?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, (it as? SlideItem.Shape)?.id) } }.orEmpty()
     /** The chosen item's looks changed by [f] (fill, border, words' colour), saved with the slide. */
     fun restyle(f: (SlidesEdit.Look) -> SlidesEdit.Look) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val k = e.order[c].uid to id
@@ -182,7 +184,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             val e = edit; val c = chosen
             if (made == null || e == null || c == null) { message = "That picture could not be read."; return@launch }
             val (f, w, h) = made.first
-            put(SlidesEdit.Added(e.newId(e.order[c].uid), (d.width - w) / 2, (d.height - h) / 2, w, h, image = f.path, ext = made.second))
+            put(SlidesEdit.Added(e.newId(e.order[c].uid, taken(e, c)), (d.width - w) / 2, (d.height - h) / 2, w, h, image = f.path, ext = made.second))
             WriterLog.i("Slides: a picture put on a slide")
         }
     }
@@ -496,23 +498,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                     }
-                    // Shape: Office's everyday shapes, each drawn in a card; the one tapped goes in the slide's middle, in the theme's accent
-                    androidx.compose.animation.AnimatedVisibility(editing && shapes && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
-                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { shapes = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
-                                Row(Modifier.shadedRow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    for (kind in listOf("rect", "roundRect", "ellipse", "triangle", "rightArrow", "star5", "heart")) {
-                                        val shape = remember(kind) { ShapePicture(kind, 0xFF4472C4.toInt(), 0xFF2F5597.toInt(), 1.5f) }
-                                        Canvas(Modifier.size(64.dp).background(Color.White, RoundedCornerShape(8.dp)).clickable {
-                                            val dd = deck ?: return@clickable; val ee = edit ?: return@clickable; val c = chosen ?: return@clickable
-                                            val side = dd.height * 0.3f
-                                            put(SlidesEdit.Added(ee.newId(ee.order[c].uid), (dd.width - side) / 2, (dd.height - side) / 2, side, side, prst = kind, fill = 0xFF4472C4.toInt()))
-                                            shapes = false; WriterLog.i("Slides: a shape put on a slide ($kind)")
-                                        }) { drawIntoCanvas { shape.drawAt(it.nativeCanvas, 10f, 10f, size.width - 20f, size.height - 20f) } }
-                                    }
-                                }
-                            }
+                    // Shape: Words' panel (asked 16 Oct: more than seven) — Word's shapes in their groups, Shape Styles and colours; the one tapped goes in the slide's middle
+                    if (editing && shapes && e != null) ShapesDialog(odt = true, dismiss = { shapes = false }) { kind, fill, line ->
+                        shapes = false
+                        val dd = deck; val ee = edit; val c = chosen
+                        if (dd != null && ee != null && c != null) {
+                            val side = dd.height * 0.3f; val uid = ee.order[c].uid; val id = ee.newId(uid, taken(ee, c))
+                            put(SlidesEdit.Added(id, (dd.width - side) / 2, (dd.height - side) / 2, side, side, prst = kind, fill = fill ?: 0xFF4472C4.toInt()))
+                            // its fill and outline as chosen (none for either kept as none)
+                            edit?.let { now -> edit = now.copy(looks = now.looks + ((uid to id) to SlidesEdit.Look(fill = fill?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, line = line?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE))) }
+                            WriterLog.i("Slides: a shape put on a slide ($kind)")
                         }
                     }
                     // Table: its size; the table goes in the middle, four fifths of the slide wide, a row 36 pt high
@@ -524,7 +519,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
                                     val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
                                     val tw = dd.width * 0.8f; val th = rows * 36f
-                                    put(SlidesEdit.Added(ee.newId(ee.order[c].uid), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
+                                    put(SlidesEdit.Added(ee.newId(ee.order[c].uid, taken(ee, c)), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
                                     tables = false; message = "Tap a cell to type in it"; WriterLog.i("Slides: a table put on a slide ($rows × $cols)")
                                 }
                             }

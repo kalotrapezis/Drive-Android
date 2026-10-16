@@ -74,6 +74,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -144,7 +148,28 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var about by remember { mutableStateOf(false) }
-    BackHandler { if (searching) { searching = false; query = "" } else back() }
+    // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
+    var editing by remember { mutableStateOf(false) }
+    val history = remember { SheetHistory() }
+    var version by remember { mutableIntStateOf(0) }
+    var draft by remember { mutableStateOf<TextFieldValue?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    val barFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    fun leave() { if (history.unsaved > 0) leaving = true else back() }
+    BackHandler {
+        when {
+            draft != null -> { draft = null; focusManager.clearFocus() }
+            searching -> { searching = false; query = "" }
+            else -> leave()
+        }
+    }
+
+    /** A workbook ready for edits: a sheet read again has the formulas that read other sheets' edits worked out. */
+    fun prepare(b: Workbook) {
+        b.laid = { i, s -> SheetRecalc.run(b, i, s, b.edits[i]?.keys.orEmpty()).forEach { (k, c) -> s.put(k, c); b.edits.getOrPut(i) { LinkedHashMap() }[k] = c } }
+    }
 
     LaunchedEffect(open) {
         WriterLog.init(context)
@@ -156,6 +181,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 WriterLog.timed("Sheets: workbook read") { Sheets.read(f, sym.decimalSeparator, sym.groupingSeparator) }
             }
         }.onSuccess { b ->
+            prepare(b)
             book = b
             index = if (b.tabs[b.active].hidden) b.tabs.indexOfFirst { !it.hidden }.coerceAtLeast(0) else b.active
             // Where it was left, when it was opened before.
@@ -197,16 +223,91 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
+    /** A cell's look and number format, for what is typed into it (a new cell takes its row's or column's look). */
+    fun lookAt(s: Sheet, r: Int, c: Int): Pair<Int, String> {
+        val cell = s[r, c]
+        val i = cell?.style ?: s.rowStyles[r] ?: s.colStyles[c] ?: 0
+        return i to (cell?.format ?: s.look(i, book?.styles.orEmpty())?.format ?: "General")
+    }
+
+    /** The chosen cell (a merged range's first). */
+    fun chosen(s: Sheet) = s.merge(view.row, view.col)?.let { it.r1 to it.c1 } ?: (view.row to view.col)
+
+    /** Starts typing in the chosen cell: the bar holds what it shows for it, the cursor at the end. */
+    fun startTyping() {
+        val s = sheet ?: return; val b = book ?: return
+        val (r, c) = chosen(s)
+        val t = SheetInput.text(s[r, c], lookAt(s, r, c).second, b.format)
+        draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); view.reveal++
+    }
+
     // The order rows and columns are drawn in: worked out away from the screen (a sort of 300,000 rows takes a moment).
     // Kept with the sheet it was made for, so a new sheet is never drawn in the last one's order.
     var laid by remember { mutableStateOf<Pair<Sheet, SheetLayout>?>(null) }
     val layout = laid?.takeIf { it.first === sheet }?.second
     val pins = view.pins.toList(); val filters = view.filters.toMap(); val sort = view.sort; val freeze = view.freeze
-    LaunchedEffect(sheet, pins, filters, sort, freeze) {
+    val extent = sheet?.let { it.rows.toLong() * 100_000 + it.cols } ?: 0L // an edit past the used cells lays the sheet out again
+    LaunchedEffect(sheet, pins, filters, sort, freeze, extent) {
         val s = sheet ?: return@LaunchedEffect
         laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null}, frozen ${freeze ?: "as the file"})") { SheetLayout.of(s, pins, filters, sort, freeze) } }
         view.range = null
     }
+    /** What was typed goes into the chosen cell (and, [move]: the cell below is chosen, as Excel's Enter). */
+    fun commit(move: Boolean) {
+        val d = draft ?: return; val b = book ?: return; val s = sheet ?: return
+        val (r, c) = chosen(s)
+        val (look, format) = lookAt(s, r, c)
+        if (d.text != SheetInput.text(s[r, c], format, b.format)) {
+            history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(d.text, s[r, c], look, format, b.format)))
+            version++
+        }
+        draft = null
+        if (move) {
+            val below = s.merge(r, c)?.r2 ?: r
+            view.row = layout?.let { l -> l.row(below).takeIf { it >= 0 && it + 1 < l.rows.size }?.let { l.rows[it + 1] } } ?: (below + 1)
+            view.col = c; view.reveal++
+        }
+    }
+
+    fun undoOrRedo(redo: Boolean) {
+        val b = book ?: return
+        draft = null
+        val step = (if (redo) history.redo(b) else history.undo(b)) ?: return
+        version++
+        WriterLog.i("Sheets: ${if (redo) "redo" else "undo"}")
+        val k = step.after.keys.firstOrNull() ?: return
+        views.getOrPut(step.sheet) { SheetView() }.let { v -> v.row = Sheet.row(k); v.col = Sheet.col(k); v.reveal++ }
+        if (step.sheet != index) index = step.sheet
+    }
+
+    /**
+     * Save: the edits written into a new file beside it, the file as it was kept as a version (File › Versions, as
+     * Writer's), then the new one put in its place and read again; [then] after.
+     */
+    fun save(then: (() -> Unit)? = null) {
+        val b = book ?: return; val f = file ?: return
+        if (saving) return
+        commit(false)
+        saving = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val temp = File(f.parentFile, ".${f.name}.tetra-saving")
+                    try {
+                        WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, f, temp) }
+                        keepPrevious(context, f)
+                        check(temp.renameTo(f)) { "Could not save ${f.name}." }
+                    } finally { temp.delete() }
+                    val sym = DecimalFormatSymbols.getInstance()
+                    Sheets.read(f, sym.decimalSeparator, sym.groupingSeparator)
+                }
+            }
+            saving = false
+            result.onSuccess { nb -> prepare(nb); history.saved(); book = nb; version++; message = "Saved"; then?.invoke() }
+                .onFailure { WriterLog.e("Sheets: could not save", it); message = it.message ?: "Could not save." }
+        }
+    }
+
     LaunchedEffect(sheet, query, searching, layout) {
         val s = sheet; val l = layout
         if (!searching || s == null || l == null || query.isBlank()) { found = emptyList(); return@LaunchedEffect }
@@ -248,7 +349,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
                 if (searching) SearchBar(query, { query = it }, found.size, current,
@@ -257,12 +358,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     move = { d -> if (found.isNotEmpty()) { current = (current + d).mod(found.size); found[current].let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ } } },
                     close = { searching = false; query = "" })
                 else Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                    IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                    val unsaved = version >= 0 && history.unsaved > 0
                     Column(Modifier.weight(1f)) {
-                        Text(file?.name ?: "Spreadsheet", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
+                        Text((file?.name ?: "Spreadsheet") + if (unsaved) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(if (saving) "Saving…" else if (editing) "Editing" else "View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
                     }
-                    if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }
+                    if (editing) {
+                        IconButton(onClick = { undoOrRedo(false) }, enabled = version >= 0 && history.canUndo) { Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
+                        IconButton(onClick = { undoOrRedo(true) }, enabled = version >= 0 && history.canRedo) { Icon(painterResource(R.drawable.ic_redo), contentDescription = "Redo") }
+                        IconButton(onClick = { save() }, enabled = (unsaved || draft != null) && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
+                        IconButton(onClick = { commit(false); focusManager.clearFocus(); editing = false; WriterLog.i("Sheets: editing done") }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Done") }
+                    } else {
+                        // a spreadsheet Tetra can save into: its own file, writable
+                        if (sheet != null && file?.canWrite() == true && book?.kind in setOf("xlsx", "ods", "csv"))
+                            IconButton(onClick = { editing = true; WriterLog.i("Sheets: editing") }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
+                        if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }
+                    }
+                    if (!editing) 
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -308,7 +421,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         }
                     }
                 }
-                sheet?.let { CellBar(it, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") } }
+                sheet?.let { s ->
+                    if (editing) {
+                        val (r, c) = chosen(s)
+                        EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
+                            change = { draft = it }, start = ::startTyping, commit = { commit(true) },
+                            cancel = { draft = null; focusManager.clearFocus() })
+                    } else CellBar(s, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") }
+                }
                 if (pins.isNotEmpty() || filters.isNotEmpty() || sort != null) ToolChips(view)
             }
         }
@@ -322,14 +442,38 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas,
-                        column = { col, x -> columnMenu = col to x }, row = { r, y -> rowMenu = r to y })
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas, version,
+                        column = { col, x -> columnMenu = col to x }, row = { r, y -> rowMenu = r to y },
+                        pick = { r, c ->
+                            val d = draft
+                            when {
+                                // a formula being typed: the tapped cell's name goes in at the cursor (Excel's pointing)
+                                d != null && d.text.startsWith("=") -> {
+                                    val ref = Sheets.colName(c) + (r + 1)
+                                    draft = TextFieldValue(d.text.substring(0, d.selection.min) + ref + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + ref.length))
+                                    true
+                                }
+                                d != null -> { commit(false); false } // what was typed goes in, then the tap chooses
+                                editing && s.merge(r, c)?.let { it.r1 to it.c1 } ?: (r to c) == chosen(s) -> { startTyping(); barFocus.requestFocus(); true }
+                                else -> false
+                            }
+                        })
                     columnMenu?.let { (col, x) -> ColumnMenu(col, x, view, l, { columnMenu = null }, { filtering = col }) }
                     rowMenu?.let { (r, y) -> RowMenu(r, y, view, l) { rowMenu = null } }
                     view.range?.let { g ->
                         RangeStats(s, l, g, Modifier.align(Alignment.BottomCenter), copy = {
                             copy(context, "Cells", sheetText(s, l, g)); WriterLog.i("Sheets: ${(g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1)} cells copied")
-                        }) { view.range = null }
+                        }, clear = if (!editing) null else ({
+                            // the chosen cells emptied (their looks kept), one step to undo
+                            val changes = LinkedHashMap<Long, SheetCell>()
+                            for (r in g.r1..minOf(g.r2, l.rows.lastIndex)) for (c in g.c1..minOf(g.c2, l.cols.lastIndex)) {
+                                val k = Sheet.key(l.rows[r], l.cols[c]); val old = s.cells[k] ?: continue
+                                if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format)
+                                if (changes.size >= 100_000) break
+                            }
+                            if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
+                            view.range = null
+                        })) { view.range = null }
                     }
                 }
                 else -> Text("Opening…", color = Color.DarkGray, modifier = Modifier.align(Alignment.Center))
@@ -347,6 +491,16 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
+    if (leaving) AlertDialog(onDismissRequest = { leaving = false },
+        title = { Text("Save the changes?") },
+        text = { Text("${history.unsaved} change${if (history.unsaved == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },
+        confirmButton = { TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { leaving = false; WriterLog.i("Sheets: left without saving"); back() }) { Text("Don't save") }
+                TextButton(onClick = { leaving = false }) { Text("Cancel") }
+            }
+        })
     if (about) {
         val b = book
         AlertDialog(onDismissRequest = { about = false }, confirmButton = { TextButton(onClick = { about = false }) { Text("Close") } },
@@ -528,7 +682,7 @@ private fun RowMenu(row: Int, y: Float, view: SheetView, layout: SheetLayout, di
 
 /** Excel's status bar for the chosen cells: Sum, Average and Count; a tap shows the least and the most too. */
 @Composable
-private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, copy: () -> Unit, close: () -> Unit) {
+private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, modifier: Modifier, copy: () -> Unit, clear: (() -> Unit)? = null, close: () -> Unit) {
     val stats = remember(sheet, layout, range) { SheetStats.of(sheet, layout, range) }
     val f = remember { DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) } }
     var more by remember { mutableStateOf(false) }
@@ -542,6 +696,7 @@ private fun RangeStats(sheet: Sheet, layout: SheetLayout, range: SheetRange, mod
                 if (more && stats.numbers > 0) Text("Min ${f.general(stats.min)}   Max ${f.general(stats.max)}   Numbers ${stats.numbers}", style = MaterialTheme.typography.labelMedium)
             }
             IconButton(onClick = copy) { Icon(painterResource(R.drawable.ic_copy), contentDescription = "Copy", modifier = Modifier.size(18.dp)) }
+            clear?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Clear", modifier = Modifier.size(18.dp)) } }
             IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear the choice", modifier = Modifier.size(18.dp)) }
         }
     }
@@ -598,6 +753,29 @@ private fun FilterDialog(sheet: Sheet, col: Int, view: SheetView, close: () -> U
         },
         dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
     )
+}
+
+/**
+ * The cell bar while editing: the cell's name, and a field with what the cell holds as typed (its formula, its value);
+ * typing in it changes the cell when Done is pressed (the next cell below is chosen, as Excel's Enter), ✕ leaves it.
+ */
+@Composable
+private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: FocusRequester, change: (TextFieldValue) -> Unit, start: () -> Unit, commit: () -> Unit, cancel: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+        Text("fx", style = MaterialTheme.typography.labelLarge, color = islandContentColor().copy(alpha = 0.6f), fontFamily = FontFamily.Serif, modifier = Modifier.padding(end = 10.dp))
+        Surface(shape = RoundedCornerShape(8.dp), color = Color.White.copy(alpha = if (draft != null) 0.14f else 0.06f), modifier = Modifier.weight(1f)) {
+            BasicTextField(draft ?: TextFieldValue(shown), { if (draft == null) start(); change(it) }, singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = islandContentColor()), cursorBrush = SolidColor(islandContentColor()),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { commit() }),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp).focusRequester(focus)
+                    .onFocusChanged { if (it.isFocused && draft == null) start() })
+        }
+        if (draft != null) {
+            IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
+            IconButton(onClick = commit) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Enter") }
+        }
+    }
 }
 
 /** The chosen cell's name and what is in it: the formula when it has one, the words in full. */
@@ -657,10 +835,11 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, pick: (Int) -> U
 }
 
 @Composable
-private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, column: (Int, Float) -> Unit, row: (Int, Float) -> Unit) {
+private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, version: Int,
+                      column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
-    val painter = remember(sheet, layout, formulas) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
+    val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
     var fling by remember { mutableStateOf<Job?>(null) }
@@ -702,7 +881,12 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         e.changes.firstOrNull { it.id == down.id && it.pressed }?.let { tracker.addPosition(it.uptimeMillis, it.position) }
                     }
                     if (choosing) WriterLog.i("Sheets: range chosen")
-                    else if (!moved) painter.tap(view, down.position)?.let { (kind, k) -> if (kind == 'c') column(k, down.position.x) else row(k, down.position.y) }
+                    else if (!moved) {
+                        // a cell tapped while editing may be taken by the edit (a formula's reference, typing again)
+                        val cell = painter.sheetCellAt(view, down.position)
+                        if (cell == null || pick?.invoke(cell.first, cell.second) != true)
+                            painter.tap(view, down.position)?.let { (kind, k) -> if (kind == 'c') column(k, down.position.x) else row(k, down.position.y) }
+                    }
                     else if (!pinched) {
                         val v = tracker.calculateVelocity()
                         fling = scope.launch {
@@ -843,6 +1027,13 @@ internal class SheetPainter(
         val cell = sheet[view.row, view.col]
         WriterLog.i("Sheets: tap ${Sheets.colName(view.col)}${view.row + 1} (${cell?.kind ?: "empty"}${if (cell?.formula != null) ", formula" else ""})")
         return null
+    }
+
+    /** The sheet's cell under a point of the screen; null on the letters and numbers. */
+    fun sheetCellAt(view: SheetView, at: Offset): Pair<Int, Int>? {
+        if (at.x < headerW || at.y < headerH) return null
+        val (r, c) = cellAt(view, at)
+        return rAt[r] to cAt[c]
     }
 
     /** The cell (as drawn) under a point of the screen. */

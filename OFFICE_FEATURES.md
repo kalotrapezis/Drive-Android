@@ -271,7 +271,8 @@ slow frames, taps, filters, searches — never a cell's words).
       (fill, darker outline, white words) as Excel's default shape, words in the middle (shapes.xlsx/.ods)
 - [x] A combo's second value axis: a line on its own scale, its numbers at the right (charts.xlsx "Two axes")
 - [ ] Tablet: two panes? (check the layout on the tablet)
-- [ ] .xls (Excel 97–2003) — none in the user's files
+- [x] .xls (Excel 97–2003): shown (values, formulas' results, fonts, fills, number formats, merges, widths, frozen panes);
+      not edited (Excel-test.xls: every cell as the .xlsx's). Not read yet: its conditional formats, notes, pictures
 
 ### Editing — started 16 Oct (asked: "edit cells, the formula bar, save back to the file")
 Code: `SheetEdit.kt` (typed entries, the bar's text, recalculation, undo), `SheetCalc.kt` (formulas), `SheetSave.kt`.

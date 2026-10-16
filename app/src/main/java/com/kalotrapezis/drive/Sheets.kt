@@ -302,13 +302,14 @@ internal object SheetColors {
 }
 
 internal object Sheets {
-    fun isSheet(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("xlsx", "xlsm", "ods", "csv", "tsv")
+    fun isSheet(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("xlsx", "xlsm", "ods", "csv", "tsv", "xls")
 
     /** Reads a spreadsheet; [decimal] and [group] are the separators numbers are shown with (the phone's). */
     fun read(bytes: ByteArray, name: String, decimal: Char = '.', group: Char = ','): Workbook =
         when (name.substringAfterLast('.', "").lowercase()) {
             "ods" -> OfficeFormats.unzip(bytes).let { m -> Ods(m::get, { n -> m[n]?.let(::ByteArrayInputStream) }, decimal to group).read() }
             "csv", "tsv" -> csv(bytes, decimal, group)
+            "xls" -> SheetXls.read(bytes, decimal, group)
             else -> OfficeFormats.unzip(bytes).let { m -> Xlsx(m::get, { n -> m[n]?.let(::ByteArrayInputStream) }, decimal, group).read() }
         }
 
@@ -319,6 +320,7 @@ internal object Sheets {
     fun read(file: java.io.File, decimal: Char = '.', group: Char = ','): Workbook {
         val ext = file.extension.lowercase()
         if (ext == "csv" || ext == "tsv") return csv(file.readBytes(), decimal, group)
+        if (ext == "xls") return SheetXls.read(file.readBytes(), decimal, group)
         val names = java.util.zip.ZipFile(file).use { z -> z.entries().asSequence().map { it.name }.toHashSet() }
         val part = { name: String ->
             if (name !in names) null else java.util.zip.ZipFile(file).use { z -> z.getEntry(name)?.let { e -> z.getInputStream(e).use { it.readBytes() } } }

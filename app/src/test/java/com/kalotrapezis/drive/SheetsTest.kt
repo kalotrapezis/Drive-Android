@@ -461,4 +461,28 @@ class SheetsTest {
             assertEquals(name, "Oval", d[2].text)
         }
     }
+
+    /** Excel 97–2003 (Excel-test.xls: LibreOffice's "MS Excel 97" of Excel-test.xlsx): every cell shows as the .xlsx's. */
+    @Test fun `an xls workbook reads as its xlsx`() {
+        val xls = Sheets.read(File("src/test/resources/Excel-test.xls"), ',', '.')
+        val xlsx = Sheets.read(File("src/test/resources/Excel-test.xlsx"), ',', '.')
+        assertEquals(xlsx.tabs.map { it.name }, xls.tabs.map { it.name })
+        assertEquals("xls", xls.kind)
+        val wrong = ArrayList<String>(); var n = 0
+        for (i in xlsx.tabs.indices) {
+            val a = xlsx.sheet(i); val b = xls.sheet(i)
+            a.cells.forEach { k, c ->
+                if (c.text.isEmpty()) return@forEach
+                n++
+                val t = b.cells[k]?.text
+                if (t != c.text) wrong += "${a.name}!${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: '${c.text}' → '$t'"
+            }
+            assertEquals(a.name, a.merges.toSet(), b.merges.toSet())
+        }
+        assertTrue("$n cells", n > 60)
+        assertEquals(emptyList<String>(), wrong)
+        val formats = xls.sheet(3)
+        assertTrue(xls.styles[formats[0, 0]!!.style].bold) // "Bold"
+        assertEquals(0xFFFFFF00.toInt(), xls.styles[formats[2, 0]!!.style].fill) // "Yellow fill"
+    }
 }

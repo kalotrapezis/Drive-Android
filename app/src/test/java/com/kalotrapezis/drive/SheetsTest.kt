@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
+import kotlin.math.abs
 
 /** Excel's number formats, each against what Excel itself shows; and the readers on LibreOffice's own files. */
 class SheetsTest {
@@ -321,6 +322,75 @@ class SheetsTest {
         println("Shown: $compared cells compared ($numbers numbers), ${wrong.size} differ")
         wrong.groupBy { it.substringAfter(" [", "").substringBefore("]") }.forEach { (code, list) -> println("— [$code] ${list.size}"); list.take(8).forEach { println("   $it") } }
         assertTrue("${wrong.size} cells differ", wrong.isEmpty())
+    }
+
+    /** A workbook's cells for the formula engine: a cell's value by its sheet's name. */
+    private fun cells(book: Workbook, own: Int) = SheetCalc.Cells { name, r, c ->
+        val i = if (name == null) own else book.tabs.indexOfFirst { it.name.equals(name, ignoreCase = true) }
+        if (i < 0) SheetCalc.Err("#REF!") else book.sheet(i)[r, c]?.let { cell ->
+            when (cell.kind) { SheetKind.Number -> cell.value; SheetKind.Bool -> cell.value == 1.0; SheetKind.Error -> SheetCalc.Err(cell.text); SheetKind.Text -> cell.text; else -> null }
+        }
+    }
+
+    /**
+     * formulas.py's 129 formulas (every function the engine knows, on blanks, numbers in words, dates, TRUE/FALSE and
+     * Greek words) worked out and compared with what LibreOffice worked out on converting the file.
+     */
+    @Test fun formulas() {
+        // LibreOffice worked them out in Greek: numbers turned to words with a decimal comma
+        val book = Sheets.read(resource("formulas.xlsx"), "formulas.xlsx", ',', '.')
+        val sheet = book.sheet(0)
+        val ctx = SheetCalc.Context(cells(book, 0), today = java.time.LocalDate.of(2026, 10, 16), format = book.format)
+        val wrong = ArrayList<String>()
+        for (r in 0 until sheet.rows) {
+            val cell = sheet[r, 6] ?: continue
+            val f = cell.formula ?: continue
+            val v = try { SheetCalc.eval(f, ctx) } catch (e: SheetCalc.Unknown) { wrong += "$f: not known (${e.message})"; continue }
+            val same = when (cell.kind) {
+                SheetKind.Number -> v is Double && abs(v - cell.value!!) <= 1e-9 * maxOf(1.0, abs(v))
+                SheetKind.Text -> v == cell.text
+                SheetKind.Bool -> v == (cell.value == 1.0)
+                SheetKind.Error -> (v as? SheetCalc.Err)?.code == cell.text
+                else -> v == ""
+            }
+            if (!same) wrong += "G${r + 1} $f = $v, LibreOffice ${cell.kind} ${cell.text}"
+        }
+        wrong.forEach(::println)
+        assertTrue("${wrong.size} of the formulas differ", wrong.isEmpty())
+    }
+
+    /**
+     * Every formula in the user's spreadsheets worked out by [SheetCalc] and compared with the value the file keeps
+     * (TETRA_SWEEP=1): none may differ; formulas with functions it does not know are counted, not compared.
+     */
+    @Test fun `the user's formulas work out as the files keep them`() {
+        assumeTrue(System.getenv("TETRA_SWEEP") == "1")
+        val root = File(System.getProperty("user.home"), "Tetra/Files")
+        var worked = 0; var unknown = 0
+        val wrong = ArrayList<String>(); val unknownNames = HashMap<String, Int>()
+        root.walkTopDown().onEnter { !it.name.startsWith("Κλειδιά") }.filter { it.isFile && Sheets.isSheet(it.name) && !it.name.endsWith(".csv") }.forEach { file ->
+            val book = Sheets.read(file)
+            for (i in book.tabs.indices) {
+                val sheet = book.sheet(i)
+                val ctx = SheetCalc.Context(cells(book, i), format = book.format)
+                sheet.cells.forEach { k, cell ->
+                    val f = cell.formula ?: return@forEach
+                    val v = try { SheetCalc.eval(f, ctx) } catch (e: SheetCalc.Unknown) { unknown++; unknownNames.merge(e.message ?: "?", 1, Int::plus); return@forEach }
+                    worked++
+                    val same = when (cell.kind) {
+                        SheetKind.Number -> v is Double && abs(v - cell.value!!) <= 1e-9 * maxOf(1.0, abs(v))
+                        SheetKind.Text -> (v as? String ?: (v as? Double)?.let { SheetFormat().general(it) }) == cell.text
+                        SheetKind.Bool -> v == (cell.value == 1.0)
+                        SheetKind.Error -> (v as? SheetCalc.Err)?.code == cell.text
+                        else -> v == "" || v == 0.0
+                    }
+                    if (!same) wrong += "${file.name.take(25)} › ${book.tabs[i].name} › ${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: $f = $v, the file ${cell.text}"
+                }
+            }
+        }
+        println("Formulas: $worked worked out, ${wrong.size} differ, $unknown not known (${unknownNames.entries.sortedByDescending { it.value }.take(10)})")
+        wrong.take(30).forEach(::println)
+        assertTrue("${wrong.size} formulas differ", wrong.isEmpty())
     }
 
     /** Every one of the user's spreadsheets (~/Tetra/Files, not Κλειδιά) reads. Only with TETRA_SWEEP=1. */

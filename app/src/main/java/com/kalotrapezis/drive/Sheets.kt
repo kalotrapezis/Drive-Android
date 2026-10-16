@@ -71,7 +71,14 @@ internal data class SheetCell(
     val color: Int? = null, val link: String? = null,
     /** Its comment (Excel's note, a threaded comment, LibreOffice's annotation): "Author: words". */
     val note: String? = null,
-)
+    /** The file's style when [style] is a look of the sheet's own (a table's stripe, a rule's colour): what is saved. */
+    val own: Int = -1,
+    /** A number format the cell took when it was typed in (a date, a percent in a General cell): saved with it. */
+    val format: String? = null,
+) {
+    /** The style the file gives the cell, to write back. */
+    val fileStyle get() = if (own >= 0) own else if (style < Sheet.LOOKS) style else 0
+}
 
 /** Rows and columns from 0, both ends in. */
 internal data class SheetRange(val r1: Int, val c1: Int, val r2: Int, val c2: Int) {
@@ -123,7 +130,7 @@ internal class Sheet(
     val name: String,
     val cells: CellMap,
     /** The used rows and columns: one past the last cell with anything in it. */
-    val rows: Int, val cols: Int,
+    var rows: Int, var cols: Int,
     val colWidths: Map<Int, Float>, val rowHeights: Map<Int, Float>,
     val defaultColWidth: Float, val defaultRowHeight: Float,
     val hiddenCols: Set<Int>, val hiddenRows: Set<Int>,
@@ -149,6 +156,12 @@ internal class Sheet(
     fun look(i: Int, styles: List<SheetStyle>): SheetStyle? = if (i >= LOOKS) looks.getOrNull(i - LOOKS) else styles.getOrNull(i)
 
     operator fun get(r: Int, c: Int): SheetCell? = cells[key(r, c)]
+
+    /** A cell set (an edit): the used range grows to hold it. */
+    fun put(k: Long, cell: SheetCell) {
+        cells[k] = cell
+        if (cell.kind != SheetKind.Empty || cell.formula != null) { rows = max(rows, row(k) + 1); cols = max(cols, col(k) + 1) }
+    }
     fun width(c: Int) = if (c in hiddenCols) 0f else colWidths[c] ?: defaultColWidth
     fun height(r: Int) = if (r in hiddenRows) 0f else rowHeights[r] ?: defaultRowHeight
     /** The merged range [r],[c] is in, if any. */
@@ -180,12 +193,33 @@ internal class Workbook(
     val tabs: List<SheetTab>, val styles: List<SheetStyle>, val active: Int = 0,
     /** A quick search of one sheet without reading it whole (an .xlsx's bytes scanned); null: read it and search. */
     val scan: ((Int, String) -> List<SheetFind>)? = null,
+    /** "xlsx", "ods" or "csv": how it is saved. */
+    val kind: String = "xlsx",
+    /** Numbers as this workbook shows them (its 1904 dates, the phone's separators). */
+    val format: SheetFormat = SheetFormat(),
+    /** A .csv's separator and letters, to save it as it came. */
+    val csv: Pair<Char, java.nio.charset.Charset>? = null,
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
+    /** Cells changed and not yet saved, by sheet: laid again on a sheet read again (only two are kept). */
+    val edits = HashMap<Int, LinkedHashMap<Long, SheetCell>>()
+    /** After the edits are laid on a sheet (formulas worked out again). */
+    var laid: ((Int, Sheet) -> Unit)? = null
+
     fun sheet(i: Int): Sheet = synchronized(kept) {
         kept.remove(i)?.let { kept[i] = it; return it }
-        WriterLog.timed("Sheets: sheet ${i + 1} of ${tabs.size} read") { load(i) }.also { kept[i] = it; while (kept.size > 2) kept.remove(kept.keys.first()) }
+        WriterLog.timed("Sheets: sheet ${i + 1} of ${tabs.size} read") { load(i) }.also { s ->
+            edits[i]?.forEach { (k, c) -> s.put(k, c) }
+            if (edits.isNotEmpty()) laid?.invoke(i, s)
+            kept[i] = s; while (kept.size > 2) kept.remove(kept.keys.first())
+        }
+    }
+
+    /** A cell changed: kept with the edits, and on the sheet when it is read. */
+    fun edit(i: Int, key: Long, cell: SheetCell) = synchronized(kept) {
+        edits.getOrPut(i) { LinkedHashMap() }[key] = cell
+        kept[i]?.put(key, cell)
     }
     /** For the tests: every sheet. */
     val sheets: List<Sheet> get() = tabs.indices.map(::sheet)
@@ -246,8 +280,8 @@ internal object Sheets {
     /** Reads a spreadsheet; [decimal] and [group] are the separators numbers are shown with (the phone's). */
     fun read(bytes: ByteArray, name: String, decimal: Char = '.', group: Char = ','): Workbook =
         when (name.substringAfterLast('.', "").lowercase()) {
-            "ods" -> OfficeFormats.unzip(bytes).let { m -> Ods(m::get) { n -> m[n]?.let(::ByteArrayInputStream) }.read() }
-            "csv", "tsv" -> csv(bytes)
+            "ods" -> OfficeFormats.unzip(bytes).let { m -> Ods(m::get, { n -> m[n]?.let(::ByteArrayInputStream) }, decimal to group).read() }
+            "csv", "tsv" -> csv(bytes, decimal, group)
             else -> OfficeFormats.unzip(bytes).let { m -> Xlsx(m::get, { n -> m[n]?.let(::ByteArrayInputStream) }, decimal, group).read() }
         }
 
@@ -257,7 +291,7 @@ internal object Sheets {
      */
     fun read(file: java.io.File, decimal: Char = '.', group: Char = ','): Workbook {
         val ext = file.extension.lowercase()
-        if (ext == "csv" || ext == "tsv") return csv(file.readBytes())
+        if (ext == "csv" || ext == "tsv") return csv(file.readBytes(), decimal, group)
         val names = java.util.zip.ZipFile(file).use { z -> z.entries().asSequence().map { it.name }.toHashSet() }
         val part = { name: String ->
             if (name !in names) null else java.util.zip.ZipFile(file).use { z -> z.getEntry(name)?.let { e -> z.getInputStream(e).use { it.readBytes() } } }
@@ -269,7 +303,7 @@ internal object Sheets {
                     ?: run { z.close(); null }
             }
         }
-        return if (ext == "ods") Ods(part, stream).read() else Xlsx(part, stream, decimal, group).read()
+        return if (ext == "ods") Ods(part, stream, decimal to group).read() else Xlsx(part, stream, decimal, group).read()
     }
 
     /** A HYPERLINK formula's address: =HYPERLINK("https://…", "words"). */
@@ -414,7 +448,8 @@ internal object Sheets {
             }
             if (found.isEmpty()) error("No sheets.")
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
-            return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() }) { i ->
+            return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
+                kind = "xlsx", format = format) { i ->
                 val (tab, path) = found[i]
                 runCatching { readSheet(tab.name, path, stream(path) ?: error("No such part."), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
@@ -981,7 +1016,7 @@ internal object Sheets {
                     left = own.left ?: d.left, right = own.right ?: d.right, top = own.top ?: d.top, bottom = own.bottom ?: d.bottom,
                 )
                 if (look == own) continue
-                cells[k] = cell.copy(style = Sheet.LOOKS + index.getOrPut(look) { looks += look; looks.lastIndex })
+                cells[k] = cell.copy(style = Sheet.LOOKS + index.getOrPut(look) { looks += look; looks.lastIndex }, own = cell.fileStyle)
             }
         }
 
@@ -1051,7 +1086,7 @@ internal object Sheets {
         return when (m.groupValues[2]) { "cm" -> n / 2.54f * 96; "mm" -> n / 25.4f * 96; "in" -> n * 96; "pc" -> n * 16; "px" -> n; else -> n * 4 / 3 }
     }
 
-    private class Ods(val parts: (String) -> ByteArray?, val stream: (String) -> java.io.InputStream?) {
+    private class Ods(val parts: (String) -> ByteArray?, val stream: (String) -> java.io.InputStream?, val sep: Pair<Char, Char> = '.' to ',') {
         /** Every style:style by name: its family, parent, and the properties ("c.", "t.", "p.", "col.", "row.", "tab." + name). */
         class Raw(val family: String, val parent: String?, val props: HashMap<String, String> = HashMap())
         val raw = HashMap<String, Raw>()
@@ -1181,7 +1216,7 @@ internal object Sheets {
             raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
-            return Workbook(tabs, styles, active) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second)) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */
@@ -1508,10 +1543,11 @@ internal object Sheets {
     // --- .csv ---
 
     /** A text table: UTF-8 (or Windows Greek, as Excel saves a CSV here), the separator the first lines use most. */
-    fun csv(bytes: ByteArray): Workbook {
+    fun csv(bytes: ByteArray, decimal: Char = '.', group: Char = ','): Workbook {
+        var charset = Charsets.UTF_8
         val text = runCatching {
             Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
-        }.getOrElse { String(bytes, charset("windows-1253")) }.removePrefix("﻿")
+        }.getOrElse { charset = charset("windows-1253"); String(bytes, charset) }.removePrefix("﻿")
         val head = text.lineSequence().take(5).joinToString("\n")
         val sep = listOf(',', ';', '\t', '|').maxByOrNull { s -> head.count { it == s } } ?: ','
         val cells = CellMap()
@@ -1541,6 +1577,6 @@ internal object Sheets {
         var rows = 0
         cells.forEach { k, _ -> rows = max(rows, Sheet.row(k) + 1) }
         val sheet = Sheet("Sheet1", cells, rows, maxCol + 1, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0)
-        return Workbook(listOf(SheetTab("Sheet1")), listOf(SheetStyle())) { sheet }
+        return Workbook(listOf(SheetTab("Sheet1")), listOf(SheetStyle()), kind = "csv", format = SheetFormat(decimal, group), csv = sep to charset) { sheet }
     }
 }

@@ -253,7 +253,7 @@ internal object SheetRules {
                 left = d.left ?: own.left, right = d.right ?: own.right, top = d.top ?: own.top, bottom = d.bottom ?: own.bottom,
             )
             if (look == own) continue
-            cells[k] = cell.copy(style = Sheet.LOOKS + (looks.indexOf(look).takeIf { it >= 0 } ?: index.getOrPut(look) { looks += look; looks.lastIndex }))
+            cells[k] = cell.copy(style = Sheet.LOOKS + (looks.indexOf(look).takeIf { it >= 0 } ?: index.getOrPut(look) { looks += look; looks.lastIndex }), own = cell.fileStyle)
         }
         return bars
     }

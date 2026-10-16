@@ -696,7 +696,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                                     tabs.forEach { t ->
                                         val on = t == shown
-                                        Column(Modifier.clickable { ribbonTab = t }.padding(horizontal = 10.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Column(Modifier.clickable { ribbonTab = t }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
                                             Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).heightIn(min = 3.dp, max = 3.dp).background(POWERPOINT_ORANGE))
                                         }

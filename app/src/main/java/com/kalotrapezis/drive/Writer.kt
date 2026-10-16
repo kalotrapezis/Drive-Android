@@ -1188,7 +1188,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // The phone's page drawn this many times smaller or larger than laid out: the screen's width at pageZoom 1.
     val pageScale = if (printPhone) (screen - 20.dp) / (sheet.width * perPt) * pageZoom else 1f
     // A document opens view only, as its pages (asked 2026-09-27, as LibreOffice); Edit switches to the editor.
-    var viewing by remember { mutableStateOf(open != null) }
+    var viewing by remember { mutableStateOf(open != null && !JustMade.take(open)) } // a file just made with New: editing at once
     var pages by remember { mutableStateOf<List<LaidPage>?>(null) }
     var galleryViewing by remember { mutableStateOf<Boolean?>(null) } // a page gallery: whether the pages were shown before it
     var pagesIndex by remember { mutableStateOf<IntArray?>(null) } // the page each paragraph starts on, in [pages]

@@ -144,7 +144,7 @@ object DriveRules {
     fun newKinds(root: File): List<DriveNew> {
         val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
-        val built = listOf(DriveNew("Text file", "txt"), DriveNew("Word document", "docx")).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        val built = listOf(DriveNew("Text file", "txt"), DriveNew("Word document", "docx"), DriveNew("Excel spreadsheet", "xlsx")).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
         return listOf(DriveNew("Folder", null)) + templates + built
     }
 
@@ -159,6 +159,7 @@ object DriveRules {
             kind.extension == null -> require(target.mkdir()) { "Could not make the folder." }
             kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
             kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
+            kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty())
             else -> target.writeBytes(ByteArray(0))
         }
         return relative(root, target)
@@ -256,6 +257,17 @@ private const val TEMPLATES_FOLDER = ".templates"
 
 /** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
 data class DriveNew(val label: String, val extension: String?, val template: File? = null)
+
+/**
+ * Files just made with New (asked 16 Oct: "enter edit mode automatically, he does not want to see an empty page"):
+ * Writer, Excel and PowerPoint open them editing, once.
+ */
+internal object JustMade {
+    private val paths = HashSet<String>()
+    fun mark(file: File) = synchronized(paths) { paths += file.absolutePath }
+    /** Whether [open] (a file:// address) was just made; asked once, it is then a file like the others. */
+    fun take(open: String?): Boolean = synchronized(paths) { open?.let { android.net.Uri.parse(it).path }?.let { paths.remove(it) } == true }
+}
 
 fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath)

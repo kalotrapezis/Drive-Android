@@ -159,7 +159,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val density = LocalDensity.current.density
     var about by remember { mutableStateOf(false) }
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     val history = remember { SheetHistory() }
     var version by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf<TextFieldValue?>(null) }

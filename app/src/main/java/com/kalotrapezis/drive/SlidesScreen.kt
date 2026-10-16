@@ -79,7 +79,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var notes by remember { mutableStateOf(false) }
     var presenting by remember { mutableStateOf<Int?>(null) }
     // editing (a .pptx): the edits apart from the deck as read; Undo the edit before; a slide chosen; a text box's words being typed
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     var edit by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
     val undos = remember { ArrayList<SlidesEdit.Edit>() }
     var saved by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
@@ -195,8 +195,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (e != null) {
                                     val entry = e.order[c]
                                     RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next())) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
-                                    RibbonButton("Move up", w, R.drawable.ic_chevron_left, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
-                                    RibbonButton("Move down", w, R.drawable.ic_chevron_right, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
+                                    RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
+                                    RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
                                     val hidden = e.hidden[entry.uid] ?: deck!!.slides[entry.src].hidden
                                     RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (entry.uid to !hidden))) }
                                     RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }

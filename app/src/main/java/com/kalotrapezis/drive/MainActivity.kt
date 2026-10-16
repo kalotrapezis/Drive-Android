@@ -1864,6 +1864,7 @@ private fun DriveTab(
         NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root) }, { newOpen = false }) { kind, name ->
             val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
             newOpen = false
+            if (kind.extension != null) JustMade.mark(File(root, made)) // it opens editing
             refresh()
             if (kind.extension == null) openFolder(made) else error = openFile(made, false)
             null

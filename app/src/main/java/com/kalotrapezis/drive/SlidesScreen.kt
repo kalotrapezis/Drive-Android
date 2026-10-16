@@ -333,9 +333,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         IconButton(onClick = { effectKinds = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         Column {
                             for ((which, name, kinds) in listOf(
-                                Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly in" to "fly")),
+                                Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly" to "fly")),
                                 Triple('m', "Emphasis", listOf("None" to null, "Pulse" to "pulse", "Spin" to "spin", "Grow" to "grow")),
-                                Triple('o', "Out", listOf("None" to null, "Disappear" to "appear", "Fade out" to "fade", "Fly out" to "fly")))) {
+                                Triple('o', "Out", listOf("None" to null, "Disappear" to "appear", "Fade" to "fade", "Fly" to "fly")))) {
                                 val k = when (which) { 'o' -> outK; 'm' -> emK; else -> inK }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(name, style = MaterialTheme.typography.labelMedium, color = w.copy(alpha = 0.7f), modifier = Modifier.width(72.dp).padding(start = 6.dp))

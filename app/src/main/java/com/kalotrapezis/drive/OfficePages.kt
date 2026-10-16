@@ -1094,7 +1094,17 @@ internal object OfficePages {
         numbered.paras.forEach { p -> p.runs.forEach { r -> r.note?.takeIf { it.end }?.let { n -> endnotes += noteParas(n, r) } } }
         val doc = numbered.copy(paras = numbered.paras + endnotes)
         val sections = styles.sections(numbered.paras)
-        var section = sections.firstOrNull() ?: styles.section
+        // The text starts below a header taller than the top margin leaves it room for, and ends above such a footer, as
+        // Word and LibreOffice lay it out (a worksheet's 21 pt margin under a header band at 36 pt ran into it).
+        // shortcut: measured from each section's default header and footer; a title page's or even pages' own are not.
+        val fitted = java.util.IdentityHashMap<DocSection, DocSection>()
+        fun fit(s: DocSection) = fitted.getOrPut(s) {
+            fun tall(map: Map<String, List<DocPara>>) = map["default"]?.takeIf { it.isNotEmpty() }
+                ?.let { stack(doc, it, styles, s.page, s.page.textWidth, pictureBytes, null, 0f, 0f).height } ?: 0f
+            val top = maxOf(s.page.top, s.page.header + tall(s.headers)); val bottom = maxOf(s.page.bottom, s.page.footer + tall(s.footers))
+            if (top == s.page.top && bottom == s.page.bottom) s else s.copy(page = s.page.copy(top = top, bottom = bottom))
+        }
+        var section = fit(sections.firstOrNull() ?: styles.section)
         var frame = section.page // the sheet
         var col = 0
         var page = frame.column(0) // where the text flows: the page, or one of its columns
@@ -1170,7 +1180,7 @@ internal object OfficePages {
                 y += 6f
             }
             // A new section: a new page (unless it goes on on the same one) of its own size, numbered as it says.
-            sections.getOrNull(i)?.takeIf { it !== section }?.let { next ->
+            sections.getOrNull(i)?.let(::fit)?.takeIf { it !== section }?.let { next ->
                 if (!next.continuous) {
                     if (pieces.isNotEmpty() || floats.isNotEmpty()) breakPage()
                     section = next; frame = next.page; col = 0; page = frame.column(0); y = page.top; colTop = y; firstOfSection = true
@@ -1188,6 +1198,7 @@ internal object OfficePages {
                 val heading = rows.takeWhile { it.second }.map { it.first }
                 val limit = page.height - page.bottom - feetHeight
                 rows.forEachIndexed { ri, (row, _) ->
+                    y = clear(y, row.height) // below a picture no text stands beside, as a line goes
                     if (y + row.height > limit && (pieces.isNotEmpty() || boxes.isNotEmpty() || lines.isNotEmpty())) {
                         newPage()
                         if (ri >= heading.size) heading.forEach { h -> place(h.moved(page.left, y)); y += h.height }
@@ -1538,7 +1549,10 @@ internal object OfficePages {
             "center" -> (page.height - h) / 2
             "bottom" -> (if (place.fromV == "page") page.height else page.height - page.bottom) - h
             "top" -> if (place.fromV == "page") 0f else page.top
-            else -> (place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop }
+            // one moving with its text stays on its page, above the bottom margin, as LibreOffice keeps it (a worksheet's,
+            // 848 pt below its paragraph, was drawn under the page)
+            else -> ((place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop })
+                .let { y -> if (place.fromV == "page" || place.fromV == "margin") y else minOf(y, page.height - page.bottom - h).coerceAtLeast(0f) }
         }
         return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes), x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
     }

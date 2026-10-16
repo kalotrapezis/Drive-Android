@@ -516,7 +516,7 @@ class OfficeFormatsTest {
             val styles = DocStyles.of(kind, OfficeFormats.write(doc, kind))
             // A stand-in for the page layout: each paragraph on the page of its index.
             val fake: (OfficeDoc, IntArray) -> Unit = { d, pages -> d.paras.indices.forEach { pages[it] = it + 1 } }
-            val with = Contents.insert(doc, kind, styles, 1, fake)
+            val with = Contents.insert(doc, kind, styles, 1, layout = fake)
             // At the empty paragraph: its title and the three headings of levels 1–3, each with a tab and its page.
             assertEquals(kind.name, listOf("Title page", "Contents", "Εισαγωγή\t6", "Method\t8", "Results\t10"), with.paras.take(5).map { it.text })
             assertEquals(kind.name, listOf(Contents.headingStyle(kind), Contents.levelStyle(kind, 1), Contents.levelStyle(kind, 2)), with.paras.drop(1).take(3).map { it.keep?.style })
@@ -529,9 +529,20 @@ class OfficeFormatsTest {
             assert(tabs.any { it.type == 'r' && it.leader == '.' }) { "$kind $tabs" }
             // A new heading, then Update: the same place, one more line, no second copy.
             val more = back.copy(paras = back.paras + DocPara(listOf(DocRun("Discussion")), heading = 1))
-            val updated = Contents.insert(more, kind, styles, more.paras.size, fake)
+            val updated = Contents.insert(more, kind, styles, more.paras.size, layout = fake)
             assertEquals(kind.name, 1, updated.paras.count { it.text == "Contents" })
             assertEquals(kind.name, "Discussion\t12", updated.paras[5].text)
+            // Levels chosen (Word's Show levels): 1 leaves Method out, 4 takes Deep in, and Update keeps what was chosen
+            val one = Contents.insert(updated, kind, styles, 0, 1, fake)
+            assertEquals(kind.name, listOf("Εισαγωγή", "Results", "Discussion"), one.paras.filter { it.keep?.style?.let { st -> (1..9).any { st == Contents.levelStyle(kind, it) } } == true }.map { it.text.substringBefore('\t') })
+            assertEquals(kind.name, 1, Contents.levelsOf(Contents.insert(one, kind, styles, 0, layout = fake), kind))
+            val four = Contents.insert(updated, kind, styles, 0, 4, fake)
+            assert(four.paras.any { it.text.startsWith("Deep\t") && it.keep?.style == Contents.levelStyle(kind, 4) }) { "$kind: ${four.paras.map { it.text }}" }
+            // saved: its TOC 4 / Contents 4 style is in the file, and read back as level 4
+            val fourBytes = OfficeFormats.write(four, kind)
+            assertEquals(kind.name, 4, Contents.levelsOf(OfficeFormats.read(fourBytes, kind), kind))
+            val stylesPart = java.util.zip.ZipInputStream(fourBytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name == if (kind == OfficeKind.Docx) "word/styles.xml" else "styles.xml" }.let { String(z.readBytes()) } }
+            assert(Contents.levelStyle(kind, 4) in stylesPart) { "$kind: no ${Contents.levelStyle(kind, 4)} in the styles" }
             // Each entry a link to its heading's bookmark, kept by the file (asked 16 Oct: clickable contents)
             val linked = OfficeFormats.read(OfficeFormats.write(updated, kind), kind)
             for (k in 2..5) {

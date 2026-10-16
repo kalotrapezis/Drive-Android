@@ -2363,16 +2363,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
      * its page numbers from the pages as Writer lays them out. ponytail: laid out on the main thread; fine for a
      * thesis-sized document, move off it if a long one stalls.
      */
-    fun insertContents() = change {
+    fun insertContents(levels: Int? = null) = change {
         val cur = current()
         val at = chosen()?.first?.minOrNull() ?: cur.paras.size
         val parts = packageParts
-        meta = runCatching { Contents.insert(cur, kind, documentStyles, at) { d, pages ->
+        val n = levels ?: Contents.levelsOf(cur, kind)
+        meta = runCatching { Contents.insert(cur, kind, documentStyles, at, n) { d, pages ->
             OfficePages.layout(d, documentStyles, pages) { img -> img.bytes ?: img.part?.let { parts[it] } } } }
             .onFailure { WriterLog.e("contents", it) }.getOrNull() ?: run { message = "The contents could not be made."; return@change }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
-        message = "Contents from ${cur.paras.count { it.heading in 1..3 }} headings"
+        message = "Contents from ${cur.paras.count { it.heading in 1..n }} headings, ${if (n == 1) "level 1" else "levels 1–$n"}"
     }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
         chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
@@ -4052,6 +4053,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
                     RibbonButton(if (has) "Update table" else "Table of contents", w, R.drawable.ic_toc, enabled = loaded) { insertContents() }
+                    // how many heading levels it lists (Word's Show levels): a tap makes it, or makes it again, with that many
+                    val levels = remember(meta) { Contents.levelsOf(meta, kind) }
+                    Text("Levels", color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp))
+                    for (n in 1..4) RibbonButton("$n", w, enabled = loaded, on = has && levels == n) { insertContents(n) }
                 }, {
                     // Word's Footnotes group.
                     RibbonButton("Insert footnote", w, R.drawable.ic_superscript, enabled = loaded) { insertNote(false) }

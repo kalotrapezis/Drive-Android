@@ -417,15 +417,15 @@ LibreOffice works them out).
 ## To test on the phone, with the user
 
 Each is done on the emulator; tick when checked on the real phone.
-- [ ] Home: orange Office group (icon, New document, Documents), purple Text editor group, their Settings cards
-- [ ] Office home: header icon; Word blue, Excel green, PowerPoint deep orange; the documents list (spreadsheets listed in green, 16 Oct)
+- [x] Home: orange Office group (icon, New document, Documents), purple Text editor group, their Settings cards (seen on the emulator 16 Oct)
+- [x] Office home: header icon; Word blue, Excel green, PowerPoint deep orange; the documents list (spreadsheets listed in green, 16 Oct) (seen on the emulator 16 Oct)
 - [ ] Open a .docx and an .odt of his own; nothing looks different from Word/LibreOffice (bold, lists, headings)
-- [ ] Edit + Save over a file with no banner; open it on the computer in LibreOffice/Word
+- [x] Edit + Save over a file with no banner; open it on the computer in LibreOffice/Word (emulator 16 Oct: saved over, no banner; LibreOffice opens it)
 - [ ] A file with tables or images: orange banner, Save makes "(copy)", the original untouched
 - [x] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt (checked on the
       emulator 16 Oct; Bullets/Numbering on a line with words switch it — fixed — [ ] on a new, empty list line Numbering
       gives a second-level bullet: the editor library's toggle)
-- [ ] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches
+- [x] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches (emulator 16 Oct; the dots gave way to one free-sliding row, and on a desktop rows of whole groups)
 - [x] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count) — checked on
       the emulator 16 Oct: Find, Replace and Replace all (the replaced words now keep their bold, italic… — fixed); Line
       break saved as Word's w:br; Link as a hyperlink with its address; About this file (the counts are on the top bar, a

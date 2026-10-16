@@ -697,7 +697,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         // a phone: solid across the bottom; a tablet: floating, as Words' and Slides' (asked 16 Oct)
         val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
-        Surface(color = islandColor(), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+        Surface(color = Color(0xFF16191A), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
@@ -1082,7 +1082,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
     message?.let { m ->
-        Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
+        Box(Modifier.fillMaxSize().bottomBarPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
                 Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             }
@@ -1410,7 +1410,7 @@ private fun CellBar(sheet: Sheet, view: SheetView, follow: (String) -> Unit, cop
 private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit)? = null, tools: (() -> Unit)? = null, pick: (Int) -> Unit) {
     if (book.tabs.count { !it.hidden } < 2 && add == null) return
     Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.navigationBarsPadding().fillMaxWidth().shadedRow().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.bottomBarPadding().fillMaxWidth().shadedRow().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             book.tabs.forEachIndexed { i, tab ->
                 if (tab.hidden) return@forEachIndexed
                 val on = i == index

@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -152,3 +155,12 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
     if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().then(modifier), content)
     else androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).then(modifier),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { content() }
+
+/** navigationBarsPadding, plus room for the window's handle: a floating or split window has no navigation bar of its
+ *  own, but the system draws its handle over the window's bottom (asked 16 Oct: it sat on the ribbon's tools). */
+@Composable internal fun Modifier.bottomBarPadding(): Modifier {
+    androidx.compose.ui.platform.LocalConfiguration.current // entering and leaving a window comes as a configuration change
+    val windowed = (androidx.compose.ui.platform.LocalContext.current as? android.app.Activity)?.isInMultiWindowMode == true
+    val noBar = WindowInsets.navigationBars.getBottom(androidx.compose.ui.platform.LocalDensity.current) == 0
+    return navigationBarsPadding().then(if (windowed && noBar) Modifier.padding(bottom = 12.dp) else Modifier)
+}

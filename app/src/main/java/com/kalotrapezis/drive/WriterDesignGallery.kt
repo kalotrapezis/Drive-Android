@@ -138,7 +138,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     @Composable fun face(name: String?, size: Int, weight: FontWeight = FontWeight.Normal, italic: Boolean = false, color: Color = Color(0xFF222222)) =
         TextStyle(fontFamily = OfficeFonts.family(name), fontSize = (size * k).sp, fontWeight = weight, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal, color = color)
     val w = Color.White
-    Column(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
+    Column(modifier.fillMaxWidth().bottomBarPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
         if (!phone) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             TextButton(onClick = cancel) { Text("Cancel", color = w) }
@@ -254,7 +254,7 @@ private fun StripDialog(title: String, dismiss: () -> Unit, cards: @Composable a
     androidx.compose.ui.window.Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window?.setDimAmount(0f)
         Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
+            Column(Modifier.fillMaxWidth().bottomBarPadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_close), "Close", tint = Color.White) }
                     Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall)

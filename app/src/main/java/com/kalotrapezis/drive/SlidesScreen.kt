@@ -674,7 +674,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (!editing || chosen == null) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
-                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
+                        modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp)) {
                         Text(if (editing) "Tap a slide to change it" else "Slide ${(at + 1).coerceAtMost(d.slides.size)} of ${d.slides.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
                     }
                     // the chosen slide's ribbon, its tabs as Tables' (asked 16 Oct): what is chosen on it, the slide, Insert, Transitions, Animations
@@ -689,8 +689,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations", "Slide show")
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
                         // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island
-                        Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
-                            Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.navigationBarsPadding()) {
+                        Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+                            Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) {
                                 Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                     // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
                                     if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
@@ -716,7 +716,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val full = deck
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.bottomBarPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { layouts = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
                                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(end = 12.dp)) {
                                     if (full != null) itemsIndexed(full.layouts) { l, layout ->
@@ -749,7 +749,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(editing && tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val w = islandContentColor()
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.bottomBarPadding().fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { tables = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
                                 for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
                                     val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
@@ -764,7 +764,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     androidx.compose.animation.AnimatedVisibility(typing != null || cellEdit != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val cell = cellEdit
                         if (cell != null) Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { cellEdit = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
                                 // the keyboard at once: the box opened to be typed in
                                 val focus = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -778,7 +778,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val t = typing
                         if (cell == null)
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
                                 val focus = remember { androidx.compose.ui.focus.FocusRequester() }
                                 LaunchedEffect(t?.first) { if (t != null) focus.requestFocus() }

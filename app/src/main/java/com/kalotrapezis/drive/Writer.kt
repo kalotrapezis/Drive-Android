@@ -3690,8 +3690,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             exit = if (atTop) androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut() else SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
             if (!island) Modifier.background(Color(0xFF16191A))
             // a phone: a solid bar across the bottom, as Tables' and Slides' ribbons (asked 16 Oct); a tablet: the floating island
-            else if (!tablet) Modifier.background(islandColor()).then(if (imeOpen || atTop) Modifier else Modifier.navigationBarsPadding()).padding(vertical = 4.dp)
-            else Modifier.then(if (imeOpen || atTop) Modifier else Modifier.navigationBarsPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
+            else if (!tablet) Modifier.background(Color(0xFF16191A)).then(if (imeOpen || atTop) Modifier else Modifier.bottomBarPadding()).padding(vertical = 4.dp)
+            else Modifier.then(if (imeOpen || atTop) Modifier else Modifier.bottomBarPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge)
                 .background(Color(0xFF16191A)).padding(vertical = 4.dp))) { // solid: the page is white
             // A note's number, the cursor at it: the note's words (Edit opens them).
             hereNote?.let { (n, number, _) ->
@@ -5259,7 +5259,7 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
             }
         }
         Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp)) {
+            modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp)) {
             Text("Page ${(at + 1).coerceAtMost(pages.size)} of ${pages.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
         }
     }

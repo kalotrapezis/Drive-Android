@@ -2809,6 +2809,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true; styleEdits++
         if (on) message = "Automatic hyphenation — the pages show it (the eye at the top)"
     }
+    var hyphenOptions by remember { mutableStateOf(false) }
+    /** Layout › Hyphenation options (Word's zone, consecutive limit, capitals), into the file as it will be written. */
+    fun setHyphenOptions(o: HyphenOptions) = change {
+        val parts = runCatching { HyphenOptions.write(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, o) }
+            .onFailure { WriterLog.e("hyphenation options", it) }.getOrNull() ?: run { message = "Hyphenation options could not be set."; return@change }
+        original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
+        dirty = true; styleEdits++
+        WriterLog.i("hyphenation options: $o")
+    }
     /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
     fun setLineNumbers(restart: String?) = change {
         val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
@@ -4165,6 +4174,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val now = documentStyles.hyphenate
                     RibbonButton(if (now) "Hyphenation: on" else "Hyphenation: off", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { setHyphenation(!now) }
                     RibbonButton("Optional hyphen", w, R.drawable.ic_hyphenation, enabled = loaded) { typeIn("\u00AD"); message = "An optional hyphen: the word breaks there at a line's end" }
+                    RibbonButton("Hyphenation options", w, R.drawable.ic_tune, enabled = loaded) { hyphenOptions = true }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
@@ -4595,6 +4605,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             )
         }
     }
+    if (hyphenOptions) HyphenOptionsDialog(remember { HyphenOptions.read(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind) }, { hyphenOptions = false }) { hyphenOptions = false; setHyphenOptions(it) }
     if (noteNumbering) NoteNumbersDialog(meta.footFormat, meta.endFormat, kind == OfficeKind.Docx, { noteNumbering = false }) { foot, end -> noteNumbering = false; setNoteFormats(foot, end) }
     noteEditing?.let { (n, number) -> NoteDialog(n, number, { noteEditing = null }, { saveNote(n, it) }, { saveNote(n, null) }) }
     if (askingName) ReviewerNameDialog(prefs.getString("author", "").orEmpty(), { askingName = false }) { name ->

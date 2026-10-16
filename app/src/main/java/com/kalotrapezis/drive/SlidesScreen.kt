@@ -14,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -202,6 +204,36 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             Column {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
+                                val chosenAdded = if (editing && chosen == i) edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == item } } else null
+                                Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
+                                    // what was put on the slide, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
+                                    .pointerInput(editing, chosen, i, item) {
+                                        if (!editing || chosen != i || item == null) return@pointerInput
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            val ee = edit ?: return@awaitEachGesture; val uid = ee.order[i].uid
+                                            val a = ee.added[uid]?.firstOrNull { it.id == item } ?: return@awaitEachGesture
+                                            val k = d.width / size.width // points a pixel
+                                            val px = down.position.x * k; val py = down.position.y * k
+                                            val reach = 28.dp.toPx() * k
+                                            val handle = kotlin.math.hypot(px - (a.x + a.w), py - (a.y + a.h)) < reach
+                                            if (!handle && !(px in a.x..(a.x + a.w) && py in a.y..(a.y + a.h))) return@awaitEachGesture
+                                            down.consume()
+                                            undos += ee; if (undos.size > 100) undos.removeAt(0)
+                                            var cur = a
+                                            while (true) {
+                                                val ev = awaitPointerEvent()
+                                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                                if (!ch.pressed) break
+                                                val dx = (ch.position.x - ch.previousPosition.x) * k; val dy = (ch.position.y - ch.previousPosition.y) * k
+                                                cur = if (handle) { val nw = maxOf(12f, cur.w + dx); cur.copy(w = nw, h = nw * a.h / a.w) } else cur.copy(x = cur.x + dx, y = cur.y + dy)
+                                                val now = edit ?: break
+                                                edit = now.copy(added = now.added + (uid to now.added[uid].orEmpty().map { if (it.id == cur.id) cur else it }))
+                                                ch.consume()
+                                            }
+                                            WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
+                                        }
+                                    }) {
                                 SlideCanvas(d, s, hints = editing, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
                                     .then(if (chosen == i) Modifier.border(3.dp, POWERPOINT_ORANGE, RoundedCornerShape(4.dp)) else Modifier)
                                     .pointerInput(editing, chosen, i, s) {
@@ -216,6 +248,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             else message = "Tap a text box on the slide to change its words"
                                         }
                                     })
+                                // the chosen picture or shape: an outline, and the handle its size is dragged from
+                                chosenAdded?.let { a -> Canvas(Modifier.matchParentSize()) {
+                                    val k = size.width / d.width
+                                    drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                                    val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
+                                    drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
+                                } }
+                                }
                                 if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }

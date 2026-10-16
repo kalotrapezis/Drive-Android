@@ -20,8 +20,18 @@ internal class SlidePara(val runs: List<SlideRun>, val align: Char, val level: I
     val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float)
 internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true)
 
+/**
+ * A shape's own outline (DrawingML's custGeom): its moves (0), lines (1), curves (2) and closes (4), the points from 0 to 1
+ * of its box; filled and stroked as it says.
+ */
+internal class SlidePath(val ops: List<FloatArray>, val fill: Boolean, val stroke: Boolean)
+
+/** A gradient fill: its colours at their stops (0–1), along [angle] degrees (0: left to right, 90: top to bottom). */
+internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val angle: Float)
+
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
-    class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?) : SlideItem(x, y, w, h, rotation)
+    class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
+        val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null) : SlideItem(x, y, w, h, rotation)
     class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
@@ -73,6 +83,8 @@ internal object Slides {
     private class Pptx(val part: (String) -> ByteArray?, val xml: (String) -> Element?) {
         // the theme's colours and fonts, the master's map of them (bg1 → lt1…)
         var scheme = HashMap<String, Int>(); var major = "Calibri Light"; var minor = "Calibri"; var map = HashMap<String, String>()
+        var fillStyles = emptyList<Element>() // the theme's fills a shape style's fillRef names (1, 2, 3)
+        var ph: Int? = null // the style's colour, for the theme's fills that say "phClr"
 
         fun read(): Deck {
             val pres = xml("ppt/presentation.xml") ?: error("Not a presentation.")
@@ -91,7 +103,7 @@ internal object Slides {
                 "srgbClr" -> c.attr("val")?.toIntOrNull(16)
                 "sysClr" -> (c.attr("lastClr") ?: "000000").toIntOrNull(16)
                 "prstClr" -> mapOf("black" to 0, "white" to 0xFFFFFF, "red" to 0xFF0000, "green" to 0x008000, "blue" to 0x0000FF, "yellow" to 0xFFFF00)[c.attr("val")]
-                else -> c.attr("val")?.let { n -> scheme[map[n] ?: n] ?: scheme[n] }
+                else -> c.attr("val")?.let { n -> if (n == "phClr") ph?.and(0xFFFFFF) else scheme[map[n] ?: n] ?: scheme[n] }
             } ?: return null
             var a = 255
             for (m in c.kids()) {
@@ -112,6 +124,26 @@ internal object Slides {
         private fun mix(c: Int, to: Int, f: Float): Int {
             fun ch(s: Int) = (((c shr s) and 255) + (((to shr s) and 255) - ((c shr s) and 255)) * f).toInt().coerceIn(0, 255) shl s
             return ch(16) or ch(8) or ch(0)
+        }
+        /** A gradient: its stops' colours (the style's colour where they say phClr) along its angle. */
+        fun gradient(g: Element?, base: Int? = null): SlideGradient? {
+            g ?: return null
+            ph = base
+            val stops = g.kid("gsLst")?.kids("gs").orEmpty().mapNotNull { gs -> color(gs)?.let { (gs.attr("pos")?.toFloatOrNull() ?: 0f) / 100_000f to it } }.sortedBy { it.first }
+            ph = null
+            if (stops.size < 2) return null
+            return SlideGradient(stops.map { it.second }.toIntArray(), stops.map { it.first }.toFloatArray(), (g.kid("lin")?.attr("ang")?.toFloatOrNull() ?: 5_400_000f) / 60_000f)
+        }
+        /** A shape style's fill (fillRef idx 1–3: the theme's fills, in the style's colour): a colour or a gradient. */
+        fun styleFill(ref: Element?): Pair<Int?, SlideGradient?> {
+            val base = color(ref) ?: return null to null
+            val idx = ref?.attr("idx")?.toIntOrNull() ?: return base to null
+            val theme = fillStyles.getOrNull((if (idx > 1000) idx - 1001 else idx - 1))
+            return when (theme?.localName) {
+                "gradFill" -> base to gradient(theme, base)
+                "noFill" -> null to null
+                else -> base to null
+            }
         }
         fun fill(spPr: Element?): Int? = spPr?.kid("solidFill")?.let(::color)
             ?: spPr?.kid("gradFill")?.below("gs")?.firstOrNull()?.let(::color) // shortcut: a gradient as its first colour; draw gradients if decks need them
@@ -141,6 +173,7 @@ internal object Slides {
         fun theme(t: Element) {
             scheme = HashMap()
             t.below("clrScheme").firstOrNull()?.kids()?.forEach { c -> color(c)?.let { scheme[c.localName] = it and 0xFFFFFF } }
+            fillStyles = t.below("fillStyleLst").firstOrNull()?.kids().orEmpty()
             t.below("majorFont").firstOrNull()?.kid("latin")?.attr("typeface")?.let { major = it }
             t.below("minorFont").firstOrNull()?.kid("latin")?.attr("typeface")?.let { minor = it }
         }
@@ -189,15 +222,20 @@ internal object Slides {
                         val style = e.kid("style")
                         val geom = spPr?.kid("prstGeom")?.attr("prst") ?: chain.firstNotNullOfOrNull { it.kid("spPr")?.kid("prstGeom")?.attr("prst") }
                         val noFill = spPr?.kid("noFill") != null
-                        val fillC = if (noFill) null else fill(spPr) ?: chain.firstNotNullOfOrNull { fill(it.kid("spPr")) } ?: style?.kid("fillRef")?.takeIf { it.attr("idx") != "0" }?.let(::color)
+                        val styled = if (noFill || spPr?.kid("solidFill") != null || spPr?.kid("gradFill") != null) null to null
+                            else style?.kid("fillRef")?.takeIf { it.attr("idx") != "0" }?.let(::styleFill) ?: (null to null)
+                        val grad = if (noFill) null else gradient(spPr?.kid("gradFill")) ?: styled.second
+                        val fillC = if (noFill) null else fill(spPr) ?: chain.firstNotNullOfOrNull { fill(it.kid("spPr")) } ?: styled.first
                         val ln = spPr?.kid("ln")
                         val lineC = if (ln?.kid("noFill") != null) null else ln?.kid("solidFill")?.let(::color) ?: style?.kid("lnRef")?.takeIf { it.attr("idx") != "0" }?.let(::color)
                         val width = (ln?.attr("w")?.toFloatOrNull() ?: 12700f) / EMU
                         val shape = if (fillC != null || lineC != null) ShapePicture(geom?.takeIf { it in ShapeGeometry.presets || it in ShapePicture.KINDS } ?: "rect", fillC, lineC, width,
                             adjust = spPr?.kid("prstGeom")?.below("gd")?.mapNotNull { g -> g.attr("fmla")?.removePrefix("val ")?.trim()?.toDoubleOrNull()?.let { (g.attr("name") ?: "") to it } }?.toMap().orEmpty()) else null
                         val fontColor = style?.kid("fontRef")?.let(::color)
+                        val paths = spPr?.kid("custGeom")?.let(::custom).orEmpty()
                         val text = e.kid("txBody")?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor) }
-                        if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text)
+                        if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text, paths,
+                            xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad)
                     }
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p -> out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { part(p) } }
                     "graphicFrame" -> {
@@ -215,6 +253,47 @@ internal object Slides {
                     "AlternateContent" -> e.kid("Fallback")?.let { shapes(it, rels, ctx, out, group) }
                 }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
+        }
+
+        /**
+         * A custom outline's paths (custGeom), in its path's own units made 0..1: lines, curves, arcs (as curves).
+         * Null points (a guide's name, not a number): the shape is left a box.
+         */
+        // shortcut: guides (gdLst) are not worked out — their shapes stay boxes; work them out if decks show many
+        fun custom(g: Element): List<SlidePath> = g.kid("pathLst")?.kids("path").orEmpty().mapNotNull { p ->
+            val pw = p.attr("w")?.toFloatOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            val ph = p.attr("h")?.toFloatOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            val ops = ArrayList<FloatArray>(); var cx = 0f; var cy = 0f; var sx = 0f; var sy = 0f; var named = false
+            fun pts(e: Element) = e.kids("pt").map { pt -> val x = pt.attr("x")?.toFloatOrNull(); val y = pt.attr("y")?.toFloatOrNull(); if (x == null || y == null) named = true; (x ?: 0f) to (y ?: 0f) }
+            for (c in p.kids()) when (c.localName) {
+                "moveTo" -> pts(c).firstOrNull()?.let { (x, y) -> ops += floatArrayOf(0f, x / pw, y / ph); cx = x; cy = y; sx = x; sy = y }
+                "lnTo" -> pts(c).firstOrNull()?.let { (x, y) -> ops += floatArrayOf(1f, x / pw, y / ph); cx = x; cy = y }
+                "cubicBezTo" -> pts(c).takeIf { it.size == 3 }?.let { q -> ops += floatArrayOf(2f, q[0].first / pw, q[0].second / ph, q[1].first / pw, q[1].second / ph, q[2].first / pw, q[2].second / ph); cx = q[2].first; cy = q[2].second }
+                "quadBezTo" -> pts(c).takeIf { it.size == 2 }?.let { q ->
+                    // a quadratic as a cubic: its control point two thirds of the way from each end
+                    val c1x = cx + 2f / 3 * (q[0].first - cx); val c1y = cy + 2f / 3 * (q[0].second - cy)
+                    val c2x = q[1].first + 2f / 3 * (q[0].first - q[1].first); val c2y = q[1].second + 2f / 3 * (q[0].second - q[1].second)
+                    ops += floatArrayOf(2f, c1x / pw, c1y / ph, c2x / pw, c2y / ph, q[1].first / pw, q[1].second / ph); cx = q[1].first; cy = q[1].second }
+                "arcTo" -> {
+                    val wr = c.attr("wR")?.toFloatOrNull() ?: return@mapNotNull null; val hr = c.attr("hR")?.toFloatOrNull() ?: return@mapNotNull null
+                    val st = Math.toRadians((c.attr("stAng")?.toDoubleOrNull() ?: 0.0) / 60_000); val sw = Math.toRadians((c.attr("swAng")?.toDoubleOrNull() ?: 0.0) / 60_000)
+                    // the ellipse's centre: the pen is on it at the start angle; the sweep in pieces of at most a quarter turn
+                    val ox = cx - wr * Math.cos(st); val oy = cy - hr * Math.sin(st)
+                    val n = maxOf(1, Math.ceil(Math.abs(sw) / (Math.PI / 2)).toInt()); val step = sw / n
+                    var a = st
+                    repeat(n) {
+                        val k = 4.0 / 3 * Math.tan(step / 4)
+                        val x1 = ox + wr * Math.cos(a); val y1 = oy + hr * Math.sin(a); val b = a + step
+                        val x2 = ox + wr * Math.cos(b); val y2 = oy + hr * Math.sin(b)
+                        ops += floatArrayOf(2f, ((x1 - k * wr * Math.sin(a)) / pw).toFloat(), ((y1 + k * hr * Math.cos(a)) / ph).toFloat(),
+                            ((x2 + k * wr * Math.sin(b)) / pw).toFloat(), ((y2 - k * hr * Math.cos(b)) / ph).toFloat(), (x2 / pw).toFloat(), (y2 / ph).toFloat())
+                        a = b
+                    }
+                    cx = (ox + wr * Math.cos(a)).toFloat(); cy = (oy + hr * Math.sin(a)).toFloat()
+                }
+                "close" -> { ops += floatArrayOf(4f); cx = sx; cy = sy }
+            }
+            if (ops.isEmpty() || named) null else SlidePath(ops, p.attr("fill") != "none", p.attr("stroke") != "0" && p.attr("stroke") != "false")
         }
 
         /** A table: its grid, each cell's fill (the table style's banded look when it has none) and words. */
@@ -294,7 +373,12 @@ internal object Slides {
             c.save()
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)
             when (item) {
-                is SlideItem.Shape -> { item.shape?.drawAt(c, item.x, item.y, item.w, item.h); item.text?.let { text(c, it, item.x, item.y, item.w, item.h) } }
+                is SlideItem.Shape -> {
+                    if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2)
+                    if (item.paths.isNotEmpty() || item.gradient != null) outline(c, item, paint) else item.shape?.drawAt(c, item.x, item.y, item.w, item.h)
+                    if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2) // words not mirrored
+                    item.text?.let { text(c, it, item.x, item.y, item.w, item.h) }
+                }
                 is SlideItem.Picture -> {
                     val bmp = pictures.get(item) ?: runCatching { item.bytes()?.let { b ->
                         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -310,6 +394,53 @@ internal object Slides {
             c.restore()
         }
         c.restore()
+    }
+
+    /**
+     * A shape drawn here (its own outline, or a preset filled with a gradient): each path filled with its fill or gradient
+     * and stroked with its line.
+     */
+    private fun outline(c: Canvas, item: SlideItem.Shape, paint: Paint) {
+        val fill = item.shape?.fill; val line = item.shape?.line
+        val paths: List<Pair<android.graphics.Path, SlidePath?>> = if (item.paths.isNotEmpty()) item.paths.map { sp ->
+            val path = android.graphics.Path()
+            fun x(v: Float) = item.x + v * item.w
+            fun y(v: Float) = item.y + v * item.h
+            for (o in sp.ops) when (o[0].toInt()) {
+                0 -> path.moveTo(x(o[1]), y(o[2]))
+                1 -> path.lineTo(x(o[1]), y(o[2]))
+                2 -> path.cubicTo(x(o[1]), y(o[2]), x(o[3]), y(o[4]), x(o[5]), y(o[6]))
+                4 -> path.close()
+            }
+            path to sp
+        } else {
+            // a preset's outline from its geometry, placed in the box
+            val kind = item.shape?.geometry ?: "rect"
+            val geo = ShapeGeometry.presets[kind]
+            if (geo != null) geo.paths(item.w, item.h, item.shape?.adjust.orEmpty()).map { sub ->
+                val path = android.graphics.Path()
+                for (op in sub.ops) when (op) {
+                    is ShapeGeometry.Op.Move -> path.moveTo(item.x + op.x, item.y + op.y)
+                    is ShapeGeometry.Op.Line -> path.lineTo(item.x + op.x, item.y + op.y)
+                    is ShapeGeometry.Op.Cubic -> path.cubicTo(item.x + op.x1, item.y + op.y1, item.x + op.x2, item.y + op.y2, item.x + op.x, item.y + op.y)
+                    is ShapeGeometry.Op.Quad -> path.quadTo(item.x + op.x1, item.y + op.y1, item.x + op.x, item.y + op.y)
+                    ShapeGeometry.Op.Close -> path.close()
+                }
+                path to SlidePath(emptyList(), sub.fill, sub.stroke)
+            } else listOf(ShapePicture.path(kind, item.w, item.h).apply { offset(item.x, item.y) } to null)
+        }
+        val g = item.gradient
+        for ((path, sp) in paths) {
+            if ((sp?.fill ?: true) && g != null) {
+                // along its angle through the box's middle, as far as the box reaches that way
+                val a = Math.toRadians(g.angle.toDouble()); val cx = item.x + item.w / 2; val cy = item.y + item.h / 2
+                val r = (Math.abs(Math.cos(a)) * item.w / 2 + Math.abs(Math.sin(a)) * item.h / 2).toFloat()
+                paint.shader = android.graphics.LinearGradient(cx - r * Math.cos(a).toFloat(), cy - r * Math.sin(a).toFloat(), cx + r * Math.cos(a).toFloat(), cy + r * Math.sin(a).toFloat(),
+                    g.colors, g.stops, android.graphics.Shader.TileMode.CLAMP)
+                paint.style = Paint.Style.FILL; paint.color = 0xFF000000.toInt(); c.drawPath(path, paint); paint.shader = null
+            } else if ((sp?.fill ?: true) && fill != null) { paint.style = Paint.Style.FILL; paint.color = fill; c.drawPath(path, paint) }
+            if ((sp?.stroke ?: true) && line != null) { paint.style = Paint.Style.STROKE; paint.strokeWidth = item.shape?.lineWidth ?: 1f; paint.strokeJoin = Paint.Join.ROUND; paint.color = line; c.drawPath(path, paint) }
+        }
     }
 
     private fun table(c: Canvas, t: SlideItem.Table, paint: Paint) {

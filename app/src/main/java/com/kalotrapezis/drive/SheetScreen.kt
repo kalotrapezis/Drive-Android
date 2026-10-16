@@ -712,7 +712,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     }
                 }
                 val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }
-                Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally)) {
+                // one sliding line; on a desktop, rows of whole groups (asked 16 Oct)
+                RibbonLine(scroll, Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                     @Composable fun opener(name: String, icon: Int) = RibbonButton(name, w, icon, on = group == name) { group = if (group == name) null else name }
                     val thin = SheetLine(0xFF000000.toInt(), 1f)
                     @Composable fun copyClear() {

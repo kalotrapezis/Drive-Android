@@ -1,5 +1,8 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.layout.layoutId
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,3 +111,44 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
         modifier = if (small) Modifier.height(34.dp) else Modifier,
         contentPadding = if (small) PaddingValues(horizontal = 12.dp) else MenuDefaults.DropdownMenuItemContentPadding)
 }
+
+/** The ribbon's groups' separator ([RibbonDivider]): where [RibbonRows] may go on to the next row. */
+internal const val RIBBON_DIVIDER = "ribbon-divider"
+
+/** A desktop's ribbon (asked 16 Oct): at the top, on a wide screen — its tools on rows, not one sliding line. */
+@Composable internal fun ribbonRows() = OfficeUi.top && androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
+
+/**
+ * A ribbon's tools on as many rows as they take, a group (the tools between two [RIBBON_DIVIDER]s) kept whole: one
+ * that does not fit goes to the next row, its separator left out there (asked 16 Oct: "stacked properly", not cut mid-group).
+ */
+@Composable internal fun RibbonRows(modifier: Modifier = Modifier, content: @Composable () -> Unit) =
+    androidx.compose.ui.layout.Layout(content, modifier) { ms, c ->
+        val loose = androidx.compose.ui.unit.Constraints(maxHeight = c.maxHeight)
+        val ps = ms.map { it.measure(loose) }
+        val divider = ms.map { it.layoutId == RIBBON_DIVIDER }
+        // the groups, each with the separator before it
+        val groups = ArrayList<Pair<Int?, List<Int>>>(); var sep: Int? = null; var items = ArrayList<Int>()
+        ps.indices.forEach { i -> if (divider[i]) { if (items.isNotEmpty()) groups += sep to items; sep = i; items = ArrayList() } else items += i }
+        if (items.isNotEmpty()) groups += sep to items
+        val rows = ArrayList<ArrayList<Pair<Int?, List<Int>>>>(); var x = 0
+        for ((s, g) in groups) {
+            val w = g.sumOf { ps[it].width }; val sw = s?.let { ps[it].width } ?: 0
+            if (rows.isEmpty() || (x > 0 && x + sw + w > c.maxWidth)) { rows += arrayListOf(null to g); x = w } else { rows.last() += s to g; x += sw + w }
+        }
+        val heights = rows.map { r -> r.maxOf { (s, g) -> maxOf(s?.let { ps[it].height } ?: 0, g.maxOf { ps[it].height }) } }
+        layout(c.maxWidth, heights.sum()) {
+            var y = 0
+            rows.forEachIndexed { k, r ->
+                var px = 0
+                for ((s, g) in r) for (i in listOfNotNull(s) + g) { ps[i].placeRelative(px, y + (heights[k] - ps[i].height) / 2); px += ps[i].width }
+                y += heights[k]
+            }
+        }
+    }
+
+/** A ribbon's tools: rows of whole groups on a desktop ([ribbonRows]), else one sliding line, faded where there is more. */
+@Composable internal fun RibbonLine(scroll: androidx.compose.foundation.ScrollState, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
+    if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().then(modifier), content)
+    else androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).then(modifier),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { content() }

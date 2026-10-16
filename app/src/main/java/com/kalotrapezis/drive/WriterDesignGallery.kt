@@ -1,5 +1,7 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -245,35 +247,79 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
  * window: student or professional, title page, abstract), APA's run-in headings 4 and 5 at the cursor, and the style
  * the citations and their list are written in.
  */
-@OptIn(ExperimentalLayoutApi::class)
+/** A strip in the ribbon's place over the page (no dimming: the page in sight), its ✕ and name, its cards sliding. */
 @Composable
-internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> Unit, runIn: (Int) -> Unit, citeStyle: (CiteStyle) -> Unit, styles: List<CiteStyle> = CiteStyle.entries) {
-    @Composable fun card(title: String, says: String, click: () -> Unit) = Column(Modifier.width(200.dp).clip(RoundedCornerShape(12.dp))
-        .background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = click).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        Text(says, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 720.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.padding(20.dp)) {
-                Text("Standards", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("APA 7", style = MaterialTheme.typography.titleSmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        card("APA 7 paper", "Times New Roman 12, double spacing, 1-inch margins, page numbers; title page, abstract, running head", paper)
-                        card("Heading level 4", "At the cursor: bold, indented, ending in a period, the text running on", { runIn(4) })
-                        card("Heading level 5", "At the cursor: bold italic, indented, ending in a period, the text running on", { runIn(5) })
-                    }
-                    Text("Citations and the reference list", style = MaterialTheme.typography.titleSmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        styles.forEach { c -> Choice(c.label, c == cite) { citeStyle(c) } }
-                    }
+private fun StripDialog(title: String, dismiss: () -> Unit, cards: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val phone = LocalConfiguration.current.screenWidthDp < 700
+    androidx.compose.ui.window.Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window?.setDimAmount(0f)
+        Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_close), "Close", tint = Color.White) }
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+                val scroll = androidx.compose.foundation.rememberScrollState()
+                Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), content = cards)
             }
         }
     }
 }
+
+/** A white card on a strip, its name above it on the dark. */
+@Composable
+private fun StripCard(title: String, on: Boolean = false, click: () -> Unit, body: @Composable () -> Unit) {
+    val k = if (LocalConfiguration.current.screenWidthDp < 700) 0.8f else 1f
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title + if (on) "  ✓" else "", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
+        Column(Modifier.width(210.dp * k).height(96.dp * k).clip(RoundedCornerShape(12.dp)).background(Color.White)
+            .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33888888), RoundedCornerShape(12.dp))
+            .clickable(onClick = click).padding(10.dp * k), verticalArrangement = Arrangement.spacedBy(4.dp)) { body() }
+    }
+}
+
+@Composable private fun stripInk() = TextStyle(color = Color(0xFF222222), fontSize = (if (LocalConfiguration.current.screenWidthDp < 700) 9 else 11).sp)
+
+/** Each citation style with what it writes (asked 16 Oct: examples, not a list of names) — one book, cited and listed. */
+@Composable
+private fun CiteStyleCards(cite: CiteStyle, styles: List<CiteStyle>, pick: (CiteStyle) -> Unit) {
+    val ink = stripInk()
+    styles.forEach { c ->
+        StripCard(c.label, on = c == cite, click = { pick(c) }) {
+            Text(c.parenthetical(listOf(STYLE_SAMPLE), "47", order = listOf(STYLE_SAMPLE.tag)), style = ink.copy(fontWeight = FontWeight.Medium))
+            Text(androidx.compose.ui.text.buildAnnotatedString {
+                c.entry(STYLE_SAMPLE).forEach { r -> if (r.italic) withStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic)) { append(r.text) } else append(r.text) }
+            }, style = ink)
+        }
+    }
+}
+
+/** References › Style as a strip in the ribbon's place (asked 16 Oct: it was a list of names): each style's example, picked, the ribbon back. */
+@Composable
+internal fun CiteStyleStrip(cite: CiteStyle, styles: List<CiteStyle>, dismiss: () -> Unit, pick: (CiteStyle) -> Unit) =
+    StripDialog("Citation style", dismiss) { CiteStyleCards(cite, styles, pick) }
+
+/**
+ * Design › Standards as a strip in the ribbon's place, as Font's and Page numbers' (asked 16 Oct): APA 7's paper, its
+ * run-in headings 4 and 5 at the cursor, and the style the citations and their list are written in, each with what it does.
+ */
+@Composable
+internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> Unit, runIn: (Int) -> Unit, citeStyle: (CiteStyle) -> Unit, styles: List<CiteStyle> = CiteStyle.entries) =
+    StripDialog("Standards", dismiss) {
+        val ink = stripInk()
+        StripCard("APA 7 paper", click = paper) { Text("Times New Roman 12, double spacing, 1-inch margins, page numbers; title page, abstract, running head", style = ink) }
+        for ((level, italic) in listOf(4 to false, 5 to true)) StripCard("Heading level $level", click = { runIn(level) }) {
+            Text(androidx.compose.ui.text.buildAnnotatedString {
+                withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal)) { append("    Results of the test. ") }
+                append("The text runs on after the heading, in the same paragraph.")
+            }, style = ink)
+        }
+        Box(Modifier.padding(top = 22.dp).width(1.dp).height(100.dp).background(Color.White.copy(alpha = 0.3f)))
+        CiteStyleCards(cite, styles, citeStyle)
+    }
+
+/** The book each citation style's card cites and lists. */
+private val STYLE_SAMPLE = DocSource("tetra-sample", DocSource.Type.Book, listOf(DocSource.Person("Kurlansky", "Mark")), year = "2018", title = "Salt: A world history", publisher = "Penguin")
 
 /** A page in small: grey lines of text, and a header's and a footer's words where they stand. */
 @Composable

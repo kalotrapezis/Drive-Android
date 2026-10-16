@@ -704,7 +704,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 }
                                 // the tab's tools on one sliding line, as Words' and Tables' (only catalogs, as colours or effects, take 2–3 lines)
                                 key(shown) {
-                                    Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                                    // one sliding line; on a desktop, rows of whole groups (asked 16 Oct)
+                                    RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                                         if (e != null) SlideRibbon(shown, c, e, w)
                                     }
                                 }

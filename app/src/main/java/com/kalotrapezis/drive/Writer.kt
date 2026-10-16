@@ -2,6 +2,7 @@
 
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -2974,6 +2975,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // 2026-09-29, for room); a tablet has room and keeps it.
     var barShown by remember { mutableStateOf(true) }
     var officeSettings by remember { mutableStateOf(false) } // File › Settings
+    var citeStyling by remember { mutableStateOf(false) } // References › Style's strip
     // the top bar's and the ribbon's heights: the ribbon at the top (a mouse in use) stands under the bar, the page under it
     var barPx by remember { mutableIntStateOf(0) }; var islandPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -3634,7 +3636,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         // The ribbon and a gallery's strip slide down and up as they take each other's place (asked 15 Oct).
         // at the bottom for a finger; at the top, under the top bar, while a mouse is in use (or as Settings say), as a PC's Word
         val atTop = OfficeUi.top
-        androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && shapeOptions == null && !shapesPage,
+        androidx.compose.animation.AnimatedVisibility(!viewing && !reading && designGallery == null && !standards && !citeStyling && shapeOptions == null && !shapesPage,
             (if (atTop) Modifier.align(Alignment.TopCenter).padding(top = with(density) { barPx.toDp() }) else Modifier.align(Alignment.BottomCenter)).onSizeChanged { islandPx = it.height },
             enter = if (atTop) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
             exit = if (atTop) androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut() else SLIDE_OUT) { Column(Modifier.fillMaxWidth().then(
@@ -4171,14 +4173,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
                     RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
-                    // References › Style (Word's): APA 7, MLA 9 or Chicago author-date — the citations and the list written again in it.
-                    Box {
-                        var styling by remember { mutableStateOf(false) }
-                        RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { styling = true }
-                        DropdownMenu(styling, { styling = false }) {
-                            CiteStyle.entries.filter { it != CiteStyle.IEEE || kind == OfficeKind.Docx }.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { styling = false; setCiteStyle(c) }) }
-                        }
-                    }
+                    // References › Style (Word's): the citations and the list written again in it — a strip of the styles, each
+                    // with its example, in the ribbon's place (asked 16 Oct: it was a list of names)
+                    RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { citeStyling = true }
                 }, {
                     // Captions and their numbers (Word's Insert Caption and F9).
                     RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
@@ -4279,7 +4276,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
             // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
             // spread over the width they were too far apart). A phone swipes them page by page.
-            if (LocalConfiguration.current.screenWidthDp >= 700) Row(
+            // a desktop (asked 16 Oct): the groups on rows, a group kept whole
+            if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } }
+            else if (LocalConfiguration.current.screenWidthDp >= 700) Row(
                 rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
             ) { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } }
@@ -4697,6 +4696,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
+    if (citeStyling) CiteStyleStrip(meta.citeStyle, CiteStyle.entries.filter { it != CiteStyle.IEEE || kind == OfficeKind.Docx }, { citeStyling = false }) { c -> citeStyling = false; setCiteStyle(c) }
     if (wordArt) TextBoxDialog("", { wordArt = false }, art = true, glowAllowed = kind == OfficeKind.Docx) { text, color, fx, bend -> wordArt = false; putTextBox(text.split('\n'), color, fx, bend) }
     if (pagePage) PageSetupDialog(sheet, { pagePage = false }) { pagePage = false; setPage(it) }
     if (symbolPage) SymbolDialog({ symbolPage = false }) { symbolPage = false; typeIn(it) }
@@ -4953,7 +4953,7 @@ internal fun saveState(saving: Boolean, unsaved: Boolean) = if (saving) "Saving�
     Text(parts.joinToString(" · "), color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = modifier.padding(horizontal = 8.dp))
 
 /** A thin line between a ribbon's groups of tools (Words', Slides' and Tables'). */
-@Composable internal fun RibbonDivider(tint: Color) = Box(Modifier.padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
+@Composable internal fun RibbonDivider(tint: Color) = Box(Modifier.layoutId(RIBBON_DIVIDER).padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
 
 /** Design › Paragraph spacing: Word's sets — space after (pt) and line spacing of the Normal style. */
 private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("Compact", 4f, 1f), Triple("Tight", 6f, 1.15f),

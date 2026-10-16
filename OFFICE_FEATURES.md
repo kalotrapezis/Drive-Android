@@ -270,7 +270,8 @@ slow frames, taps, filters, searches — never a cell's words).
 - [x] Shapes in their outlines (Writer's 187 presets, their adjustments; LibreOffice's kinds and paths), the theme's look
       (fill, darker outline, white words) as Excel's default shape, words in the middle (shapes.xlsx/.ods)
 - [x] A combo's second value axis: a line on its own scale, its numbers at the right (charts.xlsx "Two axes")
-- [ ] Tablet: two panes? (check the layout on the tablet)
+- [x] Tablet: checked at a tablet's width (the phone at 800 dp, 16 Oct): sheet, charts, pictures and the ribbon in one
+      row fit; no second pane (Excel's tablet app has none either). On the tablet itself: with the user
 - [x] .xls (Excel 97–2003): shown (values, formulas' results, fonts, fills, number formats, merges, widths, frozen panes);
       not edited (Excel-test.xls: every cell as the .xlsx's). Not read yet: its conditional formats, notes, pictures
 

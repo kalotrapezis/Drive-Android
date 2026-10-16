@@ -49,8 +49,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -4182,18 +4180,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
             ) { pages.forEachIndexed { i, page -> if (i > 0) Divider(w); page() } }
             else androidx.compose.runtime.key(tab) {
-                val pager = rememberPagerState { pages.size }
-                HorizontalPager(pager, Modifier.fillMaxWidth()) { page ->
-                    // Spread over the width; a page wider than the phone scrolls sideways (found 2026-09-30: Design's last
-                    // three tools were off the screen, out of reach), then the next swipe turns the page.
-                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val sc = rememberScrollState()
-                        Row(Modifier.scrollShade(sc).horizontalScroll(sc).then(Modifier.widthIn(min = maxWidth)).padding(horizontal = 4.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) { pages[page]() }
-                    }
-                }
-                if (pages.size > 1) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.Center) {
-                    repeat(pages.size) { i -> Box(Modifier.padding(horizontal = 3.dp).size(6.dp).clip(CircleShape).background(w.copy(alpha = if (i == pager.currentPage) 0.9f else 0.3f))) }
+                // The tab's tools in one row that scrolls freely, its groups apart by a thin line, faded where there is more
+                // (16 Oct: as Tables' and Slides' rows, in place of pages turned one at a time with dots); a new tab from its start
+                val sc = remember(tab) { androidx.compose.foundation.ScrollState(0) }
+                Row(Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    pages.forEachIndexed { i, group -> if (i > 0) Divider(w); group() }
                 }
             }
             }

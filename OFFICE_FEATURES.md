@@ -344,7 +344,7 @@ LibreOffice works them out).
 - [x] Colours (asked 16 Oct: "or are they just blue?"): a shape's fill, border and words' colour (PowerPoint's standard
       colours, or none), a table's (its first row, the others in its tints) — the file's own shapes too
 - [x] The file's own text boxes, shapes, pictures, charts and tables moved and sized (finger or arrows), saved in their
-      place — [ ] one in a group (it moves with the group), deleting the file's own items
+      place, or deleted (its animation with it) — [ ] one in a group (it moves with the group)
 - [x] Choosing a slide's transition (None, Fade, Push, Wipe, Cover, Uncover, Cut; Apply to all; Play) and an item's
       entrance (None, Appear, Fade, Fly in; Earlier/Later in the clicks; Play), saved as PowerPoint's XML — LibreOffice
       reads them (its wipe, its clicks) — [ ] emphasis and exit effects, a direction or length to choose (changing a

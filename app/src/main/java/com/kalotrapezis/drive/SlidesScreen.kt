@@ -211,7 +211,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Bigger", w, R.drawable.ic_add) { reframe { val k = 1.15f; listOf(it.x - it.w * (k - 1) / 2, it.y - it.h * (k - 1) / 2, it.w * k, it.h * k) } }
                     RibbonButton("Smaller", w, R.drawable.ic_remove) { reframe { val k = 1 / 1.15f; listOf(it.x + it.w * (1 - k) / 2, it.y + it.h * (1 - k) / 2, it.w * k, it.h * k) } }
                 }
-                if (a != null) RibbonButton("Delete", w, R.drawable.ic_delete) { alter { null }; item = null }
+                if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) {
+                    val id = item ?: return@RibbonButton
+                    // its animation goes with it (the slide's timing then names only what is there)
+                    val list = e.anims[uid] ?: sl?.steps.orEmpty().flatMap { st -> st.effects.map { it.target to it.kind } }
+                    val anims = if (list.any { it.first == id }) e.anims + (uid to list.filter { it.first != id }) else e.anims
+                    change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
+                        else e.copy(removed = e.removed + (uid to id), anims = anims))
+                    item = null; WriterLog.i("Slides: an item deleted")
+                }
             }
             "Slide" -> {
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -220,7 +228,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // the copy takes the slide's words, what was put on it, its colours, transition and animations
                     val nu = e.next()
                     fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
-                    change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames),
+                    change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames), removed = e.removed + e.removed.filter { it.first == uid }.map { nu to it.second },
                         added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
                         anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
                     chosen = c + 1

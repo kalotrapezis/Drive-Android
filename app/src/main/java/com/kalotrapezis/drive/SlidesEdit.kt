@@ -23,7 +23,8 @@ internal object SlidesEdit {
         /** (slide uid, shape id) → its looks */ val looks: Map<Pair<Int, String>, Look> = emptyMap(),
         /** a slide's transition as chosen: "" none, else PowerPoint's name (fade, push, wipe, cover, pull, cut) */ val transitions: Map<Int, String> = emptyMap(),
         /** a slide's click animations as chosen, in their order: each item's id and its entrance (appear, fade, fly) */ val anims: Map<Int, List<Pair<String, String>>> = emptyMap(),
-        /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap()) {
+        /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap(),
+        /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         fun newId(uid: Int) = "${9000 + (added[uid]?.size ?: 0) + added.values.sumOf { it.size }}"
@@ -72,7 +73,7 @@ internal object SlidesEdit {
             (if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
             else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)).also { it.anim = a.id } // what it is chosen and animated by
         }
-        val all = (items.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
+        val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
         val transition = edit.transitions[e.uid]?.let { k -> if (k.isEmpty()) null else SlideTransition(k, null, 750) } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.map { (id, kind) -> SlideStep(false, listOf(SlideEffect(id, kind, 'd', 0, 500))) } ?: s.steps
         return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
@@ -130,7 +131,8 @@ internal object SlidesEdit {
 
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
-        looks: Map<String, Look> = emptyMap(), transition: String? = null, anims: List<Pair<String, String>>? = null, frames: Map<String, List<Float>> = emptyMap()): ByteArray {
+        looks: Map<String, Look> = emptyMap(), transition: String? = null, anims: List<Pair<String, String>>? = null, frames: Map<String, List<Float>> = emptyMap(),
+        removed: Set<String> = emptySet()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
@@ -204,6 +206,9 @@ internal object SlidesEdit {
                 }
             }
         }
+        // deleted: the item gone from the tree (its animation is taken out by the caller, so no timing names it)
+        for (id in removed) (root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
+            ?.parentNode?.parentNode as? Element)?.let { it.parentNode.removeChild(it) }
         // moved or sized: the item's own place (one in a group keeps its place in the group)
         val named = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }
         for ((id, f) in frames) {
@@ -321,6 +326,7 @@ internal object SlidesEdit {
             val looks = edit.looks.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val transition = edit.transitions[e.uid]; val anims = edit.anims[e.uid]
             val frames = edit.frames.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
+            val removed = edit.removed.filter { it.first == e.uid }.map { it.second }.toSet()
             val hide = edit.hidden[e.uid]
             val added = edit.added[e.uid].orEmpty()
             val source = if (e.layout >= 0) null else deck.slides[e.src]
@@ -333,11 +339,11 @@ internal object SlidesEdit {
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
-                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden))
-                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames)
+                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden))
+                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
                 if (ids.isNotEmpty()) out[relsPath(part)] = xml(relsXml)
             } else {
-                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames)
+                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }

@@ -102,7 +102,9 @@ class SlidesTest {
         e = e.copy(added = mapOf(2 to listOf(SlidesEdit.Added("9100", 550f, 50f, 100f, 100f, prst = "star5"))),
             looks = mapOf((2 to box.id!!) to SlidesEdit.Look(fill = 0xFFC00000.toInt(), line = SlidesEdit.NONE, text = 0xFFFFFFFF.toInt()), (2 to "9100") to SlidesEdit.Look(fill = 0xFF00B050.toInt())),
             transitions = mapOf(2 to "wipe", 0 to ""), anims = mapOf(2 to listOf(box.anim!! to "fade", "9100" to "fly")),
-            frames = mapOf((2 to box.id!!) to listOf(100f, 120f, 200f, 90f))) // the file's own box moved and sized
+            frames = mapOf((2 to box.id!!) to listOf(100f, 120f, 200f, 90f)), // the file's own box moved and sized
+            removed = setOf(2 to deck.slides[2].items.first { it is SlideItem.Picture }.anim!!)) // and its picture deleted
+        val pictures = deck.slides[2].items.count { it is SlideItem.Picture }
         // as it shows while editing
         SlidesEdit.view(deck, e).slides[2].let { s ->
             assertEquals("wipe", s.transition!!.kind); assertEquals(listOf("fade", "fly"), s.steps.map { it.effects.single().kind })
@@ -113,6 +115,7 @@ class SlidesTest {
         val back = Slides.read(out)
         val b = back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
         assertEquals(listOf(100f, 120f, 200f, 90f), listOf(b.x, b.y, b.w, b.h))
+        assertEquals(pictures - 1, back.slides[2].items.count { it is SlideItem.Picture })
         assertEquals(0xFFC00000.toInt(), b.shape!!.fill); assertEquals(null, b.shape!!.line); assertEquals(0xFFFFFFFF.toInt(), b.text!!.paras[0].runs[0].color)
         assertEquals(0xFF00B050.toInt(), back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
         assertEquals("wipe", back.slides[2].transition!!.kind)

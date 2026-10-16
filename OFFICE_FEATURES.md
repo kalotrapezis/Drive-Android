@@ -316,12 +316,16 @@ LibreOffice works them out).
 
 ## PowerPoint (Presentation) — after Excel
 
-- [ ] Open .pptx / .odp: slides, text boxes, pictures, notes
+- [x] Open .pptx / .odp (16 Oct): slides with their layouts', masters' and themes' looks — placeholders' places, title and
+      body styles, bullets and levels, theme colours and fonts — shapes in their outlines, pictures, charts, tables, groups,
+      backgrounds, speaker notes (Notes under each slide); slides.py's deck and LibreOffice's .odp of it, as LibreOffice shows them
+- [x] Present: full screen and sideways, swipe or tap (right: next, left: back), the bars hidden, hidden slides skipped
+- [ ] Gradients (drawn as their first colour); a chart's own title when it has one series (LibreOffice's "Sales")
 - [ ] Slide thumbnails; add, duplicate, reorder, delete slides
 - [ ] Edit text on a slide; layouts and themes from the file
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)
-- [ ] Present: full screen, swipe to advance, pen and laser on the slide, blank screen, speaker notes
+- [ ] Present: pen and laser on the slide, blank screen, speaker notes on a second screen
 - [ ] Present to a TV (Android's cast / HDMI)
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 

@@ -46,6 +46,7 @@ internal object Slides {
 
     /** A deck read from its parts. */
     fun read(file: java.io.File): Deck {
+        if (file.extension.equals("odp", true)) return SlidesOdp.read(file)
         val zip = java.util.zip.ZipFile(file)
         val cache = HashMap<String, ByteArray?>()
         fun part(name: String): ByteArray? = synchronized(cache) { cache.getOrPut(name) { zip.getEntry(name)?.let { e -> zip.getInputStream(e).use { it.readBytes() } } } }

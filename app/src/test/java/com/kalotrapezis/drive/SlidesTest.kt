@@ -9,8 +9,13 @@ import java.io.File
 class SlidesTest {
     private fun words(i: SlideItem) = (i as? SlideItem.Shape)?.text?.paras?.joinToString("\n") { p -> p.runs.joinToString("") { it.text } }
 
-    @Test fun `a pptx deck read with its layouts, master and theme`() {
-        val d = Slides.read(File("src/test/resources/slides.pptx"))
+    @Test fun `a pptx deck read with its layouts, master and theme`() = check("slides.pptx")
+
+    /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
+    @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
+
+    private fun check(name: String) {
+        val d = Slides.read(File("src/test/resources/$name"))
         assertEquals(720f, d.width, 0.5f); assertEquals(540f, d.height, 0.5f) // 10 × 7.5 in
         assertEquals(4, d.slides.size)
         // the title slide: its placeholders' places and looks from the layout and the master

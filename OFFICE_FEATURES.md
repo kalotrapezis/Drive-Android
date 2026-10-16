@@ -422,7 +422,9 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] Open a .docx and an .odt of his own; nothing looks different from Word/LibreOffice (bold, lists, headings)
 - [ ] Edit + Save over a file with no banner; open it on the computer in LibreOffice/Word
 - [ ] A file with tables or images: orange banner, Save makes "(copy)", the original untouched
-- [ ] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt
+- [x] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt (checked on the
+      emulator 16 Oct; Bullets/Numbering on a line with words switch it — fixed — [ ] on a new, empty list line Numbering
+      gives a second-level bullet: the editor library's toggle)
 - [ ] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches
 - [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count)
 - [x] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"

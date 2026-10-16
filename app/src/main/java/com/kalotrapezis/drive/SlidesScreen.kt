@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
@@ -87,6 +88,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var typing by remember { mutableStateOf<Pair<SlideItem.Shape, androidx.compose.ui.text.input.TextFieldValue>?>(null) }
     var saving by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
+    var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
     var message by remember { mutableStateOf<String?>(null) }
     suspend fun load(f: File) = withContext(Dispatchers.IO) { runCatching { WriterLog.timed("Slides: deck read") { Slides.read(f) } } }
     LaunchedEffect(open) {
@@ -118,7 +120,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     fun leave() { if (changed) leaving = true else back() }
-    BackHandler { when { typing != null -> typing = null; chosen != null -> chosen = null; else -> leave() } }
+    BackHandler { when { typing != null -> typing = null; layouts -> layouts = false; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(deck, edit) { deck?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
@@ -162,7 +164,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             Column {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
-                                SlideCanvas(d, s, Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
+                                SlideCanvas(d, s, hints = editing, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
                                     .then(if (chosen == i) Modifier.border(3.dp, POWERPOINT_ORANGE, RoundedCornerShape(4.dp)) else Modifier)
                                     .pointerInput(editing, chosen, i, s) {
                                         detectTapGestures { o ->
@@ -170,7 +172,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             if (chosen != i) { chosen = i; typing = null; return@detectTapGestures }
                                             val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
                                             val hit = s.items.lastOrNull { it is SlideItem.Shape && it.id != null && it.text != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) } as SlideItem.Shape?
-                                            if (hit != null) { val t = SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
+                                            if (hit != null) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
                                             else message = "Tap a text box on the slide to change its words"
                                         }
                                     })
@@ -185,21 +187,43 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's tools, in a strip that slides up (as Writer's galleries)
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && !layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) { // solid, as Excel's ribbon
                             Row(Modifier.navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { chosen = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
                                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
                                 if (e != null) {
                                     val entry = e.order[c]
-                                    RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next())) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
+                                    if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
+                                    RibbonButton("Duplicate", w, R.drawable.ic_copy) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, e.next(), entry.layout)) }, texts = e.texts + e.texts.filterKeys { it.first == entry.uid }.mapKeys { (e.next()) to it.key.second })); chosen = c + 1 }
                                     RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                                     RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
-                                    val hidden = e.hidden[entry.uid] ?: deck!!.slides[entry.src].hidden
+                                    val hidden = e.hidden[entry.uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false // a new slide is shown
                                     RibbonButton(if (hidden) "Show" else "Hide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (entry.uid to !hidden))) }
                                     RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
+                                }
+                            }
+                        }
+                    }
+                    // New slide: the deck's layouts in the strip's place, each a small slide; the one tapped comes after the chosen slide
+                    androidx.compose.animation.AnimatedVisibility(editing && layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val full = deck
+                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.navigationBarsPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { layouts = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(end = 12.dp)) {
+                                    if (full != null) itemsIndexed(full.layouts) { l, layout ->
+                                        Column(Modifier.width(132.dp).clickable {
+                                            val ee = edit ?: return@clickable; val c = (chosen ?: -1) + 1
+                                            change(ee.copy(order = ee.order.toMutableList().apply { add(c.coerceIn(0, size), SlidesEdit.Entry(-1, ee.next(), l)) }))
+                                            chosen = c; layouts = false; WriterLog.i("Slides: a new slide (${layout.name})")
+                                        }) {
+                                            Text(layout.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 4.dp))
+                                            SlideCanvas(full, layout.preview, Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)), hints = true)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -207,7 +231,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // a text box's words: a line a paragraph, ✕ leaves them, ✓ puts them in (one step of Undo)
                     androidx.compose.animation.AnimatedVisibility(typing != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val t = typing
-                        Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
                                 if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp),
@@ -244,9 +268,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
 
 /** One slide, as wide as it is given, its own shape. */
 @Composable
-private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier) {
+private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boolean = false) {
     Canvas(modifier.aspectRatio(deck.width / deck.height).background(Color.White)) {
-        drawIntoCanvas { c -> Slides.draw(c.nativeCanvas, deck, slide, size.width / deck.width) }
+        drawIntoCanvas { c -> Slides.draw(c.nativeCanvas, deck, slide, size.width / deck.width, hints) }
     }
 }
 

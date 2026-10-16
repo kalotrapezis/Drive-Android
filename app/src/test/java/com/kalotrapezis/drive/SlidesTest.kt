@@ -53,10 +53,18 @@ class SlidesTest {
         e = e.copy(order = e.order.toMutableList().apply { val s = first { it.src == 2 }; remove(s); add(0, s) })
         val title = deck.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Tetra Slides" }
         e = e.copy(hidden = mapOf(0 to true), texts = mapOf((0 to title.id!!) to listOf("Tetra Slides, edited")))
+        // a new slide of "Title and Content" at the end, its title typed, its body left empty (no hint saved)
+        val layout = deck.layouts.indexOfFirst { it.name == "Title and Content" }
+        assertTrue(deck.layouts.size >= 5 && layout >= 0)
+        val titleId = deck.layouts[layout].preview.items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Title" }.id!!
+        val uid = e.next()
+        e = e.copy(order = e.order + SlidesEdit.Entry(-1, uid, layout), texts = e.texts + ((uid to titleId) to listOf("A new slide")))
         val out = File.createTempFile("edited", ".pptx")
         SlidesEdit.save(src, deck, e, out)
         val back = Slides.read(out)
-        assertEquals(4, back.slides.size)
+        assertEquals(5, back.slides.size)
+        assertEquals("A new slide", back.slides[4].items.firstNotNullOf { words(it) }) // its title; the empty body is no text
+        assertTrue(back.slides[4].items.none { words(it) == "Text" })
         assertTrue(back.slides[0].items.any { words(it) == "A rounded box" }) // moved first
         assertTrue(back.slides[1].hidden)
         assertEquals("Tetra Slides, edited", back.slides[1].items.firstNotNullOf { words(it)?.takeIf { w -> w.startsWith("Tetra") } })
@@ -70,7 +78,7 @@ class SlidesTest {
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             val odp = dir.listFiles()!!.single { it.extension == "odp" }
             val lo = Slides.read(odp)
-            assertEquals(4, lo.slides.size)
+            assertEquals(5, lo.slides.size)
             assertTrue(lo.slides[1].items.any { words(it) == "Tetra Slides, edited" })
         }
     }

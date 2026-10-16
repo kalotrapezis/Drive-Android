@@ -325,7 +325,8 @@ LibreOffice works them out).
       checked with the user's own decks against LibreOffice (20 decks read, 16 Oct)
 - [x] Editing a .pptx (16 Oct): Edit → a slide tapped is chosen, its strip at the bottom: Duplicate, Move up/down, Hide/Show,
       Delete; a text box tapped on it: its words (a line a paragraph, each keeping its look); Undo, Save (the file before
-      kept as a version; LibreOffice opens it) — [ ] a new slide from a layout, .odp saving
+      kept as a version; LibreOffice opens it); New slide: the deck's layouts in a strip, grey hints in their empty boxes
+      (not saved) — [ ] .odp saving
 - [x] Edit text on a slide (above); layouts and themes from the file (as shown)
 - [ ] Insert picture, shape, table
 - [ ] Transitions and animations (show; later edit)

@@ -33,7 +33,8 @@ internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val an
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
-        /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null) : SlideItem(x, y, w, h, rotation)
+        /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
+        /** An empty placeholder's grey hint (Title, Text): shown only while editing. */ val hint: Boolean = false) : SlideItem(x, y, w, h, rotation)
     class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
@@ -43,7 +44,10 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
 
 /** [part]: the slide's part in the file (ppt/slides/slide3.xml), for saving into. */
 internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false, val part: String = "")
-internal class Deck(val width: Float, val height: Float, val slides: List<Slide>)
+internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList())
+
+/** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
+internal class SlideLayout(val name: String, val part: String, val preview: Slide, val xml: ByteArray)
 
 internal object Slides {
     fun isSlides(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("pptx", "ppsx", "odp")
@@ -96,7 +100,38 @@ internal object Slides {
             val rels = rels(xml, "ppt/presentation.xml")
             val defaults = pres.kid("defaultTextStyle")
             val slides = pres.kid("sldIdLst")?.kids("sldId").orEmpty().mapNotNull { it.rid("id")?.let(rels::get) }
-            return Deck(w, h, slides.mapNotNull { path -> runCatching { slide(path, defaults) }.onFailure { WriterLog.e("Slides: $path", it) }.getOrNull() })
+            val read = slides.mapNotNull { path -> runCatching { slide(path, defaults) }.onFailure { WriterLog.e("Slides: $path", it) }.getOrNull() }
+            return Deck(w, h, read, runCatching { layouts(pres, rels, defaults) }.onFailure { WriterLog.w("Slides: layouts", it) }.getOrDefault(emptyList()))
+        }
+
+        /**
+         * The first master's layouts, each as a new slide would be: its title, body and other placeholders (not the date,
+         * footer or number), empty to save, with grey hints to show.
+         */
+        fun layouts(pres: Element, rels: Map<String, String>, defaults: Element?): List<SlideLayout> {
+            val masterPath = pres.kid("sldMasterIdLst")?.kids("sldMasterId")?.firstOrNull()?.rid("id")?.let(rels::get) ?: return emptyList()
+            val master = xml(masterPath) ?: return emptyList()
+            val mrels = rels(xml, masterPath)
+            return master.kid("sldLayoutIdLst")?.kids("sldLayoutId").orEmpty().mapNotNull { it.rid("id")?.let(mrels::get) }.mapNotNull { path ->
+                val layout = xml(path) ?: return@mapNotNull null
+                val name = layout.kid("cSld")?.attr("name") ?: "Layout"
+                val phs = layout.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp ->
+                    sp.kid("nvSpPr")?.kid("nvPr")?.kid("ph")?.takeIf { it.attr("type") !in setOf("dt", "ftr", "sldNum", "hdr", "sldImg") } }
+                fun slideXml(hints: Boolean) = buildString {
+                    append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>""")
+                    phs.forEachIndexed { i, ph ->
+                        val type = ph.attr("type"); val idx = ph.attr("idx")
+                        val hint = when (type) { "title", "ctrTitle" -> "Title"; "subTitle" -> "Subtitle"; "pic" -> "Picture"; else -> "Text" }
+                        append("""<p:sp><p:nvSpPr><p:cNvPr id="${i + 2}" name="$hint ${i + 1}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph${type?.let { " type=\"$it\"" }.orEmpty()}${idx?.let { " idx=\"$it\"" }.orEmpty()}/></p:nvPr></p:nvSpPr><p:spPr/>""")
+                        append(if (hints) """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang="el-GR"><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>$hint</a:t></a:r></a:p></p:txBody></p:sp>"""
+                            else """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>""")
+                    }
+                    append("""</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>""")
+                }
+                val preview = slide(path, defaults, OfficeFormats.parse(slideXml(true).toByteArray()).documentElement, path)
+                SlideLayout(name, path, Slide(preview.items.map { i -> if (i is SlideItem.Shape && i.id != null) SlideItem.Shape(i.x, i.y, i.w, i.h, i.rotation, i.shape, i.text, i.paths, i.flipH, i.flipV, i.gradient, i.id, hint = true) else i },
+                    preview.background, ""), slideXml(false).toByteArray())
+            }
         }
 
         /** A colour as DrawingML gives it: its own, a scheme's (through the master's map), changed by lumMod/lumOff, shade, tint, alpha. */
@@ -152,10 +187,11 @@ internal object Slides {
             ?: spPr?.kid("gradFill")?.below("gs")?.firstOrNull()?.let(::color) // shortcut: a gradient as its first colour; draw gradients if decks need them
 
         /** One slide: its layout's and master's placeholders under it, its background, its notes. */
-        fun slide(path: String, defaults: Element?): Slide {
-            val s = xml(path) ?: error("No $path.")
-            val rels = rels(xml, path)
-            val layoutPath = relType(xml, path, "slideLayout"); val layout = layoutPath?.let(xml)
+        /** [own]: a slide not in the file yet (a layout's new slide), [layoutOf] its layout. */
+        fun slide(path: String, defaults: Element?, own: Element? = null, layoutOf: String? = null): Slide {
+            val s = own ?: xml(path) ?: error("No $path.")
+            val rels = if (own != null) emptyMap() else rels(xml, path)
+            val layoutPath = layoutOf ?: relType(xml, path, "slideLayout"); val layout = layoutPath?.let(xml)
             val masterPath = layoutPath?.let { relType(xml, it, "slideMaster") }; val master = masterPath?.let(xml)
             masterPath?.let { relType(xml, it, "theme") }?.let(xml)?.let(::theme)
             map = HashMap<String, String>().also { m -> master?.kid("clrMap")?.let { cm -> for (i in 0 until cm.attributes.length) cm.attributes.item(i).let { a -> m[a.localName ?: a.nodeName] = a.nodeValue } } }
@@ -168,7 +204,7 @@ internal object Slides {
             if (s.attr("showMasterSp") != "0" && layout?.attr("showMasterSp") != "0") tree(master, masterPath!!, null)
             if (s.attr("showMasterSp") != "0") tree(layout, layoutPath!!, null)
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
-            val notes = relType(xml, path, "notesSlide")?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
+            val notes = (if (own != null) null else relType(xml, path, "notesSlide"))?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
                 ?.below("p")?.joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }?.trim().orEmpty()
             return Slide(items, bg, notes, s.attr("show") == "0", path)
         }
@@ -375,12 +411,13 @@ internal object Slides {
     private val pictures = android.util.LruCache<Any, android.graphics.Bitmap>(24)
 
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
-    fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float) {
+    fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false) {
         c.save(); c.scale(k, k)
         c.clipRect(0f, 0f, deck.width, deck.height)
         c.drawColor(slide.background)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         for (item in slide.items) {
+            if (item is SlideItem.Shape && item.hint && !hints) continue
             c.save()
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)
             when (item) {

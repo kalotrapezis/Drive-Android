@@ -9,8 +9,8 @@ import java.io.File
  * before, and saved into the file: only the slides and lists that changed are written, every other part as it was.
  */
 internal object SlidesEdit {
-    /** One slide in the edited deck: [src] the deck's slide it shows, [uid] its own (a duplicate is a new one). */
-    data class Entry(val src: Int, val uid: Int)
+    /** One slide in the edited deck: [src] the deck's slide it shows, [uid] its own (a duplicate is a new one); [layout]: a new slide of that layout. */
+    data class Entry(val src: Int, val uid: Int, val layout: Int = -1)
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
     }
@@ -18,14 +18,17 @@ internal object SlidesEdit {
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
     fun slide(deck: Deck, edit: Edit, e: Entry): Slide {
-        val s = deck.slides[e.src]
+        val s = if (e.layout >= 0) deck.layouts[e.layout].preview else deck.slides[e.src]
         val items = s.items.map { item ->
-            val lines = (item as? SlideItem.Shape)?.id?.let { edit.texts[e.uid to it] } ?: return@map item
+            // a new slide's placeholder typed into is no longer a hint
+            val lines = (item as? SlideItem.Shape)?.id?.let { edit.texts[e.uid to it] }?.takeIf { l -> l.any { it.isNotBlank() } || !(item as SlideItem.Shape).hint } ?: return@map item
             val old = item.text
             val paras = lines.mapIndexed { i, line ->
                 val p = old?.paras?.getOrNull(i) ?: old?.paras?.lastOrNull()
                 val look = p?.runs?.firstOrNull { it.text.isNotBlank() } ?: p?.runs?.firstOrNull()
-                val run = SlideRun(line, look?.size ?: 18f, look?.bold == true, look?.italic == true, look?.underline == true, look?.color ?: 0xFF000000.toInt(), look?.font)
+                // a hint's grey is not the words' colour: those take the theme's text colour
+                val color = if (item.hint) 0xFF000000.toInt() else look?.color ?: 0xFF000000.toInt()
+                val run = SlideRun(line, look?.size ?: 18f, look?.bold == true, look?.italic == true, look?.underline == true, color, look?.font)
                 if (p == null) SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)
                 else SlidePara(listOf(run), p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line)
             }
@@ -106,33 +109,36 @@ internal object SlidesEdit {
         val used = HashSet<Int>()
         ids.forEach { list.removeChild(it) }
         fun relsPath(part: String) = part.substringBeforeLast('/') + "/_rels/" + part.substringAfterLast('/') + ".rels"
+        fun add(part: String, xml: ByteArray, layout: String?, from: String?) {
+            out[part] = xml
+            // a new slide's relationships: its layout's; a duplicate's: its slide's, its own notes left out (they belong to the first)
+            if (layout != null) out[relsPath(part)] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/${layout.substringAfterLast('/')}"/></Relationships>""".toByteArray()
+            else from?.let { read(relsPath(it)) }?.let { r ->
+                val d = OfficeFormats.parse(r)
+                d.documentElement.kids().filter { it.getAttribute("Type").endsWith("/notesSlide") }.forEach { d.documentElement.removeChild(it) }
+                out[relsPath(part)] = xml(d)
+            }
+            val rid = "rId${nextRel++}"
+            rels.documentElement.appendChild(rels.createElementNS(rels.documentElement.namespaceURI, "Relationship").apply {
+                setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"); setAttribute("Target", "slides/" + part.substringAfterLast('/'))
+            })
+            list.appendChild(pres.createElementNS(P, "p:sldId").apply { setAttribute("id", "${nextId++}"); setAttributeNS(R, "r:id", rid) })
+            typesOut = typesOut.replace("</Types>", """<Override PartName="/$part" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>""")
+        }
         for (e in edit.order) {
-            val s = deck.slides[e.src]
             val texts = edit.texts.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val hide = edit.hidden[e.uid]
+            if (e.layout >= 0) { val l = deck.layouts[e.layout]; add("ppt/slides/slide${nextSlide++}.xml", withTexts(l.xml, texts, hide), l.part, null); continue }
+            val s = deck.slides[e.src]
             if (used.add(e.src)) {
                 // the slide itself, where it was; its XML written only when its words or its hiding changed
                 byPart[s.part]?.let { list.appendChild(it) }
                 if (texts.isNotEmpty() || (hide != null && hide != s.hidden)) out[s.part] = withTexts(read(s.part) ?: continue, texts, hide)
-            } else {
-                // a duplicate: a new slide part (its own notes left out: they belong to the first), its relationships, its place in the list
-                val part = "ppt/slides/slide${nextSlide++}.xml"
-                out[part] = withTexts(read(s.part) ?: continue, texts, hide)
-                read(relsPath(s.part))?.let { r ->
-                    val d = OfficeFormats.parse(r)
-                    d.documentElement.kids().filter { it.getAttribute("Type").endsWith("/notesSlide") }.forEach { d.documentElement.removeChild(it) }
-                    out[relsPath(part)] = xml(d)
-                }
-                val rid = "rId${nextRel++}"
-                rels.documentElement.appendChild(rels.createElementNS(rels.documentElement.namespaceURI, "Relationship").apply {
-                    setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"); setAttribute("Target", "slides/" + part.substringAfterLast('/'))
-                })
-                list.appendChild(pres.createElementNS(P, "p:sldId").apply { setAttribute("id", "${nextId++}"); setAttributeNS(R, "r:id", rid) })
-                typesOut = typesOut.replace("</Types>", """<Override PartName="/$part" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>""")
-            }
+            } else add("ppt/slides/slide${nextSlide++}.xml", withTexts(read(s.part) ?: continue, texts, hide), null, s.part)
         }
         // a deleted slide: its part, relationships, notes and listing gone
         for ((i, s) in deck.slides.withIndex()) if (i !in used) {
+            // (a deck's slide not in the order any more)
             byPart[s.part]?.getAttributeNS(R, "id")?.let { rid -> relOf[rid]?.let { rels.documentElement.removeChild(it) } }
             read(relsPath(s.part))?.let { r -> OfficeFormats.parse(r).documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/notesSlide") }?.getAttribute("Target")?.let { t ->
                 val notes = "ppt/notesSlides/" + t.substringAfterLast('/')

@@ -425,7 +425,8 @@ Each is done on the emulator; tick when checked on the real phone.
 - [ ] New document: Heading 1, Enter gives a Normal line, bullets, numbering, Save as .docx and as .odt
 - [ ] Ribbon: tabs, pages of tools with dots, the strip on the keyboard, colours and highlight swatches
 - [ ] Line break (Insert), Link (Insert), Find and Replace, Replace all, Share, About this file (word count)
-- [ ] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
+- [x] Leave with unsaved changes → Save / Don't save; close the app mid-edit → reopen → "Your unsaved changes are back"
+      (checked on the emulator 16 Oct, AutoSave off: the question, then the typed word back after the app was killed)
 - [ ] Text size −/+ and zoom; undo/redo
 - [ ] File › Versions: save twice, restore the older one; File › Export PDF, open the PDF
 - [ ] Pictures: open a document with pictures; Insert › Picture; save; open it on the computer

@@ -393,7 +393,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     /**
      * The fill handle let go: [to] (as drawn, [src] in it) filled from [src] — each column carried down or up, or each row
-     * right or left — one step of Undo; the filled cells are then the ones chosen, as Excel's.
+     * right or left — one step of Undo.
      */
     fun fillCells(src: SheetRange, to: SheetRange) {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
@@ -415,7 +415,6 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         if (changes.isEmpty()) return
         history.apply(b, index, changes); version++
-        view.range = to
         WriterLog.i("Sheets: filled ${changes.size} cells ${if (vertical) (if (forward) "down" else "up") else (if (forward) "right" else "left")}")
     }
 
@@ -856,8 +855,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     draft = TextFieldValue(d.text.substring(0, d.selection.min) + ref + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + ref.length))
                                     true
                                 }
-                                d != null -> { commit(false); false } // what was typed goes in, then the tap chooses
-                                editing && s.merge(r, c)?.let { it.r1 to it.c1 } ?: (r to c) == chosen(s) -> { startTyping(); barFocus.requestFocus(); true }
+                                // what was typed goes in, then the tap chooses; the keyboard goes (asked 16 Oct: a tap chooses, the bar edits)
+                                d != null -> { commit(false); focusManager.clearFocus(); false }
                                 else -> false
                             }
                         }, filled = if (editing && draft == null) ::fillCells else null)

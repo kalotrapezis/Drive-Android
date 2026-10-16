@@ -274,7 +274,7 @@ Code: `SheetEdit.kt` (typed entries, the bar's text, recalculation, undo), `Shee
 Tests: `SheetEditTest`, `SheetSaveTest` (saved files opened by LibreOffice), `SheetsTest.formulas` (129 formulas as
 LibreOffice works them out).
 - [x] Edit (pencil) → Undo, Redo, Save, Done; the cell bar is a field (the cell as typed: 1234,5, 15/3/2026, =B2*2);
-      Enter puts it in and goes down; ✕ leaves it; a second tap on the chosen cell starts typing; Clear chosen cells
+      Enter puts it in and goes down; ✕ leaves it; a tap on a cell only chooses it, the bar is tapped to type; Clear chosen cells
 - [x] Typed entries as Excel: the phone's 1.234,5, 25%, dates day first, times, TRUE, ' for words, =formulas (; or ,)
 - [x] Formulas: ~80 functions (sums, counts, IF/IFS-style, lookups, text, dates, rounding, statistics), across sheets;
       a tapped cell's name goes into a formula being typed; formulas that read a changed cell follow at once (a function

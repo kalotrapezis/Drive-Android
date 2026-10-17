@@ -404,6 +404,26 @@ class SlidesTest {
         }
     }
 
+    /** Slide show › Loop until Esc: kept in the file (PowerPoint's showPr loop, LibreOffice's endless), and taken off again. */
+    @Test fun `loop until Esc saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            assertEquals(name, false, deck.loop)
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("loop-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, SlidesEdit.start(deck).copy(loop = true), out) else SlidesEdit.save(src, deck, SlidesEdit.start(deck).copy(loop = true), out)
+            val saved = Slides.read(out); assertEquals(name, true, saved.loop)
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("LibreOffice's $other of $name", true, Slides.read(dir.listFiles()!!.single { it.extension == other }).loop)
+            }
+            val back = File("build/office-roundtrip").resolve("loop-off-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(out, saved, SlidesEdit.start(saved).copy(loop = false), back) else SlidesEdit.save(out, saved, SlidesEdit.start(saved).copy(loop = false), back)
+            assertEquals(name, false, Slides.read(back).loop)
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

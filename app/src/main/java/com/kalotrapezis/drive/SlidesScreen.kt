@@ -13,6 +13,8 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.key.type
 import android.app.Activity
 import android.content.pm.ActivityInfo
@@ -411,6 +413,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    var rehearsing by remember { mutableStateOf(false) } // Slide show › Rehearse timings: the show running with a timer
+    var rehearsed by remember { mutableStateOf<Map<Int, Long>?>(null) } // …and the times it took, to keep or not
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
     var query by remember { mutableStateOf("") }; var replacement by remember { mutableStateOf("") }; var replacing by remember { mutableStateOf(false) }
     var findAt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -819,6 +823,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // PowerPoint's and LibreOffice's Slide Show tab (asked 16 Oct: where presenting starts)
                 RibbonButton("From the beginning", w, R.drawable.ic_play) { presenting = 0 }
                 RibbonButton("From this slide", w, R.drawable.ic_play) { presenting = c }
+                RibbonDivider(w)
+                // PowerPoint's Set Up Slide Show: Loop until Esc (kept in the file); Rehearse Timings: each slide's time, kept as its "after" time
+                val looping = e.loop ?: deck?.loop ?: false
+                RibbonButton("Loop until Esc", w, R.drawable.ic_restore, on = looping) { change(e.copy(loop = !looping)) }
+                RibbonButton("Rehearse timings", w, R.drawable.ic_calendar_today) { rehearsing = true; presenting = 0 }
                 RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
                 RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
@@ -1770,7 +1779,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     presenting?.let { start -> if (d != null) Present(d, start, notes, jump = { l ->
         // a link's slide: one linked here (its uid), or the deck's own part a file's link names
         (if (l.startsWith("slide:")) edit?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else d.slides.indexOfFirst { it.part == l })?.takeIf { it >= 0 }
-    }) { presenting = null } }
+    }, loop = edit?.loop ?: deck?.loop ?: false, rehearse = if (rehearsing) { times -> rehearsed = times } else null) { presenting = null; rehearsing = false } }
+    rehearsed?.let { times ->
+        val total = times.values.sum()
+        androidx.compose.material3.AlertDialog(onDismissRequest = { rehearsed = null }, title = { Text("Rehearse timings") },
+            text = { Text("The show took %d:%02d. Keep the new timings? Each slide will go on by itself after its time.".format(total / 60_000, total / 1000 % 60)) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                rehearsed = null
+                val e = edit ?: return@TextButton
+                val t = times.mapNotNull { (i, ms) -> e.order.getOrNull(i)?.uid?.let { uid -> uid to ((e.transitions[uid] ?: d?.slides?.getOrNull(i)?.transition ?: SlideTransition("", null, 0)).copy(after = ms.toInt().coerceAtLeast(1000))) } }
+                change(e.copy(transitions = e.transitions + t)); WriterLog.i("Slides: timings kept for ${t.size}")
+            }) { Text("Keep") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { rehearsed = null }) { Text("Don't keep") } })
+    }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
     if (showVersions) file?.let { f -> VersionsDialog(f, "leaving without saving goes back", { showVersions = false }) { v -> showVersions = false; openVersion(v) } }
     if (about) androidx.compose.material3.AlertDialog(onDismissRequest = { about = false },
@@ -1810,7 +1831,9 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
  * to the list with Back.
  */
 @Composable
-private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> Int? = { null }, close: () -> Unit) {
+private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> Int? = { null },
+    /** Slide show › Loop until Esc: after the last, the first again */ loop: Boolean = false,
+    /** Slide show › Rehearse timings: how long each slide (its index) was shown, given when the show ends */ rehearse: ((Map<Int, Long>) -> Unit)? = null, close0: () -> Unit) {
     val context = LocalContext.current
     val shown = remember(deck) { deck.slides.indices.filter { !deck.slides[it].hidden || it == start } }
     var page by remember { mutableStateOf(shown.indexOf(start).coerceAtLeast(0)) }
@@ -1821,6 +1844,11 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     val now by androidx.compose.runtime.produceState(System.nanoTime()) { while (true) androidx.compose.runtime.withFrameNanos { value = System.nanoTime() } }
     fun slide(p: Int) = deck.slides[shown[p]]
     fun ms(t: Long) = (now - t) / 1_000_000
+    // Rehearse timings: the time on each slide, counted from when it came (a slide shown twice, both times)
+    val spent = remember { HashMap<Int, Long>() }
+    var since by remember { mutableStateOf(System.nanoTime()) }
+    fun mark() { if (rehearse != null) { spent[shown[page]] = (spent[shown[page]] ?: 0L) + (System.nanoTime() - since) / 1_000_000; since = System.nanoTime() } }
+    fun close() { mark(); rehearse?.invoke(spent); close0() }
     // a group of effects lasts as long as its latest one
     fun length(g: SlideStep) = g.effects.maxOfOrNull { it.delay + it.ms } ?: 0
     fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}") }
@@ -1837,11 +1865,14 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             playing != null -> { step = playing!!.first + 1; playing = null } // a click while it plays: it ends at once, as PowerPoint's
             from != null -> from = null
             step < steps.size -> play(step)
-            page < shown.lastIndex -> { from = page to System.nanoTime(); page++; step = 0; playing = null; WriterLog.i("Slides: slide ${page + 1}${slide(page).transition?.let { ", ${it.kind}" } ?: ""}") }
+            page < shown.lastIndex -> { mark(); from = page to System.nanoTime(); page++; step = 0; playing = null; WriterLog.i("Slides: slide ${page + 1}${slide(page).transition?.let { ", ${it.kind}" } ?: ""}") }
+            loop && rehearse == null -> { from = page to System.nanoTime(); page = 0; step = 0; playing = null; WriterLog.i("Slides: from the first again (loop)") }
             else -> close()
         }
     }
-    fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
+    fun back() { if (page > 0) { mark(); page--; step = slide(page).steps.size; playing = null; from = null } }
+    /** PowerPoint's number + Enter: straight to that slide (as numbered in the show). */
+    fun goTo(p: Int) { if (p in shown.indices && p != page) { mark(); from = page to System.nanoTime(); page = p; step = 0; playing = null } }
     /** A tap at [x], [y] in a [w] × [h] window on words with a link (Insert › Link, a file's own): a web page opened, a slide gone to. True: it was one. */
     fun follow(x: Float, y: Float, w: Float, h: Float): Boolean {
         val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
@@ -1857,7 +1888,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     var paused by remember { mutableStateOf(false) }
     LaunchedEffect(page, step, playing, from, paused) {
         val after = slide(page).transition?.after ?: return@LaunchedEffect
-        if (paused || playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
+        if (rehearse != null || paused || playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
         kotlinx.coroutines.delay(after.toLong()); next()
     }
     /**
@@ -1974,7 +2005,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
         WriterLog.i("Slides: presenting from ${start + 1}")
         onDispose { if (was != null) activity?.requestedOrientation = was }
     }
-    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // nothing over the slides: the status and gesture bars hidden (a swipe from the edge shows them a moment)
         val view = androidx.compose.ui.platform.LocalView.current
         DisposableEffect(view) {
@@ -1986,7 +2017,25 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             }
             onDispose { }
         }
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        // PowerPoint's keys: N, →, ↓, Space, Enter, Page Down on; P, ←, ↑, Backspace, Page Up back; B or W black; Home, End; a number and Enter to that slide; Esc ends
+        val keys = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
+        var typed by remember { mutableStateOf("") }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).focusRequester(keys).focusable().onKeyEvent { k ->
+            if (k.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+            val digit = k.utf16CodePoint.toChar().takeIf { it.isDigit() }
+            when {
+                digit != null -> { typed += digit; true }
+                (k.key == Key.Enter || k.key == Key.NumPadEnter) && typed.isNotEmpty() -> { goTo(typed.toInt() - 1); typed = ""; true }
+                k.key in setOf(Key.N, Key.DirectionRight, Key.DirectionDown, Key.Spacebar, Key.Enter, Key.NumPadEnter, Key.PageDown) -> { typed = ""; if (!black) next(); true }
+                k.key in setOf(Key.P, Key.DirectionLeft, Key.DirectionUp, Key.Backspace, Key.PageUp) -> { typed = ""; if (!black) back(); true }
+                k.key == Key.B || k.key == Key.W || k.key == Key.Period -> { black = !black; true }
+                k.key == Key.MoveHome -> { goTo(0); true }
+                k.key == Key.MoveEnd -> { goTo(shown.lastIndex); true }
+                k.key == Key.Escape -> { close(); true }
+                else -> false
+            }
+        }, contentAlignment = Alignment.Center) {
             val s = slide(page)
             val upright = tv != null && maxHeight > maxWidth
             // on one screen the tools sit in a dock at the left edge that hides by itself a few seconds after its last use (asked 17 Oct)
@@ -2071,6 +2120,9 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             LaunchedEffect(tv) { if (tv != null) while (true) androidx.compose.runtime.withFrameNanos { tv.apply { strokes = if (black) emptyList() else ink[page].orEmpty(); dot = laser.takeIf { !black }; update() } } }
             // black on one screen: the slide covered, taps passing to it (three bring it back); with a second screen only that one goes black
             if (black && tv == null) Box(Modifier.fillMaxSize().background(Color.Black))
+            // Rehearse timings: this slide's time so far, in the corner (PowerPoint's Recording bar)
+            if (rehearse != null) Text("Rehearsing · %d:%02d".format(ms(since) / 60_000, ms(since) / 1000 % 60), color = Color.White, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 10.dp, vertical = 6.dp))
             // the dock at the left edge: the tools and the slide count, brought out by two taps; kept from Android's Back swipe there (asked 17 Oct: it conflicted)
             if (tv == null) Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.animation.AnimatedVisibility(dock, enter = androidx.compose.animation.slideInHorizontally { -it }, exit = androidx.compose.animation.slideOutHorizontally { -it }) {

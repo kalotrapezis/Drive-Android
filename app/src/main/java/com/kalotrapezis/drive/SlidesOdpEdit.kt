@@ -667,6 +667,10 @@ internal object SlidesOdpEdit {
             uid to n }
         for (a in ordered.flatMap { it.all() }.filter { it.localName == "a" && it.a(XLINK, "href")?.startsWith("#tetra-slide:") == true })
             a.setAttributeNS(XLINK, "xlink:href", a.a(XLINK, "href")!!.removePrefix("#tetra-slide:").toIntOrNull()?.let(pageName::get)?.let { "#$it" } ?: "")
+        // Slide show › Loop until Esc: the presentation's settings say endless
+        edit.loop?.let { loop -> val st = pres.kids().firstOrNull { it.localName == "settings" && it.namespaceURI == PRES }
+            ?: doc.createElementNS(PRES, "presentation:settings").also { pres.appendChild(it) }
+            if (loop) { st.setAttributeNS(PRES, "presentation:endless", "true"); st.setAttributeNS(PRES, "presentation:pause", "PT0S") } else st.removeAttributeNS(PRES, "endless") }
         // the pages in their order where they were (before the presentation's settings)
         pages.forEach { pres.removeChild(it) }
         val after = pres.kids().firstOrNull { it.localName == "settings" }

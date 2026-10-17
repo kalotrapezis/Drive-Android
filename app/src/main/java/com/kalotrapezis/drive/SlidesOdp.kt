@@ -383,7 +383,8 @@ internal object SlidesOdp {
         val kinds = masters.values.filterNotNull().map { m -> layout(m, m.a(STYLE, "display-name") ?: odfDisplayName(m.a(STYLE, "name").orEmpty()), placeholders) }.toMutableList()
         if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
         val again = HashMap<Pair<Int, Int>, Slide>()
-        Deck(width, height, slides, kinds, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } })
+        val endless = content.getElementsByTagNameNS(PRES, "settings").let { l -> (0 until l.length).any { (l.item(it) as Element).a(PRES, "endless") == "true" } }
+        Deck(width, height, slides, kinds, loop = endless, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } })
     }
 }
 

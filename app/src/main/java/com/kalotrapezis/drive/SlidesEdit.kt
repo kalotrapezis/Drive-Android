@@ -113,7 +113,8 @@ internal object SlidesEdit {
         /** a slide's items from the back to the front as arranged (Bring forward, Send backward…), by id */ val stack: Map<Int, List<String>> = emptyMap(),
         /** Home › Layout: a slide of the file's put on another of the deck's layouts (its index) */ val relayout: Map<Int, Int> = emptyMap(),
         /** Home › Section: the sections as now, each its name and its first slide's uid; null: as the file has them */ val sections: List<Pair<String, Int>>? = null,
-        /** Design › Format background: a slide's own, a colour or a picture */ val backgrounds: Map<Int, Back> = emptyMap()) {
+        /** Design › Format background: a slide's own, a colour or a picture */ val backgrounds: Map<Int, Back> = emptyMap(),
+        /** Slide show › Loop until Esc; null: as the file has it */ val loop: Boolean? = null) {
         /** The sections in the slides' order, each from the slide its first is (one whose first slide is gone, gone). */
         fun sectionsNow(deck: Deck): List<Pair<String, Int>> = (sections ?: deck.sections.orEmpty()).filter { (_, uid) -> order.any { it.uid == uid } }.sortedBy { (_, uid) -> order.indexOfFirst { it.uid == uid } }
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
@@ -933,6 +934,14 @@ internal object SlidesEdit {
             out[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:p="$P">""" + authors.joinToString("") {
                 """<p:cmAuthor id="${it.id}" name="${esc(it.name)}" initials="${esc(it.initials)}" lastIdx="${it.last}" clrIdx="${it.clr}"/>""" } + "</p:cmAuthorLst>").toByteArray()
         }
+        // Slide show › Loop until Esc: the presentation's properties' showPr (made when it has none)
+        edit.loop?.let { loop -> rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/presProps") }?.let { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }?.let { path ->
+            val props = OfficeFormats.parse(read(path) ?: return@let)
+            val showPr = props.documentElement.kids().firstOrNull { it.localName == "showPr" }
+                ?: props.createElementNS(P, "p:showPr").also { sp -> props.documentElement.insertBefore(sp, props.documentElement.firstChild) }
+            if (loop) showPr.setAttribute("loop", "1") else showPr.removeAttribute("loop")
+            out[path] = xml(props)
+        } }
         // Home › Section: PowerPoint 2010's list, each section's slides by their sldId (slides before the first in a "Default Section", as PowerPoint makes it)
         // (written again whenever the file has some: a slide moved or deleted would leave its list wrong)
         if (edit.sections != null || !deck.sections.isNullOrEmpty()) {

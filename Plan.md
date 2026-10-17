@@ -392,8 +392,15 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       1920 px wide, drawn as the slides are, in a folder "<name> slides" beside the deck. Emulator: 4 PNGs, as the slides show.
       Print with handouts (office-C session, 17 Oct): File › Print ▾ Full slides, or handouts as PowerPoint's — 2 or 6 to an A4 page, or 3
       with lines for notes beside each — each slide framed (`Slides.pdf(handouts)`), to Android's print. Emulator: 3-up, 2 pages for 4.
-- [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
+- [~] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).
+      Done 17 Oct (office-C session): Slide show › Loop until Esc (after the last slide, the first again; kept in the file — PowerPoint's
+      presProps showPr loop, LibreOffice's presentation:settings endless; read back from both) and Rehearse timings (the show from the
+      first slide with a timer in the corner, slides that go on by themselves waiting; at the end "Keep the new timings?" — each slide's
+      time becomes its "after", as Transitions' Next slide sets it). During any show, PowerPoint's keys: N → ↓ Space Enter Page Down on,
+      P ← ↑ Backspace Page Up back, B/W/. black, Home/End, a number and Enter to that slide, Esc ends (the plan's PowerPoint list).
+      `loop until Esc saved` (both, LibreOffice's conversions); emulator: rehearsed 4 slides, 0:33, kept. Later as planned: custom shows,
+      more animation kinds and an animation list. Unit 426/0/7; sweep 349 + 29, none failing.
 - [ ] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
       in Word's bibliography part, which PowerPoint keeps (an .odp needs its own place: to decide); **live**
       citations, inserted from the typing bar and rewritten when the style or a source changes (PowerPoint has no

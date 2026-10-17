@@ -107,7 +107,18 @@ class DriveFilesTest {
         File(root, ".notes").mkdirs(); File(root, ".notes/n.json").writeText("x"); File(root, "a.txt").writeText("x")
         assertEquals(listOf("a.txt"), listDriveFolder(root, "").map { it.relativePath })
         assertEquals(listOf("a.txt"), DriveRules.allItems(root).map { it.relativePath })
-        assertFalse(DriveRules.destinations(root).any { it.relativePath.startsWith(".") })
+        assertFalse(DriveRules.subfolders(root, "").any { it.startsWith(".") })
+    }
+
+    @Test fun moveOffersOneLevelAtATime() {
+        // asked 17 Oct: Move listed every folder of every level; now the ones right inside the folder you are in
+        val root = Files.createTempDirectory("drive-root").toFile()
+        listOf("Work/2026/Reports", "Documents", "music", "Trash/old", ".hidden").forEach { File(root, it).mkdirs() }
+        File(root, "a.txt").writeText("x")
+        assertEquals(listOf("Documents", "music", "Work"), DriveRules.subfolders(root, ""))
+        assertEquals(listOf("Work/2026"), DriveRules.subfolders(root, "Work"))
+        assertEquals(listOf("Work/2026/Reports"), DriveRules.subfolders(root, "Work/2026"))
+        assertEquals(emptyList<String>(), DriveRules.subfolders(root, "Work/2026/Reports"))
     }
 
     @Test fun theFileProviderCoversTheTetraFolder() {

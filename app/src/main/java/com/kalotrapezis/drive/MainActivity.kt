@@ -183,6 +183,7 @@ import androidx.camera.view.transform.CoordinateTransform
 import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -2235,30 +2236,18 @@ private fun DriveBulkSheet(
     performAll: (List<DriveItem>, DriveItemAction) -> Unit,
     dismiss: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf("") }
-    val destinations = remember { DriveRules.destinations(driveRoot()) }
     var selectedTags by remember { mutableStateOf(emptySet<String>()) }
     var newTag by remember { mutableStateOf("") }
     var tagError by remember { mutableStateOf<String?>(null) }
     fun submit(action: DriveItemAction) { performAll(items, action); dismiss() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+    // open all the way: half open, a folder list pushed Move here and Cancel off the screen
+    ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("${items.size} selected", style = MaterialTheme.typography.titleLarge)
             when (panel) {
                 DriveBulkPanel.Copy, DriveBulkPanel.Move -> {
                     val copying = panel == DriveBulkPanel.Copy
-                    Text(if (copying) "Choose where to copy them." else "Choose where to move them.")
-                    LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(destinations, key = { it.relativePath }) { target ->
-                            Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = if (target.relativePath == destination) driveNavigationSelectedColor() else islandColor(),
-                                contentColor = if (target.relativePath == destination) driveNavigationSelectedContentColor() else islandContentColor(),
-                                modifier = Modifier.fillMaxWidth().clickable { destination = target.relativePath },
-                            ) { Text(target.label, modifier = Modifier.padding(14.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        }
-                    }
-                    DriveWideAction(if (copying) R.drawable.ic_copy else R.drawable.ic_move, if (copying) "Copy here" else "Move here") {
+                    DriveFolderPicker(DriveRules.parent(items.first().relativePath), copying, items, dismiss) { destination ->
                         submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination))
                     }
                 }
@@ -2294,11 +2283,10 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
     var selectedTags by remember(item.relativePath) { mutableStateOf(metadata.tags(item.relativePath)) }
     var newTag by remember(item.relativePath) { mutableStateOf("") }
     var tagError by remember(item.relativePath) { mutableStateOf<String?>(null) }
-    var destination by remember(item.relativePath) { mutableStateOf(DriveRules.parent(item.relativePath)) }
-    val destinations = remember(item.relativePath) { DriveRules.destinations(driveRoot()) }
     fun submit(action: DriveItemAction) { perform(item, action); dismiss() }
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+    // open all the way: half open, Move's folder list pushed its buttons off the screen
+    ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (panel != DriveItemSheetPanel.Menu) IconButton(onClick = { panel = DriveItemSheetPanel.Menu }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to item actions") }
             Text(item.file.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -2330,15 +2318,9 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 }
                 DriveItemSheetPanel.Copy, DriveItemSheetPanel.Move -> {
                     val copying = panel == DriveItemSheetPanel.Copy
-                    Text(if (copying) "Choose where to copy this item." else "Choose where to move this item.")
-                    LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(destinations, key = { it.relativePath }) { target ->
-                            Surface(shape = MaterialTheme.shapes.medium, color = if (target.relativePath == destination) driveNavigationSelectedColor() else islandColor(), contentColor = if (target.relativePath == destination) driveNavigationSelectedContentColor() else islandContentColor(), modifier = Modifier.fillMaxWidth().clickable { destination = target.relativePath }) {
-                                Text(target.label, modifier = Modifier.padding(14.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+                    DriveFolderPicker(DriveRules.parent(item.relativePath), copying, listOf(item), dismiss) { destination ->
+                        submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination))
                     }
-                    DriveWideAction(if (copying) R.drawable.ic_copy else R.drawable.ic_move, if (copying) "Copy here" else "Move here") { submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination)) }
                 }
                 DriveItemSheetPanel.Tags -> {
                     val availableTags = metadata.allTags(driveRoot()).plus(selectedTags).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
@@ -2392,6 +2374,49 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
     modifier = Modifier.weight(1f).height(64.dp),
 ) { IconButton(onClick = click, modifier = Modifier.fillMaxWidth().height(64.dp)) { Icon(painterResource(icon), contentDescription = description, modifier = Modifier.size(26.dp)) } }
+
+/**
+ * Where to move or copy to, one level at a time (asked 17 Oct: every folder of every level at once was too much): the
+ * folders inside the one you are in, a tap goes in, Up goes back out; Move here (or Copy here) acts on the folder you
+ * are in, Cancel leaves. A folder being moved is not offered as a way in (not into itself); Move here is off where
+ * everything already is.
+ */
+@Composable
+private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<DriveItem>, cancel: () -> Unit, pick: (String) -> Unit) {
+    var at by remember { mutableStateOf(start) }
+    val inside = remember(at) { DriveRules.subfolders(driveRoot(), at).filterNot { f -> moving.any { it.isDirectory && it.relativePath == f } } }
+    Text(if (copying) "Copy into" else "Move into", style = MaterialTheme.typography.bodyMedium)
+    Text(listOf("Tetra").plus(at.split('/').filter { it.isNotEmpty() }).joinToString(" › "), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (at.isNotEmpty()) item("up") {
+            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { at = DriveRules.parent(at) }) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text("Up to ${DriveRules.parent(at).substringAfterLast('/').ifEmpty { "Tetra" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        items(inside, key = { it }) { f ->
+            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { at = f }) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(painterResource(driveItemIcon(DriveItem(File(driveRoot(), f), f, true))), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text(f.substringAfterLast('/'), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Open", modifier = Modifier.size(20.dp))
+                }
+            }
+        }
+        if (inside.isEmpty()) item("none") { Text("No folders inside.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
+    }
+    val already = !copying && moving.all { DriveRules.parent(it.relativePath) == at }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = cancel, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) { Text("Cancel") }
+        Button(onClick = { pick(at) }, enabled = !already, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
+            Icon(painterResource(if (copying) R.drawable.ic_copy else R.drawable.ic_move), contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(if (copying) "Copy here" else "Move here", modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+    if (already) Text("It is already here: open a folder to move it into.", style = MaterialTheme.typography.bodySmall)
+}
 
 @Composable internal fun DriveWideAction(icon: Int, description: String, click: () -> Unit) = Surface(
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,

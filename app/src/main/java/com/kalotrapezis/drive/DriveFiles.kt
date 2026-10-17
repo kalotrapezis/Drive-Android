@@ -20,8 +20,6 @@ const val FILE_OPENER_PATH = "drive_opener_path"
 
 data class DriveItem(val file: File, val relativePath: String, val isDirectory: Boolean)
 data class DriveRecent(val relativePath: String, val openedAt: Long)
-data class DriveDestination(val relativePath: String, val label: String)
-
 enum class DriveFolderColor { Blue, Green, Yellow, Red, Purple }
 data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
     val totalBytes: Long get() = bytesByType.values.sum()
@@ -145,14 +143,12 @@ object DriveRules {
 
     fun parent(relativePath: String): String = relativePath.substringBeforeLast('/', "")
 
-    fun destinations(root: File): List<DriveDestination> = root.walkTopDown()
-        .onEnter { it == root || !it.name.startsWith(".") }
-        .filter { it.isDirectory && inside(root, it) }
-        .map { file -> relative(root, file) }
-        .filterNot { it == TRASH_FOLDER || it.startsWith("$TRASH_FOLDER/") }
-        .sortedWith(compareBy<String> { it.isNotEmpty() }.thenBy { it.lowercase(Locale.ROOT) })
-        .map { DriveDestination(it, if (it.isEmpty()) "Tetra" else it) }
-        .toList()
+    /** The folders right inside [relativePath], for Move and Copy one level at a time (asked 17 Oct: every level at once was too much); no hidden ones, no Trash. */
+    fun subfolders(root: File, relativePath: String): List<String> = folder(root, relativePath).listFiles().orEmpty()
+        .filter { it.isDirectory && !it.name.startsWith(".") && inside(root, it) }
+        .map { relative(root, it) }
+        .filterNot { it == TRASH_FOLDER }
+        .sortedBy { it.lowercase(Locale.ROOT) }
 
     fun allItems(root: File, includeTrash: Boolean = false): List<DriveItem> = root.walkTopDown()
         .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || (relative(root, folder) != TRASH_FOLDER && !folder.name.startsWith("."))) }

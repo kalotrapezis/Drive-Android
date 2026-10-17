@@ -19,10 +19,24 @@ internal class SlideBullet(val text: String, val color: Int? = null, val size: F
  * spacing and indents as the file says them ([look]: lineMultiple a share of PowerPoint's single line, 1.2 × the letters'
  * size; [SlidesText] turns it into Words') and its [bullet].
  */
-internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIndented = true), val bullet: SlideBullet? = null) {
+internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIndented = true), val bullet: SlideBullet? = null,
+    /** its letters' look before their own (the level's, the placeholder's, the master's): what Clear formatting leaves */ val base: DocRun? = null) {
     val runs get() = para.runs
     val level get() = para.list?.level ?: 0
     companion object {
+        /**
+         * Numbered paragraphs counted as PowerPoint and LibreOffice count them: each level on its own, a deeper level
+         * starting again after a shallower one, an empty paragraph not counted.
+         */
+        fun numbered(paras: List<SlidePara>): List<SlidePara> {
+            val counts = IntArray(10)
+            return paras.map { p ->
+                val l = p.level.coerceIn(0, 9)
+                if (p.runs.any { it.text.isNotEmpty() }) for (k in l + 1..9) counts[k] = 0
+                val b = p.bullet?.takeIf { it.text.firstOrNull()?.isDigit() == true && p.runs.any { r -> r.text.isNotEmpty() } } ?: return@map p
+                SlidePara(p.para, p.look, SlideBullet("${++counts[l]}.", b.color, b.size, b.font), p.base)
+            }
+        }
         /** Words in one look ([size] pt, [color] 0xRRGGBB, [face]), aligned [align]: a hint, a new table's cell. */
         fun plain(words: String, size: Float, color: Int, face: String? = null, bold: Boolean = false, align: DocAlign = DocAlign.Start) =
             SlidePara(DocPara(listOf(DocRun(words, bold = bold, sizePt = size, color = color and 0xFFFFFF, font = face?.let(Slides::face))), list = DocList(false, 0), align = align))
@@ -492,10 +506,9 @@ internal object Slides {
                 }
                 val runs = p.kids().mapNotNull { r -> when (r.localName) { "r", "fld" -> runOf(r, r.kid("t")?.textContent.orEmpty()); "br" -> runOf(r, LINE_BREAK.toString()); else -> null } }
                     .ifEmpty { listOf(runOf(null, "")) }
-                val bullet = when {
-                    pKid("buNone") != null || pPr?.kid("buNone") != null -> null
-                    else -> pKid("buChar")?.attr("char") ?: pKid("buAutoNum")?.let { "${paras.indexOf(p) + 1}." }
-                }
+                // the nearest that says (the paragraph's own before its level's and the master's): none, a character or a number
+                val bu = looks.firstNotNullOfOrNull { l -> l.kids().firstOrNull { it.localName in setOf("buNone", "buChar", "buAutoNum", "buBlip") } }
+                val bullet = when (bu?.localName) { "buChar" -> bu.attr("char"); "buAutoNum" -> "${paras.indexOf(p) + 1}."; else -> null }
                 fun pt(a: String) = pAttr(a)?.toFloatOrNull()?.div(EMU) ?: 0f
                 fun spacing(n: String) = pKid(n)?.let { s -> s.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f) ?: s.kid("spcPct")?.attr("val")?.toFloatOrNull()?.let { it / 100_000f * (runs.firstOrNull()?.sizePt ?: defaultSize) } } ?: 0f
                 val line = pKid("lnSpc")?.kid("spcPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f
@@ -505,9 +518,10 @@ internal object Slides {
                 SlidePara(DocPara(runs, list = DocList(bullet?.firstOrNull()?.isDigit() == true, lvl), align = when (pAttr("algn")) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start }),
                     ParaLook(before = spacing("spcBef") * scale, after = spacing("spcAft") * scale, lineMultiple = (line - reduce).coerceAtLeast(0.5f), lineExact = exact,
                         left = pt("marL"), firstLine = pt("indent"), listIndented = true, tabs = tabs),
-                    bullet?.let { SlideBullet(it, pKid("buClr")?.let(::color), pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface")) })
+                    bullet?.let { SlideBullet(it, pKid("buClr")?.let(::color), pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface")) },
+                    runOf(null, ""))
             }
-            return SlideText(out, anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
+            return SlideText(SlidePara.numbered(out), anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
                 bodyPr.any { it.kid("normAutofit") != null })
         }
     }

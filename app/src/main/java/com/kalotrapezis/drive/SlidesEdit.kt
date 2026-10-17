@@ -16,7 +16,43 @@ internal object SlidesEdit {
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
         /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList())
     /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
-    data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null)
+    data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null,
+        /** Home (17 Oct, Words' tools): every letter's face, size, bold, italic, underline, strike-through, highlight ([NONE]: taken away) — null: as they are */
+        val font: String? = null, val size: Float? = null, val bold: Boolean? = null, val italic: Boolean? = null, val underline: Boolean? = null, val strike: Boolean? = null,
+        val highlight: Int? = null,
+        /** each paragraph's alignment, list ('n' none, 'b' bullets, '1' numbers) and line spacing (PowerPoint's share of its single line) */
+        val align: DocAlign? = null, val list: Char? = null, val spacing: Float? = null,
+        /** the box's words at its top, middle or bottom ('t', 'c', 'b'); autofit: 'n' none, 's' shrink on overflow, 'g' the box grows to its words */
+        val anchor: Char? = null, val autofit: Char? = null,
+        /** Clear formatting: the letters' own looks gone, their paragraph's (its level's, the master's) left — the choices above apply after it */
+        val cleared: Boolean = false) {
+        /** Whether it changes the words (not only the shape's fill and border). */
+        val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared
+    }
+    /** A run's face, as Word writes it or LibreOffice: what a face chosen replaces. */
+    private val FACE = Regex("""<w:rFonts[^>]*/>|\s?style:font-name="[^"]*"|\s?fo:font-family="[^"]*"""")
+    /** [t] in Home's looks [l]: every letter's face, size, bold…; each paragraph's alignment, list and spacing; the box's anchor and autofit. */
+    fun looked(t: SlideText, l: Look): SlideText {
+        if (!l.words) return t
+        return SlideText(SlidePara.numbered(t.paras.map { p ->
+            val runs = p.runs.map { r0 ->
+                var r = if (l.cleared) (p.base ?: r0).copy(text = r0.text, link = r0.link) else r0
+                l.font?.let { f -> r = r.copy(font = Slides.face(f) + r.font.orEmpty().replace(FACE, "")) }
+                l.size?.let { r = r.copy(sizePt = it) }
+                l.bold?.let { r = r.copy(bold = it) }; l.italic?.let { r = r.copy(italic = it) }
+                l.underline?.let { r = r.copy(underline = it) }; l.strike?.let { r = r.copy(strike = it) }
+                l.text?.let { r = r.copy(color = it and 0xFFFFFF) }
+                l.highlight?.let { h -> r = r.copy(highlight = h.takeIf { it != NONE }?.and(0xFFFFFF)) }
+                r
+            }
+            // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
+            val bullet = when (l.list) { null -> p.bullet; 'n' -> null; 'b' -> SlideBullet("•"); else -> SlideBullet("1.") } // counted by numbered()
+            val look = when (l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f); else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
+            SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.text?.first()?.isDigit() == true, p.level)),
+                l.spacing?.let { look.copy(lineMultiple = it, lineExact = null) } ?: look, bullet, p.base)
+        }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink)
+    }
     const val NONE = 0
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
         val added: Map<Int, List<Added>> = emptyMap(),
@@ -120,8 +156,10 @@ internal object SlidesEdit {
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
         val shape = if (l.fill == null && l.line == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line), sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap())
-        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.para.copy(runs = p.runs.map { it.copy(color = l.text and 0xFFFFFF) }), p.look, p.bullet) }, t.anchor, t.insets, t.scale, t.wrap, t.shrink) }
-        return SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped }
+        val text = item.text?.let { looked(it, l) }
+        // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
+        val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
+        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped }
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
     fun table(a: Added, look: Look? = null): SlideItem.Table {
@@ -146,6 +184,13 @@ internal object SlidesEdit {
         return (c and 0xFF000000.toInt()) or ch(16) or ch(8) or ch(0)
     }
 
+    /** The boxes on [e]'s slide that grow to their words (Home's autofit): where they stand now, their height as their words make it. */
+    fun grown(deck: Deck, edit: Edit, e: Entry): Map<String, List<Float>> {
+        val ids = edit.looks.filter { (k, l) -> k.first == e.uid && l.autofit == 'g' }.keys.map { it.second }.ifEmpty { return emptyMap() }
+        val shown = slide(deck, edit, e).items.filterIsInstance<SlideItem.Shape>()
+        return ids.mapNotNull { id -> shown.firstOrNull { it.id == id || it.anim == id }?.let { id to listOf(it.x, it.y, it.w, it.h) } }.toMap()
+    }
+
     /** The edited deck, as it shows. */
     fun view(deck: Deck, edit: Edit) = Deck(deck.width, deck.height, edit.order.map { slide(deck, edit, it) })
 
@@ -158,6 +203,59 @@ internal object SlidesEdit {
     private const val R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
     private fun xml(doc: org.w3c.dom.Document): ByteArray = domXml(doc, standalone = true)
+
+    /** [el] put in [parent] where DrawingML's [order] of children has it (before the first that comes after it); one of its name there before goes. */
+    private fun place(parent: Element, el: Element, order: List<String>) {
+        parent.kids().filter { it.localName == el.localName }.forEach { parent.removeChild(it) }
+        val at = order.indexOf(el.localName)
+        parent.insertBefore(el, parent.kids().firstOrNull { order.indexOf(it.localName) > at })
+    }
+    private val RPR = listOf("ln", "noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill", "effectLst", "effectDag", "highlight", "uLnTx", "uLn", "uFillTx", "uFill",
+        "latin", "ea", "cs", "sym", "hlinkClick", "hlinkMouseOver", "rtl", "extLst")
+    private val PPR = listOf("lnSpc", "spcBef", "spcAft", "buClrTx", "buClr", "buSzTx", "buSzPct", "buSzPts", "buFontTx", "buFont", "buNone", "buAutoNum", "buChar", "buBlip", "tabLst", "defRPr", "extLst")
+    private val BODY = listOf("prstTxWarp", "noAutofit", "normAutofit", "spAutoFit", "scene3d", "sp3d", "flatTx", "extLst")
+
+    /** A text body ([body]: a:txBody) in Home's looks [l], as PowerPoint writes them: on every run and paragraph mark, each paragraph, the body. */
+    private fun words(doc: org.w3c.dom.Document, body: Element, l: Look) {
+        fun a(name: String, vararg attrs: Pair<String, String>) = doc.createElementNS(A, "a:$name").also { e -> attrs.forEach { (k, v) -> e.setAttribute(k, v) } }
+        fun rgb(c: Int, holder: String) = a(holder).also { it.appendChild(a("srgbClr", "val" to "%06X".format(c and 0xFFFFFF))) }
+        val paras = body.getElementsByTagNameNS(A, "p").let { ps -> (0 until ps.length).map { ps.item(it) as Element } }
+        for (p in paras) {
+            for (rPr in p.kids().filter { it.localName in setOf("r", "fld") }.map { r -> r.kids().firstOrNull { it.localName == "rPr" } ?: a("rPr").also { r.insertBefore(it, r.firstChild) } } +
+                p.kids().filter { it.localName == "endParaRPr" }) {
+                if (l.cleared) {
+                    // the letters' own looks gone: their paragraph's (the level's, the master's) show; their language and links stay
+                    listOf("b", "i", "u", "strike", "sz", "baseline", "cap", "spc", "kern").forEach { rPr.removeAttribute(it) }
+                    rPr.kids().filter { it.localName !in setOf("hlinkClick", "hlinkMouseOver", "rtl", "extLst") }.forEach { rPr.removeChild(it) }
+                }
+                l.size?.let { rPr.setAttribute("sz", "${Math.round(it * 100)}") }
+                l.bold?.let { rPr.setAttribute("b", if (it) "1" else "0") }
+                l.italic?.let { rPr.setAttribute("i", if (it) "1" else "0") }
+                l.underline?.let { rPr.setAttribute("u", if (it) "sng" else "none") }
+                l.strike?.let { rPr.setAttribute("strike", if (it) "sngStrike" else "noStrike") }
+                l.text?.let { c -> listOf("noFill", "gradFill", "blipFill", "pattFill", "grpFill").forEach { n -> rPr.kids().filter { it.localName == n }.forEach { rPr.removeChild(it) } }; place(rPr, rgb(c, "solidFill"), RPR) }
+                l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
+                l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }
+            }
+            if (l.align == null && l.list == null && l.spacing == null) continue
+            val pPr = p.kids().firstOrNull { it.localName == "pPr" } ?: a("pPr").also { p.insertBefore(it, p.firstChild) }
+            l.align?.let { pPr.setAttribute("algn", when (it) { DocAlign.Center -> "ctr"; DocAlign.End -> "r"; DocAlign.Justify -> "just"; else -> "l" }) }
+            l.spacing?.let { m -> place(pPr, a("lnSpc").also { it.appendChild(a("spcPct", "val" to "${Math.round(m * 100_000)}")) }, PPR) }
+            l.list?.let { kind ->
+                pPr.kids().filter { it.localName in setOf("buNone", "buAutoNum", "buChar", "buBlip", "buFont", "buFontTx") }.forEach { pPr.removeChild(it) }
+                if (kind == 'n') { place(pPr, a("buNone"), PPR); pPr.setAttribute("marL", "0"); pPr.setAttribute("indent", "0") }
+                else {
+                    place(pPr, if (kind == 'b') a("buFont", "typeface" to "Arial") else a("buFont", "typeface" to "+mj-lt"), PPR)
+                    place(pPr, if (kind == 'b') a("buChar", "char" to "•") else a("buAutoNum", "type" to "arabicPeriod"), PPR)
+                    if ((pPr.getAttribute("marL").toLongOrNull() ?: 0L) == 0L) { pPr.setAttribute("marL", "342900"); pPr.setAttribute("indent", "-342900") }
+                }
+            }
+        }
+        val bodyPr = body.kids().firstOrNull { it.localName == "bodyPr" } ?: a("bodyPr").also { body.insertBefore(it, body.firstChild) }
+        l.anchor?.let { bodyPr.setAttribute("anchor", when (it) { 'c' -> "ctr"; 'b' -> "b"; else -> "t" }) }
+        l.autofit?.let { f -> place(bodyPr, a(when (f) { 's' -> "normAutofit"; 'g' -> "spAutoFit"; else -> "noAutofit" }), BODY)
+            BODY.subList(1, 4).filter { it != (when (f) { 's' -> "normAutofit"; 'g' -> "spAutoFit"; else -> "noAutofit" }) }.forEach { n -> bodyPr.kids().filter { it.localName == n }.forEach { bodyPr.removeChild(it) } } }
+    }
 
     /**
      * A DOM as UTF-8 XML, a letter beyond U+FFFF (an emoji) never written as its two halves ([OfficeFormats.joinHalves]).
@@ -255,16 +353,7 @@ internal object SlidesEdit {
                     if (c != NONE) n.setAttribute("w", "19050"); spPr.insertBefore(n, spPr.kids().firstOrNull { it.localName in setOf("effectLst", "effectDag", "scene3d", "sp3d", "extLst") }) }
                 refill(ln, c, ln.kids().map { it.localName }.filter { it !in fills }.toSet())
             }
-            l.text?.let { c ->
-                val body = sp.kids().firstOrNull { it.localName == "txBody" } ?: return@let
-                body.getElementsByTagNameNS(A, "p").let { ps -> (0 until ps.length).map { ps.item(it) as Element } }.forEach { p ->
-                    for (r in p.kids().filter { it.localName in setOf("r", "fld") }) {
-                        val rPr = r.kids().firstOrNull { it.localName == "rPr" } ?: doc.createElementNS(A, "a:rPr").also { r.insertBefore(it, r.firstChild) }
-                        refill(rPr, c, rPr.kids().map { it.localName }.filter { it != "ln" && it !in fills }.toSet())
-                    }
-                    p.kids().firstOrNull { it.localName == "endParaRPr" }?.let { refill(it, c, it.kids().map { k -> k.localName }.filter { k -> k != "ln" && k !in fills }.toSet()) }
-                }
-            }
+            if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l) }
         }
         // deleted: the item gone from the tree (its animation is taken out by the caller, so no timing names it)
         for (id in removed) (root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
@@ -521,7 +610,7 @@ internal object SlidesEdit {
             val texts = edit.texts.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val looks = edit.looks.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val transition = edit.transitions[e.uid]; val anims = edit.anims[e.uid]
-            val frames = edit.frames.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
+            val frames = edit.frames.filterKeys { it.first == e.uid }.mapKeys { it.key.second } + grown(deck, edit, e)
             val removed = edit.removed.filter { it.first == e.uid }.map { it.second }.toSet()
             val hide = edit.hidden[e.uid]
             val added = edit.added[e.uid].orEmpty()

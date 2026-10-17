@@ -36,6 +36,7 @@ How to write here:
 - [~] (calendar session, 17 Oct) **Calendar**, Tetra's last app: designed below (§ Calendar); waiting for the user's
       go-ahead before building. Builds on its own branch `calendar` (worktree Drive-Android-worktrees/calendar, from
       writer-library) and the desktop's `calendar` (worktree Drive-worktrees/calendar), not in the Office checkout.
+- [~] (office-engine session, 17 Oct) B top-down on the engine, then C, then A's walk (the user: "ok comit and continue to finish office").
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -226,9 +227,25 @@ writing anything for Slides or Tables, find Words' version (strips and card gall
 equation, symbol, link, find/replace, versions, export PDF, print, sources and citations, drawing, comments,
 spelling, shapes and styles) and reuse it, moved into shared Office code where it is tied to Words. Each item says
 which shared piece it uses; a separate implementation only for a real reason, said in one line.
-- [ ] **Home**: font, size, bold, italic, underline, strike, colour, highlight; align left, centre, right, justify;
+- [x] **Home**: font, size, bold, italic, underline, strike, colour, highlight; align left, centre, right, justify;
       bullets and numbering, list level in and out; line spacing; text direction and anchor (top, middle, bottom);
       autofit (shrink on overflow, the box grows to its words); Clear formatting; Format painter.
+      Done (office-engine session, 17 Oct): with a box with words chosen, Home starts with Words' own tools on all its
+      words — `FontButton` + Words' font strip (`DesignGalleryStrip` Font: the deck's fonts, Word's, the phone's,
+      Search; a font tapped shows at once, Cancel puts it back), `SizeStepper`, B I U S (`Tool`), `Swatches` with
+      `TEXT_COLOURS`/`HIGHLIGHT_COLOURS`, Format painter (the next box chosen takes the look), Clear formatting (the
+      letters' own looks gone: their level's/master's — `SlidePara.base`), Bullets / Numbering, the four alignments,
+      `LINE_SPACINGS`, words at top/middle/bottom, Don't fit / Shrink text / Box fits words. Kept per box in
+      `SlidesEdit.Look` (shown by `SlidesEdit.looked`), saved as PowerPoint writes them (rPr, pPr, bodyPr; a box that
+      fits its words saved at its new height) and as LibreOffice does (automatic text, paragraph and list styles,
+      declared font faces, the shape's graphic style). A box with words chosen keeps Home (others go to their tab).
+      Found and fixed on the way: a numbered paragraph under a bulleted master read as "•" (the nearest bullet setting
+      now wins); numbers counted per level as PowerPoint and LibreOffice count them (Tetra counted straight through);
+      a centred list's bullet a fixed hang from its words; a slide bullet's own face no longer makes its line taller.
+      Not here: list level in/out and a letter's own looks need the rich typing editor (later, as planned); text
+      direction (vertical text) not done. `Home's looks on a box saved` (.pptx and .odp, read back, LibreOffice's
+      conversions read back). Unit suite 407/0/7; sweep 349 + 29, none failing; Words' fingerprint unchanged; emulator:
+      slides.pptx's Plan bold, numbered, centred, 1.5, Times — saved, LibreOffice draws it the same. Tablet: not yet.
 - [ ] **Insert**: Text box (plain; today only shapes); Chart (Words' chart editor); Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).

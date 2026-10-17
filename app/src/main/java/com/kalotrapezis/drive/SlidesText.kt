@@ -12,7 +12,9 @@ internal object SlidesText {
     private class Styles(val looks: java.util.IdentityHashMap<DocPara, ParaLook>, val bullets: java.util.IdentityHashMap<DocPara, SlideBullet>) : DocStyles() {
         override fun look(p: DocPara) = looks[p] ?: ParaLook()
         // a bullet no face here has (Noto Sans Symbols' 🞆): Word's •; one the phone draws as a colour emoji (⚫) asked for as a letter, in its colour
-        override fun marker(p: DocPara) = bullets[p]?.text?.let { bullet(it) }?.let { b -> if (glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
+        override fun marker(p: DocPara) = bullets[p]?.text?.let { bullet(it) }?.let { b -> if (b.codePointCount(0, b.length) > 1 || glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
+        // centred or to the right: the bullet before the words by its hang (tab stops count from a line's start)
+        override fun markerHangs(p: DocPara) = p.align == DocAlign.Center || p.align == DocAlign.End
         override fun markerLook(p: DocPara) = bullets[p]?.let { MarkerLook(it.color, it.size, it.font) }
         private val glyphs = android.graphics.Paint()
     }

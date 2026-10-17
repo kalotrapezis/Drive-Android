@@ -83,6 +83,22 @@ internal fun tabGap(x: Float, followingWidth: Float, stops: List<TabStop>): Pair
     return stop to gap.coerceAtLeast(0f)
 }
 
+/**
+ * A list marker in a look of its own (a slide's bullet: PowerPoint's buClr, buSzPct, buFont): drawn in it — its face, else
+ * the words' with the phone's fonts behind — but measured with the words' line, as PowerPoint and LibreOffice do (a symbol
+ * font's tall letters made the line taller, 17 Oct).
+ */
+private class MarkerSpan(val color: Int?, val scale: Float, val face: Typeface?) : android.text.style.ReplacementSpan() {
+    private fun look(paint: android.graphics.Paint) = android.text.TextPaint(paint).also { p -> face?.let { p.typeface = it }; p.textSize *= scale; color?.let { p.color = it } }
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?): Int {
+        fm?.let { paint.getFontMetricsInt(it) }
+        return Math.round(look(paint).measureText(text ?: "", start, end))
+    }
+    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
+        canvas.drawText(text ?: "", start, end, x, y.toFloat(), look(paint))
+    }
+}
+
 /** A tab laid out: a gap of its own width, filled with its leader (the dots of a table of contents). */
 private class TabSpan(val width: Float, val leader: Char?) : android.text.style.ReplacementSpan() {
     override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = Math.round(width)
@@ -178,6 +194,8 @@ internal abstract class DocStyles {
     open fun marker(p: DocPara): String? = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
     /** Its own look (a slide's bullet); null: its paragraph's first letters'. */
     open fun markerLook(p: DocPara): MarkerLook? = null
+    /** Its gap to the words a fixed one (the hang less the marker), not the next tab stop: a centred slide list's, as PowerPoint's. */
+    open fun markerHangs(p: DocPara): Boolean = false
     /** A list item's number or bullet as its list writes it ("2.1.", "a)", "iv."), from the counts at each level. */
     open fun listLabel(p: DocPara, counts: IntArray): String? = null
     /** Each level's number format and text ("lowerLetter", "%2.") of the file's numbered lists, for the editor; null: Writer's 1. 2. 3. */
@@ -1642,14 +1660,8 @@ internal object OfficePages {
                 OfficeFonts.typeface(styles.fontName(r.font))?.let { mark(TypefaceSpan(OfficeFonts.styled(it, r.bold, r.italic))) }
                 r.color?.let { mark(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             }
-            styles.markerLook(p)?.let { m ->
-                fun mark(s: Any) = text.setSpan(s, 0, marker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                m.color?.let { mark(ForegroundColorSpan(it)) }
-                if (m.size != 1f) mark(RelativeSizeSpan(m.size))
-                // its own face, else the paragraph's with the phone's behind it (a symbol the letters' face lacks)
-                text.getSpans(0, marker.length, TypefaceSpan::class.java).forEach(text::removeSpan)
-                OfficeFonts.typeface(m.font)?.let { mark(TypefaceSpan(it)) }
-            }
+            // its own look (a slide's bullet): drawn in its colour, size and face, the line as tall as its words make it
+            styles.markerLook(p)?.let { m -> text.setSpan(MarkerSpan(m.color, m.size, OfficeFonts.typeface(m.font)), 0, marker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
         for (r in OfficeFormats.tidy(p.runs)) {
             if (r.image == null && LetterLooks.of(r.font).hidden) continue // hidden text: not on the page, as in Word
@@ -1743,6 +1755,11 @@ internal object OfficePages {
         // the stop's side (a table of contents: page numbers right-aligned, dots before them).
         val stops = (look.tabs + if (first < left) listOf(TabStop(left, 'l')) else emptyList()).sortedBy { it.pos }
         for (k in text.indices.filter { text[it] == '\t' }) {
+            if (marker != null && k == marker.length && styles.markerHangs(p)) {
+                val mark = Layout.getDesiredWidth(android.text.SpannableStringBuilder(text, 0, k).also { b -> b.getSpans(0, b.length, android.text.style.ParagraphStyle::class.java).forEach(b::removeSpan) }, paint) / U
+                text.setSpan(TabSpan(maxOf(left - first - mark, size * 0.25f) * U, null), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                continue
+            }
             val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
             // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length

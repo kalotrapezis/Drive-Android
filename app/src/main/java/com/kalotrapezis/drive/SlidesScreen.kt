@@ -196,8 +196,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
     var effectKinds by remember { mutableStateOf(false) } // Animations › Effect: the catalog of entrances, emphases and exits, a line each
     LaunchedEffect(ribbonTab, item) { effectOptions = false; effectKinds = false }
-    // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
-    LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Home", "Insert")) ribbonTab = "Item" }
+
     /** [a] put on the chosen slide, then chosen. */
     fun put(a: SlidesEdit.Added) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
@@ -221,7 +220,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     /** The chosen item's looks changed by [f] (fill, border, words' colour), saved with the slide. */
     fun restyle(f: (SlidesEdit.Look) -> SlidesEdit.Look) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val k = e.order[c].uid to id
-        change(e.copy(looks = e.looks + (k to f(e.looks[k] ?: SlidesEdit.Look())))); WriterLog.i("Slides: a shape's colours changed")
+        change(e.copy(looks = e.looks + (k to f(e.looks[k] ?: SlidesEdit.Look())))); WriterLog.i("Slides: a box's looks changed")
     }
     // Picture: the phone's photo picker; a copy kept on the phone until Save puts it in the file
     fun putPicture(uri: android.net.Uri) {
@@ -276,6 +275,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     LaunchedEffect(item, chosen) { if (OfficeUi.top && notesTyping != null) focusManager.clearFocus() }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
+    /** The chosen box with words of the file's own (a text box, a placeholder, a shape with words), as it shows: what Home's text tools change. */
+    fun chosenWords(): SlideItem.Shape? = (view?.slides?.getOrNull(chosen ?: -1)?.items?.lastOrNull { it.anim == item } as? SlideItem.Shape)?.takeIf { it.text != null && it.id != null && !it.grouped }
+    var painter by remember { mutableStateOf<SlidesEdit.Look?>(null) } // Format painter: the look taken, put on the next box chosen
+    var fontStrip by remember { mutableStateOf(false) } // Home › Font: the fonts in the ribbon's place (Words' strip)
+    var fontBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a font tapped there (Cancel goes back to it)
+    var fontPicked by remember { mutableStateOf<String?>(null) } // …and the font tapped
+    // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too); a box with words
+    // keeps Home (17 Oct: its text tools are there, as PowerPoint's), and takes the look a Format painter holds
+    LaunchedEffect(item) {
+        val words = chosenWords()
+        if (item != null && ribbonTab in setOf("Home", "Insert")) ribbonTab = if (words != null) "Home" else "Item"
+        val pl = painter ?: return@LaunchedEffect
+        if (words == null) return@LaunchedEffect
+        painter = null
+        restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align) }
+        message = "Look painted"
+    }
     /** File › Versions: [v] in the editor, unsaved — Save puts it over the file; leaving without saving keeps the file as it is. */
     fun openVersion(v: File) = scope.launch {
         load(v).onSuccess { d -> themed.clear(); source = v; deck = d; edit = SlidesEdit.start(d); saved = null; undos.clear(); redos.clear(); chosen = null; item = null
@@ -356,6 +372,51 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
+    /** Home's text tools for [box] (17 Oct), Words' own: font strip, size, B I U S, colours, painter, clear; lists, alignment, spacing; anchor, autofit. */
+    @Composable fun HomeText(box: SlideItem.Shape, w: Color) {
+        val t = box.text ?: return
+        val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: t.paras.firstOrNull()?.runs?.firstOrNull()
+        val p = t.paras.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } } ?: t.paras.firstOrNull()
+        FontButton(DocStyles.Plain.fontName(r?.font), w) { fontStrip = true }
+        val pt = Math.round(r?.sizePt ?: 18f)
+        SizeStepper("$pt", w, pt > 1, pt < 400, { restyle { it.copy(size = (pt - 1).toFloat()) } }, { restyle { it.copy(size = (pt + 1).toFloat()) } })
+        RibbonDivider(w)
+        Tool(R.drawable.ic_format_bold, "Bold", w, on = r?.bold == true) { restyle { it.copy(bold = r?.bold != true) } }
+        Tool(R.drawable.ic_format_italic, "Italic", w, on = r?.italic == true) { restyle { it.copy(italic = r?.italic != true) } }
+        Tool(R.drawable.ic_format_underlined, "Underline", w, on = r?.underline == true) { restyle { it.copy(underline = r?.underline != true) } }
+        Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = r?.strike == true) { restyle { it.copy(strike = r?.strike != true) } }
+        Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
+        Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
+        // Format painter: this box's look taken, put on the next box chosen
+        Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
+            painter = if (painter != null) null else SlidesEdit.Look(font = DocStyles.Plain.fontName(r?.font), size = r?.sizePt, bold = r?.bold, italic = r?.italic, underline = r?.underline,
+                strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align)
+            if (painter != null) message = "Choose the box to paint"
+        }
+        // Clear formatting: the letters' own looks gone (the box's fill, border, anchor and autofit stay)
+        Tool(R.drawable.ic_format_clear, "Clear formatting", w) { restyle { SlidesEdit.Look(fill = it.fill, line = it.line, anchor = it.anchor, autofit = it.autofit, cleared = true) } }
+        RibbonDivider(w)
+        val numbered = p?.bullet?.text?.firstOrNull()?.isDigit() == true
+        Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = p?.bullet != null && !numbered) { restyle { it.copy(list = if (p?.bullet != null && !numbered) 'n' else 'b') } }
+        Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = numbered) { restyle { it.copy(list = if (numbered) 'n' else '1') } }
+        RibbonDivider(w)
+        listOf(DocAlign.Start to R.drawable.ic_align_left, DocAlign.Center to R.drawable.ic_align_center, DocAlign.End to R.drawable.ic_align_right, DocAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
+            Tool(icon, "Align ${a.name.lowercase().replace("start", "left").replace("end", "right")}", w, on = (p?.para?.align ?: DocAlign.Start) == a) { restyle { it.copy(align = a) } }
+        }
+        RibbonDivider(w)
+        // line spacing as Words' (a share of the single line: PowerPoint's 1.2 × the letters' size)
+        Icon(painterResource(R.drawable.ic_format_line_spacing), "Line spacing", tint = w, modifier = Modifier.padding(horizontal = 4.dp).size(20.dp))
+        LINE_SPACINGS.forEach { m -> RibbonButton(plain(m), w, on = p != null && p.look.lineExact == null && kotlin.math.abs(p.look.lineMultiple - m) < 0.01f) { restyle { it.copy(spacing = m) } } }
+        RibbonDivider(w)
+        // where the words stand in the box, and how the box takes too many (PowerPoint's Align Text and Autofit)
+        listOf('t' to (R.drawable.ic_vertical_align_top to "Top"), 'c' to (R.drawable.ic_vertical_align_center to "Middle"), 'b' to (R.drawable.ic_vertical_align_bottom to "Bottom")).forEach { (a, d) ->
+            Tool(d.first, "Words at the ${d.second.lowercase()}", w, on = t.anchor == a) { restyle { it.copy(anchor = a) } }
+        }
+        val grows = edit?.looks?.get((edit?.order?.getOrNull(chosen ?: -1)?.uid ?: -1) to (item ?: ""))?.autofit == 'g'
+        RibbonButton("Don't fit", w, R.drawable.ic_close, on = !t.shrink && !grows) { restyle { it.copy(autofit = 'n') } }
+        RibbonButton("Shrink text", w, R.drawable.ic_fit_page, on = t.shrink) { restyle { it.copy(autofit = 's') } }
+        RibbonButton("Box fits words", w, R.drawable.ic_unfold_more, on = grows) { restyle { it.copy(autofit = 'g') } }
+    }
     @Composable fun SlideRibbon(tab: String, c: Int, e: SlidesEdit.Edit, w: Color) {
         val entry = e.order[c]; val uid = entry.uid
         val sl = view?.slides?.getOrNull(c)
@@ -386,6 +447,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
             }
             "Home" -> {
+                // a box with words chosen: Words' text tools, on all its words (a letter's own needs the rich typing editor, later)
+                chosenWords()?.let { box -> HomeText(box, w); RibbonDivider(w) }
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
@@ -856,6 +919,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // New slide: the deck's layouts in the strip's place, each a small slide; the one tapped comes after the chosen slide
+                    // Home › Font: Words' strip (its phone fonts and search), a font tapped shown at once; Cancel puts the words back
+                    androidx.compose.animation.AnimatedVisibility(editing && fontStrip && e != null && item != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                        val fonts = remember(base) { ((base?.slides.orEmpty().flatMap { s -> s.items.filterIsInstance<SlideItem.Shape>().flatMap { sh -> sh.text?.paras.orEmpty().flatMap { pp -> pp.runs.mapNotNull { r -> DocStyles.Plain.fontName(r.font) } } } })
+                            .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
+                        val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
+                        fun close() { fontBefore = null; fontPicked = null; fontStrip = false }
+                        DesignGalleryStrip(DesignGallery.Font, fontPicked?.let(::FontChoice), cancel = { fontBefore?.let { edit = it }; close() }, ok = {
+                            val made = edit; fontBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: a box's font changed")
+                        }, pick = { ch ->
+                            val b = fontBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
+                            val k = b.order[cc].uid to id
+                            fontBefore = b; fontPicked = (ch as FontChoice).name; edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(font = (ch as FontChoice).name)))
+                        }, fonts = fonts, now = now)
+                    }
                     androidx.compose.animation.AnimatedVisibility(editing && layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val full = deck
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {

@@ -152,6 +152,100 @@ internal object SlidesOdpEdit {
             }
             if (lines.any { it.isNotBlank() }) el.removeAttributeNS(PRES, "placeholder")
         }
+        /** A face named in content.xml's font declarations (style:font-name points at one), declared when it is not. */
+        fun face(name: String): String {
+            val decls = root.kids().firstOrNull { it.localName == "font-face-decls" }
+                ?: doc.createElementNS(OFFICE, "office:font-face-decls").also { d -> root.insertBefore(d, root.kids().firstOrNull { it.localName in setOf("automatic-styles", "body") }) }
+            decls.kids().firstOrNull { it.a(STYLE, "name") == name }?.let { return name }
+            decls.appendChild(doc.createElementNS(STYLE, "style:font-face").also { it.setAttributeNS(STYLE, "style:name", name); it.setAttributeNS(SVG, "svg:font-family", if (' ' in name) "'$name'" else name) })
+            return name
+        }
+        /** A list style of LibreOffice's for Home's Bullets ('b') or Numbering ('1'): its first levels hanging as PowerPoint's (0.95 cm). */
+        fun listStyle(kind: Char): String = made.getOrPut("list $kind") {
+            val nm = fresh("LT")
+            autos.appendChild(doc.importNode(OfficeFormats.parse(buildString {
+                append("""<text:list-style xmlns:text="$TEXT" xmlns:style="$STYLE" xmlns:fo="$FO" style:name="$nm">""")
+                for (lv in 1..9) {
+                    val props = """<style:list-level-properties text:space-before="${String.format(Locale.ROOT, "%.2f", (lv - 1) * 0.95)}cm" text:min-label-width="0.95cm"/>"""
+                    append(if (kind == 'b') """<text:list-level-style-bullet text:level="$lv" text:bullet-char="•">$props<style:text-properties fo:font-family="Arial" style:use-window-font-color="true" fo:font-size="100%"/></text:list-level-style-bullet>"""
+                        else """<text:list-level-style-number text:level="$lv" style:num-format="1" style:num-suffix=".">$props<style:text-properties fo:font-size="100%" style:use-window-font-color="true"/></text:list-level-style-number>""")
+                }
+                append("</text:list-style>")
+            }.toByteArray()).documentElement, true))
+            nm
+        }
+        /** Home's looks [l] on the words of shape [s]: every span (words outside one put in one), each paragraph, its list, the shape's anchor and autofit. */
+        fun words(s: Element, l: SlidesEdit.Look) {
+            val h = holder(s) ?: return
+            val key = "words ${l.copy(fill = null, line = null)}"
+            fun text(st: Element) {
+                val t = props(st, "text-properties")
+                l.font?.let { f -> t.setAttributeNS(STYLE, "style:font-name", face(f)); t.removeAttributeNS(FO, "font-family") }
+                l.size?.let { t.setAttributeNS(FO, "fo:font-size", String.format(Locale.ROOT, "%.1fpt", it)) }
+                l.bold?.let { t.setAttributeNS(FO, "fo:font-weight", if (it) "bold" else "normal") }
+                l.italic?.let { t.setAttributeNS(FO, "fo:font-style", if (it) "italic" else "normal") }
+                l.underline?.let { t.setAttributeNS(STYLE, "style:text-underline-style", if (it) "solid" else "none"); if (it) { t.setAttributeNS(STYLE, "style:text-underline-width", "auto"); t.setAttributeNS(STYLE, "style:text-underline-color", "font-color") } }
+                l.strike?.let { t.setAttributeNS(STYLE, "style:text-line-through-style", if (it) "solid" else "none") }
+                l.text?.let {
+                    t.setAttributeNS(FO, "fo:color", hex(it)); t.setAttributeNS(STYLE, "style:use-window-font-color", "false") // else LibreOffice paints the window's colour
+                    // and a theme colour it named before goes, or LibreOffice keeps writing that one (its .pptx: dk1)
+                    listOf("color-type", "theme-type", "color-lum-mod", "color-lum-off").forEach { n -> t.removeAttributeNS(LOEXT, n) }
+                    t.kids().filter { k -> k.localName == "char-complex-color" }.forEach { k -> t.removeChild(k) }
+                }
+                l.highlight?.let { t.setAttributeNS(FO, "fo:background-color", if (it == SlidesEdit.NONE) "transparent" else hex(it)) }
+            }
+            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null || l.text != null || l.highlight != null
+            for (p in paras(h)) {
+                if (l.cleared) {
+                    // the letters' own looks gone: the spans' words put back in the paragraph, its own text looks taken off
+                    for (span in p.all().filter { it.localName == "span" && it.namespaceURI == TEXT }) { while (span.firstChild != null) span.parentNode.insertBefore(span.firstChild, span); span.parentNode.removeChild(span) }
+                    p.a(TEXT, "style-name")?.let { n -> p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", n, "cleared") { st -> st.kids().filter { it.localName == "text-properties" }.forEach { st.removeChild(it) } }) }
+                }
+                if (styled) {
+                    for (span in p.all().filter { it.localName == "span" && it.namespaceURI == TEXT }) span.setAttributeNS(TEXT, "text:style-name", derive("text", span.a(TEXT, "style-name"), key, ::text))
+                    for (t in (0 until p.childNodes.length).map { p.childNodes.item(it) }.filter { it is org.w3c.dom.Text || (it is Element && it.localName in setOf("s", "tab", "line-break", "a")) }) {
+                        val span = doc.createElementNS(TEXT, "text:span")
+                        span.setAttributeNS(TEXT, "text:style-name", derive("text", null, key, ::text))
+                        p.replaceChild(span, t); span.appendChild(t)
+                    }
+                }
+                if (l.align != null || l.spacing != null) p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", p.a(TEXT, "style-name"), key) { st ->
+                    val pp = props(st, "paragraph-properties")
+                    l.align?.let { pp.setAttributeNS(FO, "fo:text-align", when (it) { DocAlign.Center -> "center"; DocAlign.End -> "end"; DocAlign.Justify -> "justify"; else -> "start" }) }
+                    l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
+                })
+            }
+            when (l.list) {
+                // none: the list's paragraphs taken out of it, in their place
+                'n' -> for (list in h.kids().filter { it.localName == "list" && it.namespaceURI == TEXT }) {
+                    for (p in paras(list)) h.insertBefore(p, list)
+                    h.removeChild(list)
+                }
+                'b', '1' -> {
+                    val style = listStyle(l.list)
+                    h.kids().filter { it.localName == "list" && it.namespaceURI == TEXT }.forEach { it.setAttributeNS(TEXT, "text:style-name", style) }
+                    // paragraphs outside a list: each an item of one
+                    for (p in h.kids().filter { it.namespaceURI == TEXT && it.localName in setOf("p", "h") }) {
+                        val list = doc.createElementNS(TEXT, "text:list").also { it.setAttributeNS(TEXT, "text:style-name", style) }
+                        val item = doc.createElementNS(TEXT, "text:list-item")
+                        h.insertBefore(list, p); list.appendChild(item); item.appendChild(p)
+                    }
+                }
+            }
+            if (l.anchor != null || l.autofit != null) {
+                val pr = s.a(PRES, "style-name")
+                val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "box ${l.anchor} ${l.autofit}") { st ->
+                    val g = props(st, "graphic-properties")
+                    l.anchor?.let { g.setAttributeNS(DRAW, "draw:textarea-vertical-align", when (it) { 'c' -> "middle"; 'b' -> "bottom"; else -> "top" }) }
+                    l.autofit?.let { f ->
+                        g.setAttributeNS(DRAW, "draw:auto-grow-height", if (f == 'g') "true" else "false")
+                        g.setAttributeNS(DRAW, "draw:fit-to-size", "false")
+                        if (f == 's') g.setAttributeNS(STYLE, "style:shrink-to-fit", "true") else g.removeAttributeNS(STYLE, "shrink-to-fit")
+                    }
+                }
+                if (pr != null) s.setAttributeNS(PRES, "presentation:style-name", nm) else s.setAttributeNS(DRAW, "draw:style-name", nm)
+            }
+        }
         fun restyle(el: Element, l: SlidesEdit.Look) {
             val shapes = if (el.localName == "g") el.all().filter { it.namespaceURI == DRAW && it.localName in setOf("frame", "custom-shape", "rect", "ellipse") } else listOf(el)
             for (s in shapes) {
@@ -172,17 +266,7 @@ internal object SlidesOdpEdit {
                         if (l.fill == SlidesEdit.NONE) g.setAttributeNS(DRAW, "draw:fill", "none") else { g.setAttributeNS(DRAW, "draw:fill", "solid"); g.setAttributeNS(DRAW, "draw:fill-color", hex(l.fill)) }
                     })
                 }
-                val c = l.text ?: continue
-                for (p in holder(s)?.let(::paras).orEmpty()) {
-                    // each span in the colour, and words outside spans put in one
-                    for (span in p.all().filter { it.localName == "span" && it.namespaceURI == TEXT })
-                        span.setAttributeNS(TEXT, "text:style-name", derive("text", span.a(TEXT, "style-name"), "color $c") { props(it, "text-properties").setAttributeNS(FO, "fo:color", hex(c)) })
-                    for (t in (0 until p.childNodes.length).map { p.childNodes.item(it) }.filterIsInstance<org.w3c.dom.Text>()) {
-                        val span = doc.createElementNS(TEXT, "text:span")
-                        span.setAttributeNS(TEXT, "text:style-name", derive("text", null, "color $c") { props(it, "text-properties").setAttributeNS(FO, "fo:color", hex(c)) })
-                        p.replaceChild(span, t); span.appendChild(t)
-                    }
-                }
+                if (l.words) words(s, l)
             }
         }
         /** [el] (or, a group, each item in it as the group's [box] moves to [f]) at its new place. */
@@ -307,7 +391,8 @@ internal object SlidesOdpEdit {
             // found before anything moves: the places name the page as it was read
             val texts = edit.texts.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
             val looks = edit.looks.filterKeys { it.first == uid && it.second.startsWith("o") }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
-            val frames = edit.frames.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { Triple(it, v, SlidesEdit.box(slide, k.second)) } }
+            val frames = (edit.frames.filterKeys { it.first == uid }.mapKeys { it.key.second } + SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid }))
+                .mapNotNull { (id, v) -> at(id)?.let { Triple(it, v, SlidesEdit.box(slide, id)) } }
             val removed = edit.removed.filter { it.first == uid }.mapNotNull { at(it.second) }
             val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }

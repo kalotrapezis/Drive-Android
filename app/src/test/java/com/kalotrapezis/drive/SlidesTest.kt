@@ -74,6 +74,45 @@ class SlidesTest {
         assertEquals(listOf("struck", "up", "small caps and  more", "\tlink"), shown.map { it.text }); assertTrue(shown[0].strike)
     }
 
+    /** Slides' Home (17 Oct, Words' tools): a box's words in a face, size, looks, colours; its paragraphs aligned, numbered, spaced; its anchor and autofit — saved, read back, opened by LibreOffice. */
+    @Test fun `Home's looks on a box saved`() {
+        val look = SlidesEdit.Look(font = "Georgia", size = 28f, bold = true, underline = true, strike = true, text = 0xFFC00000.toInt(), highlight = 0xFFFFFF00.toInt(),
+            align = DocAlign.Center, list = '1', spacing = 1.5f, anchor = 'b', autofit = 's')
+        fun check(d: Deck, how: String) {
+            val t = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!
+            val r = t.paras[0].runs[0]
+            assertEquals(how, "Georgia", DocStyles.Plain.fontName(r.font)); assertEquals(how, 28f, r.sizePt!!, 0.1f); assertTrue(how, r.bold && r.underline && r.strike)
+            // LibreOffice 26.2 draws the .odp's red, but its .pptx of it names the outline's theme colour instead (its exporter's)
+            if (!how.startsWith("LibreOffice's pptx")) assertEquals(how, 0xC00000, r.color); assertEquals(how, 0xFFFF00, r.highlight)
+            assertEquals(how, listOf("1.", "1.", "2.", "2.", "1."), t.paras.map { it.bullet?.text?.trim() }) // each level counted on its own
+            assertEquals(how, DocAlign.Center, t.paras[0].para.align); assertEquals(how, "1.", t.paras[0].bullet?.text?.trim())
+            assertEquals(how, 1.5f, t.paras[0].look.lineMultiple, 0.01f); assertEquals(how, 'b', t.anchor); assertTrue(how, t.shrink)
+        }
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = deck.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((1 to box.anim!!) to look))
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("home-$name") // kept, for a look
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+        // Clear formatting: the red bold words in their paragraph's look again (the theme's text, 18 pt)
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val red = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }
+        val out = File.createTempFile("cleared", ".pptx")
+        SlidesEdit.save(src, deck, SlidesEdit.start(deck).copy(looks = mapOf((2 to red.anim!!) to SlidesEdit.Look(cleared = true))), out)
+        val r = Slides.read(out).slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }.text!!.paras[0].runs[0]
+        assertTrue(!r.bold); assertEquals(18f, r.sizePt!!, 0.1f); assertEquals(0, r.color)
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

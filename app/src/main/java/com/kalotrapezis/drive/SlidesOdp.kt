@@ -118,7 +118,7 @@ internal object SlidesOdp {
                 fun textProp(span: String?, key: String) = prop("text", span, "t.$key") ?: prop("paragraph", pStyle, "t.$key")
                     ?: levelStyle?.let { prop("presentation", it, "t.$key") } ?: shapeProp("t.$key")
                 val runs = ArrayList<DocRun>()
-                fun run(t: String, span: String?, link: String? = null) {
+                fun look(t: String, span: String?, link: String? = null): DocRun {
                     fun has(key: String) = textProp(span, key).let { it != null && it != "none" }
                     val face = textProp(span, "font-name") ?: textProp(span, "font-family")
                     val effects = TextEffects(if (textProp(span, "text-outline") == "true") 0 else null, has("text-shadow"))
@@ -129,12 +129,13 @@ internal object SlidesOdp {
                         "text-underline-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-underline-type="double"""" }).joinToString("") + effects.odt()
                     // "super 58%", "sub", "33% 58%": raised or lowered
                     val position = textProp(span, "text-position")?.substringBefore(' ')
-                    runs += DocRun(t, bold = textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, italic = textProp(span, "font-style") == "italic",
+                    return DocRun(t, bold = textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, italic = textProp(span, "font-style") == "italic",
                         underline = has("text-underline-style"), strike = has("text-line-through-style"), sizePt = pt(textProp(span, "font-size")) ?: 18f,
                         color = (hex(textProp(span, "color")) ?: 0) and 0xFFFFFF, highlight = textProp(span, "background-color")?.takeIf { it != "transparent" }?.let(::hex)?.and(0xFFFFFF),
                         link = link, font = (face?.let { """style:font-name="$it"""" } ?: "") + looks,
                         script = when { position == null -> 0; position == "super" -> 1; position == "sub" -> -1; else -> position.removeSuffix("%").toFloatOrNull()?.sign?.toInt() ?: 0 })
                 }
+                fun run(t: String, span: String?, link: String? = null) { runs += look(t, span, link) }
                 fun walk(n: org.w3c.dom.Node, span: String?, link: String? = null) {
                     when {
                         n is org.w3c.dom.Text -> if (n.data.isNotEmpty()) run(n.data.replace('\n', ' '), span, link)
@@ -157,7 +158,7 @@ internal object SlidesOdp {
                 paras += SlidePara(DocPara(runs, list = DocList(bullet?.char?.firstOrNull()?.isDigit() == true, level), align = align),
                     ParaLook(before = pt(pProp("margin-top")) ?: 0f, after = pt(pProp("margin-bottom")) ?: 0f, lineMultiple = height?.takeIf { it.endsWith("%") }?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
                         lineExact = height?.takeIf { !it.endsWith("%") }?.let(::pt), left = marL, firstLine = -(bullet?.label ?: 0f) + (pt(pProp("text-indent")) ?: 0f), listIndented = true),
-                    bullet?.char?.let { SlideBullet(it, bullet.color, bullet.size, bullet.font) })
+                    bullet?.char?.let { SlideBullet(it, bullet.color, bullet.size, bullet.font) }, look("", null))
             }
             // a list's items sit one level in each time a list is inside an item
             fun walkList(list: Element, level: Int, name: String?) {
@@ -175,7 +176,7 @@ internal object SlidesOdp {
             if (paras.none { p -> p.runs.any { it.text.isNotBlank() } }) return null
             fun g(key: String) = shapeProp("g.$key")
             val anchor = when (g("textarea-vertical-align")) { "middle" -> 'c'; "bottom" -> 'b'; else -> 't' }
-            return SlideText(paras, anchor, floatArrayOf(pt(g("padding-left")) ?: 7.2f, pt(g("padding-top")) ?: 3.6f, pt(g("padding-right")) ?: 7.2f, pt(g("padding-bottom")) ?: 3.6f),
+            return SlideText(SlidePara.numbered(paras), anchor, floatArrayOf(pt(g("padding-left")) ?: 7.2f, pt(g("padding-top")) ?: 3.6f, pt(g("padding-right")) ?: 7.2f, pt(g("padding-bottom")) ?: 3.6f),
                 shrink = g("shrink-to-fit") == "true" || g("fit-to-size") == "shrink-to-fit")
         }
 

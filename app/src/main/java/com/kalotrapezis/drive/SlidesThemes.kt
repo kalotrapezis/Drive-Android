@@ -13,6 +13,8 @@ internal data class SlideTheme(
     /** dk1, lt1, dk2, lt2, accent1–6, hlink, folHlink (0xRRGGBB); a dark theme's lt1 is its dark background */ val colors: List<Int>,
     val major: String, val minor: String,
     /** a band in accent1 on the master: 'l' left, 'r' right, 'b' bottom, 't' top; null none */ val band: Char? = null,
+    /** Design › Colours or Fonts (Words' strips) on the deck's own theme: its masters and backgrounds kept, only its colours and fonts (an .odp: its fonts) */
+    val keep: Boolean = false,
 )
 
 internal object SlidesThemes {
@@ -72,7 +74,7 @@ internal object SlidesThemes {
             val out = HashMap<String, ByteArray?>()
             val masters = zip.entries().asSequence().map { it.name }.filter { Regex("""^ppt/slideMasters/slideMaster\d+\.xml$""").matches(it) }.toList()
             for (m in masters) {
-                out[m] = mastered(read(m)!!, theme, w, h).toByteArray()
+                if (!theme.keep) out[m] = mastered(read(m)!!, theme, w, h).toByteArray()
                 // the master's theme: from its relationships
                 val rels = read(m.replace("slideMasters/", "slideMasters/_rels/") + ".rels").orEmpty()
                 Regex("""Target="\.\./theme/(theme\d+\.xml)"""").find(rels)?.groupValues?.get(1)?.let { "ppt/theme/$it" }?.let { tp -> read(tp)?.let { out[tp] = themed(it, theme).toByteArray() } }
@@ -116,7 +118,7 @@ internal object SlidesThemes {
             fun props(st: org.w3c.dom.Element, kind: String) = kids(st).firstOrNull { it.localName == kind } ?: doc.createElementNS(STYLE, "style:$kind").also { st.appendChild(it) }
             // the backgrounds
             val masters = all("master-page", STYLE)
-            for (m in masters) styleOf(m.getAttributeNS(DRAW, "style-name"), "drawing-page")?.let { st ->
+            if (!theme.keep) for (m in masters) styleOf(m.getAttributeNS(DRAW, "style-name"), "drawing-page")?.let { st ->
                 val d = props(st, "drawing-page-properties")
                 for (n in listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name")) d.removeAttributeNS(DRAW, n)
                 d.setAttributeNS(DRAW, "draw:fill", "solid"); d.setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[1]))
@@ -134,21 +136,21 @@ internal object SlidesThemes {
             for (st in styles.filter { it.getAttributeNS(STYLE, "family") == "presentation" }) {
                 val name = st.getAttributeNS(STYLE, "name")
                 // LibreOffice draws a master's background from its "-background" style (the drawing-page style is the file's other copy)
-                if (name.endsWith("-background")) { val g = props(st, "graphic-properties")
+                if (name.endsWith("-background")) { if (theme.keep) continue; val g = props(st, "graphic-properties")
                     for (n in listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name")) g.removeAttributeNS(DRAW, n)
                     g.setAttributeNS(DRAW, "draw:fill", "solid"); g.setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[1])); continue }
                 val title = name.endsWith("-title"); val text = title || name.endsWith("-subtitle") || Regex("-outline\\d$").containsMatchIn(name)
                 if (!text) continue
                 val t = props(st, "text-properties")
                 t.removeAttributeNS(STYLE, "use-window-font-color"); t.removeAttributeNS(STYLE, "font-name")
-                t.setAttributeNS(FO, "fo:color", hex(theme.colors[0])); t.setAttributeNS(FO, "fo:font-family", if (title) theme.major else theme.minor)
+                if (!theme.keep) t.setAttributeNS(FO, "fo:color", hex(theme.colors[0])); t.setAttributeNS(FO, "fo:font-family", if (title) theme.major else theme.minor)
             }
             // the band: gone from before, then on each master page, first (behind the rest), in its own style
             val autos = kids(doc.documentElement).firstOrNull { it.localName == "automatic-styles" }
                 ?: doc.createElementNS(OFFICE, "office:automatic-styles").also { doc.documentElement.insertBefore(it, kids(doc.documentElement).firstOrNull { k -> k.localName == "master-styles" }) }
-            for (m in masters) kids(m).filter { it.getAttributeNS(DRAW, "name") == BAND }.forEach { m.removeChild(it) }
+            if (!theme.keep) for (m in masters) kids(m).filter { it.getAttributeNS(DRAW, "name") == BAND }.forEach { m.removeChild(it) }
             styles.filter { it.getAttributeNS(STYLE, "name") == "grTetraBand" }.forEach { it.parentNode.removeChild(it) }
-            theme.band?.let { band ->
+            theme.band?.takeIf { !theme.keep }?.let { band ->
                 autos.appendChild(doc.createElementNS(STYLE, "style:style").apply { setAttributeNS(STYLE, "style:name", "grTetraBand"); setAttributeNS(STYLE, "style:family", "graphic")
                     appendChild(doc.createElementNS(STYLE, "style:graphic-properties").apply { setAttributeNS(DRAW, "draw:fill", "solid"); setAttributeNS(DRAW, "draw:fill-color", hex(theme.colors[4])); setAttributeNS(DRAW, "draw:stroke", "none") }) })
                 for (m in masters) {
@@ -173,7 +175,7 @@ internal object SlidesThemes {
                 val start = xml.indexOf("<office:automatic-styles"); val end = xml.indexOf("</office:automatic-styles>")
                 if (start < 0 || end < 0) return xml
                 var auto = xml.substring(start, end)
-                auto = auto.replace(Regex("""fo:color="${Regex.escape(oldColor)}"""", RegexOption.IGNORE_CASE), """fo:color="${hex(theme.colors[0])}"""")
+                if (!theme.keep) auto = auto.replace(Regex("""fo:color="${Regex.escape(oldColor)}"""", RegexOption.IGNORE_CASE), """fo:color="${hex(theme.colors[0])}"""")
                 fun font(old: String?, new: String) { if (old != null) auto = auto.replace(Regex("""(style:font-name|fo:font-family)="'?${Regex.escape(old)}'?""""), "$1=\"${Regex.escapeReplacement(new)}\"") }
                 // a title font the same as the body's: the body's (most of the words)
                 if (oldMajor != null && oldMajor != oldMinor) font(oldMajor, theme.major)

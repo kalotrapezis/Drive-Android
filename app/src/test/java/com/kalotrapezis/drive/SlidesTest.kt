@@ -339,6 +339,26 @@ class SlidesTest {
         assertEquals(listOf("Intro" to 0, "Body" to 1), Slides.read(again).sections)
     }
 
+    /** Design › Colours and Fonts (Words' strips) on the deck's own theme: the colour set and fonts changed, its masters and backgrounds kept. */
+    @Test fun `theme colours and fonts on the deck's own design`() {
+        val src = File("src/test/resources/slides.pptx")
+        val own = SlidesThemes.fromFile(src)!!.copy(keep = true)
+        val green = ThemeColors.Green
+        val t = own.copy(colors = own.colors.take(2) + listOf(green.dk2, green.lt2) + green.accents + listOf(green.link, green.followed), major = "Georgia", minor = "Georgia")
+        val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("variant.pptx")
+        SlidesThemes.apply(src, t, out)
+        val again = SlidesThemes.fromFile(out)!!
+        assertEquals(green.accents[0], again.colors[4]); assertEquals(own.colors[0], again.colors[0]); assertEquals("Georgia", again.major)
+        fun part(f: File, n: String) = java.util.zip.ZipFile(f).use { z -> String(z.getInputStream(z.getEntry(n)).readBytes()) }
+        assertEquals(part(src, "ppt/slideMasters/slideMaster1.xml"), part(out, "ppt/slideMasters/slideMaster1.xml")) // the design kept
+        // an .odp: its fonts only, its backgrounds and text colours kept
+        val odp = File("src/test/resources/slides.odp"); val o = File("build/office-roundtrip").resolve("variant.odp")
+        SlidesThemes.applyOdp(odp, SlideTheme("x", false, List(12) { 0 }, "Georgia", "Georgia", keep = true), o)
+        val styles = part(o, "styles.xml")
+        assertTrue(Regex("""fo:font-family="Georgia"""").containsMatchIn(styles))
+        assertEquals(Regex("""draw:fill-color="[^"]*"""").findAll(part(odp, "styles.xml")).map { it.value }.toList(), Regex("""draw:fill-color="[^"]*"""").findAll(styles).map { it.value }.toList())
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

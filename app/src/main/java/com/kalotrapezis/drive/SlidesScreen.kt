@@ -772,6 +772,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
                 Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (e.theme != null) RibbonButton("As the file was", w, R.drawable.ic_restore) { change(e.copy(theme = null)) }
+                // Words' Colours and Fonts strips: the theme's colour set (PowerPoint's Variants) and its heading and body fonts, the design kept
+                RibbonDivider(w)
+                if (!odp) RibbonButton("Colours", w, R.drawable.ic_format_color_text) { strip = DesignGallery.Colours }
+                RibbonButton("Fonts", w, R.drawable.ic_style) { strip = DesignGallery.Fonts }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
@@ -1264,7 +1268,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // Home › Font and Insert › Drop cap: Words' strips, a card tapped shown at once; Cancel puts the words back
                     var stripShown by remember { mutableStateOf(DesignGallery.Font) } // kept while it slides away
                     strip?.let { stripShown = it }
-                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && (item != null || strip == DesignGallery.WordArt), Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && (item != null || strip in setOf(DesignGallery.WordArt, DesignGallery.Colours, DesignGallery.Fonts)), Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val fonts = remember(base) { ((base?.slides.orEmpty().flatMap { s -> s.items.filterIsInstance<SlideItem.Shape>().flatMap { sh -> sh.text?.paras.orEmpty().flatMap { pp -> pp.runs.mapNotNull { r -> DocStyles.Plain.fontName(r.font) } } } })
                             .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
                         val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
@@ -1272,6 +1276,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         DesignGalleryStrip(stripShown, stripPicked, cancel = { stripBefore?.let { edit = it }; close() }, ok = {
                             val made = edit; stripBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: ${stripShown.title} chosen")
                         }, pick = { ch ->
+                            if (ch is ThemeColors || ch is ThemeFonts) {
+                                // on the theme chosen, else the deck's own (a PowerPoint file's theme part; an .odp's styles: its fonts only)
+                                val b = stripBefore ?: edit ?: return@DesignGalleryStrip
+                                val t0 = b.theme ?: (if (odp) null else (source ?: file)?.let { SlidesThemes.fromFile(it) })?.copy(keep = true)
+                                    ?: SlideTheme(file?.nameWithoutExtension ?: "Theme", false, List(12) { 0 }, "Calibri Light", "Calibri", keep = true)
+                                val t = if (ch is ThemeColors) t0.copy(colors = t0.colors.take(2) + listOf(ch.dk2, ch.lt2) + ch.accents + listOf(ch.link, ch.followed))
+                                    else (ch as ThemeFonts).let { f -> t0.copy(major = f.heading, minor = f.body) }
+                                stripBefore = b; stripPicked = ch; edit = b.copy(theme = t)
+                                return@DesignGalleryStrip
+                            }
                             if (stripShown == DesignGallery.WordArt) {
                                 // a look and a bend make the WordArt, as in Words: the one not tapped stays as it was
                                 val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip

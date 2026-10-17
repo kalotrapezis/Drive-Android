@@ -339,8 +339,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       before the first in a "Default Section", as PowerPoint makes it; written again whenever the file has some, so moved or deleted
       slides keep it right). Impress has no sections: the button is not there for an .odp. `sections saved`; LibreOffice opens it.
       Not yet: Reset slide, copy slides between decks.
-- [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
+- [~] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
+      Colour variants done 17 Oct (office-C session) with the theme's fonts (B's "From Words" Design line): Design › Colours and Fonts
+      are Words' strips (`DesignGalleryStrip` Colours / Fonts: `ThemeColors`, `ThemeFonts`), a card shown at once, Cancel/OK, on the
+      theme chosen or the deck's own (`SlidesThemes.fromFile`) with `SlideTheme.keep`: only the theme part's colour set and fonts
+      change — masters, backgrounds and bands stay (an .odp, which has no theme colours: Fonts only, its colours and backgrounds kept).
+      `theme colours and fonts on the deck's own design`; emulator: Green — the theme-coloured box went green.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
 - [~] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
       Comments done 17 Oct (office-C session), with Insert › Comment: Words' `NewCommentDialog` (its remembered name), Words'
@@ -433,7 +438,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 - [ ] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
       table; merge and split cells; borders and shading; table styles; Make chart from the table.
 - [ ] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
-- [ ] **Design**: the theme's fonts (Words' Fonts), besides its colours above.
+- [x] **Design**: the theme's fonts (Words' Fonts), besides its colours above (office-C session, 17 Oct, with B › Design).
 - [ ] **Review**: Read aloud (a slide's words, or its notes), as Words'.
 - [ ] **File**: AutoSave, Save a copy, Save as, Rename (as Words', beside A's list).
 - [ ] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.

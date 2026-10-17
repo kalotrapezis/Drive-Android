@@ -320,6 +320,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     private val driveMetadata by lazy { DriveMetadata(context) }
     private val driveRecents by lazy { DriveRecents(context) }
     private val driveManifest by lazy { DriveManifest(context) }
+    // A sync can run with Tetra's window closed: a Move must still know the chosen System folders, or it could remove one left empty.
+    init { SystemFolderChoice.load(context) }
 
     private fun open(host: String, port: Int, fingerprint: String, path: String, method: String, token: String?): HttpsURLConnection {
         val pinned = object : X509TrustManager {
@@ -852,6 +854,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 .put("hideScreenshots", metadataStore.hidesScreenshotsFromGallery())
                 .put("hideDocuments", metadataStore.hidesDocumentsFromGallery())
                 .put("updatedAt", metadataStore.viewSettingsUpdatedAt()))
+            .put("systemFolders", JSONArray(SystemFolderChoice.records(context).map { (name, chosen, at) ->
+                JSONObject().put("name", name).put("chosen", chosen).put("updatedAt", at)
+            }))
         postJson(host, p, "/metadata", body)
 
         val since = store.metadataSince()
@@ -902,6 +907,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         pulled.optJSONObject("viewSettings")?.let { v ->
             metadataStore.applyIncomingViewSettings(v.optBoolean("hideScreenshots"), v.optBoolean("hideDocuments"), v.optLong("updatedAt"))
         }
+        val driveRoot = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
+        pulled.each("systemFolders") { d -> SystemFolderChoice.applyIncoming(context, driveRoot, d.optString("name"), d.optBoolean("chosen"), d.optLong("updatedAt")) }
         pulled.optJSONArray("fileRecents")?.let { array ->
             driveRecents.merge((0 until array.length()).mapNotNull { i ->
                 array.optJSONObject(i)?.let { DriveRecent(it.optString("path"), it.optLong("openedAt")) }

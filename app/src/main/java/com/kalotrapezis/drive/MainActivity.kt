@@ -230,7 +230,7 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
         val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
-        DriveRules.chosenFolders = getSharedPreferences("drive", MODE_PRIVATE).getStringSet("systemFolders", null).orEmpty().toSet()
+        SystemFolderChoice.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
         if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA)
         setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
@@ -1966,8 +1966,7 @@ private fun DriveTab(
         dismiss = { toolsOpen = false },
     )
     if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
-        DriveRules.chosenFolders = chosen
-        context.getSharedPreferences("drive", android.content.Context.MODE_PRIVATE).edit().putStringSet("systemFolders", chosen).apply()
+        SystemFolderChoice.choose(context, chosen)
         systemFoldersOpen = false
         refresh() // makes the chosen ones (ensureSystemFolders) and shows them
     }

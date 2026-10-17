@@ -67,6 +67,13 @@ class DriveFilesTest {
         } finally { DriveRules.chosenFolders = emptySet() }
     }
 
+    @Test fun theLaterSystemFolderChoiceWinsAndATieGoesToChosen() {
+        assertTrue(DriveRules.incomingChoiceWins(localChosen = false, localAt = 0, chosen = true, at = 0))
+        assertFalse(DriveRules.incomingChoiceWins(localChosen = true, localAt = 0, chosen = false, at = 0))
+        assertTrue(DriveRules.incomingChoiceWins(localChosen = true, localAt = 5, chosen = false, at = 6))
+        assertFalse(DriveRules.incomingChoiceWins(localChosen = false, localAt = 6, chosen = true, at = 5))
+    }
+
     @Test fun aNameAlreadyInTrashNeverBlocksADelete() {
         val root = Files.createTempDirectory("drive-root").toFile()
         repeat(2) { File(root, "QA").mkdirs(); File(root, "a.txt").writeText("x") ; DriveRules.moveToTrash(root, "QA"); DriveRules.moveToTrash(root, "a.txt") }

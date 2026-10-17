@@ -44,6 +44,29 @@ object TetraFolder {
     }
 }
 
+/** Files tools › System folders, kept in the "drive" preferences with when each folder was chosen or left out, for sync. */
+object SystemFolderChoice {
+    private fun prefs(context: Context) = context.getSharedPreferences("drive", Context.MODE_PRIVATE)
+    private fun at(context: Context, name: String) = prefs(context).getLong("systemFolderAt.$name", 0)
+    fun load(context: Context) { DriveRules.chosenFolders = prefs(context).getStringSet("systemFolders", null).orEmpty().toSet() }
+    fun choose(context: Context, chosen: Set<String>) {
+        val now = System.currentTimeMillis()
+        val edit = prefs(context).edit().putStringSet("systemFolders", chosen)
+        (chosen + DriveRules.chosenFolders).filter { (it in chosen) != (it in DriveRules.chosenFolders) }.forEach { edit.putLong("systemFolderAt.$it", now) }
+        edit.apply()
+        DriveRules.chosenFolders = chosen
+    }
+    fun records(context: Context) = DriveRules.OPTIONAL_FOLDERS.map { Triple(it, it in DriveRules.chosenFolders, at(context, it)) }
+    /** One folder's choice from the computer; the chosen ones are made at once, so they are there before Files opens. */
+    fun applyIncoming(context: Context, root: File, name: String, chosen: Boolean, updatedAt: Long) {
+        if (name !in DriveRules.OPTIONAL_FOLDERS || !DriveRules.incomingChoiceWins(name in DriveRules.chosenFolders, at(context, name), chosen, updatedAt)) return
+        val next = if (chosen) DriveRules.chosenFolders + name else DriveRules.chosenFolders - name
+        prefs(context).edit().putStringSet("systemFolders", next).putLong("systemFolderAt.$name", updatedAt).apply()
+        DriveRules.chosenFolders = next
+        if (chosen) File(root, name).mkdirs()
+    }
+}
+
 object DriveRules {
     /**
      * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
@@ -59,6 +82,12 @@ object DriveRules {
     @Volatile var chosenFolders: Set<String> = emptySet()
     val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
+    /**
+     * Sync of the choice, folder by folder (the computer has the same rule): the later answer wins, and on a tie (a
+     * choice made before there were times) chosen wins — a folder made on either side is a system folder on both,
+     * and one left out on either side is not undone by the other (SYNC_PLAN.md 6g).
+     */
+    fun incomingChoiceWins(localChosen: Boolean, localAt: Long, chosen: Boolean, at: Long) = at > localAt || (at == localAt && chosen && !localChosen)
     fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
     private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }
 

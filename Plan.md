@@ -19,7 +19,8 @@ How to write here:
 - [x] (5e8b4e8) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
 - [x] (66b4b5a) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
 - [x] (4ddb8da) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
-- [x] (next commit) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
+- [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
+- [x] (next commit) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -91,7 +92,12 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       none): reopened, "Your unsaved changes are back", unsaved — Save keeps them, Don't save drops them. View-only on
       opening, the leave question and Versions were already alike. Emulator 17 Oct (draft: hid a slide, Home, killed
       the app, reopened, saved — LibreOffice skips the hidden slide).
-- [ ] Keyboard shortcuts and right-click menus the same where the action is the same (Ctrl+F, Ctrl+C/V, Delete).
+- [x] Keyboard shortcuts and right-click menus the same where the action is the same (Ctrl+F, Ctrl+C/V, Delete).
+      Done: Slides takes Ctrl+C, Ctrl+X, Ctrl+V for what is chosen on a slide (as its right-click menu); Tables' Delete
+      empties the chosen cells, as Excel's. All three: Ctrl+S, Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z. Ctrl+F: Words and
+      Tables; Slides gets it with B's Find and Replace. Right-click menus were already one component (`OfficeMenu`) with
+      Cut, Copy, Paste first in Tables and Slides; Words' text uses Android's own menu (deliberate: the system's text
+      selection). Emulator 17 Oct.
 - [ ] Messages, empty states and dialogs in one style; English only (memory: UI English only).
 
 ### B. Slides — what PowerPoint and Impress have that Slides lacks

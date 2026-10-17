@@ -877,7 +877,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val keys = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(editing, draft == null, searching) { if (draft == null && !searching) runCatching { keys.requestFocus() } }
     Box(Modifier.fillMaxSize().focusRequester(keys).focusable().onPreviewKeyEvent { k ->
-        if (k.type != KeyEventType.KeyDown || !k.isCtrlPressed || sheet == null) return@onPreviewKeyEvent false
+        if (k.type != KeyEventType.KeyDown || sheet == null) return@onPreviewKeyEvent false
+        // Delete empties the chosen cells, as Excel's (and Slides' Delete takes what is chosen; 17 Oct)
+        if (!k.isCtrlPressed) return@onPreviewKeyEvent if (k.key == Key.Delete && editing && draft == null) { clearCells(); true } else false
         when {
             k.key == Key.F -> { searching = true; true }
             draft != null -> false // the cell bar's own copy, paste and undo

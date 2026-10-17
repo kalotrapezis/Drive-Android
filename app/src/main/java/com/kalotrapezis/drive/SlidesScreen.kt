@@ -553,6 +553,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             k.isCtrlPressed && k.key == Key.S -> { if (changed && !saving) save(); true }
             k.isCtrlPressed && (k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed)) -> { redoEdit(); true }
             k.isCtrlPressed && k.key == Key.Z -> { undoEdit(); true }
+            // Cut, Copy and Paste as Words' and Tables' (17 Oct): what is chosen on the slide
+            k.isCtrlPressed && item != null && k.key == Key.C -> { copyItem(); true }
+            k.isCtrlPressed && item != null && k.key == Key.X -> { if (copyItem()) deleteItem(); true }
+            k.isCtrlPressed && clip != null && k.key == Key.V -> { pasteItem(); true }
             item != null && (k.key == Key.Delete || k.key == Key.Backspace) -> { deleteItem(); true }
             item != null && k.key == Key.DirectionLeft -> { reframe { listOf(it.x - step, it.y, it.w, it.h) }; true }
             item != null && k.key == Key.DirectionRight -> { reframe { listOf(it.x + step, it.y, it.w, it.h) }; true }

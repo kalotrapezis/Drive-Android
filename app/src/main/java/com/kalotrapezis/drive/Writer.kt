@@ -3912,17 +3912,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val pt = if (onObject) meta.basePt.roundToInt() else (size / BASE_SP * meta.basePt).roundToInt()
                     fun setPt(n: Int) = state.addSpanStyle(SpanStyle(fontSize = (n.coerceIn(8, 72) * BASE_SP / meta.basePt * shrink).sp))
                     // Home › Font: the fonts in the ribbon's place, each shown in itself (asked 16 Oct, as Page numbers).
-                    RibbonButton((hereFont ?: "Font").take(18), w, enabled = !onObject, outlined = true) { openGallery(DesignGallery.Font) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Tool(R.drawable.ic_remove, "Smaller text", w, enabled = pt > 8) { setPt(pt - 1) }
-                        Text("$pt", color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
-                        Tool(R.drawable.ic_add, "Bigger text", w, enabled = pt < 72) { setPt(pt + 1) }
-                    }
+                    FontButton(hereFont, w, enabled = !onObject) { openGallery(DesignGallery.Font) }
+                    SizeStepper("$pt", w, pt > 8, pt < 72, { setPt(pt - 1) }, { setPt(pt + 1) })
                 }, {
-                    Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                    Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
                         if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))
                     }
-                    Swatches(w, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+                    Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
                     // Change case (Word's Aa): the chosen letters, or the word at the cursor.
@@ -4153,7 +4149,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }, {
                         TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { if (word) change { t, _ -> TableEdit.withLook(t, look) } else message = "Table styles are for Word files for now." } }
                     }, {
-                        Swatches(w, R.drawable.ic_format_color_fill, "Shading", TABLE_COLORS.take(8).map { Color(0xFF000000 or it.toLong()) }) { color ->
+                        Swatches(w, R.drawable.ic_format_color_fill, "Shading", CELL_FILLS) { color ->
                             if (word) change { t, c -> TableEdit.withCells(t, TableEdit.wholeCell(t, c.row, c.cell)) { it.copy(props = TableEdit.withShading(it.props, color?.let { k -> (k.toArgb() and 0xFFFFFF) })) } }
                             else message = "Shading is for Word files for now."
                         }

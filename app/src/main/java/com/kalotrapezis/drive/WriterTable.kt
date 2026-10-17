@@ -618,10 +618,10 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
             Tool(R.drawable.ic_add, "Bigger text", tint, enabled = pt < 72) { apply { it.copy(sizePt = (pt + 1).toFloat()) } }
         }
     }, {
-        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31), Color.White)) { c ->
+        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
             apply { it.copy(color = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
-        Swatches(tint, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+        Swatches(tint, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
             apply { it.copy(highlight = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
     }, {

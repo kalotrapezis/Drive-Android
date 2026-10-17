@@ -149,6 +149,25 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     }
 }
 
+/** One set of colours for Words, Tables and Slides (17 Oct): the words' colour (white for dark fills and slides) … */
+internal val TEXT_COLOURS = listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31), Color.White)
+/** … the highlighter's … */
+internal val HIGHLIGHT_COLOURS = listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))
+/** … and a cell's fill (Words' table shading, Tables' Fill): yellow, Excel's good and bad, and light tints. Shapes: SHAPE_COLOURS. */
+internal val CELL_FILLS = listOf(0xFFFFFF00, 0xFFC6EFCE, 0xFFFFC7CE, 0xFFDDEBF7, 0xFFFCE4D6, 0xFFFFF2CC, 0xFFE2EFD9, 0xFFD9D9D9).map { Color(it) }
+
+/** The font in use, its gallery a tap away — one look in every app (Words' outlined name). */
+@Composable internal fun FontButton(name: String?, w: Color, enabled: Boolean = true, click: () -> Unit) =
+    RibbonButton((name ?: "Font").take(18), w, enabled = enabled, outlined = true, click = click)
+
+/** The size: − and + a point at a time round the number (fixed width, so two digits fit as one does), as Words' Home. */
+@Composable internal fun SizeStepper(size: String, w: Color, smaller: Boolean = true, bigger: Boolean = true, shrink: () -> Unit, grow: () -> Unit) =
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Tool(R.drawable.ic_remove, "Smaller text", w, enabled = smaller, click = shrink)
+        Text(size, color = w, style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
+        Tool(R.drawable.ic_add, "Bigger text", w, enabled = bigger, click = grow)
+    }
+
 /** A strip's head, in the ribbon's place (Tables' Borders and Number, Slides' Options and Effect; 17 Oct: all alike): ‹ back, its name. */
 @Composable internal fun StripHead(title: String, w: Color, back: () -> Unit) {
     androidx.compose.material3.IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back", tint = w) }

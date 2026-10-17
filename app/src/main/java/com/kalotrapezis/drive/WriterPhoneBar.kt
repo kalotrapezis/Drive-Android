@@ -42,7 +42,7 @@ internal fun KeyboardBar(tint: Color, bold: Boolean, italic: Boolean, underline:
         Tool(R.drawable.ic_format_bold, "Bold", tint, on = bold, click = toggleBold)
         Tool(R.drawable.ic_format_italic, "Italic", tint, on = italic, click = toggleItalic)
         Tool(R.drawable.ic_format_underlined, "Underline", tint, on = underline, click = toggleUnderline)
-        Swatches(tint, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF)), highlight)
+        Swatches(tint, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS, highlight)
         Tool(R.drawable.ic_mic, "Dictate", tint, click = dictate)
         Tool(R.drawable.ic_more_horiz, "More", tint, click = more)
         Tool(R.drawable.ic_keyboard_hide, "Hide keyboard", tint, click = hideKeyboard)

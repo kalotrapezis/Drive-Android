@@ -17,7 +17,8 @@ How to write here:
 - [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).
 - [x] (4a6d7b1) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
 - [x] (5e8b4e8) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
-- [x] (next commit) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
+- [x] (66b4b5a) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
+- [x] (next commit) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -75,7 +76,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       Effect options, which now take the whole ribbon's place and slide in as Tables' do. Deliberate difference: Words'
       galleries (Page numbers, Fonts, Colours, WordArt…) keep their name with Cancel and OK — they preview on the page
       and need OK. Checked on the emulator (1280 dp) 17 Oct; the tablet was in the user's hands.
-- [ ] One colour picker (Words' swatches; Slides has its own `SLIDE_COLOURS`), one font picker, one size picker.
+- [x] One colour picker (Words' swatches; Slides has its own `SLIDE_COLOURS`), one font picker, one size picker.
+      Done: the picker (`Swatches`) and the font gallery were already shared; now the lists are too — `TEXT_COLOURS`
+      (white added, for dark fills and slides), `HIGHLIGHT_COLOURS`, `CELL_FILLS` (Words' table shading and Tables'
+      Fill) and Words' `SHAPE_COLOURS` for a slide's shapes (`SLIDE_COLOURS` gone); `FontButton` and `SizeStepper` in
+      Words and Tables (Tables: font then size, as Words'). Slides gets them with B's Home. Emulator 17 Oct.
 - [ ] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded
       alike. View-only on opening with Edit, the Save / Don't save question on leaving, recovery drafts and versions
       behave the same in all three.

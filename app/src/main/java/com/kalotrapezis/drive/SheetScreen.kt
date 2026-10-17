@@ -841,10 +841,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("", w, R.drawable.ic_format_underlined, on = now.underline) { look { st, _ -> st.copy(underline = !now.underline) } }
                                 RibbonButton("", w, R.drawable.ic_format_strikethrough, on = now.strike) { look { st, _ -> st.copy(strike = !now.strike) } }
                                 RibbonDivider(w)
-                                Swatches(w, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31))) { c ->
+                                Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
                                     look { st, _ -> st.copy(color = c?.let { (it.value shr 32).toInt() }) }
                                 }
-                                Swatches(w, R.drawable.ic_format_color_fill, "Fill", listOf(Color(0xFFFFFF00), Color(0xFFC6EFCE), Color(0xFFFFC7CE), Color(0xFFDDEBF7), Color(0xFFFCE4D6), Color(0xFFD9D9D9))) { c ->
+                                Swatches(w, R.drawable.ic_format_color_fill, "Fill", CELL_FILLS) { c ->
                                     look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
                                 }
                                 opener("Borders", R.drawable.ic_border_outer)
@@ -858,10 +858,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 Tool(R.drawable.ic_decimal_decrease, "Fewer decimals", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
                                 Tool(R.drawable.ic_decimal_increase, "More decimals", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
                                 RibbonDivider(w)
-                                Tool(R.drawable.ic_remove, "Smaller text", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
-                                Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
-                                Tool(R.drawable.ic_add, "Bigger text", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
-                                RibbonButton(now.font ?: "Font", w, R.drawable.ic_text_box) { group = null; fontChosen = null; fontStrip = now.font.orEmpty() }
+                                // the font, then its size, as Words' Home (17 Oct)
+                                FontButton(now.font, w) { group = null; fontChosen = null; fontStrip = now.font.orEmpty() }
+                                SizeStepper(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, w, now.size > 6f, now.size < 72f,
+                                    { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }, { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } })
                                 RibbonDivider(w)
                                 RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
                             }

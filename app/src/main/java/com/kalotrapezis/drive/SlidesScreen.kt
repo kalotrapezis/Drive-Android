@@ -337,9 +337,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
                     if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonDivider(w)
-                    Swatches(w, R.drawable.ic_format_color_fill, "Fill", SLIDE_COLOURS) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
-                    if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SLIDE_COLOURS) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
-                    if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", SLIDE_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
+                    Swatches(w, R.drawable.ic_format_color_fill, "Fill", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
+                    if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
+                    if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
                 }
                 // moved, made bigger or smaller (the arrows a step a press, for where a finger is not precise); what was put on it here, deleted
                 if (it0 != null) {
@@ -957,10 +957,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
         })
 }
-
-/** PowerPoint's standard colours, and white, black and grey. */
-private val SLIDE_COLOURS = listOf(0xFFC00000, 0xFFFF0000, 0xFFFFC000, 0xFFFFFF00, 0xFF92D050, 0xFF00B050, 0xFF00B0F0, 0xFF0070C0, 0xFF002060, 0xFF7030A0,
-    0xFF4472C4, 0xFFFFFFFF, 0xFF7F7F7F, 0xFF000000).map { Color(it) }
 
 /** One slide, as wide as it is given, its own shape. */
 @Composable

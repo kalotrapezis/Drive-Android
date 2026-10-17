@@ -215,6 +215,29 @@ internal object SlidesOdpEdit {
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
                 })
             }
+            // Insert › Drop cap, raised: the first letter in a span of its own, its size (and face, colour); 0: a raised one plain again
+            l.raise?.let { size -> paras(h).firstOrNull { it.textContent.isNotBlank() }?.let { p ->
+                fun texts(n: org.w3c.dom.Node): List<org.w3c.dom.Text> = if (n is org.w3c.dom.Text) listOf(n) else (0 until n.childNodes.length).flatMap { texts(n.childNodes.item(it)) }
+                val t = texts(p).firstOrNull { it.data.isNotEmpty() } ?: return@let
+                val holder = t.parentNode as Element
+                if (size > 0f) {
+                    val n = t.data.offsetByCodePoints(0, 1)
+                    val rest = t.splitText(n)
+                    val span = doc.createElementNS(TEXT, "text:span")
+                    span.setAttributeNS(TEXT, "text:style-name", derive("text", holder.takeIf { it.localName == "span" }?.a(TEXT, "style-name"), "raise $size ${l.raiseFont} ${l.raiseColor}") { st ->
+                        val tp = props(st, "text-properties"); tp.setAttributeNS(FO, "fo:font-size", String.format(Locale.ROOT, "%.1fpt", size))
+                        l.raiseFont?.let { f -> tp.setAttributeNS(STYLE, "style:font-name", face(f)); tp.removeAttributeNS(FO, "font-family") }
+                        l.raiseColor?.let { c -> tp.setAttributeNS(FO, "fo:color", hex(c)); tp.setAttributeNS(STYLE, "style:use-window-font-color", "false") }
+                    })
+                    holder.insertBefore(span, t); span.appendChild(t)
+                    if (rest.data.isEmpty()) holder.removeChild(rest)
+                } else if (holder.localName == "span" && holder.textContent.codePointCount(0, holder.textContent.length) == 1) {
+                    // plain again: the letter in the look of the words after it
+                    val outer = holder.parentNode as? Element
+                    if (outer?.localName == "span") { while (holder.firstChild != null) outer.insertBefore(holder.firstChild, holder); outer.removeChild(holder) } // Tetra's, inside the words' own
+                    else (holder.nextSibling as? Element)?.takeIf { it.localName == "span" }?.a(TEXT, "style-name")?.let { holder.setAttributeNS(TEXT, "text:style-name", it) }
+                }
+            } }
             when (l.list) {
                 // none: the list's paragraphs taken out of it, in their place
                 'n' -> for (list in h.kids().filter { it.localName == "list" && it.namespaceURI == TEXT }) {

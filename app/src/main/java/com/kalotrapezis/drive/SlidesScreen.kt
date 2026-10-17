@@ -280,9 +280,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     /** The chosen box with words of the file's own (a text box, a placeholder, a shape with words), as it shows: what Home's text tools change. */
     fun chosenWords(): SlideItem.Shape? = (view?.slides?.getOrNull(chosen ?: -1)?.items?.lastOrNull { it.anim == item } as? SlideItem.Shape)?.takeIf { it.text != null && it.id != null && !it.grouped }
     var painter by remember { mutableStateOf<SlidesEdit.Look?>(null) } // Format painter: the look taken, put on the next box chosen
-    var fontStrip by remember { mutableStateOf(false) } // Home › Font: the fonts in the ribbon's place (Words' strip)
-    var fontBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a font tapped there (Cancel goes back to it)
-    var fontPicked by remember { mutableStateOf<String?>(null) } // …and the font tapped
+    var strip by remember { mutableStateOf<DesignGallery?>(null) } // Home › Font, Insert › Drop cap: Words' strip of cards in the ribbon's place
+    var stripBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a card tapped there (Cancel goes back to it)
+    var stripPicked by remember { mutableStateOf<Any?>(null) } // …and the card tapped
+    var dropOptions by remember { mutableStateOf(false) } // Drop cap › More…: Words' dialog, raised
+    var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
+    /** The chosen box's words' size before a raised first letter: what Drop cap's lines are counted in. */
+    fun wordsSize(box: SlideItem.Shape?): Float {
+        val p = box?.text?.paras?.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } } ?: return 18f
+        val k = p.runs.indexOfFirst { it.text.isNotEmpty() }
+        return SlidesEdit.isRaised(p.runs, k) ?: p.runs.getOrNull(k)?.sizePt ?: 18f
+    }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too); a box with words
     // keeps Home (17 Oct: its text tools are there, as PowerPoint's), and takes the look a Format painter holds
     LaunchedEffect(item) {
@@ -379,7 +387,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val t = box.text ?: return
         val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: t.paras.firstOrNull()?.runs?.firstOrNull()
         val p = t.paras.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } } ?: t.paras.firstOrNull()
-        FontButton(DocStyles.Plain.fontName(r?.font), w) { fontStrip = true }
+        FontButton(DocStyles.Plain.fontName(r?.font), w) { strip = DesignGallery.Font }
         val pt = Math.round(r?.sizePt ?: 18f)
         SizeStepper("$pt", w, pt > 1, pt < 400, { restyle { it.copy(size = (pt - 1).toFloat()) } }, { restyle { it.copy(size = (pt + 1).toFloat()) } })
         RibbonDivider(w)
@@ -471,6 +479,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Insert" -> {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
+                // Drop cap (asked 17 Oct): Words' strip of cards — PowerPoint and Impress have none, so a raised first letter
+                RibbonButton("Drop cap", w, R.drawable.ic_drop_cap) { if (chosenWords() != null) strip = DesignGallery.DropCap else message = "Choose a box with words first" }
                 // Text box (as PowerPoint's): a box of words alone across the slide's middle, typed into at once
                 RibbonButton("Text box", w, R.drawable.ic_text_box) {
                     val d = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton
@@ -928,19 +938,44 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // New slide: the deck's layouts in the strip's place, each a small slide; the one tapped comes after the chosen slide
-                    // Home › Font: Words' strip (its phone fonts and search), a font tapped shown at once; Cancel puts the words back
-                    androidx.compose.animation.AnimatedVisibility(editing && fontStrip && e != null && item != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    // Home › Font and Insert › Drop cap: Words' strips, a card tapped shown at once; Cancel puts the words back
+                    var stripShown by remember { mutableStateOf(DesignGallery.Font) } // kept while it slides away
+                    strip?.let { stripShown = it }
+                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && item != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val fonts = remember(base) { ((base?.slides.orEmpty().flatMap { s -> s.items.filterIsInstance<SlideItem.Shape>().flatMap { sh -> sh.text?.paras.orEmpty().flatMap { pp -> pp.runs.mapNotNull { r -> DocStyles.Plain.fontName(r.font) } } } })
                             .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
                         val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
-                        fun close() { fontBefore = null; fontPicked = null; fontStrip = false }
-                        DesignGalleryStrip(DesignGallery.Font, fontPicked?.let(::FontChoice), cancel = { fontBefore?.let { edit = it }; close() }, ok = {
-                            val made = edit; fontBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: a box's font changed")
+                        fun close() { stripBefore = null; stripPicked = null; strip = null }
+                        DesignGalleryStrip(stripShown, stripPicked, cancel = { stripBefore?.let { edit = it }; close() }, ok = {
+                            val made = edit; stripBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: ${stripShown.title} chosen")
                         }, pick = { ch ->
-                            val b = fontBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
-                            val k = b.order[cc].uid to id
-                            fontBefore = b; fontPicked = (ch as FontChoice).name; edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(font = (ch as FontChoice).name)))
-                        }, fonts = fonts, now = now)
+                            val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
+                            val k = b.order[cc].uid to id; val l = b.looks[k] ?: SlidesEdit.Look()
+                            val size = wordsSize(chosenWords())
+                            stripBefore = b; stripPicked = ch
+                            edit = b.copy(looks = b.looks + (k to when (ch) {
+                                is FontChoice -> l.copy(font = ch.name)
+                                DropKind.Raised -> l.copy(raise = size * dropLines)
+                                else -> l.copy(raise = 0f) // None
+                            }))
+                        }, more = if (stripShown == DesignGallery.DropCap) { { stripBefore?.let { edit = it }; close(); dropOptions = true } } else null,
+                            fonts = fonts, now = now, drops = listOf(DropKind.None, DropKind.Raised), dropLines = dropLines, dropLinesChange = { n ->
+                                dropLines = n
+                                // the raised letter tapped shown again at its new height
+                                if (stripPicked == DropKind.Raised) { val b = stripBefore ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
+                                    val k = b.order[cc].uid to id; edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(raise = wordsSize(chosenWords()) * n))) }
+                            })
+                    }
+                    if (dropOptions) chosenWords()?.let { box ->
+                        val p = box.text?.paras?.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } }
+                        val k = p?.runs?.indexOfFirst { it.text.isNotEmpty() } ?: -1
+                        val size = wordsSize(box)
+                        val letter = p?.runs?.getOrNull(k)?.takeIf { SlidesEdit.isRaised(p.runs, k) != null }
+                        DropCapDialog(letter?.let { DropCap(lines = Math.round((it.sizePt ?: size) / size).coerceIn(2, 10)) }, true, letter?.font?.let(DocStyles.Plain::fontName), letter?.color,
+                            { dropOptions = false }, raised = true) { d, font, color ->
+                            dropOptions = false
+                            restyle { it.copy(raise = d?.let { dc -> size * dc.lines } ?: 0f, raiseFont = font, raiseColor = color?.or(0xFF000000.toInt())) }
+                        }
                     }
                     androidx.compose.animation.AnimatedVisibility(editing && layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val full = deck

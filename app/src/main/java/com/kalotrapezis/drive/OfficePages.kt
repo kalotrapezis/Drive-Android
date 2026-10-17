@@ -1787,7 +1787,8 @@ internal object OfficePages {
             val bounds = android.graphics.Rect(); letterPaint.getTextBounds("H", 0, 1, bounds)
             val capRatio = (bounds.height() / 100f).coerceAtLeast(0.3f)
             val base0 = laid.getLineBaseline(0) / U
-            val lineStep = if (laid.lineCount > 1) (laid.getLineBaseline(1) - laid.getLineBaseline(0)) / U else laid.bottomPt(0) - laid.topPt(0)
+            // a line's step, from the first two — no more than the first line's own height (a picture in the second made the letter huge, 17 Oct)
+            val lineStep = if (laid.lineCount > 1) minOf((laid.getLineBaseline(1) - laid.getLineBaseline(0)) / U, laid.bottomPt(0) - laid.topPt(0)) else laid.bottomPt(0) - laid.topPt(0)
             val baseN = base0 + (drop.lines - 1) * lineStep
             val capTop = base0 - (r0?.sizePt ?: size) * capRatio
             letterPaint.textSize = ((baseN - capTop) / capRatio).coerceAtLeast(size)

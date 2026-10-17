@@ -25,17 +25,36 @@ internal object SlidesEdit {
         /** the box's words at its top, middle or bottom ('t', 'c', 'b'); autofit: 'n' none, 's' shrink on overflow, 'g' the box grows to its words */
         val anchor: Char? = null, val autofit: Char? = null,
         /** Clear formatting: the letters' own looks gone, their paragraph's (its level's, the master's) left — the choices above apply after it */
-        val cleared: Boolean = false) {
+        val cleared: Boolean = false,
+        /** Insert › Drop cap, raised: the first letter's size (pt; 0: none, a raised one made plain again), its own face and colour */
+        val raise: Float? = null, val raiseFont: String? = null, val raiseColor: Int? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null
+    }
+    /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
+    private fun raised(p: SlidePara, l: Look): SlidePara {
+        val k = p.runs.indexOfFirst { it.text.isNotEmpty() }.takeIf { it >= 0 } ?: return p
+        val r = p.runs[k]
+        val runs = if (l.raise!! > 0f) {
+            val n = r.text.offsetByCodePoints(0, 1)
+            listOf(r.copy(text = r.text.substring(0, n), sizePt = l.raise, font = l.raiseFont?.let { Slides.face(it) } ?: r.font, color = l.raiseColor?.and(0xFFFFFF) ?: r.color)) +
+                listOfNotNull(r.copy(text = r.text.substring(n)).takeIf { it.text.isNotEmpty() })
+        } else listOf(isRaised(p.runs, k)?.let { size -> r.copy(sizePt = size) } ?: r)
+        return SlidePara(p.para.copy(runs = p.runs.take(k) + runs + p.runs.drop(k + 1)), p.look, p.bullet, p.base)
+    }
+    /** When run [k] is a raised first letter (one letter, half again as big as the next): the next's size, to make it plain. */
+    fun isRaised(runs: List<DocRun>, k: Int): Float? {
+        val r = runs.getOrNull(k) ?: return null; val next = runs.getOrNull(k + 1) ?: return null
+        return next.sizePt?.takeIf { r.text.codePointCount(0, r.text.length) == 1 && (r.sizePt ?: 0f) >= it * 1.5f }
     }
     /** A run's face, as Word writes it or LibreOffice: what a face chosen replaces. */
     private val FACE = Regex("""<w:rFonts[^>]*/>|\s?style:font-name="[^"]*"|\s?fo:font-family="[^"]*"""")
     /** [t] in Home's looks [l]: every letter's face, size, bold…; each paragraph's alignment, list and spacing; the box's anchor and autofit. */
     fun looked(t: SlideText, l: Look): SlideText {
         if (!l.words) return t
-        return SlideText(SlidePara.numbered(t.paras.map { p ->
+        val first = t.paras.indexOfFirst { p -> p.runs.any { it.text.isNotBlank() } }
+        return SlideText(SlidePara.numbered(t.paras.mapIndexed { i, p0 -> val p = if (i == first && l.raise != null) raised(p0, l) else p0
             val runs = p.runs.map { r0 ->
                 var r = if (l.cleared) (p.base ?: r0).copy(text = r0.text, link = r0.link) else r0
                 l.font?.let { f -> r = r.copy(font = Slides.face(f) + r.font.orEmpty().replace(FACE, "")) }
@@ -226,6 +245,30 @@ internal object SlidesEdit {
     private val PPR = listOf("lnSpc", "spcBef", "spcAft", "buClrTx", "buClr", "buSzTx", "buSzPct", "buSzPts", "buFontTx", "buFont", "buNone", "buAutoNum", "buChar", "buBlip", "tabLst", "defRPr", "extLst")
     private val BODY = listOf("prstTxWarp", "noAutofit", "normAutofit", "spAutoFit", "scene3d", "sp3d", "flatTx", "extLst")
 
+    /** [p]'s first letter raised as [l] says — a run of its own at its size, face and colour — or (0) a raised one given the next run's size. */
+    private fun raise(doc: org.w3c.dom.Document, p: Element, l: Look) {
+        val runs = p.kids().filter { it.localName == "r" }
+        val r = runs.firstOrNull { it.kids().any { t -> t.localName == "t" && t.textContent.isNotEmpty() } } ?: return
+        val t = r.kids().first { it.localName == "t" }
+        fun rPr(of: Element) = of.kids().firstOrNull { it.localName == "rPr" } ?: doc.createElementNS(A, "a:rPr").also { of.insertBefore(it, of.firstChild) }
+        if (l.raise!! > 0f) {
+            val n = t.textContent.offsetByCodePoints(0, 1)
+            val letter = r.cloneNode(true) as Element
+            letter.kids().first { it.localName == "t" }.textContent = t.textContent.substring(0, n)
+            rPr(letter).let { pr -> pr.setAttribute("sz", "${Math.round(l.raise * 100)}")
+                l.raiseColor?.let { c -> listOf("noFill", "solidFill", "gradFill").forEach { nm -> pr.kids().filter { it.localName == nm }.forEach { pr.removeChild(it) } }
+                    place(pr, doc.createElementNS(A, "a:solidFill").also { it.appendChild(doc.createElementNS(A, "a:srgbClr").also { s -> s.setAttribute("val", "%06X".format(c and 0xFFFFFF)) }) }, RPR) }
+                l.raiseFont?.let { f -> place(pr, doc.createElementNS(A, "a:latin").also { it.setAttribute("typeface", f) }, RPR) } }
+            p.insertBefore(letter, r)
+            if (n < t.textContent.length) t.textContent = t.textContent.substring(n) else p.removeChild(r)
+        } else {
+            // plain again: one letter half again as big as the run after it takes that run's size
+            val next = runs.getOrNull(runs.indexOf(r) + 1) ?: return
+            val size = rPr(next).getAttribute("sz").toIntOrNull(); val mine = rPr(r).getAttribute("sz").toIntOrNull() ?: return
+            if (t.textContent.codePointCount(0, t.textContent.length) == 1 && size != null && mine >= size * 1.5) rPr(r).setAttribute("sz", "$size")
+        }
+    }
+
     /** A text body ([body]: a:txBody) in Home's looks [l], as PowerPoint writes them: on every run and paragraph mark, each paragraph, the body. */
     private fun words(doc: org.w3c.dom.Document, body: Element, l: Look) {
         fun a(name: String, vararg attrs: Pair<String, String>) = doc.createElementNS(A, "a:$name").also { e -> attrs.forEach { (k, v) -> e.setAttribute(k, v) } }
@@ -248,6 +291,7 @@ internal object SlidesEdit {
                 l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }
             }
+            if (p === paras.firstOrNull { q -> q.getElementsByTagNameNS(A, "t").let { ts -> (0 until ts.length).any { ts.item(it).textContent.isNotBlank() } } }) l.raise?.let { raise(doc, p, l) }
             if (l.align == null && l.list == null && l.spacing == null) continue
             val pPr = p.kids().firstOrNull { it.localName == "pPr" } ?: a("pPr").also { p.insertBefore(it, p.firstChild) }
             l.align?.let { pPr.setAttribute("algn", when (it) { DocAlign.Center -> "ctr"; DocAlign.End -> "r"; DocAlign.Justify -> "just"; else -> "l" }) }

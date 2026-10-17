@@ -312,14 +312,23 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 - [ ] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
       lists; Words' paragraph page (More…: indents, spacing before and after, line spacing exactly); a text box's
       border and shading (as Words' Borders, written as the shape's line and fill).
-- [ ] **Insert**: **Drop cap** — PowerPoint and Impress have none, so it is either a raised cap (the first letter a
+- [~] **Insert**: **Drop cap** — (office-engine session, 17 Oct: the strip and Raised done, Slides' Dropped next) PowerPoint and Impress have none, so it is either a raised cap (the first letter a
       bigger run of its own, which every app shows) or a dropped one (the letter in its own box, the paragraph's first
       lines indented beside it: looks right everywhere but doesn't reflow). **The user, 17 Oct:** "these are options,
       not one choice: make a modal and add the options", then "it could also be a ribbon of cards with an example
       each, like Words has for pages". So: a strip of cards in the ribbon's place (as Page numbers'), one per kind —
       None, Dropped, Raised — each a small paragraph showing it; a More… card opening the dialog with the finer
       settings (lines to drop, distance from the text, a preview). Words' own Drop cap made the same if it is not
-      already, so the two match (one shared piece). Date and time
+      already, so the two match (one shared piece).
+      Done 17 Oct: one strip (`DesignGalleryStrip` › `DesignGallery.DropCap`, a card a kind — `DropKind` None, Dropped,
+      In margin, Raised — each a small paragraph showing it, then More…) with a "Lines − n +" setting on it (the user:
+      as Word's "Lines to drop" 1–10, LibreOffice's "Lines" 2–9; Tetra 2–10, 3 first). Words: its dropdown gone for the
+      strip (None, Dropped, In margin in a .docx), the pages shown while choosing, More… its own dialog. Slides: None and
+      Raised (the first letter a run of its own, lines × the words' size, saved as a bigger run in .pptx and .odp,
+      made plain again by None), More… Words' dialog in a raised form (lines, the letter's face and colour). Found in
+      passing: a Words drop cap in a paragraph whose second line holds a picture came out huge (fixed: a line's step no
+      more than the first line). `a raised first letter saved` (.pptx, .odp, LibreOffice's conversions). Not yet:
+      Slides' Dropped (its own box beside the first lines). Date and time
       (fixed, or a field that updates, as PowerPoint's); line break inside a paragraph; Comment; a link's Edit
       (beside Link above). Slide numbers come with Header & footer.
 - [ ] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline

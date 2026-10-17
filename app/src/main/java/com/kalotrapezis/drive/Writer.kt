@@ -2704,7 +2704,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun openGallery(g: DesignGallery) {
         galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g
         // Page numbers, headers and footers sit where the editor shows no page: the pages are shown while choosing.
-        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { galleryViewing = viewing; viewing = true }
+        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter || g == DesignGallery.DropCap) { galleryViewing = viewing; viewing = true } // a drop cap too: only the pages draw it
     }
     fun galleryClosed() { galleryViewing?.let { viewing = it }; galleryViewing = null }
     // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
@@ -3029,6 +3029,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = "${set.label}: Normal, Title and the headings"
     }
     /** A gallery's card tapped: the document as it was, then this choice on it (a live preview; OK keeps it). */
+    var dropAt by remember { mutableStateOf<Int?>(null) } // Insert › Drop cap's paragraph while its strip is open
+    var dropLines by remember { mutableIntStateOf(3) } // …and how many lines it drops (the strip's setting)
     fun galleryPick(c: Any) {
         val last = galleryChosen
         if (last != null) galleryStart?.let(::show)
@@ -3050,6 +3052,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 setHeaderFooter(hf); goPage = 0 to System.nanoTime() }
             is ListScheme -> { galleryChosen = c; setNumbering(c.levels) }
             is FontChoice -> { galleryChosen = c; setFont(c.name) }
+            is DropKind -> { galleryChosen = c; dropAt?.let { i -> val now = DropCap.of(current().paras.getOrNull(i)?.keep)
+                setDropCap(i, when (c) { DropKind.None -> null; DropKind.Margin -> (now ?: DropCap()).copy(margin = true, lines = dropLines); else -> (now ?: DropCap()).copy(margin = false, lines = dropLines) }); styleEdits++ } } // the pages laid out again with it
         }
     }
     val rulerIndents = rulerAt?.second?.let { RulerIndents(it.left, it.firstLine, it.right) }
@@ -3761,7 +3765,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (designGallery != null && stripOf != designGallery) stripOf = designGallery
         androidx.compose.animation.AnimatedVisibility(designGallery != null && (!viewing || galleryViewing != null) && !reading,
             Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) { stripOf?.let { g -> DesignGalleryStrip(g, galleryChosen, ::galleryCancel, ::galleryOk, ::galleryPick,
-            more = if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { { galleryCancel(); headerPage = true } } else null,
+            more = if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter) { { galleryCancel(); headerPage = true } }
+                else if (g == DesignGallery.DropCap) { { galleryCancel(); dropAt?.let { i -> dropCapPage = i to DropCap.of(current().paras.getOrNull(i)?.keep) } } } else null,
+            drops = listOfNotNull(DropKind.None, DropKind.Dropped, DropKind.Margin.takeIf { kind == OfficeKind.Docx }),
+            dropLines = dropLines, dropLinesChange = { n -> dropLines = n; (galleryChosen as? DropKind)?.takeIf { it != DropKind.None }?.let(::galleryPick) },
             glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.'),
             fonts = remember(g) { if (g == DesignGallery.Font) (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted().plus(WRITER_FONTS).distinct() else emptyList() },
             now = hereFont) } }
@@ -4001,19 +4008,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { openGallery(DesignGallery.HeaderFooter) }
                     RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { openGallery(DesignGallery.PageNumbers) }
                 }, {
-                    // Word's Drop Cap: none, dropped, in the margin, or its options page.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
-                        RibbonButton("Drop cap", w, R.drawable.ic_drop_cap, enabled = loaded) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            fun here(then: (Int, DropCap?) -> Unit) { open = false; chooseParagraphs { at, _ -> at.min().let { i -> then(i, DropCap.of(current().paras.getOrNull(i)?.keep)) } } }
-                            DropdownMenuItem(text = { Text("None") }, onClick = { here { i, _ -> setDropCap(i, null) } })
-                            DropdownMenuItem(text = { Text("Dropped") }, leadingIcon = { Icon(painterResource(R.drawable.ic_drop_cap), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                                onClick = { here { i, now -> setDropCap(i, (now ?: DropCap()).copy(margin = false)) } })
-                            if (kind == OfficeKind.Docx) DropdownMenuItem(text = { Text("In margin") }, onClick = { here { i, now -> setDropCap(i, (now ?: DropCap()).copy(margin = true)) } })
-                            DropdownMenuItem(text = { Text("Drop cap options…") }, onClick = { here { i, now -> dropCapPage = i to now } })
-                        }
-                    }
+                    // Word's Drop Cap: a strip of cards in the ribbon's place (17 Oct, as Slides'), the one tapped shown at once; More…: its options
+                    RibbonButton("Drop cap", w, R.drawable.ic_drop_cap, enabled = loaded) { chooseParagraphs { at, _ -> dropAt = at.min()
+                        dropLines = DropCap.of(current().paras.getOrNull(at.min())?.keep)?.lines ?: 3; openGallery(DesignGallery.DropCap) } }
                     RibbonButton("Date", w, R.drawable.ic_calendar_today, enabled = loaded) { datePage = true }
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
                     RibbonButton("Line break", w, R.drawable.ic_wrap_text) { change {

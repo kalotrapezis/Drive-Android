@@ -138,6 +138,34 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
+    @Test fun `a raised first letter saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val red = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }
+            fun look(l: SlidesEdit.Look) = SlidesEdit.start(deck).copy(looks = mapOf((2 to red.anim!!) to l))
+            fun runs(d: Deck) = d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }.text!!.paras[0].runs.let(OfficeFormats::tidy)
+            fun check(d: Deck, how: String) { val r = runs(d)
+                assertEquals(how, "B", r[0].text); assertEquals(how, 84f, r[0].sizePt!!, 0.5f); assertEquals(how, 0x0070C0, r[0].color); assertEquals(how, 28f, r[1].sizePt!!, 0.5f) }
+            val e = look(SlidesEdit.Look(raise = 84f, raiseColor = 0xFF0070C0.toInt()))
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("raised-$name")
+            fun save(from: File, d: Deck, ed: SlidesEdit.Edit, to: File) = if (from.extension == "odp") SlidesOdpEdit.save(from, d, ed, to) else SlidesEdit.save(from, d, ed, to)
+            save(src, deck, e, out); check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+            // None: the saved one's letter made plain again
+            val again = Slides.read(out); val plain = File.createTempFile("plain", "." + src.extension)
+            val box = again.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }
+            save(out, again, SlidesEdit.start(again).copy(looks = mapOf((2 to box.anim!!) to SlidesEdit.Look(raise = 0f))), plain)
+            assertEquals(name, 28f, runs(Slides.read(plain))[0].sizePt!!, 0.5f)
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

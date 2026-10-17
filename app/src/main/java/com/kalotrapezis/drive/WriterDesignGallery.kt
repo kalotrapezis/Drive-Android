@@ -57,8 +57,15 @@ import androidx.compose.ui.window.DialogProperties
  */
 internal enum class DesignGallery(val title: String) {
     StyleSets("Style sets"), Colours("Colours"), Fonts("Fonts"), WordArt("WordArt"), PageNumbers("Page numbers"),
-    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font")
+    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font"), DropCap("Drop cap")
 }
+
+/**
+ * Insert › Drop cap's kinds (17 Oct, one strip for Words and Slides, each offering what its file can hold): none; dropped
+ * beside the first lines; in the margin (Word's); raised on the first line, a bigger first letter (Slides': PowerPoint and
+ * Impress have no drop cap, and every app shows a bigger letter).
+ */
+internal enum class DropKind(val label: String) { None("None"), Dropped("Dropped"), Margin("In margin"), Raised("Raised") }
 
 /** Home › Font's gallery: a font chosen. */
 internal data class FontChoice(val name: String)
@@ -122,7 +129,12 @@ internal fun ListScheme.marker(level: Int, n: Int): String {
  */
 @Composable
 internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () -> Unit, ok: () -> Unit, pick: (Any) -> Unit,
-    more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier, fonts: List<String> = emptyList(), now: String? = null) {
+    more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier, fonts: List<String> = emptyList(), now: String? = null,
+    drops: List<DropKind> = emptyList(),
+    /** Drop cap: how many lines tall (the user, 17 Oct: a setting, as Word's "Lines to drop", 1–10, and LibreOffice's "Lines", 2–9) */
+    dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null) {
+    // the last card: a page of its own (Page numbers' "Your own…", Drop cap's "More…" as the user named it)
+    val moreLabel = if (what == DesignGallery.DropCap) "More…" else "Your own…"
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
     // The phone (asked 15 Oct): one thin row — smaller cards, Cancel and OK at its ends — and no keyboard over it.
     val phone = LocalConfiguration.current.screenWidthDp < 700
@@ -153,14 +165,23 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
         }
         if (query.isNotEmpty()) Icon(painterResource(R.drawable.ic_close), "Clear the search", tint = w, modifier = Modifier.size(18.dp).clickable { query = "" })
     }
+    // Drop cap's lines: − n + beside the strip's name (on a phone, over the cards)
+    @Composable fun lines(m: Modifier) = Row(m, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Lines", color = w, style = MaterialTheme.typography.labelLarge)
+        Tool(R.drawable.ic_remove, "Fewer lines", w, enabled = dropLines > 2) { dropLinesChange?.invoke(dropLines - 1) }
+        Text("$dropLines", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(22.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Tool(R.drawable.ic_add, "More lines", w, enabled = dropLines < 10) { dropLinesChange?.invoke(dropLines + 1) }
+    }
     Column(modifier.fillMaxWidth().bottomBarPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
         if (!phone) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = if (what == DesignGallery.Font) Modifier.padding(end = 12.dp) else Modifier.weight(1f))
             if (what == DesignGallery.Font) { search(Modifier.width(320.dp)); Box(Modifier.weight(1f)) }
+            if (what == DesignGallery.DropCap && dropLinesChange != null) { lines(Modifier.padding(start = 12.dp)); Box(Modifier.weight(1f)) }
             TextButton(onClick = cancel) { Text("Cancel", color = w) }
             TextButton(onClick = ok, enabled = chosen != null) { Text("OK", color = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }
         if (phone && what == DesignGallery.Font) search(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp))
+        if (phone && what == DesignGallery.DropCap && dropLinesChange != null) lines(Modifier.padding(horizontal = 8.dp))
         val scroll = androidx.compose.foundation.rememberScrollState()
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (phone) IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), "Cancel", tint = w) }
@@ -216,6 +237,33 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     } }
                 }
                 // Page numbers: a small page with the number where it goes.
+                // Drop cap: each kind a small paragraph showing it (asked 17 Oct: "a ribbon of cards with an example each")
+                DesignGallery.DropCap -> drops.forEach { kind -> card(chosen == kind, click = { pick(kind) }, kind.label) {
+                    val ink = Color(0xFF222222); val bar = Color(0xFFBDC1C6)
+                    @Composable fun line(start: androidx.compose.ui.unit.Dp, width: Float = 1f) = Box(Modifier.padding(start = start).fillMaxWidth(width).height(5.dp * k).background(bar))
+                    val big = TextStyle(fontFamily = OfficeFonts.family("Times New Roman"), fontSize = (38 * k).sp, lineHeight = (38 * k).sp, color = ink)
+                    when (kind) {
+                        DropKind.None -> Column(verticalArrangement = Arrangement.spacedBy(7.dp * k)) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text("A", style = face("Times New Roman", 11, color = ink)); line(2.dp) }
+                            repeat(4) { line(0.dp) }
+                        }
+                        // dropped: beside the first lines, the rest under it; in the margin: out of the text's edge (its line)
+                        DropKind.Dropped -> Column(verticalArrangement = Arrangement.spacedBy(7.dp * k)) {
+                            Row { Text("A", style = big, modifier = Modifier.padding(end = 4.dp * k))
+                                Column(verticalArrangement = Arrangement.spacedBy(7.dp * k), modifier = Modifier.padding(top = 4.dp * k)) { repeat(3) { line(0.dp) } } }
+                            repeat(2) { line(0.dp) }
+                        }
+                        DropKind.Margin -> Row {
+                            Text("A", style = big, modifier = Modifier.padding(end = 3.dp * k))
+                            Box(Modifier.width(1.dp).height(84.dp * k).background(Color(0xFF8AB4F8)))
+                            Column(verticalArrangement = Arrangement.spacedBy(7.dp * k), modifier = Modifier.padding(start = 3.dp * k, top = 4.dp * k)) { repeat(6) { line(0.dp) } }
+                        }
+                        DropKind.Raised -> Column(verticalArrangement = Arrangement.spacedBy(7.dp * k)) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.Bottom) { Text("A", style = big); line(2.dp) }
+                            repeat(3) { line(0.dp) }
+                        }
+                    }
+                } }
                 DesignGallery.PageNumbers -> NUMBER_SPOTS.forEach { spot -> card(chosen == spot, click = { pick(spot) }) {
                     // No words under it (asked 15 Oct): the small page says where the number goes.
                     if (spot.place != null) MiniPage(header = if (spot.place == HeaderFooter.NumberPlace.Header) spot.shown to spot.align else null,
@@ -263,7 +311,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
             }
             // Its own words, in a window (the header's text, a format of one's own).
             if (more != null) Box(Modifier.width(110.dp * k).height(104.dp * k).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2A2E30)).clickable(onClick = more).padding(10.dp * k),
-                contentAlignment = androidx.compose.ui.Alignment.Center) { Text("Your own…", color = w, style = MaterialTheme.typography.labelLarge) }
+                contentAlignment = androidx.compose.ui.Alignment.Center) { Text(moreLabel, color = w, style = MaterialTheme.typography.labelLarge) }
         }
         if (phone) IconButton(onClick = ok, enabled = chosen != null) { Icon(painterResource(R.drawable.ic_check), "OK", tint = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }

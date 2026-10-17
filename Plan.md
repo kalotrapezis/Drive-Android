@@ -694,6 +694,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Replace done (office-F session, 17 Oct): Tables' own find (all sheets, Go To) gets Words' replace row (`ReplaceRow`, moved out of
       `FindReplaceBar` and shared) while editing — Replace (the cell shown) and All, in each found cell's words or formula, any case
       (`SheetInput.replaced`), one step of Undo, recalculated. `words replaced in a cell`; emulator: alpha → Gamma, "Replaced 1".
+      Merge & centre and Unmerge done (office-F session, 17 Oct): Home › Merge & centre with several cells chosen (Excel's: only the top
+      left keeps what it holds, centred), Unmerge with a merged one chosen — a change to the file (`SheetMerge`: Excel's mergeCells in the
+      schema's place, LibreOffice's spanned cell over covered ones, repeated rows and cells cut first), as inserting rows is (`fileStep`;
+      the centring a second step of Undo). `cells merged and unmerged` (both formats, LibreOffice's conversions); emulator: A4 unmerged,
+      A4:C4 merged and centred.
 - [ ] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

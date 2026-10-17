@@ -412,6 +412,16 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         })
     }
 
+    /** Home › Merge & centre (Excel's): [g] (the sheet's rows and columns) one cell, its words centred; or ([on] false) its cells again. */
+    fun merge(g: SheetRange, on: Boolean) {
+        if (view.filters.isNotEmpty() || view.sort != null) { message = "Clear the filter and the sort first: cells are merged as the file has them."; return }
+        val i = index
+        fileStep(if (on) "merged ${g.r2 - g.r1 + 1}×${g.c2 - g.c1 + 1}" else "unmerged", { baked, next, b ->
+            when (b.kind) { "xlsx" -> SheetMerge.xlsx(baked, next, b.parts.getValue("$i"), g, on); "ods" -> SheetMerge.ods(baked, next, i, g, on); else -> error("A CSV file has no merged cells.") }
+        }, then = { b -> if (on) { val s = b.sheet(i)
+            SheetLook.change(b, s, listOf(Sheet.key(g.r1, g.c1))) { st, _ -> st.copy(align = SheetAlign.Center) }.takeIf { it.isNotEmpty() }?.let { history.apply(b, i, it); version++ } } })
+    }
+
     /**
      * The fill handle let go: [to] (as drawn, [src] in it) filled from [src] — each column carried down or up, or each row
      * right or left — one step of Undo.
@@ -861,6 +871,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
                                 RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
                                 RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
+                                // Excel's Merge & Centre: the chosen cells one cell; a merged one chosen: Unmerge
+                                s.merge(cr, cc)?.let { m -> RibbonButton("Unmerge", w, R.drawable.ic_cell_merge) { merge(m, false) } }
+                                    ?: g?.takeIf { it.r2 > it.r1 || it.c2 > it.c1 }?.let { d -> RibbonButton("Merge & centre", w, R.drawable.ic_cell_merge) { merge(SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2]), true) } }
                                 RibbonDivider(w)
                                 opener("Number", R.drawable.ic_functions)
                                 Tool(R.drawable.ic_decimal_decrease, "Fewer decimals", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }

@@ -79,6 +79,33 @@ class SheetSaveTest {
         check(Sheets.read(File(out, "inline.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's save")
     }
 
+    /** Merge & centre (Excel's mergeCell, LibreOffice's spanned and covered cells): C2:D3 one cell, only C2 keeping its value; A4:B4 unmerged. */
+    @Test fun `cells merged and unmerged`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("merge").toFile()
+            val file = File(dir, name).apply { writeBytes(resource(name)) }
+            val book = Sheets.read(file, ',', '.')
+            val merged = File(dir, "merged.${file.extension}"); val g = SheetRange(1, 2, 2, 3)
+            if (name.endsWith("xlsx")) SheetMerge.xlsx(file, merged, book.parts.getValue("0"), g, true) else SheetMerge.ods(file, merged, 0, g, true)
+            fun check(f: File, how: String) {
+                val s = Sheets.read(f, ',', '.').sheet(0)
+                assertTrue(how, g in s.merges); assertTrue(how, SheetRange(3, 0, 3, 1) in s.merges)
+                assertEquals(how, "15/03/2023", s[1, 2]?.text); assertTrue(how, s[1, 3]?.text.isNullOrEmpty() && s[2, 2]?.text.isNullOrEmpty())
+                assertEquals(how, "Alpha", s[1, 0]?.text)
+            }
+            check(merged, "merged $name")
+            val apart = File(dir, "apart.${file.extension}")
+            if (name.endsWith("xlsx")) SheetMerge.xlsx(merged, apart, book.parts.getValue("0"), SheetRange(3, 0, 3, 1), false) else SheetMerge.ods(merged, apart, 0, SheetRange(3, 0, 3, 1), false)
+            Sheets.read(apart, ',', '.').sheet(0).let { s -> assertEquals(name, listOf(g), s.merges) }
+            if (lo) {
+                val out = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", out.path, merged.path).redirectErrorStream(true).start().waitFor()
+                check(File(out, "merged.$other"), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

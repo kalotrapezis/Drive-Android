@@ -503,7 +503,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       table; merge and split cells; borders and shading; table styles; Make chart from the table.
 - [ ] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
 - [x] **Design**: the theme's fonts (Words' Fonts), besides its colours above (office-C session, 17 Oct, with B › Design).
-- [ ] **Review**: Read aloud (a slide's words, or its notes), as Words'.
+- [x] **Review**: Read aloud (a slide's words, or its notes), as Words'.
+      Done 17 Oct (office-C session): Review › Read aloud — Words' `ReadAloud` (Android's speech, each paragraph in its own language)
+      reads the slides' words from the chosen slide on, box by box top to bottom, the slides following it; Read the notes reads the
+      speaker notes instead; Words' `ReadAloudBar` (what is read, Stop) in the top bar meanwhile. Emulator: read, the bar showed the line.
 - [ ] **File**: AutoSave, Save a copy, Save as, Rename (as Words', beside A's list).
 - [ ] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.
 - Not for slides: page breaks, blank page, watermark, page borders, line numbers, hyphenation, footnotes and

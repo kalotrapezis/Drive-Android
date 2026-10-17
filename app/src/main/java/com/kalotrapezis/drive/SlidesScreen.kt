@@ -413,6 +413,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    // Review › Read aloud (Words' reader): what is read, and the slide each paragraph is on (the slides follow the reading)
+    val reader = rememberReadAloud()
+    var reading by remember { mutableStateOf<List<Pair<Int, String>>>(emptyList()) }
+    LaunchedEffect(reader.at) { reading.getOrNull(reader.at)?.first?.let { if (chosen != it) { chosen = it; item = null } } }
     var sourcesOpen by remember { mutableStateOf(false) } // References › Sources: Words' list of them
     var sourceEdit by remember { mutableStateOf<DocSource?>(null) }; var sourceNew by remember { mutableStateOf(false) } // …one in Words' source page
     var citing by remember { mutableStateOf(false) } // References › Insert citation: Words' dialog
@@ -955,6 +959,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Contents slide", w, R.drawable.ic_checklist) { contentsSlide() }
             }
             "Review" -> {
+                // Words' Read aloud: the slides' words from this slide on, box by box top to bottom; or this slide's speaker notes
+                fun readFrom(notesToo: Boolean) {
+                    val list = view?.slides.orEmpty().withIndex().drop(c).flatMap { (i, sl) ->
+                        if (notesToo) listOf(i to sl.notes) else sl.items.filterIsInstance<SlideItem.Shape>().filter { it.text != null && !it.hint }.sortedWith(compareBy({ it.y }, { it.x }))
+                            .flatMap { sh -> SlidesEdit.lines(sh).map { i to it.replace(LINE_BREAK, ' ') } } }.filter { it.second.isNotBlank() }
+                    reading = list
+                    if (!reader.read(list.map { it.second }, 0)) message = "This phone cannot read aloud (no text-to-speech)"
+                }
+                RibbonButton(if (reader.speaking) "Stop reading" else "Read aloud", w, R.drawable.ic_volume_up, on = reader.speaking) { if (reader.speaking) reader.stop() else readFrom(false) }
+                if (!reader.speaking) RibbonButton("Read the notes", w, R.drawable.ic_volume_up) { readFrom(true) }
+                RibbonDivider(w)
                 // Words' Comments group: a new one, the comments shown, the one before or after (on other slides too), and the one tapped
                 RibbonButton("New comment", w, R.drawable.ic_comment) { commentAsk = 'n' to null }
                 RibbonButton("Comments", w, R.drawable.ic_comment, on = commentsOn) { commentsOn = !commentsOn; if (commentsOn && view?.slides?.getOrNull(c)?.comments.isNullOrEmpty()) message = "No comments on this slide" }
@@ -1124,6 +1139,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     previous = { go(at - 1) }, next = { go(at + 1) }, replacing = replacing, setReplacing = { replacing = it }, replacement = replacement, setReplacement = { replacement = it },
                     replace = { ms.getOrNull(at)?.let { replaceFound(listOf(it)) } }, replaceAll = { replaceFound(ms); message = "Replaced ${ms.size}" }, close = { finding = false })
             } else
+            // reading aloud: Words' bar, what is being read and Stop
+            if (reader.speaking) Box(Modifier.statusBarsPadding().padding(vertical = 6.dp)) { ReadAloudBar(reader, reading.getOrNull(reader.at)?.second, islandContentColor()) } else
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {

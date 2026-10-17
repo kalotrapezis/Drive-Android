@@ -726,8 +726,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 - [ ] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.
-- [ ] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
+- [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
+      Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row
+      headers?), the rows alike after the first gone (any case, spaces round trimmed: `SheetInput.unique`), the rest moved up — cell
+      changes, one step of Undo; not on formulas. `duplicate rows found`; emulator: a CSV's two duplicates removed.
 - [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
 - [ ] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.

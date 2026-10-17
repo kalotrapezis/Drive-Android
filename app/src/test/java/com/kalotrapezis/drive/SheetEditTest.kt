@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
 class SheetEditTest {
+    /** Remove duplicates: the first of rows alike kept (any case, spaces round trimmed); a header row is not data (a later row like it stays, as Excel's). */
+    @org.junit.Test fun `duplicate rows found`() {
+        val rows = listOf(listOf("Name", "Kilos"), listOf("Alpha", "12"), listOf("alpha ", "12"), listOf("Beta", "12"), listOf("Name", "Kilos"), listOf("Alpha", "13"))
+        org.junit.Assert.assertEquals(listOf(0, 1, 3, 4, 5), SheetInput.unique(rows, headers = true))
+        org.junit.Assert.assertEquals(listOf(0, 1, 3, 5), SheetInput.unique(rows, headers = false))
+        org.junit.Assert.assertEquals(listOf(0, 1), SheetInput.unique(listOf(listOf("x"), listOf("x"), listOf("y"), listOf("X")), headers = true).take(2))
+    }
+
     /** Find and Replace: every one, any case; in a formula too (Excel's "Look in: Formulas"); none: nothing to change. */
     @org.junit.Test fun `words replaced in a cell`() {
         org.junit.Assert.assertEquals("Gamma and Gamma", SheetInput.replaced("Alpha and alpha", "ALPHA", "Gamma"))

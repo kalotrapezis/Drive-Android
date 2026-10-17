@@ -12,6 +12,11 @@ import java.util.TreeMap
  * a cell, what a typed entry becomes, the cells that count on a changed one worked out again, and undo.
  */
 internal object SheetInput {
+    /** Data › Remove duplicates (Excel's): the rows of [rows] kept — each the first of those alike (any case, spaces round words trimmed); a header row always kept. */
+    fun unique(rows: List<List<String>>, headers: Boolean): List<Int> {
+        val seen = HashSet<List<String>>()
+        return rows.indices.filter { i -> (headers && i == 0) || seen.add(rows[i].map { it.trim().lowercase() }) }
+    }
     /** Find and Replace: [content] (a cell as typed: its words, or its formula) with every [find] in it, any case, made [with]; null: none in it. */
     fun replaced(content: String, find: String, with: String): String? {
         if (find.isEmpty()) return null

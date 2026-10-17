@@ -174,6 +174,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
+    var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
@@ -896,7 +897,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
                         }
-                        shown == "Data" -> sortFilter(cc)
+                        shown == "Data" -> {
+                            sortFilter(cc)
+                            // Excel's Remove duplicates: in the chosen cells (else the cell's whole table of filled cells), the rows alike after the first gone
+                            if (editing) { RibbonDivider(w)
+                                RibbonButton("Remove duplicates", w, R.drawable.ic_filter_off) {
+                                    val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
+                                    if (d == null || d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d } }
+                        }
                         shown == "View" -> {
                             RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
                             if (l.frozenRows > 0) RibbonButton("Let them scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
@@ -1222,6 +1230,23 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             if (text.isNotBlank() && text != cell?.text) { val (look, format) = lookAt(s, r, c); history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(text, cell, look, format, b.format))); version++ }
             put(if (to.startsWith("#")) to.drop(1).toIntOrNull()?.let { k -> tabs.getOrNull(k)?.name }?.let { n -> "#'${n.replace("'", "''")}'!A1" } ?: to else to)
         } }
+    // Data › Remove duplicates: Excel's question (headers?), then the rows alike after the first gone, the rest moved up (one step of Undo)
+    deduping?.let { d -> val s = sheet; val b = book
+        var headers by remember(d) { mutableStateOf(true) }
+        AlertDialog(onDismissRequest = { deduping = null }, title = { Text("Remove duplicates") },
+            text = { Column { Text("Rows ${d.r1 + 1}–${d.r2 + 1}, columns ${Sheets.colName(d.c1)}–${Sheets.colName(d.c2)}: a row is a duplicate when every cell is alike.")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { headers = !headers }) { Checkbox(headers, { headers = it }); Text("The first row is headers") } } },
+            confirmButton = { TextButton(onClick = { deduping = null; if (s == null || b == null) return@TextButton
+                if ((d.r1..d.r2).any { r -> (d.c1..d.c2).any { c -> s[r, c]?.formula != null } }) { message = "These cells hold formulas: remove duplicates works on values"; return@TextButton }
+                val rows = (d.r1..d.r2).map { r -> (d.c1..d.c2).map { c -> s[r, c]?.text.orEmpty() } }
+                val kept = SheetInput.unique(rows, headers)
+                if (kept.size == rows.size) { message = "No duplicates"; return@TextButton }
+                val changes = LinkedHashMap<Long, SheetCell>()
+                for (k in rows.indices) for (c in d.c1..d.c2) { val r = d.r1 + k; val was = s[r, c]
+                    changes[Sheet.key(r, c)] = kept.getOrNull(k)?.let { from -> s[d.r1 + from, c] } ?: SheetCell("", SheetKind.Empty, style = was?.style ?: 0) }
+                history.apply(b, index, changes); version++; message = "Removed ${rows.size - kept.size} duplicates, ${kept.size - (if (headers) 1 else 0)} left"
+                WriterLog.i("Sheets: ${rows.size - kept.size} duplicates removed") }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { deduping = null }) { Text("Cancel") } }) }
     // a column's Width or a row's Height, typed in Words' unit (cm or inches)
     sizing?.let { (cols, at) -> val s = sheet
         val now = s?.let { if (cols) it.width(at) else it.height(at) } ?: 0f

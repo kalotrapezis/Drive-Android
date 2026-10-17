@@ -403,7 +403,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       P ← ↑ Backspace Page Up back, B/W/. black, Home/End, a number and Enter to that slide, Esc ends (the plan's PowerPoint list).
       `loop until Esc saved` (both, LibreOffice's conversions); emulator: rehearsed 4 slides, 0:33, kept. Later as planned: custom shows,
       more animation kinds and an animation list. Unit 426/0/7; sweep 349 + 29, none failing.
-- [~] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
+- [x] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
       in Word's bibliography part, which PowerPoint keeps (an .odp needs its own place: to decide); **live**
       citations, inserted from the typing bar and rewritten when the style or a source changes (PowerPoint has no
       citation fields, so they are found in the words by the deck's sources and style); References slide(s) at the end
@@ -418,12 +418,22 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       the user**), which LibreOffice keeps when it saves. Live: changing the style or a source writes every citation in the slides
       again (found by the sources' citations in the old style). `sources saved` (both; LibreOffice's own save of the .odp keeps them);
       emulator: "(Smith)" (MLA) became "(Smith, 2020)" when the style was made APA. Shortcuts: one source and no page a citation
-      (Words' fields hold more), IEEE not offered (its numbers follow the order of citing). Next: References slide(s), Contents slide.
+      (Words' fields hold more), IEEE not offered (its numbers follow the order of citing).
+      References slide and Contents slide (office-C session, 17 Oct): References › References slide puts the list in the deck's style at
+      its end (Words' `CiteStyle.sorted`/`entry`: italic titles kept), on the deck's Title Only layout under the style's heading (Works
+      Cited, References…), over more slides when long ("(continued)", laid out by Words' engine to fit); Contents slide puts each slide's
+      title and number after the first slide, each title a link to its slide (PowerPoint's hlinksldjump, LibreOffice's #page — a tap in a
+      show goes there). Pressed again, each replaces its old slides (Update — found by their titles, so after reopening too). Both are
+      text boxes whose words keep looks of their own (`Added.runs`, a hanging indent: a:r rPr i / hlinkClick, LibreOffice's spans and
+      text:a). `words with their own looks put on saved` (both); emulator: Works Cited and Contents made, saved — LibreOffice draws the
+      italics and the links. Unit 428/0/7; sweep 349 + 29, none failing.
 - [x] Accessibility: alt text for pictures (with Arrange's Shape options, office-C session 17 Oct).
 
 **From PowerPoint** (checked online 17 Oct: PowerPoint's ribbon — Home, Insert, Draw, Design, Transitions, Animations,
 Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint on each platform); what is not listed above:
-- [ ] **Opening other people's decks well** (most important — a deck that looks wrong can't be presented): **SmartArt**
+- [ ] (office-C session, 17 Oct: none of the user's 25 .pptx and 4 .odp decks has SmartArt, video or audio, and there is no PowerPoint here
+      to make one to check against — left for when such a deck comes; equations and hidden slides are done)
+      **Opening other people's decks well** (most important — a deck that looks wrong can't be presented): **SmartArt**
       drawn from the drawing the file saves with it (check: not found in Slides' code); a deck's **video and audio
       played** in the show (today neither is); its embedded fonts used; equations drawn (Word's OMML, as Words');
       hidden slides skipped in the show; an empty placeholder shows "Click to add title/text" and typing fills it.

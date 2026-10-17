@@ -472,6 +472,51 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     val pickSources = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
         u?.let { importSources { context.contentResolver.openInputStream(it)?.use { s -> String(s.readBytes(), Charsets.UTF_8) } } } }
+    /** A slide's title as the deck shows it: its highest box's words. */
+    fun titleOf(sl: Slide) = sl.items.filterIsInstance<SlideItem.Shape>().filter { it.text != null && !it.hint && it.id !in sl.footerIds }.minByOrNull { it.y }?.let { SlidesEdit.lines(it).joinToString(" ").trim() }
+    /** A new slide of the deck's title-only layout (else one with only a title, else the first) at [at] with [title] and words [runs] under it. */
+    fun madeSlide(e: SlidesEdit.Edit, d: Deck, at: Int, title: String, runs: List<List<DocRun>>, hang: Float): SlidesEdit.Edit {
+        val k = d.layouts.indexOfFirst { it.name.equals("Title Only", true) }.takeIf { it >= 0 }
+            ?: d.layouts.indices.firstOrNull { i -> d.layouts[i].preview.items.count { it is SlideItem.Shape && it.hint } == 1 } ?: 0
+        val uid = e.next(); val hint = d.layouts.getOrNull(k)?.preview?.items?.filterIsInstance<SlideItem.Shape>()?.filter { it.hint }?.minByOrNull { it.y }
+        val top = (hint?.let { it.y + it.h } ?: d.height * 0.18f) + 8f
+        val box = SlidesEdit.Added(e.newId(uid), d.width * 0.08f, top, d.width * 0.84f, 40f, prst = SlidesEdit.TEXT_BOX, runs = runs, hang = hang)
+        return e.copy(order = e.order.toMutableList().apply { add(at.coerceIn(0, size), SlidesEdit.Entry(-1, uid, k)) },
+            texts = if (hint?.id != null) e.texts + ((uid to hint.id) to listOf(title)) else e.texts, added = e.added + (uid to listOf(box)))
+    }
+    /**
+     * References › References slide (the user's choices, 17 Oct): the list in the deck's style at its end, a slide titled by the style's
+     * heading, over more slides when long ("(continued)"); pressed again, the old ones (any style's heading) go and new ones come (Update).
+     */
+    fun referencesSlides() {
+        val d = base ?: return; val e0 = edit ?: return
+        if (sources.isEmpty()) { message = "No sources yet: References › Sources"; return }
+        val headings = CiteStyle.entries.map { it.heading }.toSet()
+        val shownNow = view?.slides.orEmpty()
+        var e = e0.copy(order = e0.order.filterIndexed { i, _ -> shownNow.getOrNull(i)?.let(::titleOf)?.removeSuffix(" (continued)") !in headings })
+        val entries = citeStyle.sorted(sources).map { s -> citeStyle.entry(s).map { it.copy(sizePt = 16f) } }
+        // as many as fit under the title: their height as Words' engine lays them out (a line each where it cannot: the tests)
+        val room = d.height * 0.72f
+        fun tall(list: List<List<DocRun>>) = runCatching { SlidesText.height(SlideText(list.map { SlidePara(DocPara(it), ParaLook(left = 36f, firstLine = -36f, listIndented = true)) }, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), d.width * 0.84f) }
+            .getOrElse { list.sumOf { r -> r.sumOf { it.text.length } / 70 + 1 } * 19.2f }
+        val pages = ArrayList<MutableList<List<DocRun>>>()
+        for (en in entries) { val last = pages.lastOrNull(); if (last != null && tall(last + listOf(en)) <= room) last += en else pages += mutableListOf(en) }
+        pages.forEachIndexed { n, list -> e = madeSlide(e, d, e.order.size, citeStyle.heading + if (n > 0) " (continued)" else "", list, 36f) }
+        change(e); chosen = e.order.size - pages.size; WriterLog.i("Slides: ${pages.size} references slides, ${entries.size} entries")
+        message = "${entries.size} references on ${pages.size} slide${if (pages.size == 1) "" else "s"} at the end"
+    }
+    /** References › Contents slide: after the first slide, each slide's title and number, a tap on one in a show going there; pressed again, made anew (Update). */
+    fun contentsSlide() {
+        val d = base ?: return; val e0 = edit ?: return
+        val shownNow = view?.slides.orEmpty()
+        var e = e0.copy(order = e0.order.filterIndexed { i, _ -> shownNow.getOrNull(i)?.let(::titleOf) != "Contents" })
+        val rest = e.order.drop(1)
+        // its numbers as they will be: the contents slide is the second
+        val lines = rest.mapIndexedNotNull { k, en -> shownNow.getOrNull(e0.order.indexOf(en))?.let(::titleOf)?.takeIf { it.isNotBlank() }?.let { t ->
+            listOf(DocRun("${k + 3}   ", sizePt = 20f, color = 0x808080), DocRun(t, sizePt = 20f, link = "slide:${en.uid}")) } }
+        e = madeSlide(e, d, 1, "Contents", lines, 0f)
+        change(e); chosen = 1; WriterLog.i("Slides: a contents slide of ${lines.size}"); message = "Contents of ${lines.size} slides after the first"
+    }
     /** Gridlines' spacing (pt): half a centimetre, or a quarter inch in Words' inches. */
     fun gridStep() = if (WriterUnits.inches) 18f else 14.173f
     /** The name of the section slide [i] starts, if one does (Home › Section). */
@@ -903,6 +948,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                 }
                 RibbonButton("Insert citation", w, R.drawable.ic_format_quote) { if (sources.isEmpty()) sourceNew = true else citing = true }
+                RibbonDivider(w)
+                // made, or brought up to date (the old ones replaced)
+                RibbonButton("References slide", w, R.drawable.ic_view_list) { referencesSlides() }
+                RibbonButton("Contents slide", w, R.drawable.ic_checklist) { contentsSlide() }
             }
             "Review" -> {
                 // Words' Comments group: a new one, the comments shown, the one before or after (on other slides too), and the one tapped

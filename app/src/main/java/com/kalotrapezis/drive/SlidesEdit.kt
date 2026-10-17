@@ -16,7 +16,9 @@ internal object SlidesEdit {
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
         /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList(),
         /** a chart (Insert › Chart, Words' chart editor): its kind, numbers and looks */ val chart: DocChart? = null,
-        /** an equation (Insert › Equation, Words' editor): [image] is it drawn, PowerPoint's fallback and LibreOffice's replacement */ val math: MathNode? = null)
+        /** an equation (Insert › Equation, Words' editor): [image] is it drawn, PowerPoint's fallback and LibreOffice's replacement */ val math: MathNode? = null,
+        /** a text box's words with looks of their own (References' list, Contents): a paragraph each, its runs (italic, a link "slide:uid" or a web address);
+         *  [hang] each paragraph's hanging indent (pt), as a reference list's */ val runs: List<List<DocRun>> = emptyList(), val hang: Float = 0f)
     /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
     data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null,
         /** Home (17 Oct, Words' tools): every letter's face, size, bold, italic, underline, strike-through, highlight ([NONE]: taken away) — null: as they are */
@@ -190,6 +192,8 @@ internal object SlidesEdit {
                 // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
                 val box = a.prst == TEXT_BOX
                 val text = edit.texts[e.uid to a.id]?.let { lines -> SlideText(lines.map { SlidePara.plain(it, 18f, 0, align = if (box) DocAlign.Start else DocAlign.Center) }, if (box) 't' else 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
+                    ?: a.runs.takeIf { it.isNotEmpty() }?.let { paras -> SlideText(paras.map { rs -> SlidePara(DocPara(rs.map { it.copy(sizePt = it.sizePt ?: 18f, color = it.color ?: 0) }, list = DocList(false, 0)),
+                        ParaLook(left = a.hang, firstLine = -a.hang, listIndented = true)) }, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
                 // a text box: no fill, no border, as tall as its words (PowerPoint's "resize shape to fit text")
                 // shortcut: without Android's text layout (the JVM tests) a line a paragraph, 1.2 × 18 pt each
                 if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[e.uid to a.id]?.autofit != 'n' }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
@@ -456,7 +460,13 @@ internal object SlidesEdit {
                     } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
                 else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 // a text box as PowerPoint's Insert › Text Box makes it: no fill, words from the top left, the box fitting them
-                else if (a.prst == TEXT_BOX) """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="TextBox ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/><a:p><a:endParaRPr lang="el-GR" sz="1800"/></a:p></p:txBody></p:sp>"""
+                else if (a.prst == TEXT_BOX) """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="TextBox ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/>""" +
+                    // words with their own looks (References, Contents): a paragraph each, a link by the relationship made for it
+                    (if (a.runs.isEmpty()) """<a:p><a:endParaRPr lang="el-GR" sz="1800"/></a:p>""" else a.runs.joinToString("") { rs ->
+                        """<a:p>${if (a.hang > 0f) """<a:pPr marL="${emu(a.hang)}" indent="-${emu(a.hang)}"/>""" else ""}""" + rs.joinToString("") { r ->
+                            val link = r.link?.let { rels["run $it"] }?.let { rid -> """<a:hlinkClick r:id="${rid.substringBefore(' ')}"${if (rid.endsWith(" slide")) " action=\"ppaction://hlinksldjump\"" else ""}/>""" }.orEmpty()
+                            """<a:r><a:rPr lang="el-GR" sz="${Math.round((r.sizePt ?: 18f) * 100)}"${if (r.italic) " i=\"1\"" else ""}${if (r.bold) " b=\"1\"" else ""}>${r.color?.let { "<a:solidFill><a:srgbClr val=\"%06X\"/></a:solidFill>".format(it and 0xFFFFFF) }.orEmpty()}$link</a:rPr><a:t>${esc(r.text)}</a:t></a:r>""" } + "</a:p>" }) +
+                    "</p:txBody></p:sp>"
                 else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
             // an equation as PowerPoint writes one: the equation in a text box (a14:m), its picture for those that cannot draw it (LibreOffice)
             val y = a.math?.takeIf { a.image != null }?.let { m ->
@@ -886,7 +896,12 @@ internal object SlidesEdit {
             val part = partOf.getValue(e.uid)
             val relsXml = if (original) relsDoc(part) else newRels(if (e.layout >= 0) deck.layouts[e.layout].part else null, source?.part)
             // Insert › Link: a web page (an outside relationship) or a slide (the slide's part), named by the words' hlinkClick
-            val ids = media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
+            // the links in words put on with looks of their own (Contents' slides): a relationship each
+            val runLinks = added.flatMap { a -> a.runs.flatten().mapNotNull { it.link } }.distinct().mapNotNull { to ->
+                if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "run $to" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
+                else "run $to" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
+            }.toMap()
+            val ids = runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "link $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
                 else "link $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             } }

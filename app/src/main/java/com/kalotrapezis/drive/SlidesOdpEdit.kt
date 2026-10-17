@@ -413,7 +413,18 @@ internal object SlidesOdpEdit {
                 // LibreOffice's text box: a frame with no fill or line, growing to its words
                 val st = derive("graphic", null, "text box") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none")
                     setAttributeNS(DRAW, "draw:auto-grow-height", "true"); setAttributeNS(DRAW, "draw:textarea-vertical-align", "top") } }
-                """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:text-box><text:p/></draw:text-box></draw:frame>"""
+                // words with their own looks (References, Contents): spans in automatic styles, links as LibreOffice's (a slide's named once the pages are in place)
+                fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                val paras = if (a.runs.isEmpty()) "<text:p/>" else a.runs.joinToString("") { rs ->
+                    val ps = if (a.hang > 0f) derive("paragraph", null, "hang ${a.hang}") { st -> props(st, "paragraph-properties").apply { setAttributeNS(FO, "fo:margin-left", cm(a.hang)); setAttributeNS(FO, "fo:text-indent", "-" + cm(a.hang)) } } else null
+                    "<text:p${ps?.let { " text:style-name=\"$it\"" }.orEmpty()}>" + rs.joinToString("") { r ->
+                        val ts = derive("text", null, "run ${r.italic} ${r.bold} ${r.sizePt} ${r.color}") { st -> props(st, "text-properties").apply {
+                            setAttributeNS(FO, "fo:font-size", String.format(Locale.ROOT, "%.1fpt", r.sizePt ?: 18f)); if (r.italic) setAttributeNS(FO, "fo:font-style", "italic"); if (r.bold) setAttributeNS(FO, "fo:font-weight", "bold")
+                            r.color?.let { setAttributeNS(FO, "fo:color", hex(it)) } } }
+                        val span = """<text:span text:style-name="$ts">${esc(r.text)}</text:span>"""
+                        r.link?.let { to -> """<text:a xlink:type="simple" xlink:href="${esc(if (to.startsWith("slide:")) "#tetra-$to" else to)}">$span</text:a>""" } ?: span
+                    } + "</text:p>" }
+                """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:text-box>$paras</draw:text-box></draw:frame>"""
             } else if (a.prst != null && a.prst != "table") {
                 val fill = look?.fill ?: a.fill; val line = look?.line ?: darker(a.fill)
                 val st = derive("graphic", null, "shape $fill $line ${look?.lineWidth}") { st -> props(st, "graphic-properties").apply {

@@ -446,6 +446,23 @@ class SlidesTest {
         }
     }
 
+    /** References and Contents slides: a text box put on with words of their own looks — an italic title, a link to a slide — saved and read back. */
+    @Test fun `words with their own looks put on saved`() {
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val runs = listOf(listOf(DocRun("Smith, A. (2020). ", sizePt = 16f), DocRun("Reading on screens", italic = true, sizePt = 16f), DocRun(".", sizePt = 16f)),
+                listOf(DocRun("4   ", sizePt = 20f), DocRun("Scores", sizePt = 20f, link = "slide:3")))
+            val e = SlidesEdit.start(deck).copy(added = mapOf(0 to listOf(SlidesEdit.Added("9300", 50f, 300f, 500f, 40f, prst = SlidesEdit.TEXT_BOX, runs = runs, hang = 36f))))
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("runs-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val box = Slides.read(out).slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Smith") == true }
+            val p0 = box.text!!.paras[0]; val p1 = box.text!!.paras[1]
+            assertTrue(name, p0.runs.any { it.italic && it.text == "Reading on screens" }); assertTrue(name, p0.runs.none { !it.italic && it.text.contains("Reading") })
+            assertEquals(name, 36f, p0.look.left, 1f)
+            assertTrue(name, p1.runs.first { it.text == "Scores" }.link != null)
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

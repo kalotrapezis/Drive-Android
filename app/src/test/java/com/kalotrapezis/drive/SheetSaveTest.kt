@@ -226,6 +226,33 @@ class SheetSaveTest {
         }
     }
 
+    /** A protected sheet (Excel's sheetProtection): its locked cells refused, an unlocked one (its look's protection) typed in. */
+    @Test fun `a protected sheet's locked cells kept`() {
+        val parts = OfficeFormats.unzip(resource("sheet.xlsx"))
+        parts["xl/worksheets/sheet1.xml"] = String(parts.getValue("xl/worksheets/sheet1.xml")).replace("</sheetData>", """</sheetData><sheetProtection sheet="1" objects="1" scenarios="1"/>""").toByteArray()
+        // B2's look (the third) unlocked
+        val st = String(parts.getValue("xl/styles.xml")); val xfs = Regex("""<cellXfs[\s\S]*?</cellXfs>""").find(st)!!
+        var n = -1
+        parts["xl/styles.xml"] = st.replaceRange(xfs.range, Regex("""<xf\b[\s\S]*?</xf>""").replace(xfs.value) { m -> n++; if (n == 2) m.value.replace(Regex("""<protection locked="[^"]*""""), """<protection locked="false"""") else m.value }).toByteArray()
+        val file = File(Files.createTempDirectory("protect").toFile(), "p.xlsx").apply { writeBytes(OfficeFormats.zip(parts)) }
+        val book = Sheets.read(file, ',', '.'); val s = book.sheet(0); val h = SheetHistory()
+        var refused = 0; h.refused = { refused++ }
+        assertTrue(s.protected)
+        h.apply(book, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell("Gamma", s[1, 0], s[1, 0]!!.style, "General", book.format)))
+        assertEquals(1, refused); assertEquals("Alpha", s[1, 0]?.text)
+        h.apply(book, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("2000", s[1, 1], s[1, 1]!!.style, "General", book.format)))
+        assertEquals(1, refused); assertEquals(2000.0, s[1, 1]?.value)
+        assertTrue(!Sheets.read(File(file.parentFile, "x.xlsx").apply { writeBytes(resource("sheet.xlsx")) }, ',', '.').sheet(0).protected)
+        // LibreOffice's .ods of it: table:protected, the unlocked look's cell-protect none
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return
+        val out = File(file.parentFile, "lo").apply { mkdirs() }
+        ProcessBuilder("soffice", "--headless", "--convert-to", "ods", "--outdir", out.path, file.path).redirectErrorStream(true).start().waitFor()
+        val ob = Sheets.read(File(out, "p.ods"), ',', '.'); val os = ob.sheet(0); val oh = SheetHistory(); var no = 0; oh.refused = { no++ }
+        assertTrue("LibreOffice's ods", os.protected)
+        oh.apply(ob, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell("Gamma", os[1, 0], os[1, 0]!!.style, "General", ob.format))); assertEquals("LibreOffice's ods", 1, no)
+        oh.apply(ob, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("2000", os[1, 1], os[1, 1]!!.style, "General", ob.format))); assertEquals("LibreOffice's ods", 1, no)
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

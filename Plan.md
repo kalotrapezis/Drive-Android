@@ -743,7 +743,12 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       `SheetInput.split`, one step of Undo. `text cut into columns`; emulator: Crete/Rhodes/Corfu into three cells.
 - [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
-- [ ] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
+- [~] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
+      Respecting a protected sheet done (office-F session, 17 Oct): Excel's sheetProtection and LibreOffice's table:protected read
+      (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);
+      a change to a locked cell refused where every change passes (`SheetHistory.apply`/`locked`, with a message), typing not begun,
+      whole-file changes refused on a protected sheet. `a protected sheet's locked cells kept` (Excel's, and LibreOffice's .ods of it);
+      emulator: a protected copy of sheet.xlsx refused typing. Not yet: Protect / Unprotect made here (passwords), spelling.
 - [~] **View**: gridlines and headings on or off; split the window (later).
       Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
       view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes

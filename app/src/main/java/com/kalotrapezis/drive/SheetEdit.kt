@@ -292,9 +292,16 @@ internal class SheetHistory {
     val canUndo get() = undos.isNotEmpty()
     val canRedo get() = redos.isNotEmpty()
 
+    /** Told when a change is refused: a protected sheet's locked cells (Excel's Protect Sheet; its password is not asked here). */
+    var refused: (() -> Unit)? = null
+    /** Whether cell [k] of [sheet] is one a protected sheet keeps as it is (locked: its look's, else its row's or column's, else Excel's default). */
+    fun locked(book: Workbook, sheet: Sheet, k: Long): Boolean = sheet.protected &&
+        (book.styles.getOrNull(sheet.cells[k]?.fileStyle ?: sheet.rowStyles[Sheet.row(k)] ?: sheet.colStyles[Sheet.col(k)] ?: 0) ?: SheetStyle()).locked
+
     /** Sets [changes] on sheet [index], works out what counts on them, and keeps it as one step. */
     fun apply(book: Workbook, index: Int, changes: Map<Long, SheetCell>) {
         val sheet = book.sheet(index)
+        if (changes.keys.any { locked(book, sheet, it) }) { refused?.invoke(); return }
         val before = LinkedHashMap<Long, SheetCell>()
         fun was(k: Long) = sheet.cells[k] ?: SheetCell("", SheetKind.Empty)
         changes.forEach { (k, c) -> before[k] = was(k); book.edit(index, k, c) }

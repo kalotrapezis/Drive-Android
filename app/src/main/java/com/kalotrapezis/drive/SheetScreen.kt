@@ -323,6 +323,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     fun startTyping() {
         val s = sheet ?: return; val b = book ?: return
         val (r, c) = chosen(s)
+        if (history.locked(b, s, Sheet.key(r, c))) { message = PROTECTED; focusManager.clearFocus(); WriterLog.i("Sheets: a protected cell not typed in"); return }
         val t = SheetInput.text(s[r, c], lookAt(s, r, c).second, b.format)
         draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); view.reveal++
     }
@@ -379,6 +380,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val b = book ?: return; val i = index
         // one at a time: a second started before the first is done would start from the file without it
         if (saving) { message = "One moment — the last change is still being made"; return }
+        if (b.sheet(i).protected) { message = PROTECTED; return }
         val from = work ?: file ?: return
         commit(false)
         saving = true
@@ -456,6 +458,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * The fill handle let go: [to] (as drawn, [src] in it) filled from [src] — each column carried down or up, or each row
      * right or left — one step of Undo.
      */
+    LaunchedEffect(history) { history.refused = { message = PROTECTED } }
     fun fillCells(src: SheetRange, to: SheetRange) {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
         val vertical = to.r1 != src.r1 || to.r2 != src.r2
@@ -1419,6 +1422,9 @@ private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets
 }
 
 /** What search found, to be drawn: the cells, and the one shown now. */
+/** What a protected sheet's refusal says (Excel's: unprotect it there first). */
+private const val PROTECTED = "This sheet is protected: unprotect it in Excel or LibreOffice to change these cells"
+
 internal class SheetMarks(val found: Set<Long>, val current: Long)
 
 @Composable

@@ -63,6 +63,7 @@ internal data class SheetStyle(
     val underline: Boolean = false, val strike: Boolean = false, val color: Int? = null, val fill: Int? = null,
     val align: SheetAlign = SheetAlign.General, val valign: SheetVAlign = SheetVAlign.Bottom, val wrap: Boolean = false,
     /** Excel's Shrink to fit, LibreOffice's shrink-to-fit: its words made smaller until they fit the cell's width */ val shrink: Boolean = false,
+    /** Excel's and LibreOffice's Locked (on unless a cell's look says not): its cell not to be changed while the sheet is protected */ val locked: Boolean = true,
     val indent: Int = 0, val rotation: Int = 0, val format: String = "General",
     val left: SheetLine? = null, val top: SheetLine? = null, val right: SheetLine? = null, val bottom: SheetLine? = null,
 ) {
@@ -160,6 +161,8 @@ internal class Sheet(
     /** How the file prints it: page setup, print area, rows on every page. */
     val print: SheetPrint = SheetPrint(),
 ) {
+    /** Review › Protect Sheet (Excel's sheetProtection, LibreOffice's table:protected): its locked cells are not to be changed. */
+    var protected = false
     /** Its conditional formatting, and the looks its rules covered (to lay them again after an edit). */
     var rules: List<SheetRule> = emptyList()
     val ruleBase = HashMap<Long, Int>()
@@ -614,6 +617,7 @@ internal object Sheets {
                     valign = when (al?.attr("vertical")) { "top" -> SheetVAlign.Top; "center", "justify", "distributed" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
                     wrap = al?.attr("wrapText")?.let { it == "1" || it == "true" } == true,
                     shrink = al?.attr("shrinkToFit")?.let { it == "1" || it == "true" } == true,
+                    locked = xf.kid("protection")?.attr("locked").let { it != "0" && it != "false" },
                     indent = al?.attr("indent")?.toIntOrNull() ?: 0,
                     rotation = al?.attr("textRotation")?.toIntOrNull() ?: 0,
                     format = formats[xf.attr("numFmtId")?.toIntOrNull() ?: 0] ?: "General",
@@ -762,7 +766,7 @@ internal object Sheets {
             val page = HashMap<String, String>() // pageSetup, pageSetUpPr, printOptions and pageMargins, as they are
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
-            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0
+            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
@@ -837,6 +841,7 @@ internal object Sheets {
                         "rPr" -> if (inIs) rich.inPr = true
                         "b", "i", "u", "strike", "sz", "rFont" -> if (inIs && rich.inPr) rich.prop(local, at)
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
+                        "sheetProtection" -> protectedSheet = at.a("sheet").let { it == "1" || it == "true" }
                         "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
                         "tablePart" -> at.a("id")?.let { rels[it] }?.let { tableParts += it }
                         "drawing" -> drawingPart = at.a("id")?.let { rels[it] }
@@ -920,7 +925,7 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase }
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet }
         }
 
         /** Excel's page setup and the sheet's print names as a [SheetPrint]. */
@@ -1321,7 +1326,7 @@ internal object Sheets {
                     "justify" -> SheetAlign.Justify; else -> SheetAlign.General
                 },
                 valign = when (p["c.vertical-align"]) { "top" -> SheetVAlign.Top; "middle" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
-                wrap = p["c.wrap-option"] == "wrap", shrink = p["c.shrink-to-fit"] == "true",
+                wrap = p["c.wrap-option"] == "wrap", shrink = p["c.shrink-to-fit"] == "true", locked = p["c.cell-protect"].let { it == null || "protected" in it },
                 rotation = p["c.rotation-angle"]?.toIntOrNull()?.let { if (it > 180) it - 360 else it } ?: 0,
                 left = border(p["c.border-left"] ?: all), right = border(p["c.border-right"] ?: all),
                 top = border(p["c.border-top"] ?: all), bottom = border(p["c.border-bottom"] ?: all),
@@ -1404,7 +1409,7 @@ internal object Sheets {
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
                 var inStyles = false
-                var name = ""; var tableStyle: String? = null
+                var name = ""; var tableStyle: String? = null; var tableProtected = false
                 var cells = CellMap()
                 var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
                 var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
@@ -1448,7 +1453,7 @@ internal object Sheets {
                         "table" -> {
                             tableIndex++
                             if (tableIndex != target) { skip = 1; return }
-                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name")
+                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name"); tableProtected = at.a("protected") == "true"
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
                             col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList(); rules = ArrayList()
@@ -1678,7 +1683,7 @@ internal object Sheets {
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
-                    ).also { it.rules = rules; it.ruleBase += ruleBase }
+                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read
                 }

@@ -423,6 +423,11 @@ LibreOffice works them out).
       thread with a small cache (360 pages: 256 ms to open)
 - [x] Find (highlighted, the current one orange) and Copy this page's text — Android 15+ only, hidden before
 - [x] Share, Print (the file as it is), Open in another app; a password-protected or broken file says so
+- [x] A phone's list of pages: the "Page X of Y" label is its button (17 Oct)
+- [x] Office's Open, one kind at a time (17 Oct): Home's Office card has Open Words · Tables · Slides · PDFs, the Office
+      home's cards New on the left and Open on the right — Android's picker showing that kind only; a file already on the
+      phone opens where it is (the picker's Recent gives MediaStore addresses: their file looked up, not copied)
+- [x] The Office home lists the 10 newest of each kind (40 in all; 20 before)
 - [ ] Present (Slides' Present is built round a deck's slides and effects, not pages as pictures)
 - [ ] Opening a password-protected PDF (Android 15's LoadParams can take a password)
 

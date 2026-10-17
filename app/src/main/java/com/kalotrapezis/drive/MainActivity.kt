@@ -579,6 +579,18 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
         else { unlockScannerOrientation(); screen = Screen.Home }
     }
+    /** [f] in Words, Tables, Slides or the PDF viewer, by its kind; Back goes to [from]. */
+    fun openOfficeFile(f: File, from: Screen) {
+        val at = Uri.fromFile(f).toString(); writerBack = from
+        when {
+            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
+            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
+            Pdf.isPdf(f.name) -> { pdfOpen = at; screen = Screen.Pdf }
+            else -> { writerOpen = at; screen = Screen.Writer }
+        }
+    }
+    // Home's Office card: Open Words, Tables, Slides, PDFs — each Android's picker for that kind only (asked 17 Oct)
+    val pickOffice = rememberOfficePicker { openOfficeFile(it, Screen.Home) }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
     LaunchedEffect(office) {
         val o = office ?: return@LaunchedEffect
@@ -586,13 +598,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             .onFailure { WriterLog.e("Office: a file from another app could not be read", it) }.getOrNull() }
         if (f == null) { Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show(); return@LaunchedEffect }
         WriterLog.i("Office: opened from another app (${f.extension})")
-        val at = Uri.fromFile(f).toString(); writerBack = Screen.Office
-        when {
-            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
-            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
-            Pdf.isPdf(f.name) -> { pdfOpen = at; screen = Screen.Pdf }
-            else -> { writerOpen = at; screen = Screen.Writer }
-        }
+        openOfficeFile(f, Screen.Office)
     }
     LaunchedEffect(external) {
         if (external == null) return@LaunchedEffect
@@ -671,7 +677,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                     openOffice = { screen = Screen.Office },
-                    newDocument = { writerOpen = null; screen = Screen.Writer },
+                    pickOffice = pickOffice,
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -830,7 +836,7 @@ private fun Home(
     openNotes: () -> Unit,
     openTextEditor: (String?) -> Unit,
     openOffice: () -> Unit,
-    newDocument: () -> Unit,
+    pickOffice: (OfficePick) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -876,9 +882,11 @@ private fun Home(
             HomeGroup(Category.Office.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
+                    // the four apps' Open, two by two (asked 17 Oct): each the picker for its own kind of file
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("New document", R.drawable.ic_note_add, newDocument)
-                        HomeCompactCard("Documents", R.drawable.ic_file_text, openOffice)
+                        listOf(listOf(OfficePick.Words, OfficePick.Tables), listOf(OfficePick.Slides, OfficePick.Pdf)).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeOpenTile(k, wide, Modifier.weight(1f)) { pickOffice(k) } } }
+                        }
                     }
                 }
             }
@@ -962,6 +970,22 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(24.dp))
     Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
 } }
+
+/** One of Home's Office Open tiles: the app's name over its icon in its colour; "Open …" where there is room. */
+@Composable private fun HomeOpenTile(kind: OfficePick, wide: Boolean, modifier: Modifier, click: () -> Unit) {
+    val (name, icon, tint) = when (kind) {
+        OfficePick.Words -> Triple("Words", R.drawable.ic_file_text, Color(0xFF4F86E8))
+        OfficePick.Tables -> Triple("Tables", R.drawable.ic_table, Color(0xFF55A96B))
+        OfficePick.Slides -> Triple("Slides", R.drawable.ic_play, Color(0xFFE0784F))
+        OfficePick.Pdf -> Triple("PDFs", R.drawable.ic_file, PDF_RED)
+    } // the list's lighter colours of the four kinds (driveExtensionColor), for the dark card
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(73.dp).clickable(onClick = click)) {
+        Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            Text(if (wide) "Open $name" else name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
 
 @Composable private fun HomeFilesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),

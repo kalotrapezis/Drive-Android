@@ -2,8 +2,8 @@
 
 ![Tetra on the desktop and on a phone: Photos, Home and Notes](Assets/screenshots/tetra-card.png)
 
-**Your photos, files and notes, kept on your own devices.** Tetra is a gallery, a file manager, a notes app and a
-document scanner in one Android app. It pairs with [Tetra for the desktop](https://github.com/kalotrapezis/Drive)
+**Your photos, files and notes, kept on your own devices.** Tetra is a gallery, a file manager, a notes app, a
+document scanner and an Office suite in one Android app. It pairs with [Tetra for the desktop](https://github.com/kalotrapezis/Drive)
 over your own Wi-Fi. Nothing is uploaded anywhere, and every bit of analysis (faces, documents, search labels) runs
 on the device.
 
@@ -28,16 +28,67 @@ on the device.
 
 <sub>Screenshots use demo content, not a real library; the scanned page and the label are blurred.</sub>
 
+## Office
+
+![Tetra Office: Words on a tablet with the ribbon on top, the Office home and Slides on a phone](Assets/screenshots/office-card.png)
+
+**Word, Excel, PowerPoint and PDF files, opened and edited on the device.** Words, Tables and Slides read and save
+Microsoft's and LibreOffice's files as they are, and the PDF viewer shows, searches, shares and prints. On a tablet
+each is laid out like the desktop programs: a real page with rulers, the slides in a sidebar, and the ribbon at the
+top while a mouse is in use (at the bottom for a finger). A phone gets the same tools in a layout of its own.
+
+<table>
+  <tr>
+    <td><img src="Assets/screenshots/tablet-office.png" alt="The Office home on a tablet" width="400"></td>
+    <td><img src="Assets/screenshots/tablet-tables.png" alt="Tables editing a spreadsheet with a chart" width="400"></td>
+  </tr>
+  <tr align="center"><td>Office home: Favourites beside the recent documents</td><td>Tables, a formula and its chart</td></tr>
+  <tr>
+    <td><img src="Assets/screenshots/tablet-slides-notes.png" alt="Slides with the speaker notes under the slide" width="400"></td>
+    <td><img src="Assets/screenshots/tablet-pdf.png" alt="The PDF viewer" width="400"></td>
+  </tr>
+  <tr align="center"><td>Slides, the speaker notes under the slide</td><td>The PDF viewer</td></tr>
+</table>
+
+<table>
+  <tr>
+    <td><img src="Assets/screenshots/android-office.png" alt="The Office home on a phone" width="200"></td>
+    <td><img src="Assets/screenshots/android-words.png" alt="Words editing on a phone" width="200"></td>
+    <td><img src="Assets/screenshots/android-slides.png" alt="Slides editing on a phone" width="200"></td>
+    <td><img src="Assets/screenshots/android-system-folders.png" alt="System folders in Files" width="200"></td>
+  </tr>
+  <tr align="center"><td>Office (phone)</td><td>Words (phone)</td><td>Slides (phone)</td><td>System folders</td></tr>
+</table>
+
+![Presenting: the presenter view on the tablet, the slide on a second screen](Assets/screenshots/present-card.png)
+
+**Present to a TV or a projector** (HDMI or a cast screen). The slide goes to the second screen with its
+transitions, animations, ink and laser; the tablet shows the presenter view, with your notes in full or as a
+teleprompter that scrolls by itself, and pause. Speaker notes are written under each slide in Edit.
+
+<table>
+  <tr>
+    <td><img src="Assets/screenshots/tablet-system-folders.png" alt="System folders in Files on a tablet" width="400"></td>
+    <td><img src="Assets/screenshots/tablet-system-folders-choose.png" alt="Choosing the system folders" width="400"></td>
+  </tr>
+  <tr align="center"><td>System folders in Files</td><td>Files tools › System folders</td></tr>
+</table>
+
 ## What it does
 
 | | |
 |---|---|
 | **Photos** | Your camera photos and videos by week, month or year, with collections, favorites and folder albums. **People** (faces grouped on the phone), **Documents** (receipts and papers found for you), a map, search by place, date or label, an editor, and a **Hidden** vault that is encrypted. It can be the phone's default gallery. |
-| **Files** | A file manager for `/sdcard/Tetra`, with search, tags, favorites, folder colours, copy, move, rename and share. Deleting goes to a Trash you can restore from. |
+| **Files** | A file manager for `/sdcard/Tetra`, with search, tags, favorites, folder colours, copy, move, rename and share. **System folders** (Music, Videos, Finance, Work, Travel, Books and more), each with its own picture, chosen in Files tools and kept the same on the computer. Move and Copy go one folder level at a time. Deleting goes to a Trash you can restore from. |
 | **Notes** | Text notes and checklists, with colours, labels, pins and a short history of each note. They sync with the desktop. |
 | **Scanner** | Scan paper documents to PDF. The page is found live in the camera (with an optional **auto capture**), straightened and cropped for you, with the letters deciding where each edge is cut. Then retake, crop and rotate, filters (fix lighting, sharpen ink, black and white, match pages), reorder, and paint over marks. Saves one multi-page PDF at 300 or 200 dpi into *Scanned Documents*. |
 | **Codes** | Point at a **QR code or barcode**: open it, copy it or share it. **Text** mode reads the text in a photo so you can copy it. Greek **RF payment codes** are recognised and checked, ready to paste into your bank's app. |
 | **Text editor** | A notepad for any text file: `.txt`, `.md`, `.html`, code. **Tabs** for the files open at once, which come back with their unsaved text. A **symbols row** for the characters a phone keyboard hides, and `</>` closes the last open HTML tag. Word wrap, and Windows line endings kept. Other apps can open text files in it with *Open with*. |
+| **Words** | Word documents (`.docx`; also `.doc`, `.odt` and `.rtf`) on a real page with rulers: the file's own styles, lists, tables, pictures, shapes and WordArt, headers and footers, footnotes, a table of contents, comments and tracked changes, and APA 7 citations with a reference list. Documents open view-only, with Edit to change them. A picture dragged in from another app goes in at the cursor. |
+| **Tables** | Spreadsheets (`.xlsx`, `.xls`, `.ods`, `.csv`) with their charts, pictures, comments, conditional formatting and Excel Tables. About 80 of Excel's functions are worked out. Editing has the fill handle, rows and columns, cut, copy and paste, and the Sum, Average and Count of the chosen cells. |
+| **Slides** | PowerPoint and Impress decks (`.pptx`, `.odp`) with their themes, transitions and animations. New slides from the deck's layouts, pictures and shapes moved with a finger, Design › Themes and your own templates, and speaker notes. **Presenting** fits the slide to any screen; with a second screen the tablet becomes the presenter view. A picture dragged in from another app lands on the slide it is dropped on. |
+| **PDF** | A viewer: the pages with thumbnails, search, share and print. |
+| **Office** | One home for all four: the newest documents of each kind, and Favourites (the same hearts as in Files). With a mouse and a keyboard the ribbon moves to the top and gets smaller, the right button opens a menu, and the usual shortcuts work. Other apps can open documents in Tetra with *Open with*. |
 | **Sync** | Pair once with the desktop by QR code. Each photo and file is checked by SHA-256 on arrival. Favorites, collections, people, tags and notes travel both ways. Rules per device: send only, both ways, or **Move** (keep a month on the phone, the rest lives on the computer). |
 
 The full, authoritative list is in [FEATURES.md](FEATURES.md).

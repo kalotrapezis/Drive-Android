@@ -45,7 +45,11 @@ How to write here:
       (4e68384). Unit suite 415/0/7; sweep 349 + 29, none failing (after 9578abf). Tablet still Crunchyroll at 16:22: all on the
       emulator only. Handing on (notes: office-B-17oct.md in the group's notes folder); next WordArt, Comment, then Arrange.
 - [~] (office-C session, 17 Oct, from office-B's hand-over) B on from WordArt: Comment, Arrange, Slide, Design, Draw, Review, View,
-      File, Slide show, References; then C, then A's walk.
+      File, Slide show, References; then C, then A's walk. Done here (19:05): WordArt, Comments, Arrange (order, align, turn, flip, size,
+      Shape options, alt text, crop, replace), slide sorter, Layout, sections, Design colours/fonts/background, Draw, Outline, Notes page,
+      Gridlines, Find and Replace, Export pictures, handouts, loop, rehearse, show keys, show ink kept, References (sources, citations,
+      References and Contents slides), Read aloud, File (Save a copy/as, Rename, AutoSave, template, Inspect), object links with zoom,
+      Video — all on emulator-5554 (the tablet was not connected). Unit 430/0/7, sweep 349 + 29. Handing on (office-C-17oct.md).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

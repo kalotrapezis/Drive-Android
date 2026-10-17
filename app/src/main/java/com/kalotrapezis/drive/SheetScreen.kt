@@ -1553,7 +1553,31 @@ internal class SheetPainter(
     private val dots = DashPathEffect(floatArrayOf(1f, 1f), 0f)
     private val faces = HashMap<String, Typeface>()
     private val general = java.text.DecimalFormatSymbols.getInstance().let { SheetFormat(it.decimalSeparator, it.groupingSeparator) }
-    private val wrapped = HashMap<Long, StaticLayout>()
+    private val laidCells = HashMap<Long, Block>()
+    /** A cell's paragraphs: single lines, no room between them (not Word's Normal). */
+    private val CELL_LOOK = object : DocStyles() { override fun look(p: DocPara) = ParaLook() }
+
+    /**
+     * A cell's words laid out by the Office engine (step 6, as a slide's box is: Words' paragraphs and runs): its rich
+     * text's runs (else its words in its style's look), a paragraph a line, [width] pt wide when it wraps, else as wide
+     * as its longest line, standing where its alignment says.
+     */
+    private fun cellBlock(cell: SheetCell, st: SheetStyle, align: SheetAlign, width: Float): Block {
+        val base = DocRun("", bold = st.bold, italic = st.italic, underline = st.underline, strike = st.strike, sizePt = st.size,
+            color = (cell.color ?: st.color ?: if (cell.link != null && st.color == null) 0xFF0563C1.toInt() else 0xFF000000.toInt()) and 0xFFFFFF, font = st.font?.let(Slides::face))
+        val runs = cell.rich?.map { r -> r.copy(sizePt = r.sizePt ?: base.sizePt, color = r.color ?: base.color, font = r.font ?: base.font) } ?: listOf(base.copy(text = cell.text))
+        val a = when (align) { SheetAlign.Center -> DocAlign.Center; SheetAlign.Right -> DocAlign.End; SheetAlign.Justify -> DocAlign.Justify; else -> DocAlign.Start }
+        // a paragraph a line (Alt+Enter's line breaks), each run cut where they fall
+        val paras = ArrayList<DocPara>(); var now = ArrayList<DocRun>()
+        for (r in runs) r.text.split('\n').forEachIndexed { i, piece -> if (i > 0) { paras += DocPara(now, align = a); now = ArrayList() }; if (piece.isNotEmpty()) now += r.copy(text = piece) }
+        paras += DocPara(now.ifEmpty { listOf(base) }, align = a)
+        val doc = OfficeDoc(paras, basePt = st.size)
+        fun stack(w: Float) = OfficePages.stack(doc, paras, CELL_LOOK, DocPage(), w, { null }, null, 0f, 0f)
+        if (st.wrap || align == SheetAlign.Justify) return stack(width)
+        val wide = stack(100_000f).pieces.maxOfOrNull { pc -> (pc.firstLine..pc.lastLine).maxOf { pc.layout.getLineWidth(it) } / 20f + pc.x } ?: 0f
+        val w = maxOf(width, wide + 1f)
+        return stack(w).moved(when (a) { DocAlign.Center -> (width - w) / 2; DocAlign.End -> width - w; else -> 0f }, 0f)
+    }
     private val funnel = Path()
     private var lines = FloatArray(4096)
 
@@ -2135,18 +2159,18 @@ internal class SheetPainter(
         val align = align(st, cell)
         c.save()
         c.clipRect(clipL, top, clipR, bottom)
-        if (st.wrap || st.align == SheetAlign.Justify) {
-            val width = max(1f, right - left - 4f).toInt()
-            val layout = wrapped.getOrPut(Sheet.key(rAt[r], cAt[k])) {
-                val a = when (align) { SheetAlign.Center -> Layout.Alignment.ALIGN_CENTER; SheetAlign.Right -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
-                StaticLayout.Builder.obtain(cell.text, 0, cell.text.length, TextPaint(text), width).setAlignment(a).setIncludePad(false).build()
-            }
-            val ty = when (st.valign) { SheetVAlign.Top -> top + 1f; SheetVAlign.Center -> (top + bottom - layout.height) / 2; SheetVAlign.Bottom -> bottom - 2f - layout.height }
-            c.translate(left + 2f, ty)
-            layout.draw(c)
+        if (cell.rich != null || st.wrap || st.align == SheetAlign.Justify) {
+            // rich text, wrapped or justified: the Office engine, in points (a sheet pixel is ¾ pt)
+            val px = 4f / 3f
+            val block = laidCells.getOrPut(Sheet.key(rAt[r], cAt[k])) { cellBlock(cell, st, align, max(1f, right - left - 4f) / px) }
+            c.scale(px, px)
+            TextBoxDrawable.framed(c, block, (left + 2f) / px, top / px, (right - left - 4f) / px, (bottom - top) / px, 0f, 1f / px, 0f, 2f / px,
+                when (st.valign) { SheetVAlign.Top -> 't'; SheetVAlign.Center -> 'c'; else -> 'b' }, false)
         } else {
             var shown = cell.text.substringBefore('\n')
             var tw = text.measureText(shown)
+            // Shrink to fit (Excel's, LibreOffice's): smaller letters until the words fit the cell's width
+            if (st.shrink && cell.kind == SheetKind.Text && tw > right - left - 4f - pad) { text.textSize *= (right - left - 4f - pad) / tw; tw = text.measureText(shown) }
             // A number that does not fit is never cut: General drops decimals to fit (Excel's way), else ####.
             if (cell.kind == SheetKind.Number && tw > right - left - 4f) {
                 val fitted = if (st.format.equals("General", true) && cell.value != null)

@@ -62,6 +62,7 @@ internal data class SheetStyle(
     val font: String? = null, val size: Float = 11f, val bold: Boolean = false, val italic: Boolean = false,
     val underline: Boolean = false, val strike: Boolean = false, val color: Int? = null, val fill: Int? = null,
     val align: SheetAlign = SheetAlign.General, val valign: SheetVAlign = SheetVAlign.Bottom, val wrap: Boolean = false,
+    /** Excel's Shrink to fit, LibreOffice's shrink-to-fit: its words made smaller until they fit the cell's width */ val shrink: Boolean = false,
     val indent: Int = 0, val rotation: Int = 0, val format: String = "General",
     val left: SheetLine? = null, val top: SheetLine? = null, val right: SheetLine? = null, val bottom: SheetLine? = null,
 ) {
@@ -78,7 +79,11 @@ internal data class SheetCell(
     val own: Int = -1,
     /** A number format the cell took when it was typed in (a date, a percent in a General cell): saved with it. */
     val format: String? = null,
+    /** Rich text (Excel's runs): its words in pieces of their own looks, drawn by the Office engine; null: one look, the style's. */
+    val runs: List<DocRun>? = null,
 ) {
+    /** Its runs while they still are its words (a cell whose text was changed another way has its style's look only). */
+    val rich get() = runs?.takeIf { rs -> rs.joinToString("") { it.text } == text }
     /** The style the file gives the cell, to write back. */
     val fileStyle get() = if (own >= 0) own else if (style < Sheet.LOOKS) style else 0
 }
@@ -424,6 +429,26 @@ internal object Sheets {
 
     private class Xlsx(val parts: (String) -> ByteArray?, val stream: (String) -> java.io.InputStream?, decimal: Char, group: Char) {
         val strings = ArrayList<String>()
+        /** The shared strings that are rich text, by their index: their runs. */
+        val richStrings = HashMap<Int, List<DocRun>>()
+        /** Excel's rich text being read (an <r> each, its <rPr> look) as Words' runs; [text] is where its words gather. */
+        inner class RichRuns(val text: StringBuilder) {
+            val runs = ArrayList<DocRun>(); private var start = -1; private var look = DocRun(""); var inPr = false
+            fun reset() { runs.clear(); start = -1; inPr = false }
+            fun open() { start = text.length; look = DocRun("") }
+            fun prop(local: String, a: Attributes) {
+                fun on() = a.getValue("val").let { it == null || it == "1" || it == "true" }
+                look = when (local) {
+                    "b" -> look.copy(bold = on()); "i" -> look.copy(italic = on()); "strike" -> look.copy(strike = on())
+                    "u" -> look.copy(underline = a.getValue("val") != "none"); "sz" -> look.copy(sizePt = a.getValue("val")?.toFloatOrNull())
+                    "rFont" -> a.getValue("val")?.let { look.copy(font = Slides.face(it)) } ?: look
+                    "color" -> (a.getValue("rgb")?.takeLast(6)?.toIntOrNull(16) ?: a.getValue("theme")?.toIntOrNull()?.let { theme.getOrNull(it) })?.let { look.copy(color = it and 0xFFFFFF) } ?: look
+                    else -> look
+                }
+            }
+            fun close() { if (start >= 0) runs += look.copy(text = text.substring(start)); start = -1 }
+            fun done() = runs.toList().takeIf { it.isNotEmpty() }
+        }
         val styles = ArrayList<SheetStyle>()
         val dxfs = ArrayList<SheetDxf>()
         val printNames = HashMap<String, Pair<String?, String?>>()
@@ -504,11 +529,14 @@ internal object Sheets {
 
         fun readStrings(input: java.io.InputStream) = sax(input, object : DefaultHandler() {
             val sb = StringBuilder(); var inT = false; var phonetic = 0
+            val rich = RichRuns(sb)
             override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
-                when (local) { "si" -> sb.setLength(0); "t" -> inT = phonetic == 0; "rPh" -> phonetic++ }
+                when (local) { "si" -> { sb.setLength(0); rich.reset() }; "t" -> inT = phonetic == 0; "rPh" -> phonetic++
+                    "r" -> if (phonetic == 0) rich.open(); "rPr" -> rich.inPr = true; else -> if (rich.inPr) rich.prop(local, at) }
             }
             override fun endElement(uri: String?, local: String, q: String?) {
-                when (local) { "si" -> strings += sb.toString(); "t" -> inT = false; "rPh" -> phonetic-- }
+                when (local) { "si" -> { strings += sb.toString(); rich.done()?.let { richStrings[strings.lastIndex] = it } }; "t" -> inT = false; "rPh" -> phonetic--
+                    "r" -> if (phonetic == 0) rich.close(); "rPr" -> rich.inPr = false }
             }
             override fun characters(ch: CharArray, start: Int, length: Int) { if (inT) sb.appendRange(ch, start, start + length) }
         })
@@ -585,6 +613,7 @@ internal object Sheets {
                     },
                     valign = when (al?.attr("vertical")) { "top" -> SheetVAlign.Top; "center", "justify", "distributed" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
                     wrap = al?.attr("wrapText")?.let { it == "1" || it == "true" } == true,
+                    shrink = al?.attr("shrinkToFit")?.let { it == "1" || it == "true" } == true,
                     indent = al?.attr("indent")?.toIntOrNull() ?: 0,
                     rotation = al?.attr("textRotation")?.toIntOrNull() ?: 0,
                     format = formats[xf.attr("numFmtId")?.toIntOrNull() ?: 0] ?: "General",
@@ -743,6 +772,7 @@ internal object Sheets {
                 val v = StringBuilder(); val f = StringBuilder(); val inline = StringBuilder()
                 var into: StringBuilder? = null
                 var hasV = false; var fAttrs: Triple<String?, String?, String?>? = null; var inIs = false; var phonetic = 0
+                val rich = RichRuns(inline)
                 // conditional formatting: the ranges, the rule being read, its formulas and its scale's or bar's points
                 var ext = 0; var cfRanges = emptyList<SheetRange>(); var rule: Map<String, String>? = null
                 val formula = StringBuilder(); val formulas = ArrayList<String>(); val cfvos = ArrayList<SheetCfvo>(); val colors = ArrayList<Int>()
@@ -761,7 +791,7 @@ internal object Sheets {
                         "formula" -> if (rule != null) { formula.setLength(0); into = formula }
                         "cfvo" -> if (rule != null) cfvos += SheetCfvo(at.a("type") ?: "min", at.a("val"))
                         "iconSet" -> rule?.let { rule = it + mapOf("iconSet" to (at.a("iconSet") ?: "3TrafficLights1"), "showValue" to (at.a("showValue") ?: "1"), "reverse" to (at.a("reverse") ?: "0")) }
-                        "color" -> if (rule != null) color(at)?.let { colors += it }
+                        "color" -> if (rule != null) color(at)?.let { colors += it } else if (inIs && rich.inPr) rich.prop(local, at)
                         "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false }
                         "pane" -> if (views == 1 && at.a("state")?.startsWith("frozen") == true) {
                             frozenCols = at.a("xSplit")?.toDoubleOrNull()?.toInt() ?: 0
@@ -796,13 +826,16 @@ internal object Sheets {
                             val ref = at.a("r")?.let(::cellRef)
                             r = ref?.first ?: max(row, 0); c = ref?.second ?: (col + 1); col = c
                             s = at.a("s")?.toIntOrNull() ?: 0; t = at.a("t")
-                            v.setLength(0); f.setLength(0); inline.setLength(0); hasV = false; fAttrs = null
+                            v.setLength(0); f.setLength(0); inline.setLength(0); hasV = false; fAttrs = null; rich.reset()
                         }
                         "v" -> { into = v; hasV = true }
                         "f" -> { into = f; fAttrs = Triple(at.a("t"), at.a("si"), at.a("ref")) }
                         "is" -> inIs = true
                         "rPh" -> phonetic++
                         "t" -> if (inIs && phonetic == 0) into = inline
+                        "r" -> if (inIs && phonetic == 0) rich.open()
+                        "rPr" -> if (inIs) rich.inPr = true
+                        "b", "i", "u", "strike", "sz", "rFont" -> if (inIs && rich.inPr) rich.prop(local, at)
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
                         "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
                         "tablePart" -> at.a("id")?.let { rels[it] }?.let { tableParts += it }
@@ -833,6 +866,8 @@ internal object Sheets {
                         }
                         "v", "f", "t" -> into = null
                         "is" -> inIs = false
+                        "r" -> if (inIs && phonetic == 0) rich.close()
+                        "rPr" -> rich.inPr = false
                         "rPh" -> phonetic--
                         "c" -> cell()
                     }
@@ -850,8 +885,8 @@ internal object Sheets {
                     val style = styles.getOrNull(s) ?: styles.firstOrNull() ?: SheetStyle()
                     val raw = v.toString()
                     val cell = when (t) {
-                        "s" -> SheetCell(strings.getOrNull(raw.trim().toIntOrNull() ?: -1) ?: "", SheetKind.Text, style = s)
-                        "inlineStr" -> SheetCell(inline.toString(), SheetKind.Text, style = s)
+                        "s" -> (raw.trim().toIntOrNull() ?: -1).let { k -> SheetCell(strings.getOrNull(k) ?: "", SheetKind.Text, style = s, runs = richStrings[k]) }
+                        "inlineStr" -> SheetCell(inline.toString(), SheetKind.Text, style = s, runs = rich.done())
                         "str" -> SheetCell(raw, SheetKind.Text, style = s)
                         "b" -> SheetCell(if (raw.trim() == "1") "TRUE" else "FALSE", SheetKind.Bool, if (raw.trim() == "1") 1.0 else 0.0, style = s)
                         "e" -> SheetCell(raw, SheetKind.Error, style = s)
@@ -1286,7 +1321,7 @@ internal object Sheets {
                     "justify" -> SheetAlign.Justify; else -> SheetAlign.General
                 },
                 valign = when (p["c.vertical-align"]) { "top" -> SheetVAlign.Top; "middle" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
-                wrap = p["c.wrap-option"] == "wrap",
+                wrap = p["c.wrap-option"] == "wrap", shrink = p["c.shrink-to-fit"] == "true",
                 rotation = p["c.rotation-angle"]?.toIntOrNull()?.let { if (it > 180) it - 360 else it } ?: 0,
                 left = border(p["c.border-left"] ?: all), right = border(p["c.border-right"] ?: all),
                 top = border(p["c.border-top"] ?: all), bottom = border(p["c.border-bottom"] ?: all),

@@ -53,6 +53,32 @@ class SheetSaveTest {
         assertTrue(name, first[2][3].startsWith("50"))
     }
 
+    /** Rich text in a cell (Excel's runs): read as Words' runs (shared and inline), written back as Excel's, and read from LibreOffice's own save. */
+    @Test fun `rich text in a cell`() {
+        val dir = Files.createTempDirectory("rich").toFile()
+        val parts = OfficeFormats.unzip(resource("sheet.xlsx"))
+        parts["xl/sharedStrings.xml"] = String(parts.getValue("xl/sharedStrings.xml")).replace("""<si><t xml:space="preserve">Name</t></si>""",
+            """<si><r><rPr><b/><sz val="11"/></rPr><t xml:space="preserve">Na</t></r><r><rPr><i/><sz val="14"/><color rgb="FFFF0000"/></rPr><t>me</t></r></si>""").toByteArray()
+        val file = File(dir, "rich.xlsx").apply { writeBytes(OfficeFormats.zip(parts)) }
+        fun check(c: SheetCell?, how: String) {
+            val runs = c?.rich; assertTrue(how, runs != null && runs.size == 2)
+            assertEquals(how, listOf("Na", "me"), runs!!.map { it.text }); assertTrue(how, runs[0].bold && !runs[0].italic && runs[1].italic && !runs[1].bold)
+            assertEquals(how, 0xFF0000, runs[1].color); assertEquals(how, 14f, runs[1].sizePt)
+        }
+        val book = Sheets.read(file, ',', '.')
+        check(book.sheet(0)[0, 0], "shared")
+        // as Tetra writes a cell with runs (inline), read again
+        val xml = SheetSave.cellXml("A1", 0, book.sheet(0)[0, 0]!!)!!
+        parts["xl/worksheets/sheet1.xml"] = String(parts.getValue("xl/worksheets/sheet1.xml")).replace(Regex("""<c r="A1"[^>]*?(/>|>.*?</c>)"""), xml).toByteArray()
+        val inline = File(dir, "inline.xlsx").apply { writeBytes(OfficeFormats.zip(parts)) }
+        check(Sheets.read(inline, ',', '.').sheet(0)[0, 0], "inline")
+        // LibreOffice's own save of it
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return
+        val out = File(dir, "lo").apply { mkdirs() }
+        ProcessBuilder("soffice", "--headless", "--convert-to", "xlsx", "--outdir", out.path, inline.path).redirectErrorStream(true).start().waitFor()
+        check(Sheets.read(File(out, "inline.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's save")
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

@@ -59,8 +59,8 @@ How to write here:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph. Unit suite 442, 0 failing; sweep 349 + 29,
-      none failing (22:15).
+      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph (ba2ea50); engine step 5 (103a2b8); step 6
+      for .xlsx. Unit suite 443, 0 failing; sweep 349 + 29, none failing (22:40).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -239,7 +239,15 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       and `LetterLooks` moved from OfficePages.kt (U, topPt/bottomPt and the two spans now internal, as both files use them). The layout
       itself (`OfficePages.stack`, `paragraph`) stays in OfficePages: it shares some forty private helpers with Words' page layout, so
       moving it would not be a pure move. Words' fingerprint unchanged (emulator); unit 442/0/7.
-- [ ] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
+- [~] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
+      Done (office-F session, 17 Oct): a cell's rich text (`SheetCell.runs`, Words' `DocRun`s; `rich` only while they still are its words)
+      read from Excel's shared strings and inline strings (`Xlsx.RichRuns`: rPr b, i, u, strike, sz, colour, rFont), written back as
+      Excel's runs when the cell is written (`SheetSave.runsXml`); rich, wrapped and justified cells laid out and drawn by the engine
+      (`SheetPainter.cellBlock`: a paragraph a line, `OfficePages.stack` with a cell's own plain look, `TextBoxDrawable.framed` at the
+      cell's vertical alignment; the old one-look StaticLayout gone); Shrink to fit read (Excel's shrinkToFit, LibreOffice's
+      shrink-to-fit) and drawn (smaller letters until they fit). `rich text in a cell` (shared, Tetra's inline, LibreOffice's own save);
+      emulator: "Na" bold, "me" red italic 14 pt; sheet.xlsx's merged wrapped cell in its row. The user's 31 workbooks all read.
+      Not yet: an .ods cell's rich text (text:span) read and written; rich text typed in Tables (a cell typed in is one look).
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,
       the user's document sweep (`UserDocsSweepTest`, TETRA_SWEEP=1), the LibreOffice round trips, and a walk of
       Words, Slides and Tables on the tablet (TEST_TREE.md) — numbers before and after written here.

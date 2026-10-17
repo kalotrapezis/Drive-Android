@@ -44,10 +44,17 @@ internal object SheetSave {
             cell.kind == SheetKind.Number -> "<c r=\"$ref\"$s><v>${num(cell.value ?: 0.0)}</v></c>"
             cell.kind == SheetKind.Bool -> "<c r=\"$ref\"$s t=\"b\"><v>${if (cell.value == 1.0) 1 else 0}</v></c>"
             cell.kind == SheetKind.Error -> "<c r=\"$ref\"$s t=\"e\"><v>${esc(cell.text)}</v></c>"
-            cell.kind == SheetKind.Text -> "<c r=\"$ref\"$s t=\"inlineStr\"><is><t xml:space=\"preserve\">${esc(cell.text)}</t></is></c>"
+            cell.kind == SheetKind.Text -> "<c r=\"$ref\"$s t=\"inlineStr\"><is>${cell.rich?.let(::runsXml) ?: "<t xml:space=\"preserve\">${esc(cell.text)}</t>"}</is></c>"
             style > 0 -> "<c r=\"$ref\"$s/>"
             else -> null
         }
+    }
+
+    /** Rich text as Excel writes it: a run each, its look in rPr (font, bold, italic, strike, colour, size, underline: Excel's order). */
+    fun runsXml(runs: List<DocRun>): String = runs.joinToString("") { r ->
+        val pr = listOfNotNull(DocStyles.Plain.fontName(r.font)?.let { "<rFont val=\"${esc(it)}\"/>" }, "<b/>".takeIf { r.bold }, "<i/>".takeIf { r.italic }, "<strike/>".takeIf { r.strike },
+            r.color?.let { "<color rgb=\"FF%06X\"/>".format(it and 0xFFFFFF) }, r.sizePt?.let { "<sz val=\"${num(it.toDouble())}\"/>" }, "<u/>".takeIf { r.underline }).joinToString("")
+        "<r>${if (pr.isEmpty()) "" else "<rPr>$pr</rPr>"}<t xml:space=\"preserve\">${esc(r.text)}</t></r>"
     }
 
     private val CELL = Regex("""<c\b[^>]*?(?:/>|>.*?</c>)""", RegexOption.DOT_MATCHES_ALL)

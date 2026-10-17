@@ -110,6 +110,8 @@ internal data class SheetPrint(
     val landscape: Boolean = false, val scale: Int = 100, val fitWidth: Int? = null, val fitHeight: Int? = null,
     val grid: Boolean = false, val margins: List<Float> = listOf(0.7f, 0.7f, 0.75f, 0.75f),
     val area: SheetRange? = null, val titles: IntRange? = null, val letter: Boolean = false,
+    /** The pages' header and footer, as Excel's codes ("&CPage &P"): [SheetHeaderFooter]. */
+    val header: String? = null, val footer: String? = null,
 )
 
 /** The last row and column a drawing covers: its end cell, or as far as its size reaches through the rows' heights and columns' widths. */

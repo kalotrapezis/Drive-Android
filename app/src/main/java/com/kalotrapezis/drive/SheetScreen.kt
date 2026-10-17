@@ -186,6 +186,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
+    var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -616,6 +617,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             "xlsx" -> SheetNotes.xlsx(baked, next, b.parts.getValue("$i"), r, c, author, text); "ods" -> SheetNotes.ods(baked, next, i, r, c, author, text)
             else -> error("A CSV file keeps no notes: save it as a workbook first.") } })
     }
+    /** Page layout: this sheet's print settings made [next] (a change to the file). */
+    fun printStep(next: SheetPrint) { val i = index
+        if (book?.kind == "csv") { message = "A CSV file keeps no page settings: save it as a workbook first."; return }
+        fileStep("page layout", { baked, out, bb -> if (bb.kind == "xlsx") SheetPageSetup.xlsx(baked, out, bb.parts.getValue("$i"), i, bb.tabs[i].name, next)
+            else SheetPageSetup.ods(baked, out, i, bb.tabs[i].name, next) })
+    }
     /** Protect ([protect]) or unprotect this sheet, with [password] (none: ""). */
     fun protectSheet(protect: Boolean, password: String) { val i = index
         fileStep(if (protect) "sheet protected" else "sheet unprotected", { baked, next, b -> when (b.kind) {
@@ -745,7 +752,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             val result = withContext(Dispatchers.IO) { runCatching {
                 val stem = f.nameWithoutExtension + if (b.tabs.count { !it.hidden } > 1) " - ${s.name}" else ""
                 val target = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
-                val n = target.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) }
+                val n = target.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density, file?.name.orEmpty()) }
                 WriterLog.i("Sheets: PDF of $n pages, ${target.length() / 1024} KB")
                 target
             } }
@@ -759,7 +766,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val title = file?.nameWithoutExtension ?: "Spreadsheet"
         scope.launch {
             val pdf = withContext(Dispatchers.IO) { runCatching {
-                File(context.cacheDir, "print.pdf").also { out -> out.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density) } }
+                File(context.cacheDir, "print.pdf").also { out -> out.outputStream().use { SheetPainter.pdf(s, b.styles, l, it, density, file?.name.orEmpty()) } }
             }.onFailure { WriterLog.e("Sheets: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
             context.getSystemService(android.print.PrintManager::class.java)?.print(title, PdfPrintAdapter(pdf, title), null)
             WriterLog.i("Sheets: print ${pdf.length() / 1024} KB")
@@ -1042,10 +1049,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         shown == "Page layout" -> {
                             // Excel's Page Layout: how the sheet prints (Export PDF and Print use it), kept in the file
                             val p = s.print
-                            fun setPrint(change: (SheetPrint) -> SheetPrint) { if (b.kind == "csv") { message = "A CSV file keeps no page settings: save it as a workbook first."; return }
-                                val i = index; val next = change(p)
-                                fileStep("page layout", { baked, out, bb -> if (bb.kind == "xlsx") SheetPageSetup.xlsx(baked, out, bb.parts.getValue("$i"), i, bb.tabs[i].name, next)
-                                    else SheetPageSetup.ods(baked, out, i, bb.tabs[i].name, next) }) }
+                            fun setPrint(change: (SheetPrint) -> SheetPrint) = printStep(change(p))
                             @Composable fun menu(label: String, icon: Int, choices: List<Pair<String, Boolean>>, pick: (Int) -> Unit) = Box {
                                 var open by remember { mutableStateOf(false) }
                                 RibbonButton(label, w, icon) { open = true }
@@ -1062,6 +1066,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Set print area", w, R.drawable.ic_print, enabled = g != null) { g?.let { d -> setPrint { it.copy(area = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2])) } } }
                             if (p.area != null) RibbonButton("Clear print area", w, R.drawable.ic_close) { setPrint { it.copy(area = null) } }
+                            // Excel's Header & Footer: its ready-made ones, or Custom… (left, centre, right)
+                            val presets = SheetHeaderFooter.PRESETS
+                            for ((kind, now) in listOf("header" to p.header, "footer" to p.footer))
+                                menu(if (kind == "header") "Header" else "Footer", if (kind == "header") R.drawable.ic_vertical_align_top else R.drawable.ic_vertical_align_bottom,
+                                    presets.map { (n, c) -> n to (now == c) } + ("Custom…" to (now != null && presets.none { it.second == now }))) { k ->
+                                    if (k < presets.size) setPrint { if (kind == "header") it.copy(header = presets[k].second) else it.copy(footer = presets[k].second) } else footing = kind }
                             // Excel's Print Titles: the chosen rows printed at the top of every page
                             RibbonButton("Print titles", w, R.drawable.ic_title, enabled = g != null, on = p.titles != null) { g?.let { d -> setPrint { it.copy(titles = l.rows[d.r1]..l.rows[d.r2]) } } }
                             if (p.titles != null) RibbonButton("Clear print titles", w, R.drawable.ic_close) { setPrint { it.copy(titles = null) } }
@@ -1492,6 +1502,21 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = step.replace(',', '.').toDoubleOrNull() != null, onClick = { stepping = null
                 fillSeries(g, type, step.replace(',', '.').toDouble()) }) { Text("Fill") } },
             dismissButton = { TextButton(onClick = { stepping = null }) { Text("Cancel") } }) }
+    // Page layout › Header or Footer › Custom…: Excel's three parts, the fields put in where the cursor is
+    footing?.let { kind -> sheet?.let { s -> val now = if (kind == "header") s.print.header else s.print.footer
+        val parts = remember(kind) { androidx.compose.runtime.mutableStateListOf(*SheetHeaderFooter.parts(now).map { TextFieldValue(it, androidx.compose.ui.text.TextRange(it.length)) }.toTypedArray()) }
+        var focused by remember(kind) { mutableStateOf(1) }
+        AlertDialog(onDismissRequest = { footing = null }, title = { Text(if (kind == "header") "Header" else "Footer") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Left", "Centre", "Right").forEachIndexed { k, label -> OutlinedTextField(parts[k], { parts[k] = it }, label = { Text(label) },
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) focused = k }) }
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SheetHeaderFooter.FIELDS.forEach { (field, _) -> androidx.compose.material3.AssistChip({ val t = parts[focused]; val at = t.selection.min
+                        parts[focused] = TextFieldValue(t.text.substring(0, at) + field + t.text.substring(t.selection.max), androidx.compose.ui.text.TextRange(at + field.length)) },
+                        { Text(field.trim('[', ']')) }) } } } },
+            confirmButton = { TextButton(onClick = { footing = null; val code = SheetHeaderFooter.code(parts.map { it.text })
+                printStep(if (kind == "header") s.print.copy(header = code) else s.print.copy(footer = code)) }) { Text("Done") } },
+            dismissButton = { TextButton(onClick = { footing = null }) { Text("Cancel") } }) } }
     // the sheet tab › Protect (a password twice, or none) or Unprotect (its password)
     if (protecting) sheet?.let { s -> val unprotect = s.protected
         var password by remember { mutableStateOf("") }; var again by remember { mutableStateOf("") }
@@ -2664,16 +2689,33 @@ internal class SheetPainter(
 
     companion object {
         val EXCEL_GREEN_ARGB = 0xFF107C41.toInt()
+
+        /** The page's header and footer as Excel prints them: 10 pt, 0.3" from the edge, left, centre and right of the margins. */
+        fun headerFooter(c: android.graphics.Canvas, pages: SheetPages, sheet: Sheet, page: Int, count: Int, file: String) {
+            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10f; color = 0xFF000000.toInt() }
+            val right = pages.width - sheet.print.margins[1] * 72
+            for ((code, top) in listOf(sheet.print.header to true, sheet.print.footer to false)) {
+                SheetHeaderFooter.parts(code ?: continue).forEachIndexed { k, part ->
+                    val lines = SheetHeaderFooter.shown(part, page, count, sheet.name, file).split('\n').filter { it.isNotEmpty() }
+                    lines.forEachIndexed { n, line ->
+                        val y = if (top) 0.3f * 72 + 10f + n * 12f else pages.height - 0.3f * 72 - (lines.size - 1 - n) * 12f
+                        val x = when (k) { 0 -> pages.left; 1 -> pages.width / 2 - paint.measureText(line) / 2; else -> right - paint.measureText(line) }
+                        c.drawText(line, x, y, paint)
+                    }
+                }
+            }
+        }
         private val NO_MARKS = SheetMarks(emptySet(), -1L)
 
         /** The sheet as Excel prints it, one PDF page a page (Export PDF and Print). */
-        fun pdf(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, out: java.io.OutputStream, density: Float): Int {
+        fun pdf(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, out: java.io.OutputStream, density: Float, file: String = ""): Int {
             val pages = sheetPages(sheet, layout)
             val painter = SheetPainter(sheet, styles, density, layout)
             val doc = android.graphics.pdf.PdfDocument()
             pages.pages.forEachIndexed { i, p ->
                 val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pages.width.toInt(), pages.height.toInt(), i + 1).create())
                 painter.printPage(page.canvas, pages, p, sheet.print.grid)
+                headerFooter(page.canvas, pages, sheet, i + 1, pages.pages.size, file)
                 doc.finishPage(page)
             }
             doc.writeTo(out); doc.close()

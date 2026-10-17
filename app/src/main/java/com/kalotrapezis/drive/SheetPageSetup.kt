@@ -29,9 +29,13 @@ internal object SheetPageSetup {
             val margins = """<pageMargins left="${num(l)}" right="${num(r)}" top="${num(t)}" bottom="${num(b)}" header="0.3" footer="0.3"/>"""
             val options = if (p.grid) """<printOptions gridLines="1"/>""" else ""
             x = x.replace(Regex("""<printOptions\b[^>]*/>"""), "").replace(Regex("""<pageMargins\b[^>]*/>"""), "").replace(Regex("""<pageSetup\b[^>]*/>"""), "")
+                .replace(Regex("""<headerFooter\b[^>]*?(?:/>|>[\s\S]*?</headerFooter>)"""), "")
+            // shortcut: Excel's even-page and first-page headers are not kept (one header and footer for every page)
+            val hf = if (p.header == null && p.footer == null) "" else "<headerFooter>" + (p.header?.let { "<oddHeader>${OfficeFormats.esc(it)}</oddHeader>" } ?: "") +
+                (p.footer?.let { "<oddFooter>${OfficeFormats.esc(it)}</oddFooter>" } ?: "") + "</headerFooter>"
             // in the schema's place: after the sheet's data and its rules, links and validations; before the header and footer and the rest
             val at = Regex("""<(headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|drawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b""").find(x)?.range?.first ?: x.lastIndexOf("</worksheet>")
-            x = x.substring(0, at) + options + margins + setupXml + x.substring(at)
+            x = x.substring(0, at) + options + margins + setupXml + hf + x.substring(at)
             // fit to pages is a sheet property (sheetPr's pageSetUpPr)
             val fit = """<pageSetUpPr fitToPage="${if (p.fitWidth != null) 1 else 0}"/>"""
             x = when {
@@ -90,7 +94,9 @@ internal object SheetPageSetup {
             // Excel's top and bottom are the page's edge to the cells: LibreOffice's margin plus its header's (footer's) room
             margins = listOf(inches("margin-left") ?: 0.79f, inches("margin-right") ?: 0.79f, (inches("margin-top") ?: 0.79f) + room(layout, master, "header") / 72f,
                 (inches("margin-bottom") ?: 0.79f) + room(layout, master, "footer") / 72f),
-            area = area, letter = Math.abs(minOf(w, h) - 612f) < 3f)
+            area = area, letter = Math.abs(minOf(w, h) - 612f) < 3f,
+            header = master?.let { m -> SheetHeaderFooter.fromOds(kids(m).firstOrNull { it.localName == "header" }) },
+            footer = master?.let { m -> SheetHeaderFooter.fromOds(kids(m).firstOrNull { it.localName == "footer" }) })
     }
 
     fun ods(source: File, target: File, index: Int, name: String, p: SheetPrint) {
@@ -117,6 +123,13 @@ internal object SheetPageSetup {
             val (short, long) = if (p.letter) 612f to 792f else 595.3f to 841.9f
             pr.setAttributeNS(FO, "fo:page-width", cm((if (p.landscape) long else short) / 72f)); pr.setAttributeNS(FO, "fo:page-height", cm((if (p.landscape) short else long) / 72f))
             pr.setAttributeNS(S, "style:print-orientation", if (p.landscape) "landscape" else "portrait")
+            // the header and footer: the master page's regions, the page layout giving them room (LibreOffice's default) when it gave none
+            SheetHeaderFooter.intoOds(master, "header", p.header); SheetHeaderFooter.intoOds(master, "footer", p.footer)
+            for ((kind, code) in listOf("header" to p.header, "footer" to p.footer)) if (code != null && kids(layout).none { it.localName == "$kind-style" && kids(it).isNotEmpty() }) {
+                kids(layout).filter { it.localName == "$kind-style" }.forEach { layout.removeChild(it) }
+                layout.appendChild(styles.createElementNS(S, "style:$kind-style").also { st -> st.appendChild(styles.createElementNS(S, "style:header-footer-properties").also {
+                    it.setAttributeNS(FO, "fo:min-height", "0.75cm"); it.setAttributeNS(FO, if (kind == "header") "fo:margin-bottom" else "fo:margin-top", "0.25cm") }) })
+            }
             val rooms = listOf(0f, 0f, room(layout, master, "header") / 72f, room(layout, master, "footer") / 72f)
             listOf("margin-left", "margin-right", "margin-top", "margin-bottom").zip(p.margins).forEachIndexed { k, (n, v) -> pr.setAttributeNS(FO, "fo:$n", cm(maxOf(0f, v - rooms[k]))) }
             listOf("scale-to", "scale-to-X", "scale-to-Y", "scale-to-pages").forEach { pr.removeAttributeNS(S, it) }

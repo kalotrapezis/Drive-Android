@@ -70,9 +70,9 @@ How to write here:
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
-      Print titles. Checks at a925139: unit
+      Print titles (420575e), Header and footer. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -796,7 +796,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Rows repeated on every page done (office-F session, 18 Oct): Page layout › Print titles with rows chosen, Clear print titles —
       Excel's _xlnm.Print_Titles (read and printed before), LibreOffice's table:table-header-rows round the rows, now read too (an .ods
       printed without them before). In `page layout saved` (both formats, LibreOffice's conversions); emulator: an .ods's rows 1–2.
-      shortcut: columns printed on every page not kept; rows in a row group not wrapped. Not yet: header and footer.
+      shortcut: columns printed on every page not kept; rows in a row group not wrapped.
+      Header and footer done (office-F session, 18 Oct): Page layout › Header and Footer — Excel's ready-made ones (Page 1, Page 1 of ?,
+      sheet name, file name…) and Custom… (Left, Centre, Right, with Page, Pages, Sheet, File, Date and Time to put in); kept as
+      Excel's codes (`SheetPrint.header`/`footer`, `SheetHeaderFooter`): Excel's headerFooter read and written, LibreOffice's master
+      page regions and fields read and written (an .ods's own "sheet name / Page 1" now read, as LibreOffice prints it), and printed:
+      Export PDF and Print draw them 0.3" from the edges. In `page layout saved` (both formats, LibreOffice's conversions); emulator:
+      "Draft | sheet name" and "Page 1 of ?" in the exported PDF. shortcut: one header for every page (Excel's first/even ones not kept).
 - [~] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
       Respecting a protected sheet done (office-F session, 17 Oct): Excel's sheetProtection and LibreOffice's table:protected read
       (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);

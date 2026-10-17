@@ -278,7 +278,12 @@ class SheetSaveTest {
     /** Page layout: landscape, Letter, wide margins, all columns on one page, gridlines printed, a print area — Excel's and LibreOffice's. */
     @Test fun `page layout saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
-        val want = SheetPrint(landscape = true, letter = true, margins = listOf(1f, 1f, 1f, 1f), fitWidth = 1, fitHeight = 0, grid = true, area = SheetRange(0, 0, 4, 3), titles = 0..1)
+        val want = SheetPrint(landscape = true, letter = true, margins = listOf(1f, 1f, 1f, 1f), fitWidth = 1, fitHeight = 0, grid = true, area = SheetRange(0, 0, 4, 3), titles = 0..1,
+            header = "&LDraft&CPage &P of &N", footer = "&C&A")
+        assertEquals(listOf("Draft", "Page [Page] of [Pages]", "[Date]"), SheetHeaderFooter.parts("&L&\"Arial,Bold\"&12Draft&CPage &P of &N&R&D"))
+        assertEquals("&LA&&B&C&P", SheetHeaderFooter.code(listOf("A&B", "[Page]", ""))); assertEquals(listOf("A&B", "[Page]", ""), SheetHeaderFooter.parts("&LA&&B&C&P"))
+        assertEquals(null, SheetHeaderFooter.code(listOf("", " ", "")))
+        assertEquals("Page 2 of 5, Numbers", SheetHeaderFooter.shown("Page [Page] of [Pages], [Sheet]", 2, 5, "Numbers", "a.xlsx"))
         for (name in listOf("sheet.xlsx", "sheet.ods")) {
             val dir = Files.createTempDirectory("page").toFile()
             val f = File(dir, name).apply { writeBytes(resource(name)) }
@@ -287,6 +292,7 @@ class SheetSaveTest {
             fun check(file: File, how: String) {
                 val b = Sheets.read(file, ',', '.'); val p = b.sheet(0).print
                 assertTrue(how, p.landscape); assertTrue(how, p.letter); assertTrue(how, p.grid); assertEquals(how, SheetRange(0, 0, 4, 3), p.area); assertEquals(how, 0..1, p.titles)
+                assertEquals(how, SheetHeaderFooter.parts(want.header), SheetHeaderFooter.parts(p.header)); assertEquals(how, SheetHeaderFooter.parts(want.footer), SheetHeaderFooter.parts(p.footer))
                 assertEquals(how, 1, p.fitWidth); assertEquals(how, 0, p.fitHeight ?: 0)
                 // LibreOffice turns a page's header room into Excel's margins its own way (a few hundredths of an inch off)
                 p.margins.forEach { assertEquals(how, 1f, it, if (how.startsWith("LibreOffice")) 0.1f else 0.02f) }

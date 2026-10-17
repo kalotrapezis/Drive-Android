@@ -818,7 +818,7 @@ internal object Sheets {
                 // conditional formatting: the ranges, the rule being read, its formulas and its scale's or bar's points
                 var ext = 0; var cfRanges = emptyList<SheetRange>(); var rule: Map<String, String>? = null
                 // data validation lists: their cells and formula
-                var dvRanges: List<SheetRange>? = null; val dvFormula = StringBuilder()
+                var dvRanges: List<SheetRange>? = null; val dvFormula = StringBuilder(); val headerFooter = StringBuilder()
                 val formula = StringBuilder(); val formulas = ArrayList<String>(); val cfvos = ArrayList<SheetCfvo>(); val colors = ArrayList<Int>()
                 fun color(at: Attributes): Int? {
                     val base = at.a("rgb")?.let { (it.takeLast(6).toLongOrNull(16)?.toInt() ?: return null) or 0xFF000000.toInt() }
@@ -832,6 +832,7 @@ internal object Sheets {
                         "conditionalFormatting" -> cfRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef)
                         "dataValidation" -> dvRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef).takeIf { at.a("type") == "list" }?.also { dvFormula.setLength(0) }
                         "formula1" -> if (dvRanges != null) into = dvFormula
+                        "oddHeader", "oddFooter" -> { headerFooter.setLength(0); into = headerFooter }
                         "pageSetup", "pageSetUpPr", "printOptions", "pageMargins" -> for (i in 0 until at.length) page["$local.${at.getLocalName(i)}"] = at.getValue(i)
                         "cfRule" -> { rule = (0 until at.length).associate { at.getLocalName(it) to at.getValue(it) }; formulas.clear(); cfvos.clear(); colors.clear() }
                         "formula" -> if (rule != null) { formula.setLength(0); into = formula }
@@ -913,6 +914,7 @@ internal object Sheets {
                             rule = null
                         }
                         "v", "f", "t", "formula1" -> into = null
+                        "oddHeader", "oddFooter" -> { page[local] = headerFooter.toString(); into = null }
                         "dataValidation" -> { dvRanges?.let { dvs += it to dvFormula.toString() }; dvRanges = null }
                         "is" -> inIs = false
                         "r" -> if (inIs && phonetic == 0) rich.close()
@@ -987,6 +989,7 @@ internal object Sheets {
                 grid = on("printOptions.gridLines"),
                 margins = listOf("left", "right", "top", "bottom").map { page["pageMargins.$it"]?.toFloatOrNull() ?: if (it == "left" || it == "right") 0.7f else 0.75f },
                 area = area, titles = titles, letter = page["pageSetup.paperSize"] == "1",
+                header = page["oddHeader"]?.takeIf { it.isNotEmpty() }, footer = page["oddFooter"]?.takeIf { it.isNotEmpty() },
             )
         }
 

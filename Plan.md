@@ -22,6 +22,7 @@ How to write here:
 - [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
 - [x] (20e0b17) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
 - [x] (f65b50a) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
+- [~] (office-engine session, 17 Oct) The Office engine, steps 0–4 (B's first item below).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -129,9 +130,14 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
 .xlsx's rich text to plain. Words' typing editor (`WriterBridge`) stays as it is — it is not part of the page drawing.
 
 **Steps, each one commit that leaves Words exactly as it was:**
-- [ ] 0. A check that Words is unchanged: a device test (installed + `am instrument`, never connectedAndroidTest)
+- [x] 0. A check that Words is unchanged: a device test (installed + `am instrument`, never connectedAndroidTest)
       that lays out the test documents and a few with text boxes, and compares each page's lines and a picture of it
       with a stored copy. No unit test touches the drawing today, so this comes first (~80 lines).
+      Done: `WordsFingerprintDeviceTest` — the six Word suite files, Test-Words' TextBox, Art, Gallery and Tetra test,
+      group.odt and sections.odt (copies in androidTest/assets/fingerprint): 25 pages, each page's pieces, line ends,
+      floats (a text box's lines too) and an MD5 of the page drawn at 2×, against `expected-<model>.txt` (emulator-5554
+      stored; the same twice running). Run: assembleDebug assembleDebugAndroidTest, install both, `am instrument -w -e
+      class com.kalotrapezis.drive.WordsFingerprintDeviceTest com.kalotrapezis.drive.test/androidx.test.runner.AndroidJUnitRunner`.
 - [ ] 1. Slides' text boxes and table cells drawn by Words' engine: `stack` shared; the frame gets four insets, no
       clipping (PowerPoint lets text overflow its box) and no default border; a list-marker hook so a slide's own
       bullet character and colour show; a `SlidesText.kt` adapter (a slide's text → `DocPara`s, its own `DocStyles`);

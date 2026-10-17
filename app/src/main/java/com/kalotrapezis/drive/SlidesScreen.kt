@@ -410,6 +410,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var drawing by remember { mutableStateOf(false) } // Draw › Draw on slide: Words' drawing page over the chosen slide
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
+    var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
     /** The name of the section slide [i] starts, if one does (Home › Section). */
@@ -776,8 +777,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
             "View" -> {
                 // PowerPoint's Presentation Views: the slide (Normal) or every slide in a grid (Slide sorter), where several are moved at once
-                RibbonButton("Normal", w, R.drawable.ic_crop_landscape, on = !sorter) { sorter = false }
-                RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; item = null; marked = setOf(uid) }
+                RibbonButton("Normal", w, R.drawable.ic_crop_landscape, on = !sorter && !outline) { sorter = false; outline = false }
+                RibbonButton("Outline", w, R.drawable.ic_view_list, on = outline) { outline = true; sorter = false; item = null; typing = null }
+                RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; outline = false; item = null; marked = setOf(uid) }
                 if (sorter) {
                     RibbonDivider(w)
                     Text("${marked.size} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -1048,6 +1050,42 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             list.filter { it.comment.parent == null }.forEach { sc -> CommentCard(sc.comment, sc.comment.id == hereComment, act) }
                         }
                     }
+                    /** View › Outline: one text box's words, typed into where they are (one step of Undo a visit), its hint while empty. */
+                    @Composable fun OutlineField(uid: Int, sh: SlideItem.Shape, first: Boolean) {
+                        val start = if (sh.hint) "" else SlidesEdit.lines(sh).joinToString("\n")
+                        var v by remember(uid, sh.id) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(start)) }
+                        var focused by remember(uid, sh.id) { mutableStateOf(false) }; var stepped by remember(uid, sh.id) { mutableStateOf(false) }
+                        LaunchedEffect(start) { if (!focused && v.text != start) v = androidx.compose.ui.text.input.TextFieldValue(start) } // Undo shown
+                        androidx.compose.foundation.text.BasicTextField(v, { nv -> v = nv
+                                val e = edit ?: return@BasicTextField; val next = e.copy(texts = e.texts + ((uid to sh.id!!) to nv.text.split("\n")))
+                                if (stepped) edit = next else { change(next); stepped = true } },
+                            textStyle = (if (first) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium).copy(color = Color.White),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                            modifier = Modifier.fillMaxWidth().padding(start = if (first) 0.dp else 16.dp, top = 4.dp).onFocusChanged { f -> focused = f.isFocused; if (!f.isFocused) stepped = false },
+                            decorationBox = { inner -> Box { if (v.text.isEmpty()) Text(if (first) "Title" else "Text", color = Color.White.copy(alpha = 0.4f), style = if (first) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium); inner() } })
+                    }
+                    /**
+                     * View › Outline (PowerPoint's): every slide's words in one list, each text box in its place top to bottom, typed into
+                     * there (good on a phone); a slide's number opens it in Normal.
+                     */
+                    @Composable fun Outline(d: Deck) {
+                        val ee = edit ?: return
+                        LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = PaddingValues(20.dp, if (OfficeUi.top) 150.dp else 16.dp, 20.dp, if (OfficeUi.top) 16.dp else 150.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                            itemsIndexed(d.slides) { i, s ->
+                                val uid = ee.order.getOrNull(i)?.uid ?: return@itemsIndexed
+                                Row(Modifier.fillMaxWidth().widthIn(max = 900.dp)) {
+                                    Text("${i + 1}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.width(40.dp).clickable { chosen = i; outline = false })
+                                    Column(Modifier.weight(1f)) {
+                                        sectionAt(i)?.let { Text(it, color = POWERPOINT_ORANGE, style = MaterialTheme.typography.labelLarge) }
+                                        val boxes = s.items.filterIsInstance<SlideItem.Shape>().filter { it.id != null && !it.grouped && (it.text != null || it.hint) && it.id !in s.footerIds }.sortedWith(compareBy({ it.y }, { it.x }))
+                                        if (boxes.isEmpty()) Text("(no words)", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                                        boxes.forEachIndexed { k, sh -> OutlineField(uid, sh, k == 0) }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     /**
                      * View › Slide sorter (PowerPoint's): every slide small in a grid. A tap chooses it (or lets it go); a slide held and
                      * dragged moves there, with the others chosen; double-tapped, it opens in Normal.
@@ -1194,7 +1232,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // a tablet editing (asked 16 Oct): the slides in a sidebar, the chosen one big beside it, as PowerPoint's and LibreOffice's
-                    if (sorter && editing) SlideSorter(d) else if (wide && editing) Row(Modifier.fillMaxSize()) {
+                    if (outline && editing) Outline(d) else if (sorter && editing) SlideSorter(d) else if (wide && editing) Row(Modifier.fillMaxSize()) {
                         LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 150.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(d.slides) { i, s ->
                                 Column {
@@ -1272,7 +1310,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter })
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter && !outline })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }

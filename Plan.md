@@ -371,8 +371,12 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       PowerPoint 365 shows; a slide's 365 threads become it when its comments are changed) and as Impress's annotations (a reply
       its own annotation: Impress has no threads). `comments saved` (both, LibreOffice's conversions; LibreOffice reads a
       comment's place only roughly — its own 5 cm comes back 4.76). Emulator: read, added, saved; phone size too. Spelling: not yet Unit 417/0/7; sweep 349 + 29, none failing.
-- [ ] **View**: Outline (every slide's words as one list to edit, good on a phone); notes page; editing the slide
+- [~] **View**: Outline (every slide's words as one list to edit, good on a phone); notes page; editing the slide
       master; grid and guides with snapping; zoom.
+      Outline done 17 Oct (office-C session): View › Normal / Outline / Slide sorter; Outline lists every slide's text boxes top to bottom
+      (the first as its title, sections named), each typed into in place — one step of Undo a box visited, an empty placeholder shown
+      by its hint; a slide's number opens it in Normal. Saved as any typed words (each line over the paragraph it came from).
+      Emulator: "Plan and more" typed there. Not shown there: a paragraph's list level (kept in the file).
 - [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
 - [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).

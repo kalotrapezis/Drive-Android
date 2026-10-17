@@ -43,10 +43,11 @@ internal object SlidesEdit {
         /** Shape options (Words'): the outline's width (pt); its words for screen readers ("" none) */ val lineWidth: Float? = null, val alt: String? = null,
         /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
         /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
-        /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null) {
+        /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null,
+        /** Home's superscript and subscript (Words'): every letter raised (1), lowered (−1) or on the line (0) */ val script: Int? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -76,7 +77,7 @@ internal object SlidesEdit {
                 l.font?.let { f -> r = r.copy(font = Slides.face(f) + r.font.orEmpty().replace(FACE, "")) }
                 l.size?.let { r = r.copy(sizePt = it) }
                 l.bold?.let { r = r.copy(bold = it) }; l.italic?.let { r = r.copy(italic = it) }
-                l.underline?.let { r = r.copy(underline = it) }; l.strike?.let { r = r.copy(strike = it) }
+                l.underline?.let { r = r.copy(underline = it) }; l.strike?.let { r = r.copy(strike = it) }; l.script?.let { r = r.copy(script = it) }
                 l.text?.let { r = r.copy(color = it and 0xFFFFFF) }
                 l.highlight?.let { h -> r = r.copy(highlight = h.takeIf { it != NONE }?.and(0xFFFFFF)) }
                 // a link in Office's link colour (the theme's, once saved and read again)
@@ -361,6 +362,8 @@ internal object SlidesEdit {
                 l.italic?.let { rPr.setAttribute("i", if (it) "1" else "0") }
                 l.underline?.let { rPr.setAttribute("u", if (it) "sng" else "none") }
                 l.strike?.let { rPr.setAttribute("strike", if (it) "sngStrike" else "noStrike") }
+                // as PowerPoint's Superscript and Subscript (Font dialog): 30 % up, 25 % down
+                l.script?.let { if (it == 0) rPr.removeAttribute("baseline") else rPr.setAttribute("baseline", if (it > 0) "30000" else "-25000") }
                 l.text?.let { c -> listOf("noFill", "gradFill", "blipFill", "pattFill", "grpFill").forEach { n -> rPr.kids().filter { it.localName == n }.forEach { rPr.removeChild(it) } }; place(rPr, rgb(c, "solidFill"), RPR) }
                 l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }

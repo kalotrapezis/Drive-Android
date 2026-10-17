@@ -74,14 +74,15 @@ class SlidesTest {
         assertEquals(listOf("struck", "up", "small caps and  more", "\tlink"), shown.map { it.text }); assertTrue(shown[0].strike)
     }
 
-    /** Slides' Home (17 Oct, Words' tools): a box's words in a face, size, looks, colours; its paragraphs aligned, numbered, spaced; its anchor and autofit — saved, read back, opened by LibreOffice. */
+    /** Slides' Home (17 Oct, Words' tools): a box's words in a face, size, looks (superscript too), colours; its paragraphs aligned, numbered, spaced; its anchor and autofit — saved, read back, opened by LibreOffice. */
     @Test fun `Home's looks on a box saved`() {
         val look = SlidesEdit.Look(font = "Georgia", size = 28f, bold = true, underline = true, strike = true, text = 0xFFC00000.toInt(), highlight = 0xFFFFFF00.toInt(),
-            align = DocAlign.Center, list = '1', spacing = 1.5f, anchor = 'b', autofit = 's')
+            align = DocAlign.Center, list = '1', spacing = 1.5f, anchor = 'b', autofit = 's', script = 1)
         fun check(d: Deck, how: String) {
             val t = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!
             val r = t.paras[0].runs[0]
             assertEquals(how, "Georgia", DocStyles.Plain.fontName(r.font)); assertEquals(how, 28f, r.sizePt!!, 0.1f); assertTrue(how, r.bold && r.underline && r.strike)
+            assertEquals(how, 1, r.script) // X² (B's Home extras)
             // LibreOffice 26.2 draws the .odp's red, but its .pptx of it names the outline's theme colour instead (its exporter's)
             if (!how.startsWith("LibreOffice's pptx")) assertEquals(how, 0xC00000, r.color); assertEquals(how, 0xFFFF00, r.highlight)
             assertEquals(how, listOf("1.", "1.", "2.", "2.", "1."), t.paras.map { it.bullet?.text?.trim() }) // each level counted on its own

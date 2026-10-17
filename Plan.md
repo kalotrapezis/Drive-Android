@@ -514,9 +514,15 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       **Shared piece:** Words' Selection tab (labels, icons, order), Slides' own copy/paste underneath. Emulator: title copied and pasted,
       its look pasted on the subtitle. Not yet: Select all (needs choosing several things at once — with Group below); a pasted box's
       paragraph alignment (`Added.runs` keeps letters only); pasting into another deck works within one Slides session only.
-- [ ] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
+- [~] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
       lists; Words' paragraph page (More…: indents, spacing before and after, line spacing exactly); a text box's
       border and shading (as Words' Borders, written as the shape's line and fill).
+      Done 17 Oct (office-D session): X² and X₂ (Words' buttons) on the box's words — `Look.script`, saved as PowerPoint's baseline 30000 /
+      −25000 and LibreOffice's text-position super/sub 58 %, read back from both and LibreOffice's conversions; Aa (Words' Change case:
+      `WriterBridge.inCase`, the four cases) on the box's lines, each letter keeping its look as typed words do (one step of Undo); copied
+      looks carry X²/X₂ too. Smaller / Bigger: Words has none beyond its − size + stepper, which Slides already has. **Shared piece:**
+      Words' X²/X₂ and Aa (`WriterBridge.Case`, `inCase`). `Home's looks on a box saved` (superscript added); emulator: a title made
+      UPPERCASE and raised. Not yet: multilevel lists, Words' paragraph page, a text box's borders and shading.
 - [~] **Insert**: **Drop cap** — (office-engine session, 17 Oct: the strip and Raised done, Slides' Dropped next) PowerPoint and Impress have none, so it is either a raised cap (the first letter a
       bigger run of its own, which every app shows) or a dropped one (the letter in its own box, the paragraph's first
       lines indented beside it: looks right everywhere but doesn't reflow). **The user, 17 Oct:** "these are options,

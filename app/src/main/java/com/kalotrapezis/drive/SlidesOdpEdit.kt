@@ -186,6 +186,8 @@ internal object SlidesOdpEdit {
                 l.italic?.let { t.setAttributeNS(FO, "fo:font-style", if (it) "italic" else "normal") }
                 l.underline?.let { t.setAttributeNS(STYLE, "style:text-underline-style", if (it) "solid" else "none"); if (it) { t.setAttributeNS(STYLE, "style:text-underline-width", "auto"); t.setAttributeNS(STYLE, "style:text-underline-color", "font-color") } }
                 l.strike?.let { t.setAttributeNS(STYLE, "style:text-line-through-style", if (it) "solid" else "none") }
+                // as LibreOffice's Format › Text › Superscript and Subscript
+                l.script?.let { t.setAttributeNS(STYLE, "style:text-position", when { it > 0 -> "super 58%"; it < 0 -> "sub 58%"; else -> "0% 100%" }) }
                 l.text?.let {
                     t.setAttributeNS(FO, "fo:color", hex(it)); t.setAttributeNS(STYLE, "style:use-window-font-color", "false") // else LibreOffice paints the window's colour
                     // and a theme colour it named before goes, or LibreOffice keeps writing that one (its .pptx: dk1)
@@ -196,7 +198,7 @@ internal object SlidesOdpEdit {
                 // WordArt: hollow letters and a shadow, as LibreOffice has them (no glow on letters)
                 l.effects?.let { fx -> t.setAttributeNS(STYLE, "style:text-outline", "${fx.outline != null}"); t.setAttributeNS(FO, "fo:text-shadow", if (fx.shadow) "1pt 1pt" else "none") }
             }
-            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null || l.text != null || l.highlight != null || l.effects != null
+            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null  || l.text != null || l.highlight != null || l.effects != null || l.script != null
             for (p in paras(h)) {
                 if (l.cleared) {
                     // the letters' own looks gone: the spans' words put back in the paragraph, its own text looks taken off

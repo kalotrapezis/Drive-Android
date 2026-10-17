@@ -631,7 +631,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val pl = painter ?: return@LaunchedEffect
         if (words == null) return@LaunchedEffect
         painter = null
-        restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align) }
+        restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align, script = pl.script) }
         message = "Look painted"
     }
     /** File › Versions: [v] in the editor, unsaved — Save puts it over the file; leaving without saving keeps the file as it is. */
@@ -736,13 +736,18 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
+    /** Aa on [box]: its lines in [case] (Words' change case), as one step of Undo; each letter keeps its look (as typed words do). */
+    fun recase(box: SlideItem.Shape, case: WriterBridge.Case) {
+        val e = edit ?: return; val c = chosen ?: return; val id = box.id ?: return
+        change(e.copy(texts = e.texts + ((e.order[c].uid to id) to SlidesEdit.lines(box).map { WriterBridge.inCase(it, case, true) }))); WriterLog.i("Slides: case changed (${case.name})")
+    }
     /** The look of [box]'s words (its first letters' and paragraph's), for the Format painter and Copy formatting. */
     fun lookOf(box: SlideItem.Shape): SlidesEdit.Look? {
         val t = box.text ?: return null
         val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: t.paras.firstOrNull()?.runs?.firstOrNull()
         val p = t.paras.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } } ?: t.paras.firstOrNull()
         return SlidesEdit.Look(font = DocStyles.Plain.fontName(r?.font), size = r?.sizePt, bold = r?.bold, italic = r?.italic, underline = r?.underline,
-            strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align)
+            strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align, script = r?.script)
     }
     /** Home's text tools for [box] (17 Oct), Words' own: font strip, size, B I U S, colours, painter, clear; lists, alignment, spacing; anchor, autofit. */
     @Composable fun HomeText(box: SlideItem.Shape, w: Color) {
@@ -757,6 +762,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         Tool(R.drawable.ic_format_italic, "Italic", w, on = r?.italic == true) { restyle { it.copy(italic = r?.italic != true) } }
         Tool(R.drawable.ic_format_underlined, "Underline", w, on = r?.underline == true) { restyle { it.copy(underline = r?.underline != true) } }
         Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = r?.strike == true) { restyle { it.copy(strike = r?.strike != true) } }
+        // Words' superscript and subscript, and Aa (change case: the box's words, each letter keeping its look)
+        RibbonButton("X²", w, on = r?.script == 1) { restyle { it.copy(script = if (r?.script == 1) 0 else 1) } }
+        RibbonButton("X₂", w, on = r?.script == -1) { restyle { it.copy(script = if (r?.script == -1) 0 else -1) } }
+        Box {
+            var casing by remember { mutableStateOf(false) }
+            RibbonButton("Aa", w) { casing = true }
+            DropdownMenu(casing, { casing = false }) {
+                WriterBridge.Case.entries.forEach { cs -> DropdownMenuItem(text = { Text(cs.label) }, onClick = { casing = false; recase(box, cs) }) }
+            }
+        }
         Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
         Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
         // Format painter: this box's look taken, put on the next box chosen
@@ -807,7 +822,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Copy formatting", w, R.drawable.ic_format_paint, enabled = box != null) {
                     copiedLook = box?.let(::lookOf); message = "Formatting copied — choose another box, then Paste formatting" }
                 RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null && box != null) { copiedLook?.let { pl ->
-                    restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align) }
+                    restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align, script = pl.script) }
                     WriterLog.i("Slides: formatting pasted") } }
             }
             "Item" -> {

@@ -251,6 +251,8 @@ internal class Workbook(
     val names: Map<String, String> = emptyMap(),
     /** An .ods's cell styles' names by index (to write a cell's look back by name). */
     val styleNames: List<String> = emptyList(),
+    /** Its theme's colours (an .xlsx's own, else Office's): Format as table's gallery. */
+    val theme: IntArray = SheetTables.OFFICE,
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
@@ -538,7 +540,7 @@ internal object Sheets {
             if (found.isEmpty()) error("No sheets.")
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
-                kind = "xlsx", format = format,
+                kind = "xlsx", format = format, theme = theme.takeIf { it.size >= 10 } ?: SheetTables.OFFICE,
                 names = names.filter { it.attr("name")?.startsWith("_xlnm.") == false }.associate { it.attr("name")!!.lowercase() to it.textContent.trim() },
                 parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
                     found.mapIndexed { i, f -> "$i" to f.second }) { i ->
@@ -1124,30 +1126,13 @@ internal object Sheets {
             val ref = t.attr("ref")?.let(::rangeRef) ?: return
             val info = t.kid("tableStyleInfo") ?: return
             val name = info.attr("name") ?: return
-            val parts = tableStyles[name] ?: builtInTable(name) ?: return WriterLog.i("Sheets: table style not known: built-in ${name.startsWith("TableStyle")}")
+            val parts = tableStyles[name] ?: SheetTables.builtIn(name, theme) ?: return WriterLog.i("Sheets: table style not known: built-in ${name.startsWith("TableStyle")}")
             if ((ref.r2 - ref.r1 + 1L) * (ref.c2 - ref.c1 + 1L) > 500_000) return
             fun on(a: String) = info.attr(a).let { it == "1" || it == "true" }
             val headers = t.attr("headerRowCount")?.toIntOrNull() ?: 1
             val totals = t.attr("totalsRowCount")?.toIntOrNull() ?: 0
-            val dataTop = ref.r1 + headers; val dataBottom = ref.r2 - totals
             val index = HashMap<SheetStyle, Int>()
-            for (r in ref.r1..ref.r2) for (c in ref.c1..ref.c2) {
-                val header = r < dataTop; val total = r > dataBottom
-                var d = SheetDxf()
-                fun lay(type: String) { val e = parts[type] ?: return
-                    // A part's outer lines go round the whole table (or row, column); its inner ones between cells.
-                    d += e.copy(left = if (c == ref.c1) e.left else e.vertical, right = if (c == ref.c2) e.right else e.vertical,
-                        top = if (r == ref.r1) e.top else e.horizontal, bottom = if (r == ref.r2) e.bottom else e.horizontal)
-                }
-                lay("wholeTable")
-                if (on("showColumnStripes") && !header && !total) lay(if ((c - ref.c1) % 2 == 0) "firstColumnStripe" else "secondColumnStripe")
-                if (on("showRowStripes") && !header && !total) lay(if ((r - dataTop) % 2 == 0) "firstRowStripe" else "secondRowStripe")
-                if (on("showLastColumn") && c == ref.c2) lay("lastColumn")
-                if (on("showFirstColumn") && c == ref.c1) lay("firstColumn")
-                if (header) { lay("headerRow"); if (c == ref.c1 && on("showFirstColumn")) lay("firstHeaderCell"); if (c == ref.c2 && on("showLastColumn")) lay("lastHeaderCell") }
-                if (total) { lay("totalRow"); if (c == ref.c1) lay("firstTotalCell"); if (c == ref.c2) lay("lastTotalCell") }
-                if (d == SheetDxf()) continue
-                val k = Sheet.key(r, c)
+            for ((k, d) in SheetTables.lay(parts, ref, headers, totals, ::on)) {
                 val cell = cells[k] ?: SheetCell("", SheetKind.Empty)
                 val own = (if (cell.style >= Sheet.LOOKS) looks.getOrNull(cell.style - Sheet.LOOKS) else styles.getOrNull(cell.style)) ?: SheetStyle()
                 val look = own.copy(
@@ -1156,50 +1141,6 @@ internal object Sheets {
                 )
                 if (look == own) continue
                 cells[k] = cell.copy(style = Sheet.LOOKS + index.getOrPut(look) { looks += look; looks.lastIndex }, own = cell.fileStyle)
-            }
-        }
-
-        /**
-         * Excel's built-in table styles, made from the theme's colours as Excel makes them: Light, Medium and Dark, each
-         * in black and the six accents. shortcut: the common parts (header, stripes, lines) close to Excel's, not every
-         * line of all 60; upgrade from Excel's own definitions (presetTableStyles.xml) if a file shows the difference.
-         */
-        fun builtInTable(name: String): Map<String, SheetDxf>? {
-            val m = Regex("TableStyle(Light|Medium|Dark)(\\d+)").matchEntire(name) ?: return null
-            val n = m.groupValues[2].toInt()
-            val k = (n - 1) % 7; val group = (n - 1) / 7
-            val black = 0xFF000000.toInt(); val white = 0xFFFFFFFF.toInt()
-            val base = if (k == 0) black else theme.getOrNull(3 + k) ?: return null
-            fun t(x: Double) = SheetColors.tint(base, x)
-            fun thin(c: Int) = SheetLine(c, 1f)
-            val boxed = SheetDxf(left = thin(base), right = thin(base), top = thin(base), bottom = thin(base))
-            val total = SheetDxf(bold = true, top = SheetLine(base, 3f, double = true))
-            return when (m.groupValues[1]) {
-                "Light" -> when (group) {
-                    0 -> mapOf("wholeTable" to SheetDxf(top = thin(base), bottom = thin(base)), "headerRow" to SheetDxf(bold = true, bottom = thin(base)),
-                        "firstRowStripe" to SheetDxf(fill = t(0.8)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                    1 -> mapOf("wholeTable" to boxed, "headerRow" to SheetDxf(fill = base, color = white, bold = true),
-                        "firstRowStripe" to SheetDxf(top = thin(base), bottom = thin(base)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                    else -> mapOf("wholeTable" to boxed.copy(horizontal = thin(base), vertical = thin(base)), "headerRow" to SheetDxf(bold = true, bottom = SheetLine(base, 2f)),
-                        "firstRowStripe" to SheetDxf(fill = t(0.8)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                }
-                "Medium" -> when (group) {
-                    0 -> mapOf("wholeTable" to SheetDxf(left = thin(t(0.4)), right = thin(t(0.4)), top = thin(t(0.4)), bottom = thin(t(0.4)), horizontal = thin(t(0.4))),
-                        "headerRow" to SheetDxf(fill = base, color = white, bold = true), "firstRowStripe" to SheetDxf(fill = t(0.8)),
-                        "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                    1 -> mapOf("wholeTable" to SheetDxf(fill = t(0.8), horizontal = thin(white), vertical = thin(white)), "headerRow" to SheetDxf(fill = base, color = white, bold = true),
-                        "firstRowStripe" to SheetDxf(fill = t(0.6)), "firstColumn" to SheetDxf(fill = base, color = white, bold = true),
-                        "lastColumn" to SheetDxf(fill = base, color = white, bold = true), "totalRow" to SheetDxf(fill = base, color = white, bold = true, top = thin(white)))
-                    2 -> mapOf("wholeTable" to boxed.copy(horizontal = thin(base), vertical = thin(base)), "headerRow" to SheetDxf(fill = base, color = white, bold = true),
-                        "firstRowStripe" to SheetDxf(fill = t(0.8)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                    else -> mapOf("wholeTable" to SheetDxf(fill = t(0.8), horizontal = thin(t(0.4)), vertical = thin(t(0.4))), "headerRow" to SheetDxf(bold = true, bottom = SheetLine(base, 2f)),
-                        "firstRowStripe" to SheetDxf(fill = t(0.6)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
-                }
-                else -> if (group == 0) mapOf("wholeTable" to SheetDxf(fill = SheetColors.tint(base, -0.25).takeIf { k != 0 } ?: 0xFF737373.toInt(), color = white),
-                    "headerRow" to SheetDxf(fill = black, color = white, bold = true, bottom = SheetLine(white, 2f)), "firstRowStripe" to SheetDxf(fill = SheetColors.tint(base, -0.5).takeIf { k != 0 } ?: 0xFF404040.toInt()),
-                    "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to SheetDxf(fill = black, color = white, bold = true))
-                else mapOf("wholeTable" to SheetDxf(fill = t(0.8)), "headerRow" to SheetDxf(fill = SheetColors.tint(base, -0.25), color = white, bold = true),
-                    "firstRowStripe" to SheetDxf(fill = t(0.6)), "firstColumn" to SheetDxf(bold = true), "lastColumn" to SheetDxf(bold = true), "totalRow" to total)
             }
         }
     }

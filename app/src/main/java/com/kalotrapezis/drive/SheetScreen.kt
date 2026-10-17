@@ -53,6 +53,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -510,6 +513,30 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         WriterLog.i("Sheets: series ($type, step $step) in ${changes.size} cells")
     }
 
+    /**
+     * Home › Format as table on cells [g] (the sheet's; its first row the headings) in Excel's [style]: Excel's table (the
+     * headings made its column names first, as Excel makes them), or for LibreOffice the table's looks put on the cells.
+     */
+    fun formatAsTable(g: SheetRange, style: String) {
+        val s = sheet ?: return; val b = book ?: return
+        if (g.r2 <= g.r1) { message = "Choose the cells with their headings first (a long press, then drag)"; return }
+        if ((g.r1..minOf(g.r2, g.r1 + 2000)).any { r -> (g.c1..g.c2).any { c -> s.merge(r, c) != null } }) { message = "A table can't take merged cells: unmerge them first"; return }
+        if (b.kind == "xlsx") {
+            val names = SheetTables.names((g.c1..g.c2).map { c -> s[g.r1, c]?.text.orEmpty() })
+            val headings = (g.c1..g.c2).mapIndexedNotNull { i, c -> val was = s[g.r1, c]
+                if (was != null && was.kind == SheetKind.Text && was.formula == null && was.text == names[i]) null
+                else Sheet.key(g.r1, c) to (was ?: SheetCell("", SheetKind.Empty)).copy(text = names[i], kind = SheetKind.Text, value = null, formula = null) }.toMap()
+            if (headings.isNotEmpty()) { history.apply(b, index, headings); version++ }
+            val i = index
+            fileStep("table made", { baked, next, bb -> SheetTables.xlsx(baked, next, bb.parts.getValue("$i"), g, names, style) })
+        } else {
+            val laid = SheetTables.builtIn(style, SheetTables.OFFICE)?.let { p -> SheetTables.lay(p, g, 1, 0) { it == "showRowStripes" } }?.toMap() ?: return
+            val changes = SheetLook.change(b, s, laid.keys) { st, k -> SheetTables.over(st, laid.getValue(k)) }
+            if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
+        }
+        WriterLog.i("Sheets: formatted as table ($style)")
+    }
+
     /** The chosen cells as drawn: the range, else the chosen cell. */
     fun chosenDrawn(l: SheetLayout): SheetRange? = view.range ?: run {
         val r = l.row(view.row); val c = l.col(view.col)
@@ -801,13 +828,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 drawRect(Color(e.color), Offset(0f, size.height - e.width.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, e.width.dp.toPx())) } } ?: Modifier)
                             .clickable { look { st, _ -> SheetLook.styled(st, cs, b.styles.getOrNull(0) ?: SheetStyle()) }; WriterLog.i("Sheets: cell style ${cs.name}") }
                             .wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 12.dp))
+                } } else if (name == "Format as table") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // each a small table in its colours: Excel's gallery
+                val d = view.range?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
+                SheetTables.OFFERED.forEach { style -> val base = Color(SheetTables.colour(style, b.theme)); val light = style.startsWith("TableStyleLight")
+                    Column(Modifier.size(56.dp, 44.dp).clip(RoundedCornerShape(4.dp)).background(Color.White)
+                        .semantics { contentDescription = style.removePrefix("TableStyle").replace(Regex("(\\d+)"), " $1") }
+                        .clickable { group = null; if (d == null) message = "Choose the cells with their headings first (a long press, then drag)" else formatAsTable(d, style) }) {
+                        Box(Modifier.fillMaxWidth().height(11.dp).background(base))
+                        repeat(3) { k -> Box(Modifier.fillMaxWidth().height(11.dp).background(if (k % 2 == 0 && !light) base.copy(alpha = 0.3f) else Color.White)
+                            .then(if (light) Modifier.drawBehind { drawLine(base, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx()) } else Modifier)) }
+                    }
                 } } else listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
                 .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
         }
         // a phone: solid across the bottom; a tablet: floating, as Words' and Slides' (asked 16 Oct)
         val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
         Surface(color = Color(0xFF16191A), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
-            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" }, label = "ribbon",
+            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" || it == "Format as table" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
@@ -1044,6 +1082,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 }
                                 opener("Borders", R.drawable.ic_border_outer)
                                 opener("Cell styles", R.drawable.ic_style)
+                                if (b.kind != "csv") opener("Format as table", R.drawable.ic_table)
                                 RibbonDivider(w)
                                 RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }

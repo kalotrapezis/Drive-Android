@@ -336,6 +336,39 @@ class SheetSaveTest {
         assertEquals("'Lists'!A1:A4", SheetList.odsList("of:cell-content-is-in-list([\$Lists.\$A\$1:.\$A\$4])"))
     }
 
+    /** Format as table: Excel's table part (its look read back, LibreOffice's database range of it), the cells' looks for LibreOffice. */
+    @Test fun `a table made`() {
+        assertEquals(listOf("Name", "Column2", "name2", "X"), SheetTables.names(listOf("Name", " ", "name", "X")))
+        val dir = Files.createTempDirectory("table").toFile()
+        val f = File(dir, "sheet.xlsx").apply { writeBytes(resource("sheet.xlsx")) }
+        val b0 = Sheets.read(f, ',', '.'); val g = SheetRange(0, 0, 2, 3)
+        val names = SheetTables.names((0..3).map { b0.sheet(0)[0, it]?.text.orEmpty() })
+        assertEquals(listOf("Name", "Amount", "Date", "Share"), names)
+        val out = File(dir, "table.xlsx"); SheetTables.xlsx(f, out, b0.parts.getValue("0"), g, names, "TableStyleMedium2")
+        fun fill(b: Workbook, r: Int, c: Int) = b.sheet(0).let { s -> s.look(s[r, c]!!.style, b.styles)?.fill }
+        Sheets.read(out, ',', '.').let { b -> assertTrue(fill(b, 1, 3) != null); assertEquals(null, fill(b, 2, 3)); assertEquals("Alpha", b.sheet(0)[1, 0]?.text) }
+        // a second over the same cells refused; one beside it its own
+        assertTrue(runCatching { SheetTables.xlsx(out, File(dir, "again.xlsx"), b0.parts.getValue("0"), SheetRange(1, 1, 3, 2), listOf("A", "B"), "TableStyleLight9") }.isFailure)
+        val two = File(dir, "two.xlsx"); SheetTables.xlsx(out, two, b0.parts.getValue("0"), SheetRange(0, 5, 2, 6), listOf("Column1", "Column2"), "TableStyleLight9")
+        OfficeFormats.unzip(two.readBytes()).let { p -> assertTrue(p.keys.toString(), "xl/tables/table1.xml" in p && "xl/tables/table2.xml" in p)
+            assertTrue(String(p.getValue("xl/tables/table2.xml")).contains("""id="2" name="Table2"""")) }
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val conv = File(dir, "lo").apply { mkdirs() }
+            ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", conv.path, two.path).redirectErrorStream(true).start().waitFor()
+            val content = String(OfficeFormats.unzip(File(conv, "two.ods").readBytes()).getValue("content.xml"))
+            assertTrue("LibreOffice's database ranges", Regex("""table:database-range\b[^>]*target-range-address="[^"]*A1:[^"]*D3"""").containsMatchIn(content))
+            assertEquals("Alpha", Sheets.read(File(conv, "two.ods"), ',', '.').sheet(0)[1, 0]?.text)
+        }
+        // LibreOffice's .ods: the table's looks on the cells themselves (its AutoFormat)
+        val o = File(dir, "sheet.ods").apply { writeBytes(resource("sheet.ods")) }
+        val ob = Sheets.read(o, ',', '.'); val os = ob.sheet(0)
+        val laid = SheetTables.lay(SheetTables.builtIn("TableStyleMedium2", SheetTables.OFFICE)!!, g, 1, 0) { it == "showRowStripes" }.toMap()
+        SheetHistory().apply(ob, 0, SheetLook.change(ob, os, laid.keys) { st, k -> SheetTables.over(st, laid.getValue(k)) })
+        val saved = File(dir, "styled.ods"); SheetSave.save(ob, o, saved)
+        Sheets.read(saved, ',', '.').let { b -> assertEquals(0xFF4472C4.toInt(), fill(b, 0, 2)); assertEquals(SheetColors.tint(0xFF4472C4.toInt(), 0.8), fill(b, 1, 3)); assertEquals(null, fill(b, 2, 3))
+            assertTrue(b.sheet(0).let { s -> s.look(s[0, 2]!!.style, b.styles)!!.bold }) }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

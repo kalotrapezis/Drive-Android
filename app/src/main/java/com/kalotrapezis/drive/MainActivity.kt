@@ -140,6 +140,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.geometry.Offset
@@ -936,17 +937,27 @@ private fun Home(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                "Tetra",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
-                ),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
+                val context = LocalContext.current
+                val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
+                icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
+                Text(
+                    "Tetra",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
+                    ),
+                )
+            }
         }
+        // a tablet: Local Sync and Settings side by side on one row (asked 17 Oct); a phone: Sync here, Settings at the end
         item {
             val context = LocalContext.current
             val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
-            HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
+            if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync, Modifier.weight(1f))
+                HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings, Modifier.weight(1f))
+            } else HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
         }
         if (wide) items(groups.chunked(2)) { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -954,7 +965,7 @@ private fun Home(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         } else items(groups) { it() }
-        item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
+        if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
 
@@ -1045,9 +1056,9 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     }
 }
 
-@Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit) = Surface(
+@Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
+    modifier = modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
 ) { Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
     Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(28.dp))
     Column {

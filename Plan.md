@@ -74,11 +74,11 @@ How to write here:
       engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸ (e6b8549), sheet copy
       and tab colour (a7f9980), cells shifted (ce1b197),
       Picture and Text box (5001224), Sort (d275c8d),
-      AutoFilter kept. Checks at a925139: unit
+      AutoFilter kept (22bebc0), Names (2ab13f5). Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -786,6 +786,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Text, Date and time, Lookup, Information) over the cell bar's own list (`SheetFunctions.all`, its arguments and words; seven it
       lacked though Tables works them out added: CEILING.MATH, FLOOR.MATH, STDEV.S, STDEVP, VAR.S, VARP, RANK.EQ), a search; tapped, a
       new formula in the cell or put in where one types (`FunctionsDialog`). `functions in categories`; emulator: =MAX( from Statistics.
+      Named ranges done (office-F session, 18 Oct): Formulas › Names while editing — Excel's Name Manager: the workbook's names and
+      what each stands for, Delete, and a new name for the chosen cells (Excel's rules for names); Excel's definedNames, LibreOffice's
+      table:named-range — whose names are now read too, lazily (they sit at content.xml's end) when a formula first needs one, so
+      =SUM(Amounts) works on an .ods. `SheetNames`, `Workbook.nameList`. `names defined and taken away` (both formats, a formula using
+      it, LibreOffice's conversions both ways); emulator: Amounts for B2:B3 of an .ods, =SUM(Amounts) 1192.50.
+      Seen on the way (not changed): in an .ods a new formula's result shows the phone's separators (1,192.50) beside the file's
+      own stored text in LibreOffice's (1.192,50) — older behaviour; worth a look with Words' and Tables' number display.
 - [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row

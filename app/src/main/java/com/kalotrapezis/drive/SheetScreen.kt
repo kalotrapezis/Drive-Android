@@ -550,6 +550,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
+    /** Hide (a sheet's tab, Excel's) or Unhide sheet [at]: the file's; hidden, the next shown sheet opened. */
+    fun showSheet(at: Int, hidden: Boolean) {
+        fileStep(if (hidden) "sheet hidden" else "sheet shown", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetVisibility.xlsx(baked, next, at, hidden); "ods" -> SheetVisibility.ods(baked, next, at, hidden); else -> error("A CSV file has one sheet.") } }) { nb ->
+            views.clear(); header = null
+            index = if (hidden) nb.tabs.indices.firstOrNull { !nb.tabs[it].hidden && it >= at } ?: nb.tabs.indices.first { !nb.tabs[it].hidden } else at
+        }
+    }
+
     fun undoOrRedo(redo: Boolean) {
         val b = book ?: return
         draft = null
@@ -786,6 +795,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Move right", w, R.drawable.ic_chevron_right, enabled = index < b.tabs.lastIndex) { sheetStep(to = index + 1) }
                             RibbonDivider(w)
                             RibbonButton("Delete", w, R.drawable.ic_delete, enabled = b.tabs.count { !it.hidden } > 1) { deletingSheet = true }
+                            // Excel's Hide and Unhide on a sheet's tab
+                            RibbonDivider(w)
+                            RibbonButton("Hide", w, R.drawable.ic_visibility_off, enabled = b.tabs.count { !it.hidden } > 1) { showSheet(index, true) }
+                            if (b.tabs.any { it.hidden }) Box {
+                                var open by remember { mutableStateOf(false) }
+                                RibbonButton("Unhide", w, R.drawable.ic_visibility) { open = true }
+                                DropdownMenu(open, { open = false }) { b.tabs.forEachIndexed { k, t -> if (t.hidden) DropdownMenuItem(text = { Text(t.name) }, onClick = { open = false; showSheet(k, false) }) } }
+                            }
                         }
                         shown.startsWith("Column") && h != null -> {
                             val col = h.second

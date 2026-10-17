@@ -60,7 +60,8 @@ How to write here:
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
       Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph (ba2ea50); engine step 5 (103a2b8); step 6
-      for .xlsx. Unit suite 443, 0 failing; sweep 349 + 29, none failing (22:40).
+      for .xlsx (7ad47c7); C: Replace, Merge & centre, Copy/Paste formatting, Fill, Symbol, Chart from cells, widths/heights/Hide, Link,
+      Remove duplicates, Text to columns, Insert function (71c2da6…489fc21). Unit suite 451, 0 failing; sweep 349 + 29, none failing (23:20).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -710,7 +711,9 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       row made where the sheet has none; LibreOffice's column and row styles and table:visibility, repeated ones cut first). Fixed on the
       way: two file changes started together (the second from the file without the first) — now one at a time. `widths heights and hidden
       saved` (both formats; LibreOffice reads Excel's width in characters a few % wider — its own character); emulator: C made 4 cm, hidden,
-      shown again. Not yet: hiding and showing sheets.
+      shown again. Hiding and showing sheets (office-F session, 17 Oct): a sheet's tab › Hide (while another is shown) and Unhide ▾ the
+      hidden ones (`SheetVisibility`: Excel's state="hidden", the open tab moved off it; LibreOffice's table style table:display).
+      `a sheet hidden and shown` (both formats, LibreOffice's conversions); emulator: Second hidden, shown again.
 - [~] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

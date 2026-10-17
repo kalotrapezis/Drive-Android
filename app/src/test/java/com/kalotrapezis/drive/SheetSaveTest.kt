@@ -188,6 +188,28 @@ class SheetSaveTest {
         }
     }
 
+    /** A sheet hidden and shown again (Excel's state="hidden", LibreOffice's table:display). */
+    @Test fun `a sheet hidden and shown`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("hide").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val hidden = File(dir, "hidden.${f.extension}")
+            if (name.endsWith("xlsx")) SheetVisibility.xlsx(f, hidden, 1, true) else SheetVisibility.ods(f, hidden, 1, true)
+            val was = Sheets.read(f, ',', '.').tabs.map { it.hidden }
+            fun check(file: File, how: String) = Sheets.read(file, ',', '.').let { b -> assertEquals(how, was.mapIndexed { k, h -> h || k == 1 }, b.tabs.map { it.hidden }); assertEquals(how, "Hello", b.sheet(1)[2, 2]?.text) }
+            check(hidden, "hidden, $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, hidden.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "hidden.$other"), "LibreOffice's $other of $name")
+            }
+            val shown = File(dir, "shown.${f.extension}")
+            if (name.endsWith("xlsx")) SheetVisibility.xlsx(hidden, shown, 1, false) else SheetVisibility.ods(hidden, shown, 1, false)
+            assertEquals(name, was, Sheets.read(shown, ',', '.').tabs.map { it.hidden })
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

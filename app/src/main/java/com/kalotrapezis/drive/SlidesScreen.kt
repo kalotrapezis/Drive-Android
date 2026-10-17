@@ -914,6 +914,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
                     if (it0 is SlideItem.Picture && it0.math == null) {
+                        // PowerPoint's Picture Styles (the tablet app's frame, shadow, rounded corners) and Transparency
+                        Box {
+                            var styling by remember { mutableStateOf(false) }
+                            RibbonButton("Picture styles", w, R.drawable.ic_style) { styling = true }
+                            DropdownMenu(styling, { styling = false }) {
+                                listOf("Plain" to PictureLook(), "White frame" to PictureLook(line = 0xFFFFFF, lineW = 6f, shadow = true), "Black frame" to PictureLook(line = 0x000000, lineW = 3f),
+                                    "Shadow" to PictureLook(shadow = true), "Rounded" to PictureLook(round = Slides.ROUND), "Rounded with shadow" to PictureLook(round = Slides.ROUND, shadow = true))
+                                    .forEach { (label, st) -> DropdownMenuItem(text = { Text(label) }, onClick = { styling = false; restyle { it.copy(picStyle = st) }; WriterLog.i("Slides: picture style $label") }) }
+                            }
+                        }
+                        Box {
+                            var seeing by remember { mutableStateOf(false) }
+                            RibbonButton("Transparency", w, R.drawable.ic_opacity) { seeing = true }
+                            DropdownMenu(seeing, { seeing = false }) {
+                                listOf(0, 15, 30, 50, 65, 80).forEach { pc -> DropdownMenuItem(text = { Text(if (pc == 0) "None" else "$pc %") },
+                                    trailingIcon = { if (Math.round((1 - (it0.pic?.alpha ?: 1f)) * 100) == pc) Icon(painterResource(R.drawable.ic_check), null) },
+                                    onClick = { seeing = false; restyle { it.copy(alpha = 1 - pc / 100f) }; WriterLog.i("Slides: transparency $pc%") }) }
+                            }
+                        }
                         RibbonButton("Crop", w, R.drawable.ic_crop) { scope.launch {
                             cropping = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { it0.bytes()?.let { b ->
                                 val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)

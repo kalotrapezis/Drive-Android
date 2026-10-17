@@ -489,6 +489,36 @@ class SlidesTest {
     }
 
     /** Insert › Video (asked 17 Oct): a film from the phone kept in the deck, and an online one linked, each with its picture; saved and read back. */
+    /** Picture styles and Transparency (B, 17 Oct): a frame with a shadow and 30 % see-through, saved as PowerPoint's and LibreOffice's, read back, through LibreOffice. */
+    @Test fun `a picture's style and transparency saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            assertEquals(name, null, pic.pic)
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to pic.anim!!) to SlidesEdit.Look(alpha = 0.7f, picStyle = PictureLook(line = 0xFFFFFF, lineW = 6f, shadow = true))))
+            fun check(d: Deck, how: String) {
+                val l = d.slides[2].items.filterIsInstance<SlideItem.Picture>().first().pic!!
+                assertEquals(how, 0.7f, l.alpha, 0.01f); assertEquals(how, 0xFFFFFF, l.line); assertEquals(how, 6f, l.lineW, 0.2f); assertTrue(how, l.shadow)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("picstyle-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+            // rounded (PowerPoint's roundRect; an .odp keeps no rounded picture)
+            if (name.endsWith("pptx")) {
+                val e2 = SlidesEdit.start(deck).copy(looks = mapOf((2 to pic.anim!!) to SlidesEdit.Look(picStyle = PictureLook(round = Slides.ROUND))))
+                val out2 = File("build/office-roundtrip").resolve("rounded-$name"); SlidesEdit.save(src, deck, e2, out2)
+                assertEquals(Slides.ROUND, Slides.read(out2).slides[2].items.filterIsInstance<SlideItem.Picture>().first().pic!!.round, 0.001f)
+            }
+        }
+    }
+
     /** Home › Selection pane: a thing renamed and hidden, saved as PowerPoint's (cNvPr name, hidden) and LibreOffice's (draw:name, drawooo:display), read back, through LibreOffice. */
     @Test fun `a thing named and hidden saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

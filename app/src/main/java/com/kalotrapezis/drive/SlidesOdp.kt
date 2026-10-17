@@ -246,7 +246,11 @@ internal object SlidesOdp {
                             "plugin" -> e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./").let { p ->
                                 out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } }.also { it.media = inner.a(XLINK, "href")?.removePrefix("./") } }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) },
-                                flipH = g("mirror")?.contains("horizontal") == true, flipV = g("mirror")?.contains("vertical") == true) { part(p) } }
+                                flipH = g("mirror")?.contains("horizontal") == true, flipV = g("mirror")?.contains("vertical") == true) { part(p) }.also {
+                                // its transparency, outline and shadow as LibreOffice keeps them (no rounded pictures there)
+                                it.pic = PictureLook(g("image-opacity")?.removeSuffix("%")?.toFloatOrNull()?.div(100f)?.coerceIn(0f, 1f) ?: 1f,
+                                    hex(g("stroke-color"))?.and(0xFFFFFF)?.takeIf { g("stroke") == "solid" }, pt(g("stroke-width"))?.takeIf { g("stroke") == "solid" } ?: 0f,
+                                    g("shadow") == "visible").takeIf { l -> l != PictureLook() } } }
                             "table" -> out += table(inner, b)
                             "object" -> {
                                 val c = inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }

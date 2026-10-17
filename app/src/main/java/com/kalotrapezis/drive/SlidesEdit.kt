@@ -47,7 +47,8 @@ internal object SlidesEdit {
         /** Home's superscript and subscript (Words'): every letter raised (1), lowered (−1) or on the line (0) */ val script: Int? = null,
         /** a text box's Layout: its inner margins (pt: left, top, right, bottom), whether its words wrap, its columns and the room between them */
         val insets: List<Float>? = null, val wrap: Boolean? = null, val cols: Int? = null, val colGap: Float? = null,
-        /** the Selection pane: its name ("" none), and hidden or shown again */ val name: String? = null, val hide: Boolean? = null) {
+        /** the Selection pane: its name ("" none), and hidden or shown again */ val name: String? = null, val hide: Boolean? = null,
+        /** a picture's Transparency (0–1 seen) and Picture style (its outline, shadow and corners; its alpha not used) */ val alpha: Float? = null, val picStyle: PictureLook? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
             align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null
@@ -142,7 +143,7 @@ internal object SlidesEdit {
         is SlideItem.Shape -> SlideItem.Shape(item.x, item.y, item.w, item.h, t.deg, item.shape, item.text, item.paths, t.flipH, t.flipV, item.gradient, item.id, item.hint)
         is SlideItem.Picture -> SlideItem.Picture(item.x, item.y, item.w, item.h, t.deg, item.crop, item.math, t.flipH, t.flipV, item.bytes)
         else -> item
-    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden }
+    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     /** [items] in [stack]'s order from the back (the layout's and master's under them all, one not in it on top). */
     fun stacked(items: List<SlideItem>, stack: List<String>?): List<SlideItem> = if (stack == null) items else
         items.sortedBy { i -> i.anim?.let { a -> stack.indexOf(a).let { if (it < 0) Int.MAX_VALUE else it } } ?: -1 }
@@ -173,7 +174,7 @@ internal object SlidesEdit {
             is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.flipH, item.flipV, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
-        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden }
+        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
@@ -190,7 +191,7 @@ internal object SlidesEdit {
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap) }
-                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden }
+                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
@@ -257,10 +258,11 @@ internal object SlidesEdit {
     private fun styled(item: SlideItem, l: Look?): SlideItem {
         l?.alt?.let { item.alt = it.ifEmpty { null } }
         l?.name?.let { item.name = it.ifEmpty { null } }; l?.hide?.let { item.hidden = it }
+        if (l?.alpha != null || l?.picStyle != null) item.pic = (l.picStyle?.copy(alpha = l.alpha ?: item.pic?.alpha ?: 1f) ?: (item.pic ?: PictureLook()).copy(alpha = l.alpha!!)).takeIf { it != PictureLook() }
         l?.objectLink?.let { item.link = it.ifEmpty { null } }
         if ((l?.crop != null || l?.image != null) && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation,
             l.crop?.toFloatArray()?.takeIf { c -> c.any { it != 0f } } ?: item.crop.takeIf { l.crop == null },
-            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden }
+            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
@@ -268,7 +270,7 @@ internal object SlidesEdit {
         val text = item.text?.let { looked(it, l) }
         // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
-        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden }
+        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     }
     /** Table tab (Words'): a table put on with an empty row before row [at], the table a row taller (as PowerPoint's Insert Above / Below). */
     fun rowAdded(t: Added, at: Int): Added = t.copy(rows = t.rows + 1, h = t.h + t.h / t.rows.coerceAtLeast(1),
@@ -580,6 +582,23 @@ internal object SlidesEdit {
             if (c.any { it != 0f }) fill.insertBefore(doc.createElementNS(A, "a:srcRect").also { r -> listOf("l", "t", "r", "b").zip(c).forEach { (k, v) -> if (v != 0f) r.setAttribute(k, "${Math.round(v * 100_000)}") } },
                 fill.kids().firstOrNull { it.localName != "blip" })
         } }
+        // a picture's Transparency (the blip's alphaModFix) and Picture style (its geometry, outline and outer shadow), as PowerPoint writes them
+        for ((id, l) in looks) if (l.alpha != null || l.picStyle != null) named(id)?.takeIf { it.localName == "pic" }?.let { pic ->
+            l.alpha?.let { a -> (pic.getElementsByTagNameNS(A, "blip").item(0) as? Element)?.let { blip ->
+                blip.kids().filter { it.localName == "alphaModFix" }.forEach { blip.removeChild(it) }
+                if (a < 1f) blip.insertBefore(doc.createElementNS(A, "a:alphaModFix").also { it.setAttribute("amt", "${Math.round(a * 100_000)}") }, blip.firstChild) } }
+            val spPr = pic.kids().firstOrNull { it.localName == "spPr" }
+            l.picStyle?.takeIf { spPr != null }?.let { s ->
+                spPr!!.kids().firstOrNull { it.localName == "prstGeom" }?.setAttribute("prst", if (s.round > 0f) "roundRect" else "rect")
+                spPr.kids().filter { it.localName == "ln" || it.localName == "effectLst" }.forEach { spPr.removeChild(it) }
+                val after = spPr.kids().firstOrNull { it.localName in setOf("scene3d", "sp3d", "extLst") }
+                s.line?.takeIf { s.lineW > 0f }?.let { c -> spPr.insertBefore(doc.createElementNS(A, "a:ln").also { ln -> ln.setAttribute("w", "${Math.round(s.lineW * 12700)}")
+                    ln.appendChild(doc.createElementNS(A, "a:solidFill").also { f -> f.appendChild(doc.createElementNS(A, "a:srgbClr").also { it.setAttribute("val", "%06X".format(c and 0xFFFFFF)) }) }) }, after) }
+                if (s.shadow) spPr.insertBefore(doc.createElementNS(A, "a:effectLst").also { fl -> fl.appendChild(doc.createElementNS(A, "a:outerShdw").also { sh ->
+                    listOf("blurRad" to "76200", "dist" to "38100", "dir" to "2700000", "algn" to "tl", "rotWithShape" to "0").forEach { (k, v) -> sh.setAttribute(k, v) }
+                    sh.appendChild(doc.createElementNS(A, "a:srgbClr").also { c -> c.setAttribute("val", "000000"); c.appendChild(doc.createElementNS(A, "a:alpha").also { it.setAttribute("val", "40000") }) }) }) }, after)
+            }
+        }
         // Replace picture, Edit drawing: the picture's blip names its new media part
         for ((id, l) in looks) l.image?.let { rels["image $id"]?.let { rid -> named(id)?.takeIf { it.localName == "pic" }?.getElementsByTagNameNS(A, "blip")?.item(0)?.let { (it as Element).setAttributeNS(R, "r:embed", rid) } } }
         // Insert › Link on an object: its cNvPr's hlinkClick (by the relationship made for it; the slide it came from by PowerPoint's action alone)

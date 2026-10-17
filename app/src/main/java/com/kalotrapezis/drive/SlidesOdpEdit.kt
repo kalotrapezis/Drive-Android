@@ -341,6 +341,22 @@ internal object SlidesOdpEdit {
                 props(st, "graphic-properties").setAttributeNS(FO, "fo:clip", "rect(${cm(c[1] * h)}, ${cm(c[2] * w)}, ${cm(c[3] * h)}, ${cm(c[0] * w)})") }
             if (pr != null) el.setAttributeNS(PRES, "presentation:style-name", nm) else el.setAttributeNS(DRAW, "draw:style-name", nm)
         }
+        /** A picture's Transparency and Picture style as LibreOffice keeps them: its style's image opacity, line and shadow. */
+        fun picLook(el: Element, l: SlidesEdit.Look) {
+            if (l.alpha == null && l.picStyle == null) return
+            val pr = el.a(PRES, "style-name")
+            val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: el.a(DRAW, "style-name"), "pic ${l.alpha} ${l.picStyle}") { st ->
+                val g = props(st, "graphic-properties")
+                l.alpha?.let { g.setAttributeNS(DRAW, "draw:image-opacity", "${Math.round(it * 100)}%") }
+                l.picStyle?.let { s ->
+                    if (s.line != null && s.lineW > 0f) { g.setAttributeNS(DRAW, "draw:stroke", "solid"); g.setAttributeNS(SVG, "svg:stroke-color", hex(s.line)); g.setAttributeNS(SVG, "svg:stroke-width", cm(s.lineW)) }
+                    else g.setAttributeNS(DRAW, "draw:stroke", "none")
+                    g.setAttributeNS(DRAW, "draw:shadow", if (s.shadow) "visible" else "hidden")
+                    if (s.shadow) { g.setAttributeNS(DRAW, "draw:shadow-offset-x", "0.1cm"); g.setAttributeNS(DRAW, "draw:shadow-offset-y", "0.1cm"); g.setAttributeNS(DRAW, "draw:shadow-color", "#000000"); g.setAttributeNS(DRAW, "draw:shadow-opacity", "40%") }
+                }
+            }
+            if (pr != null) el.setAttributeNS(PRES, "presentation:style-name", nm) else el.setAttributeNS(DRAW, "draw:style-name", nm)
+        }
         fun restyle(el: Element, l: SlidesEdit.Look) {
             val shapes = if (el.localName == "g") el.all().filter { it.namespaceURI == DRAW && it.localName in setOf("frame", "custom-shape", "rect", "ellipse") } else listOf(el)
             for (s in shapes) {
@@ -372,6 +388,7 @@ internal object SlidesOdpEdit {
             // Replace picture, Edit drawing: the frame's picture a new one in the package
             l.image?.let { p -> el.kids().firstOrNull { it.localName == "image" }?.setAttributeNS(XLINK, "xlink:href", picture(SlidesEdit.Added("image", 0f, 0f, 0f, 0f, image = p, ext = p.substringAfterLast('.')))) }
             l.crop?.let { crop(el, it) }
+            picLook(el, l)
         }
         /** [el] at [x], [y], [w] × [h] (points), turned [deg] clockwise about its middle (Words' draw:transform; 0: plain svg:x and svg:y). */
         fun turnTo(el: Element, x: Float, y: Float, w: Float, h: Float, deg: Float) {
@@ -607,7 +624,7 @@ internal object SlidesOdpEdit {
             val grown = SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid })
             for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
             // the words typed into what was put on, and Home's looks on them, as on the page's own
-            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) }; edit.looks[uid to a.id]?.alt?.let { alt(el, it) }; edit.looks[uid to a.id]?.crop?.let { crop(el, it) }; edit.looks[uid to a.id]?.objectLink?.let { clickTo(el, it) } }
+            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) }; edit.looks[uid to a.id]?.alt?.let { alt(el, it) }; edit.looks[uid to a.id]?.crop?.let { crop(el, it) }; edit.looks[uid to a.id]?.let { picLook(el, it) }; edit.looks[uid to a.id]?.objectLink?.let { clickTo(el, it) } }
             // Arrange › Rotate and Flip: turned about its middle (Words' draw:transform), mirrored as LibreOffice says it (a shape's geometry, a picture's style)
             if (edit.turns.keys.any { it.first == uid }) {
                 val shown = SlidesEdit.slide(deck, edit, edit.order.first { it.uid == uid })

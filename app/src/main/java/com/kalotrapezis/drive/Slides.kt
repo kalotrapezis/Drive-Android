@@ -55,6 +55,9 @@ internal class SlidePath(val ops: List<FloatArray>, val fill: Boolean, val strok
 /** A gradient fill: its colours at their stops (0–1), along [angle] degrees (0: left to right, 90: top to bottom). */
 internal class SlideGradient(val colors: IntArray, val stops: FloatArray, val angle: Float)
 
+/** A picture's look: see-through [alpha] (1: not), an outline [line] (0xRRGGBB) [lineW] pt wide, a soft shadow, corners rounded by [round] of its shorter side. */
+internal data class PictureLook(val alpha: Float = 1f, val line: Int? = null, val lineW: Float = 0f, val shadow: Boolean = false, val round: Float = 0f)
+
 internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h: Float, val rotation: Float) {
     /** The id of the shape, picture or group it belongs to on the slide (cNvPr id): what an animation names. */
     var anim: String? = null
@@ -65,6 +68,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     /** Its name in the Selection pane (PowerPoint's cNvPr name, LibreOffice's draw:name) and whether it is hidden there (not drawn: hidden="1", drawooo:display="none"). */
     var name: String? = null
     var hidden = false
+    /** A picture's style and transparency (PowerPoint's Picture Styles, LibreOffice's image opacity, line and shadow); null: plain. */
+    var pic: PictureLook? = null
     /** Where a tap on it goes in a show (Insert › Link on a picture or shape): a slide's part (an .odp's "#page"), a web address, or "back" (the slide it came from). */
     var link: String? = null
     /** A video (Insert › Video, asked 17 Oct): a part of the file (its path), a copy on the phone, or a web address — this item its picture, played when tapped in a show. */
@@ -467,7 +472,13 @@ internal object Slides {
                         // a video's picture: its film embedded (PowerPoint 2010's p14:media) or linked (a:videoFile: a part, or a web address)
                         val nv = e.kid("nvPicPr")?.kid("nvPr")
                         val film = nv?.below("media")?.firstOrNull()?.rid("embed")?.let(rels::get) ?: nv?.kid("videoFile")?.rid("link")?.let(rels::get)
-                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }.also { it.media = film }
+                        // its style and transparency: the blip's alphaModFix, the outline, the outer shadow, a rounded rectangle
+                        val sp = e.kid("spPr"); val ln = sp?.kid("ln")
+                        val look = PictureLook(e.below("blip").firstOrNull()?.kid("alphaModFix")?.attr("amt")?.toFloatOrNull()?.div(100_000f)?.coerceIn(0f, 1f) ?: 1f,
+                            ln?.kid("solidFill")?.kid("srgbClr")?.attr("val")?.toIntOrNull(16), ln?.attr("w")?.toFloatOrNull()?.div(EMU) ?: 0f,
+                            sp?.kid("effectLst")?.kid("outerShdw") != null, if (sp?.kid("prstGeom")?.attr("prst") == "roundRect") ROUND else 0f)
+                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }
+                            .also { it.media = film; it.pic = look.takeIf { l -> l != PictureLook() } }
                     }
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
@@ -740,7 +751,7 @@ internal object Slides {
                         var sample = 1; while (o.outWidth / (sample * 2) >= item.w * 3) sample *= 2
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                     } }.getOrNull()?.let { cropped(it, item.crop) }?.also { pictures.put(item, it) }
-                    bmp?.let { c.drawBitmap(it, null, android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h), paint) }
+                    bmp?.let { framed(c, it, item, paint) }
                 }
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)
@@ -750,6 +761,20 @@ internal object Slides {
             if (item.media != null) OfficeVideo.mark(c, item.x, item.y, item.w, item.h)
         }
         c.restore()
+    }
+
+    /** PowerPoint's rounded rectangle's corner (its adjustment 16667: a sixth of the shorter side). */
+    const val ROUND = 0.16667f
+    /** [b] in [item]'s box in its look: its shadow under it, see-through, its corners rounded, its outline round it. */
+    private fun framed(c: Canvas, b: android.graphics.Bitmap, item: SlideItem, paint: Paint) {
+        val r = android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h)
+        val pl = item.pic ?: return c.drawBitmap(b, null, r, paint)
+        val side = minOf(item.w, item.h); val rad = pl.round * side
+        if (pl.shadow) c.drawRoundRect(android.graphics.RectF(r).apply { offset(side * 0.025f + 1f, side * 0.025f + 1f) }, rad, rad,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000; maskFilter = android.graphics.BlurMaskFilter(maxOf(2f, side * 0.03f), android.graphics.BlurMaskFilter.Blur.NORMAL) })
+        c.save(); if (rad > 0f) c.clipPath(android.graphics.Path().apply { addRoundRect(r, rad, rad, android.graphics.Path.Direction.CW) })
+        c.drawBitmap(b, null, r, Paint(paint).apply { alpha = Math.round(pl.alpha * 255).coerceIn(0, 255) }); c.restore()
+        pl.line?.takeIf { pl.lineW > 0f }?.let { col -> c.drawRoundRect(r, rad, rad, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = pl.lineW; color = 0xFF000000.toInt() or col }) }
     }
 
     /**

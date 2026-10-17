@@ -452,8 +452,15 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       LibreOffice's draw:name / drawooo:display="none"; read back from both (`SlideItem.name`, `hidden`; `Look.name`, `Look.hide`).
       **Shared piece:** none of Words' (Words has no selection pane); the Animation pane's list. `a thing named and hidden saved`
       (a shape: both kept by LibreOffice's conversions; on a placeholder LibreOffice 26.2 loses hidden both ways and its .pptx renames it).
-- [ ] **Picture**: picture styles (frame, shadow, rounded corners — the tablet app has these); transparency; colour
+- [~] **Picture**: picture styles (frame, shadow, rounded corners — the tablet app has these); transparency; colour
       and brightness; compress pictures; remove background (later).
+      Done 17 Oct (office-D session): the picture's tab › Picture styles (Plain, White frame, Black frame, Shadow, Rounded, Rounded with
+      shadow) and Transparency (None, 15–80 %). `PictureLook` (alpha, outline, shadow, rounded) read from both formats and drawn (a soft
+      shadow under it, corners clipped, the outline round it); saved as PowerPoint's blip alphaModFix, spPr ln, effectLst outerShdw and
+      prstGeom roundRect, and LibreOffice's draw:image-opacity, stroke and shadow (an .odp keeps no rounded picture). **Shared piece:**
+      none of Words' (Words' Picture tab has neither yet — Words should get the same `PictureLook` when it does). `a picture's style and
+      transparency saved` (both, LibreOffice's conversions keep them); emulator: rounded with shadow at 30 %. Not yet: colour and
+      brightness, compress pictures; a strip of cards for the styles (a menu for now).
 - [ ] **Shapes**: text effects (shadow, outline, glow) and character spacing; merge shapes (union, combine,
       intersect, subtract — later); edit points (later).
 - [ ] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`

@@ -33,6 +33,9 @@ How to write here:
       "Search fonts" field beside its name (over the cards on a phone). Words' fingerprint unchanged on the emulator and
       the tablet; `OfficeFontsTest`; the user tried it on the tablet ("I used it it works"). Not done: a name typed that
       is not in the list cannot be used as a font (Word allows it); Slides gets the strip with B's Home.
+- [~] (calendar session, 17 Oct) **Calendar**, Tetra's last app: designed below (§ Calendar); waiting for the user's
+      go-ahead before building. Builds on its own branch `calendar` (worktree Drive-Android-worktrees/calendar, from
+      writer-library) and the desktop's `calendar` (worktree Drive-worktrees/calendar), not in the Office checkout.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -353,6 +356,154 @@ what is not already above:
 
 ### D. Words
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.
+
+
+## Calendar — the last app (designed 17 Oct, calendar session; not built yet)
+
+**The user, 17 Oct:** "Everything to be handled as a file on phone, tablet and PC so any AI with the skill is able to
+manipulate the events." Claude should organise, create and manage the calendar by editing files on the computer, and
+the phone and tablet follow through sync. Many calendars, each with its colour; create, edit, delete; all-day and
+timed; repeats; several reminders each, repeating ones ("notify for 3 days at 9:00 before"); import .ics and Google
+Takeout, export .ics. Big screen like Google Calendar on the web (dark), phone like Outlook mobile. Pink icon
+(~/Λήψεις/Calendar.png).
+
+### The files (the heart of it)
+```
+Tetra/Calendar/                      (~/Tetra/Files/Calendar on the PC, /sdcard/Tetra/Calendar on a phone)
+  Personal/                          one folder = one calendar; the folder's name is the calendar's name
+    color                            one line: #F06292 (the calendar's colour; vdir's own convention)
+    dentist-3f9a2c.ics               one event = one iCalendar file
+    mum-birthday-81be07.ics
+  Work/
+    color
+    staff-meeting-c2d410.ics         a repeating event is one file (its RRULE; a changed or cancelled day inside it)
+```
+- **Why this layout**: it is "vdir", the layout khal, vdirsyncer and todoman already use — a standard, not ours. One
+  event per file means an AI (or a person) adds, changes or deletes one event by touching one file, and sync carries
+  only that file. A whole-calendar .ics would make every edit a change to one big file, and two devices editing two
+  different events would be a sync conflict.
+- **Why visible, not a hidden `.calendar` like Notes**: Files sync already carries everything under Tetra that does not
+  start with "." (DriveManifest.walk), per file, edits replacing the other side's copy (SYNC_PLAN §6ak). So the Calendar
+  needs **no new sync code** on either side, and Claude finds it where the user sees it. Notes needed their own
+  endpoint because one note file changes often from both sides; events rarely do.
+- **Inside an event file**: standard iCalendar (RFC 5545) — `VCALENDAR` › `VEVENT` with `UID`, `DTSTAMP`, `SUMMARY`,
+  `DTSTART`/`DTEND` (all-day as `VALUE=DATE`, the end the day after), `LOCATION`, `DESCRIPTION`, `RRULE` + `EXDATE`
+  for repeats, `VEVENT`s with `RECURRENCE-ID` in the same file for one changed day, `VALARM`s for reminders,
+  `LAST-MODIFIED`, `SEQUENCE`. Times carry an IANA zone (`DTSTART;TZID=Europe/Athens:20261020T093000`); Tetra does
+  not write VTIMEZONE blocks inside the folder (an AI need not either) but keeps any a file has, and adds them when
+  exporting for other apps. Reading is forgiving (LF or CRLF, long or folded lines, UTC `Z` and floating times);
+  writing is strict (CRLF, folded at 75). **Anything Tetra does not understand in a file is kept as it was** (attendees,
+  X- properties, Google's ids): an edit changes only the lines it changes.
+- **File names**: Tetra names a new event after its title plus six letters of its UID (`dentist-3f9a2c.ics`) and never
+  renames it (a rename would be a move in sync for nothing). The name means nothing to the reader: the UID inside is
+  the identity, and a file an AI writes may be called anything ending in `.ics`.
+- **Deleting** = moving the file into `Tetra/Trash/` (sync never deletes; a move into Trash crosses as a move, §6h).
+  An AI deletes with `mv`, not `rm` — an `rm`'d file would come back from the other device.
+- **Moving an event to another calendar** = moving its file to the other folder. **A calendar** = a folder: make one
+  with `mkdir` + a `color` file; rename = rename the folder; delete = the folder to Trash.
+- **Conflicts**: an event changed on two devices between syncs arrives as `x (2).ics` beside `x.ics`, both with the
+  same UID. The Calendar shows one (the newer `LAST-MODIFIED`/`DTSTAMP`) and marks it "2 versions"; the event's card
+  offers "Keep this one" (the other goes to Trash). Nothing is thrown away by itself.
+- **Which calendars are shown** (the checkboxes) is per device, not in the files — like Google, a choice about this
+  screen. `Calendar` becomes a required folder (emblem; cannot be renamed, moved or trashed — DriveRules), on the
+  desktop too.
+
+### Repeats and reminders
+- **Repeats** in the editor: Does not repeat · Daily · Weekly on Tuesday · Monthly on the 3rd Tuesday / on day 20 ·
+  Yearly on 20 October · Every weekday · Custom… (every N days/weeks/months/years, which weekdays, ends never / on a
+  date / after N times) — all plain RRULEs. Changing a repeating event asks: **This event · This and following · All
+  events** (one day = a `RECURRENCE-ID` override; this-and-following = an `UNTIL` on the old one and a new file from
+  that day; delete one day = an `EXDATE`).
+- **Reminders**, several per event, each a `VALARM`: At the time · 5, 10, 15, 30 min · 1 h · 1 day before · Custom
+  (N min/h/days/weeks). For all-day events: "On the day at 9:00", "N days before at 9:00". **Repeating reminder**
+  ("for 3 days at 9:00 before") = one VALARM with `TRIGGER` at the first one (3 days before, 9:00), `REPEAT:2` and
+  `DURATION:P1D` — RFC 5545's own repeat, so other apps read it too (Google drops the repeats on import, keeps the first).
+  Moving a timed event in Tetra keeps such a reminder at 9:00.
+- **New event defaults**: 30 min before (timed), the day before at 9:00 (all-day); a setting.
+
+### Notifications
+- **Phone/tablet**: one exact alarm for the **next** reminder only (`AlarmManager.setExactAndAllowWhileIdle`,
+  `USE_EXACT_ALARM` — allowed for a calendar app — and `SCHEDULE_EXACT_ALARM` on older Android). When it fires: post
+  that reminder (channel "Reminders", high; title, time, place, the calendar's colour; **Snooze 10 min** · tap opens
+  the event), then plan the next. The plan is always made **from the files** (an index cached by path + size + time, so
+  a thousand events cost a glance), never from a list that could be stale. It is re-planned when the app opens, after
+  any edit in Calendar, **after every sync that brought a Calendar file** (also the background SyncJob, app closed),
+  on boot, on a time or time-zone change and after an update. A reminder missed while the phone was off is shown on
+  boot (up to a day late, marked "missed").
+- **Xiaomi**: alarms survive, but a reboot reaches the app only with **Autostart** allowed, and battery saver should be
+  "No restrictions" for Tetra; the Calendar asks once, with a button to each setting, and shows a line if notifications
+  or exact alarms are off.
+- **PC**: the desktop's own `notify()` (Electron notification + the Notifications page), from a timer in the main
+  process — it runs while Tetra sits in the tray. The desktop does not start at login yet (SYNC_PLAN §H); Calendar is
+  the reason to add that (an autostart .desktop file, a setting).
+- Every device reminds (as Google does); Settings › Calendar › "Reminders on this device" switches one off.
+- **How fast an AI's edit reaches the phone**: as fast as sync — the background sync runs every 30 min by default (a
+  setting), or at once when Tetra is opened. An event Claude adds for "in 10 minutes" will ring on the PC, and on the
+  phone only if a sync happens first.
+
+### Import and export
+- **Import .ics** (Calendar › Import, or opening an .ics from Files / another app): into a chosen calendar or a new one
+  named from the file (`X-WR-CALNAME`, else the file name). Split into one file per UID (overrides stay with their
+  event, the VTIMEZONEs they use come along). Importing the same file again **updates** events by UID, no duplicates.
+- **Google Takeout**: the Takeout zip (or its `Calendar` folder): each `<name>.ics` becomes a calendar of that name,
+  colours from the palette (Takeout carries none). Shows the count per calendar before writing.
+- **Export**: a calendar → one .ics (with VTIMEZONEs, `X-WR-CALNAME`, its colour as `X-APPLE-CALENDAR-COLOR`) to share
+  or save; all → a zip of one .ics per calendar. Opens in Google Calendar, Outlook, Thunderbird, Apple.
+- Not planned: subscribing to an online calendar by URL, Google/CalDAV live sync (no cloud — ask if wanted).
+
+### Screens
+- **Big screen** (tablet ≥ 700 dp wide, the PC) — Google Calendar web: top bar ☰ · Today · ‹ › · "October 2026" ·
+  Day / Week / Month / Agenda; **left panel** (☰ hides it): **Create**, a small month (days with events dotted, tap to
+  go), **My calendars** — each with its coloured checkbox, ⋯ for colour / rename / export / delete, + New calendar,
+  Import; **main area**: the month grid (default; events as coloured chips, all-day as bars, "+3 more"), the week and
+  day grids (hours down the side, events as blocks, the now-line in red, all-day row on top; drag to move or resize on
+  the tablet with a finger, on the PC with the mouse; tap an empty slot to create there). An event tapped opens its card
+  (popover on the PC, side sheet on the tablet); Edit opens the editor as a dialog.
+- **Phone** — Outlook mobile: the top is the **week row** of the chosen day (days with events dotted), swipe for the
+  next week, **pull it down to the whole month** and back up; below it the **agenda**: days one after another from the
+  chosen one, each event as time · length · coloured dot · title · place, all-day ones first; scrolling the agenda moves
+  the week row along. + (bottom right) creates; ☰ opens the calendars (the same checkbox list) as a drawer. Views
+  menu: Agenda (default) · Day · 3 days · Month. The editor is full-screen. A tablet in portrait is a phone layout
+  only if under 700 dp.
+- **Editor** (both): title; calendar (coloured chip); All day; start and end date/time (a zone line only if not the
+  device's); Repeat; Reminders (list + Add); Place; Notes. Delete in the event's card and the editor's ⋯.
+- Dark and light follow Tetra's theme; English only (strings in code like the rest, localisation later).
+- **Home**: a pink Calendar group — the big card (the user's icon) with **Today's next event** and **New event**
+  beside it; the launcher icon as the other applets (Settings › App icons). Colour `applet_calendar` = the icon's pink.
+
+### The skill (`tetra-calendar`)
+In `skills/tetra-calendar/` (repo) and `~/.claude/skills/tetra-calendar/`: SKILL.md — where the folder is, the layout,
+ready-to-copy templates (timed, all-day, repeating, with reminders, a moved or cancelled day), how to move, delete
+(to Trash), make/rename a calendar, the rules (UID unique, DTSTAMP, bump `LAST-MODIFIED`/`SEQUENCE` on edit, IANA
+zones, never `rm`), and that the phone sees it after the next sync. Plus `calendar.py` (standard library only):
+`agenda FROM TO` lists events with repeats expanded (so Claude can answer "what's on next week" and find free time
+without doing RRULE in its head), and `check` validates every file (missing UID or DTSTAMP, end before start, duplicate
+UIDs, unknown zone, bad RRULE) — run after every edit.
+
+### Code (smallest that holds)
+- **Android**: `Calendar.kt` (the vdir: list calendars, read/write/move events, the content-line reader/writer that keeps
+  unknown lines, the occurrence expander), `CalendarScreen.kt` (both layouts, editor), `CalendarAlarms.kt` (planner,
+  receiver, boot). Repeats expanded with **lib-recur** (dmfs, the RRULE library of Android's OpenTasks, 0.17.1, small, pure Java) rather
+  than our own — RFC 5545's RRULE (BYSETPOS, negative BYMONTHDAY, WKST…) is where hand-written code goes wrong.
+  Hook: `SyncClient.receiveFile`/sync result → re-plan alarms when a path under `Calendar/` changed.
+- **Desktop**: `calendar.js` (main: the vdir, `fs.watch` on Calendar so an AI's edit shows at once, the reminder timer),
+  `src/Calendar.tsx` (the Google-web layout), `CALENDAR_CALLS` IPC like Notes; **ical.js** (Mozilla's, Thunderbird's)
+  for parsing and repeats; `calendar.js` added to `build.files`.
+- **Shared test fixtures** (`test/resources/calendar/`): Google's, Outlook's, Thunderbird's and hand-written (AI-style)
+  files, and RRULE cases with their expected dates — run on both sides so the two engines agree.
+
+### Steps (each a commit, each checked on the tablet, then the phone and PC)
+- [ ] 1. Android: the files — `Calendar.kt` read/write/expand + the fixtures, unit tests; `Calendar` a required folder.
+- [ ] 2. Android: the screens read-only — big-screen month/week/day + side panel; phone week row + agenda; Home card,
+      launcher icon (tools/applet-icons.py with Calendar.png).
+- [ ] 3. Android: create, edit, delete; calendars (new, colour, rename, delete, show/hide); repeats with the three-way
+      question; drag on the tablet.
+- [ ] 4. Android: reminders and notifications (planner, exact alarm, boot, snooze, after-sync re-plan, Xiaomi prompts).
+- [ ] 5. Android: import .ics and Takeout, export.
+- [ ] 6. The skill + `calendar.py`; Claude makes and changes events on the PC, the tablet shows and rings after sync.
+- [ ] 7. Desktop: `calendar.js` + `Calendar.tsx` (view, edit, import/export), reminders, start at login.
+- [ ] 8. The real pair: an event made on each device and by Claude, edited on two at once (conflict), deleted, all
+      three agree; a reminder rings on the tablet with the app closed and after a reboot.
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

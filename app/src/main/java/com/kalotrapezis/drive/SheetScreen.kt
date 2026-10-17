@@ -200,6 +200,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var counting by remember { mutableStateOf(false) } // Review › Workbook statistics
     var spellRun by remember { mutableStateOf<SpellRun?>(null) } // Review › Spelling: what is left to look at
     val speller = remember { WriterSpelling(context) }
+    // View › Formula bar and Sheet tabs: shown or not (the viewer's, as Excel's View options)
+    var showBar by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    var showTabs by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1311,6 +1314,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 fileStep(if (on) "headings shown" else "headings hidden", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.gridXlsx(baked, next, bb.parts.getValue("$i"), on, "showRowColHeaders")
                                     else SheetVisibility.gridOds(baked, next, bb.tabs[i].name, on, "HasColumnRowHeaders", perSheet = false) }) }
                             RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
+                            // Excel's Zoom to Selection: the chosen cells fill the screen
+                            RibbonButton("Zoom to selection", w, R.drawable.ic_zoom_in) { view.fitTo = g ?: l.row(cr).takeIf { it >= 0 }?.let { rr -> l.col(cc).takeIf { it >= 0 }?.let { SheetRange(rr, it, rr, it) } } }
+                            RibbonDivider(w)
+                            RibbonButton("Formula bar", w, R.drawable.ic_functions, on = showBar) { showBar = !showBar }
+                            RibbonButton("Sheet tabs", w, R.drawable.ic_tab, on = showTabs) { showTabs = !showTabs }
                             RibbonButton("Search", w, R.drawable.ic_search) { searching = true }
                         }
                         else -> {
@@ -1459,7 +1467,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     if (!editing && sheet != null && file?.canWrite() == true && book?.kind in setOf("xlsx", "ods", "csv"))
                         IconButton(onClick = { editing = true; WriterLog.i("Sheets: editing") }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                 }
-                sheet?.let { s ->
+                sheet?.takeIf { showBar || editing && draft != null }?.let { s ->
                     if (editing) {
                         val (r, c) = chosen(s)
                         EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
@@ -1600,7 +1608,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 if (changed.isNotEmpty()) { history.apply(b, index, changed); version++; fontChosen = c as FontChoice; WriterLog.i("Sheets: font on ${changed.size} cells") }
             }, modifier = Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars), fonts = fonts, now = fontStrip)
         }
-        book?.let { b ->
+        book?.takeIf { showTabs }?.let { b ->
             SheetTabs(b, index, sheet, add = if (editing && b.kind != "csv") ({
                 val name = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } }
                 sheetStep(add = name)
@@ -1997,6 +2005,7 @@ internal class SheetView {
     val pins = mutableStateListOf<Int>()
     val filters = mutableStateMapOf<Int, Set<String>>()
     var fileFilter = false // the file's AutoFilter taken as [filters] once
+    var fitTo by mutableStateOf<SheetRange?>(null) // View › Zoom to selection: the cells (as drawn) to fill the screen with
     var figure by mutableIntStateOf(-1) // the drawing chosen while editing ([SheetDrawing.ordinal]); -1: none
     var figureShift by mutableStateOf(Offset.Zero) // how far it is being dragged (on the screen)
     var sort by mutableStateOf<SheetSort?>(null)
@@ -2260,6 +2269,7 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
     var fling by remember { mutableStateOf<Job?>(null) }
     DisposableEffect(painter) { onDispose { painter.report() } }
     LaunchedEffect(view.reveal, painter, size) { if (view.reveal > 0 && size != IntSize.Zero) painter.reveal(view, size.width.toFloat(), size.height.toFloat()) }
+    LaunchedEffect(view.fitTo, painter, size) { view.fitTo?.let { g -> if (size != IntSize.Zero) { painter.fit(view, g, size.width.toFloat(), size.height.toFloat()); view.fitTo = null } } }
     Canvas(
         Modifier.fillMaxSize().onSizeChanged { size = it; painter.clamp(view, it.width.toFloat(), it.height.toFloat()) }
             .pointerInput(painter) {
@@ -2505,6 +2515,17 @@ internal class SheetPainter(
     }
 
     /** Scrolls so the chosen cell is in sight (search's next one), in the middle when it was not. */
+    /** Excel's Zoom to Selection: cells [g] (as drawn) zoomed to fill the screen, at its top left. */
+    fun fit(view: SheetView, g: SheetRange, w: Float, h: Float) {
+        val gw = colX[min(g.c2 + 1, cols)] - colX[g.c1]; val gh = rowY[min(g.r2 + 1, rows)] - rowY[g.r1]
+        if (gw <= 0f || gh <= 0f) return
+        view.zoom = (min((w - headerW) / gw, (h - headerH) / gh) / density * 0.95f).coerceIn(0.25f, 4f)
+        if (g.c1 >= fc) view.x = colX[g.c1] - colX[fc]
+        if (g.r1 >= fr) view.y = rowY[g.r1] - rowY[fr]
+        clamp(view, w, h)
+        WriterLog.i("Sheets: zoomed to the chosen cells (${"%.2f".format(view.zoom)})")
+    }
+
     fun reveal(view: SheetView, w: Float, h: Float) {
         val r = layout.row(view.row); val c = layout.col(view.col)
         if (r < 0 || c < 0) return

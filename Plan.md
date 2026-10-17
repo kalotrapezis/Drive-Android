@@ -79,7 +79,7 @@ How to write here:
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
       Sources sheet (116c4d6), Review tab (b39004e),
-      freeze panes (e621ff6). Checks at a925139: unit
+      freeze panes (e621ff6), zoom to selection and the bar/tabs. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
@@ -967,8 +967,12 @@ what is not already above:
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
 - [ ] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
-- [ ] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
+- [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
       columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
+      Done (office-F session, 18 Oct) but the page views: freezing (above, kept in the file); View › Zoom to selection (the chosen
+      cells fill the screen: `SheetPainter.fit`), Formula bar and Sheet tabs shown or hidden (the viewer's, as Excel's View
+      options; the bar comes back while typing); headings and gridlines kept in the file (above). Emulator: A1:D5 zoomed to, the
+      bar and tabs hidden. Not yet: page break preview, page layout view.
 - [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
 - [ ] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.

@@ -184,6 +184,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
+    var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -614,6 +615,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             "xlsx" -> SheetNotes.xlsx(baked, next, b.parts.getValue("$i"), r, c, author, text); "ods" -> SheetNotes.ods(baked, next, i, r, c, author, text)
             else -> error("A CSV file keeps no notes: save it as a workbook first.") } })
     }
+    /** Conditional formatting on cells [d] (the sheet's): [rule] made, null: the rules over them cleared. */
+    fun putRule(d: SheetRange, rule: SheetConditional.Rule?) { val i = index
+        fileStep(if (rule == null) "rules cleared" else "rule made (${rule.kind})", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetConditional.xlsx(baked, next, b.parts.getValue("$i"), b.parts["styles"] ?: error("No styles."), d, rule)
+            "ods" -> SheetConditional.ods(baked, next, i, b.tabs[i].name, d, rule)
+            else -> error("A CSV file keeps no rules: save it as a workbook first.") } })
+    }
     /** A drop-down list on cells [d] (the sheet's): [items] its values, null takes it away. */
     fun putList(d: SheetRange, items: List<String>?) { val i = index
         fileStep(if (items == null) "drop-down list taken away" else "drop-down list made", { baked, next, b -> when (b.kind) {
@@ -828,7 +836,25 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 drawRect(Color(e.color), Offset(0f, size.height - e.width.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, e.width.dp.toPx())) } } ?: Modifier)
                             .clickable { look { st, _ -> SheetLook.styled(st, cs, b.styles.getOrNull(0) ?: SheetStyle()) }; WriterLog.i("Sheets: cell style ${cs.name}") }
                             .wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 12.dp))
-                } } else if (name == "Format as table") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                } } else if (name == "Conditional formatting") {
+                // Excel's menu: highlight rules and top/bottom ask their values and look; bars and scales go on at once
+                val d = targets(s, l).let { ks -> if (ks.isEmpty()) null else box(ks) }
+                fun rule(kind: String) { if (d == null) return; group = null; if (kind in setOf("dataBar", "colorScale")) putRule(d, SheetConditional.Rule(kind)) else ruling = kind to d }
+                RibbonButton("Greater than", w, R.drawable.ic_keyboard_arrow_up) { rule("greaterThan") }
+                RibbonButton("Less than", w, R.drawable.ic_keyboard_arrow_down) { rule("lessThan") }
+                RibbonButton("Between", w, R.drawable.ic_unfold_less) { rule("between") }
+                RibbonButton("Equal to", w, R.drawable.ic_drag_handle) { rule("equal") }
+                RibbonButton("Text that contains", w, R.drawable.ic_text_fields) { rule("contains") }
+                RibbonButton("Duplicate values", w, R.drawable.ic_copy) { rule("duplicate") }
+                RibbonDivider(w)
+                RibbonButton("Top 10", w, R.drawable.ic_format_list_numbered) { rule("top10") }
+                RibbonButton("Above average", w, R.drawable.ic_horizontal_rule) { rule("aboveAverage") }
+                RibbonDivider(w)
+                RibbonButton("Data bars", w, R.drawable.ic_bar_chart) { rule("dataBar") }
+                RibbonButton("Colour scale", w, R.drawable.ic_gradient) { rule("colorScale") }
+                RibbonDivider(w)
+                RibbonButton("Clear rules", w, R.drawable.ic_format_clear) { if (d != null) { group = null; putRule(d, null) } }
+            } else if (name == "Format as table") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 // each a small table in its colours: Excel's gallery
                 val d = view.range?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
                 SheetTables.OFFERED.forEach { style -> val base = Color(SheetTables.colour(style, b.theme)); val light = style.startsWith("TableStyleLight")
@@ -845,7 +871,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         // a phone: solid across the bottom; a tablet: floating, as Words' and Slides' (asked 16 Oct)
         val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
         Surface(color = Color(0xFF16191A), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
-            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" || it == "Format as table" }, label = "ribbon",
+            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" || it == "Format as table" || it == "Conditional formatting" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
@@ -1083,6 +1109,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 opener("Borders", R.drawable.ic_border_outer)
                                 opener("Cell styles", R.drawable.ic_style)
                                 if (b.kind != "csv") opener("Format as table", R.drawable.ic_table)
+                                if (b.kind != "csv") opener("Conditional formatting", R.drawable.ic_highlighter)
                                 RibbonDivider(w)
                                 RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
@@ -1446,6 +1473,26 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = step.replace(',', '.').toDoubleOrNull() != null, onClick = { stepping = null
                 fillSeries(g, type, step.replace(',', '.').toDouble()) }) { Text("Fill") } },
             dismissButton = { TextButton(onClick = { stepping = null }) { Text("Cancel") } }) }
+    // Home › Conditional formatting: Excel's dialog — the value(s) and the look
+    ruling?.let { (kind, d) ->
+        val count = when (kind) { "between" -> 2; "duplicate", "aboveAverage" -> 0; else -> 1 }
+        val typed = remember(kind, d) { androidx.compose.runtime.mutableStateListOf(*Array(count) { if (kind == "top10") "10" else "" }) }
+        var look by remember(kind, d) { mutableStateOf(0) }
+        val title = mapOf("greaterThan" to "Greater than", "lessThan" to "Less than", "between" to "Between", "equal" to "Equal to", "contains" to "Text that contains",
+            "duplicate" to "Duplicate values", "top10" to "Top 10", "aboveAverage" to "Above average").getValue(kind)
+        AlertDialog(onDismissRequest = { ruling = null }, title = { Text(title) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(when (kind) { "duplicate" -> "Cells that hold a value met more than once:"; "aboveAverage" -> "Cells above the average of the chosen cells:"
+                    "top10" -> "The cells that rank in the top:"; else -> "Cells whose value is:" })
+                typed.indices.forEach { k -> OutlinedTextField(typed[k], { typed[k] = it }, singleLine = true,
+                    label = { Text(when { kind == "between" -> if (k == 0) "From" else "To"; kind == "top10" -> "How many"; kind == "contains" -> "Words"; else -> "Value" }) }) }
+                Text("With:")
+                SheetConditional.LOOKS.forEachIndexed { k, (name, fill, color) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { look = k }.heightIn(min = 48.dp)) {
+                        androidx.compose.material3.RadioButton(look == k, { look = k })
+                        Text(name, color = Color(color), modifier = Modifier.background(Color(fill)).padding(horizontal = 8.dp, vertical = 4.dp)) } } } },
+            confirmButton = { TextButton(enabled = typed.all { it.isNotBlank() }, onClick = { ruling = null; putRule(d, SheetConditional.Rule(kind, typed.toList(), look)) }) { Text("Done") } },
+            dismissButton = { TextButton(onClick = { ruling = null }) { Text("Cancel") } }) }
     // Data › Drop-down list: the values, comma-separated (Excel's Source box); Take away when the cells have one
     listing?.let { d -> val was = sheet?.listAt(d.r1, d.c1)
         var typed by remember(d) { mutableStateOf(was?.items?.joinToString(", ").orEmpty()) }

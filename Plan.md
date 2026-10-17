@@ -68,9 +68,10 @@ How to write here:
       Paragraph; Tables › a rich-text cell, Replace, Merge & centre, Chart, Width/Hide, Link, Remove duplicates, Text to columns, Insert
       function, sheet Hide, Gridlines, a protected sheet; Words › Shape options Dash/Shadow. And the touch-target script on the tablet.
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
-      lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table. Checks at a925139: unit
+      lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
+      formatting. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -708,7 +709,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 ### C. Tables — what Excel and Calc have that Tables lacks
 - [ ] **Home**: merge and centre (and unmerge); column width and row height (typed, and AutoFit to the contents);
       hide and unhide rows, columns and sheets; insert and delete cells shifting the rest; Fill down and right; cell
-      styles; **Format as table** (make an Excel Table) — done; **conditional formatting** made here (it is only read today);
+      styles; **Format as table** (make an Excel Table) — done; **conditional formatting** made here — done;
       Find and **Replace**; Format painter.
       Replace done (office-F session, 17 Oct): Tables' own find (all sheets, Go To) gets Words' replace row (`ReplaceRow`, moved out of
       `FindReplaceBar` and shared) while editing — Replace (the cell shown) and All, in each found cell's words or formula, any case
@@ -739,6 +740,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       cells refused), drawn by the reader's built-in styles (moved to `SheetTables.builtIn`/`lay`); .ods (LibreOffice has no table
       styles): the same looks put on the cells, as its AutoFormat does. `a table made` (LibreOffice reads it as a database range);
       emulator: A1:D3 of a file whose accent 1 is green, Medium 3 saved. Not yet: Table Design (total row, banded columns, resize).
+      Conditional formatting made here (office-F session, 18 Oct): Home › Conditional formatting — Excel's menu: Greater than, Less than,
+      Between, Equal to, Text that contains, Duplicate values (each asking its value(s) and one of Excel's three looks), Top 10, Above
+      average, Data bars, Colour scale (at once), Clear rules (`SheetConditional`: Excel's conditionalFormatting with a dxf, put first
+      as Excel puts a new rule; LibreOffice's calcext:conditional-format with a cell style of its own, named as it shows it — it finds
+      a condition's style by that name). A value with a decimal comma taken as a number. `conditional formatting made and cleared`
+      (both formats, LibreOffice's conversions both ways); emulator: B2:B5 of an .ods > 1000 in light red. shortcut: Clear rules takes
+      a rule partly over the cells away whole. Not yet: icon sets, Manage rules.
 - [~] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

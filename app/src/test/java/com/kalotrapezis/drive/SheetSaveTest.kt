@@ -369,6 +369,37 @@ class SheetSaveTest {
             assertTrue(b.sheet(0).let { s -> s.look(s[0, 2]!!.style, b.styles)!!.bold }) }
     }
 
+    /** Conditional formatting made here: a highlight rule, text that contains, a data bar — Excel's and LibreOffice's, read back and by LibreOffice; cleared. */
+    @Test fun `conditional formatting made and cleared`() {
+        assertEquals("1.5", SheetConditional.operand("1,5")); assertEquals("\"Al\"", SheetConditional.operand("Al")); assertEquals("A1*2", SheetConditional.operand("=A1*2"))
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("rules").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.')
+            fun step(g: SheetRange, rule: SheetConditional.Rule?) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetConditional.xlsx(f, next, b0.parts.getValue("0"), b0.parts.getValue("styles"), g, rule)
+                else SheetConditional.ods(f, next, 0, b0.tabs[0].name, g, rule); f = next }
+            step(SheetRange(1, 1, 4, 1), SheetConditional.Rule("greaterThan", listOf("1000"), 0))
+            step(SheetRange(1, 0, 2, 0), SheetConditional.Rule("contains", listOf("Al"), 2))
+            step(SheetRange(1, 3, 2, 3), SheetConditional.Rule("dataBar"))
+            fun check(file: File, how: String) { val b = Sheets.read(file, ',', '.'); val s = b.sheet(0)
+                fun fill(r: Int, c: Int) = s.look(s[r, c]!!.style, b.styles)?.fill
+                assertEquals(how, 0xFFFFC7CE.toInt(), fill(1, 1)); assertTrue(how, fill(2, 1) != 0xFFFFC7CE.toInt())
+                assertEquals(how, 0xFFC6EFCE.toInt(), fill(1, 0)); assertTrue(how, fill(2, 0) != 0xFFC6EFCE.toInt())
+                assertTrue(how + ": " + s.bars.keys, s.bars.containsKey(Sheet.key(1, 3)))
+                assertEquals(how, "Alpha", s[1, 0]?.text) }
+            check(f, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+            step(SheetRange(1, 1, 1, 1), null)
+            Sheets.read(f, ',', '.').sheet(0).let { s -> assertTrue(name, s.rules.none { it.type == "cellIs" }); assertTrue(name, s.rules.any { it.type == "containsText" }) }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

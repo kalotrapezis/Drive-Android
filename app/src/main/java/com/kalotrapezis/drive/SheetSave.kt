@@ -382,7 +382,17 @@ internal object SheetSave {
             SheetKind.Error -> type("error")
             SheetKind.Empty -> Unit
         }
-        if (cell.text.isNotEmpty()) cell.text.split('\n').forEach { line -> target.appendChild(doc.createElementNS(TEXT, "text:p").apply { textContent = line }) }
+        val rich = cell.rich
+        if (rich != null) {
+            // rich text: LibreOffice's spans, each with a text style of its runs' look; a line break a new paragraph
+            var p = doc.createElementNS(TEXT, "text:p").also { target.appendChild(it) }
+            for (run in rich) run.text.split('\n').forEachIndexed { k, piece ->
+                if (k > 0) p = doc.createElementNS(TEXT, "text:p").also { target.appendChild(it) }
+                if (piece.isEmpty()) return@forEachIndexed
+                val span = looks.span(run)
+                p.appendChild(if (span == null) doc.createTextNode(piece) else doc.createElementNS(TEXT, "text:span").apply { setAttributeNS(TEXT, "text:style-name", span); textContent = piece })
+            }
+        } else if (cell.text.isNotEmpty()) cell.text.split('\n').forEach { line -> target.appendChild(doc.createElementNS(TEXT, "text:p").apply { textContent = line }) }
     }
 
     /** Looks formatting made, as LibreOffice's automatic cell styles (with a number style for their format). */
@@ -396,6 +406,22 @@ internal object SheetSave {
         /** Every style name the file uses, so a new one is never one of them. */
         val taken = HashSet<String>().also { t -> val all = doc.getElementsByTagName("*"); for (i in 0 until all.length) (all.item(i) as org.w3c.dom.Element).getAttributeNS(STYLE, "name").takeIf { it.isNotEmpty() }?.let { t += it } }
         fun fresh(prefix: String) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { taken += it }
+        private val spans = HashMap<DocRun, String?>()
+        /** A rich text run's look as a text style (LibreOffice's for a span); null: no look of its own. */
+        fun span(run: DocRun): String? = spans.getOrPut(run.copy(text = "")) {
+            if (run.copy(text = "") == DocRun("")) return@getOrPut null
+            val e = doc.createElementNS(STYLE, "style:style"); val name = fresh("Tsp")
+            e.setAttributeNS(STYLE, "style:name", name); e.setAttributeNS(STYLE, "style:family", "text")
+            e.appendChild(doc.createElementNS(STYLE, "style:text-properties").apply {
+                if (run.bold) setAttributeNS(FO, "fo:font-weight", "bold"); if (run.italic) setAttributeNS(FO, "fo:font-style", "italic")
+                if (run.underline) { setAttributeNS(STYLE, "style:text-underline-style", "solid"); setAttributeNS(STYLE, "style:text-underline-width", "auto"); setAttributeNS(STYLE, "style:text-underline-color", "font-color") }
+                if (run.strike) setAttributeNS(STYLE, "style:text-line-through-style", "solid")
+                run.sizePt?.let { setAttributeNS(FO, "fo:font-size", "${num(it.toDouble())}pt") }
+                run.color?.let { setAttributeNS(FO, "fo:color", "#%06x".format(it and 0xFFFFFF)) }
+                DocStyles.Plain.fontName(run.font)?.let { setAttributeNS(FO, "fo:font-family", it) }
+            })
+            auto.appendChild(e); name
+        }
 
         fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
         // a double as LibreOffice writes Excel's (a bare "double" it takes as thin)

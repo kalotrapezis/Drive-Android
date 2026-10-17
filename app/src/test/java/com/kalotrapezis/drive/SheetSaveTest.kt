@@ -78,6 +78,15 @@ class SheetSaveTest {
         val out = File(dir, "lo").apply { mkdirs() }
         ProcessBuilder("soffice", "--headless", "--convert-to", "xlsx", "--outdir", out.path, inline.path).redirectErrorStream(true).start().waitFor()
         check(Sheets.read(File(out, "inline.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's save")
+        // LibreOffice's .ods of it: its spans read; a fill put on the cell and saved by Tetra (the spans written), read again and by LibreOffice
+        ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", out.path, inline.path).redirectErrorStream(true).start().waitFor()
+        val ods = File(out, "inline.ods"); val ob = Sheets.read(ods, ',', '.'); check(ob.sheet(0)[0, 0], "LibreOffice's ods")
+        SheetHistory().apply(ob, 0, SheetLook.change(ob, ob.sheet(0), listOf(Sheet.key(0, 0))) { st, _ -> st.copy(fill = 0xFF00FF00.toInt()) })
+        val saved = File(dir, "saved.ods"); SheetSave.save(ob, ods, saved)
+        Sheets.read(saved, ',', '.').let { b -> check(b.sheet(0)[0, 0], "ods saved by Tetra"); assertEquals(0xFF00FF00.toInt(), b.sheet(0).look(b.sheet(0)[0, 0]!!.style, b.styles)?.fill) }
+        val back = File(dir, "back").apply { mkdirs() }
+        ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "xlsx", "--outdir", back.path, saved.path).redirectErrorStream(true).start().waitFor()
+        check(Sheets.read(File(back, "saved.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's xlsx of Tetra's ods")
     }
 
     /** Merge & centre (Excel's mergeCell, LibreOffice's spanned and covered cells): C2:D3 one cell, only C2 keeping its value; A4:B4 unmerged. */

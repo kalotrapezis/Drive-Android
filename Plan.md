@@ -70,8 +70,10 @@ How to write here:
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
-      Print titles (420575e), Header and footer. Checks at a925139: unit
-      suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
+      Print titles (420575e), Header and footer (b66a9cb),
+      engine step 6 for .ods (rich text). Checks at a925139: unit
+      suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
+      failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF).
 - Other sessions: add your line here when you start.
 
@@ -268,7 +270,11 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       cell's vertical alignment; the old one-look StaticLayout gone); Shrink to fit read (Excel's shrinkToFit, LibreOffice's
       shrink-to-fit) and drawn (smaller letters until they fit). `rich text in a cell` (shared, Tetra's inline, LibreOffice's own save);
       emulator: "Na" bold, "me" red italic 14 pt; sheet.xlsx's merged wrapped cell in its row. The user's 31 workbooks all read.
-      Not yet: an .ods cell's rich text (text:span) read and written; rich text typed in Tables (a cell typed in is one look).
+      .ods done (office-F session, 18 Oct): LibreOffice's text:span in a cell read as the same runs (`spanLook`: its text style's own
+      weight, slant, underline, strike, size, colour, font over the span it sits in) and written back as spans with text styles of
+      their own (`OdsLooks.span`) when the cell is saved (a look put on it). `rich text in a cell` grew: LibreOffice's .ods of it,
+      Tetra's save of that, and LibreOffice's .xlsx of Tetra's; emulator: "Na" bold, "me" red italic in an .ods.
+      Not yet: rich text typed in Tables (a cell typed in is one look).
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,
       the user's document sweep (`UserDocsSweepTest`, TETRA_SWEEP=1), the LibreOffice round trips, and a walk of
       Words, Slides and Tables on the tablet (TEST_TREE.md) — numbers before and after written here.

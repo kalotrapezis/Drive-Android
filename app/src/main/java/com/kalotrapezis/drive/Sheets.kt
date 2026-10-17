@@ -1416,6 +1416,19 @@ internal object Sheets {
                 // a shape (draw:custom-shape): its style, its geometry's attributes and equations, its words
                 var shapeStyle: String? = null; var shapeGeo: HashMap<String, String>? = null; val shapeEqs = ArrayList<Pair<String, String>>()
                 val shapeText = StringBuilder(); var shapeSpan: String? = null
+                // a cell's rich text: where each look starts in its words, the spans open now
+                val cuts = ArrayList<Pair<Int, DocRun>>(); val spanLooks = ArrayList<DocRun>()
+                /** A text style's look over [base] (LibreOffice's span): its own properties only. */
+                fun spanLook(base: DocRun, name: String?): DocRun {
+                    val p = raw[name ?: return base]?.props ?: return base
+                    return base.copy(bold = p["t.font-weight"]?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } ?: base.bold,
+                        italic = p["t.font-style"]?.let { it == "italic" || it == "oblique" } ?: base.italic,
+                        underline = p["t.text-underline-style"]?.let { it != "none" } ?: base.underline,
+                        strike = p["t.text-line-through-style"]?.let { it != "none" } ?: base.strike,
+                        sizePt = p["t.font-size"]?.takeIf { it.endsWith("pt") }?.removeSuffix("pt")?.toFloatOrNull() ?: base.sizePt,
+                        color = hex(p["t.color"])?.and(0xFFFFFF) ?: base.color,
+                        font = (p["t.font-name"] ?: p["t.font-family"])?.let { Slides.face(it.trim('\'')) } ?: base.font)
+                }
                 var drawings = ArrayList<SheetDrawing>()
                 // LibreOffice's conditional formats (calcext:), in the order they come: the first wins
                 var rules = ArrayList<SheetRule>(); var cfRanges = emptyList<SheetRange>(); val entries = ArrayList<Pair<SheetCfvo, Int?>>(); var barColor: Int? = null
@@ -1463,6 +1476,8 @@ internal object Sheets {
                             col += n
                         }
                         "table-header-rows" -> titlesFrom = row // rows printed on every page
+                        // rich text: a span's look from where its words start
+                        "span" -> if (inP) { val look = spanLook(spanLooks.lastOrNull() ?: DocRun(""), at.a("style-name")); spanLooks += look; cuts += text.length to look }
                         "table-row" -> {
                             rowRepeat = at.a("number-rows-repeated")?.toIntOrNull() ?: 1
                             rowDefault = at.a("default-cell-style-name")
@@ -1473,7 +1488,7 @@ internal object Sheets {
                         "table-cell", "covered-table-cell" -> {
                             cellRepeat = at.a("number-columns-repeated")?.toIntOrNull() ?: 1
                             if (local == "covered-table-cell") { col += cellRepeat; skip = 1; return }
-                            inCell = true; text.setLength(0); paras = 0; link = null; note.setLength(0); author.setLength(0)
+                            inCell = true; text.setLength(0); paras = 0; link = null; note.setLength(0); author.setLength(0); cuts.clear(); spanLooks.clear()
                             cellAttrs = HashMap<String, String>().also { m -> for (i in 0 until at.length) m[at.getLocalName(i)] = at.getValue(i) }
                         }
                         "annotation" -> if (inCell) inNote = true else skip = 1
@@ -1522,6 +1537,7 @@ internal object Sheets {
                     }
                     when (local) {
                         "p", "h" -> { inP = false; inNoteP = false }
+                        "span" -> if (inP && spanLooks.isNotEmpty()) { spanLooks.removeAt(spanLooks.lastIndex); cuts += text.length to (spanLooks.lastOrNull() ?: DocRun("")) }
                         "annotation" -> inNote = false
                         "creator" -> inCreator = false
                         "table-cell" -> { endCell(); inCell = false }
@@ -1628,7 +1644,11 @@ internal object Sheets {
                         else -> SheetKind.Empty
                     }
                     val formula = a["formula"]?.let(::odfFormula)
-                    val cell = SheetCell(shown, kind, value, formula, s, link = link, color = value?.let { numberColor(styleName, it) },
+                    // its runs, when a span gave some of its words a look of their own
+                    val runs = if (cuts.none { it.second != DocRun("") }) null else (listOf(0 to DocRun("")) + cuts + listOf(shown.length to DocRun(""))).zipWithNext { (from, look), (to, _) ->
+                        look.copy(text = shown.substring(from.coerceAtMost(shown.length), to.coerceIn(from.coerceAtMost(shown.length), shown.length))) }
+                        .filter { it.text.isNotEmpty() }.fold(ArrayList<DocRun>()) { out, r -> if (out.isNotEmpty() && out.last().sameLook(r)) out[out.lastIndex] = out.last().copy(text = out.last().text + r.text) else out += r; out }
+                    val cell = SheetCell(shown, kind, value, formula, s, link = link, color = value?.let { numberColor(styleName, it) }, runs = runs,
                         note = note.toString().trim().takeIf { it.isNotEmpty() }?.let { n -> author.toString().trim().takeIf { it.isNotEmpty() }?.let { "$it: $n" } ?: n })
                     val boxed = styles[s].boxed
                     val n = min(cellRepeat, 16384 - col)

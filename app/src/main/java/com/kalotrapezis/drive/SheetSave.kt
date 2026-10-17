@@ -210,11 +210,14 @@ internal object SheetSave {
                     else add("borders", "<border>" + line("left", look.left) + line("right", look.right) + line("top", look.top) + line("bottom", look.bottom) + "<diagonal/></border>")
                 val h = when (look.align) { SheetAlign.Left -> "left"; SheetAlign.Center -> "center"; SheetAlign.Right -> "right"; SheetAlign.Justify -> "justify"; else -> null }
                 val v = when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "center"; else -> null }
-                val align = if (h == null && v == null && !look.wrap && look.indent == 0 && look.rotation == 0) "" else "<alignment" + (h?.let { " horizontal=\"$it\"" } ?: "") +
-                    (v?.let { " vertical=\"$it\"" } ?: "") + (if (look.wrap) " wrapText=\"1\"" else "") + (if (look.indent > 0) " indent=\"${look.indent}\"" else "") +
+                val align = if (h == null && v == null && !look.wrap && !look.shrink && look.indent == 0 && look.rotation == 0) "" else "<alignment" + (h?.let { " horizontal=\"$it\"" } ?: "") +
+                    (v?.let { " vertical=\"$it\"" } ?: "") + (if (look.wrap) " wrapText=\"1\"" else "") + (if (look.shrink) " shrinkToFit=\"1\"" else "") + (if (look.indent > 0) " indent=\"${look.indent}\"" else "") +
                     (if (look.rotation != 0) " textRotation=\"${look.rotation}\"" else "") + "/>"
+                // an unlocked cell (Excel's Format › Lock Cell off): typed in while the sheet is protected
+                val protection = if (look.locked) "" else "<protection locked=\"0\"/>"
                 "<xf numFmtId=\"${ids[code]}\" fontId=\"$font\" fillId=\"$fill\" borderId=\"$border\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\"" +
-                    (if (align.isEmpty()) "/>" else " applyAlignment=\"1\">$align</xf>")
+                    (if (align.isNotEmpty()) " applyAlignment=\"1\"" else "") + (if (protection.isNotEmpty()) " applyProtection=\"1\"" else "") +
+                    (if (align.isEmpty() && protection.isEmpty()) "/>" else ">$align$protection</xf>")
             }
             val xfsNow = Regex("""(<cellXfs[^>]*>)(.*?)(</cellXfs>)""", RegexOption.DOT_MATCHES_ALL).find(st)!!
             st = st.replaceRange(xfsNow.range, xfsNow.groupValues[1].replace(Regex("""count="\d+""""), "count=\"${list.size + wanted.size}\"") + xfsNow.groupValues[2] + added + xfsNow.groupValues[3])
@@ -409,6 +412,8 @@ internal object SheetSave {
                 setAttributeNS(FO, "fo:border-left", line(look.left)); setAttributeNS(FO, "fo:border-right", line(look.right))
                 setAttributeNS(FO, "fo:border-top", line(look.top)); setAttributeNS(FO, "fo:border-bottom", line(look.bottom))
                 if (look.wrap) setAttributeNS(FO, "fo:wrap-option", "wrap")
+                if (look.shrink) setAttributeNS(STYLE, "style:shrink-to-fit", "true")
+                if (!look.locked) setAttributeNS(STYLE, "style:cell-protect", "none")
                 setAttributeNS(STYLE, "style:vertical-align", when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "middle"; else -> "bottom" })
                 if (look.align != SheetAlign.General) setAttributeNS(STYLE, "style:text-align-source", "fix")
             })

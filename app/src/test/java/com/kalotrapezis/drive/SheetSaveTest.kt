@@ -1,6 +1,7 @@
 package com.kalotrapezis.drive
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -397,6 +398,42 @@ class SheetSaveTest {
             }
             step(SheetRange(1, 1, 1, 1), null)
             Sheets.read(f, ',', '.').sheet(0).let { s -> assertTrue(name, s.rules.none { it.type == "cellIs" }); assertTrue(name, s.rules.any { it.type == "containsText" }) }
+        }
+    }
+
+    /** Protect and Unprotect made here: a password (Excel's SHA-512, LibreOffice's SHA-256) or none; an unlocked cell saved and typed in; LibreOffice keeps it. */
+    @Test fun `a sheet protected and unprotected`() {
+        assertEquals("CBEB", SheetProtect.legacyHash("test"))
+        assertEquals("WtgE534lLyyBpDQaFVk25WfLmmRwfjjvKdTdxyh40fCt80RBDtZWAW3QcNDpyo8ytbX1bUd+Tusq+RxaJ7vInw==",
+            java.util.Base64.getEncoder().encodeToString(SheetProtect.excelHash("Tetra", ByteArray(16)))) // as Python's hashlib makes it
+        assertTrue(SheetProtect.opens(mapOf("password" to "CBEB"), "test")); assertFalse(SheetProtect.opens(mapOf("password" to "CBEB"), "Test"))
+        assertTrue(SheetProtect.opens(mapOf("protection-key" to "K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=", "protection-key-digest-algorithm" to "http://www.w3.org/2000/09/xmldsig#sha256"), "secret"))
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("protect").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            // B2 unlocked first (Home › Lock cell off), saved
+            val b0 = Sheets.read(f, ',', '.'); val s0 = b0.sheet(0)
+            SheetHistory().apply(b0, 0, SheetLook.change(b0, s0, listOf(Sheet.key(1, 1))) { st, _ -> st.copy(locked = false) })
+            File(dir, "unlocked.${f.extension}").let { SheetSave.save(b0, f, it); f = it }
+            fun step(protect: Boolean, password: String) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetProtect.xlsx(f, next, b0.parts.getValue("0"), protect, password) else SheetProtect.ods(f, next, 0, protect, password); f = next }
+            step(true, "secret")
+            fun check(file: File, how: String, guarded: Boolean) { val b = Sheets.read(file, ',', '.'); val s = b.sheet(0); val h = SheetHistory(); var no = 0; h.refused = { no++ }
+                assertTrue(how, s.protected); assertEquals(how, guarded, s.guarded); assertTrue(how, !b.sheet(1).protected)
+                h.apply(b, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell("Gamma", s[1, 0], s[1, 0]!!.style, "General", b.format))); assertEquals(how, 1, no)
+                h.apply(b, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("7", s[1, 1], s[1, 1]!!.style, "General", b.format))); assertEquals(how, 1, no); assertEquals(how, 7.0, s[1, 1]?.value) }
+            check(f, "protected in $name", true)
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                // LibreOffice keeps the protection but not the password, either way (it can't turn one hash into the other)
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", false)
+            }
+            assertTrue(name, runCatching { step(false, "wrong") }.isFailure)
+            step(false, "secret"); assertTrue(name, !Sheets.read(f, ',', '.').sheet(0).protected)
+            step(true, ""); check(f, "protected without a password in $name", false)
+            step(false, ""); assertTrue(name, !Sheets.read(f, ',', '.').sheet(0).protected)
         }
     }
 

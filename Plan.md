@@ -69,9 +69,9 @@ How to write here:
       function, sheet Hide, Gridlines, a protected sheet; Words › Shape options Dash/Shadow. And the touch-target script on the tablet.
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
-      formatting. Checks at a925139: unit
+      formatting (17b4bbf), Protect / Unprotect. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -798,7 +798,14 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);
       a change to a locked cell refused where every change passes (`SheetHistory.apply`/`locked`, with a message), typing not begun,
       whole-file changes refused on a protected sheet. `a protected sheet's locked cells kept` (Excel's, and LibreOffice's .ods of it);
-      emulator: a protected copy of sheet.xlsx refused typing. Not yet: Protect / Unprotect made here (passwords), spelling.
+      emulator: a protected copy of sheet.xlsx refused typing.
+      Protect / Unprotect made here (office-F session, 18 Oct): a sheet's tab › Protect (a password twice, or none) and Unprotect (its
+      password asked when it has one, checked against the file's hash: Excel's SHA-512 or its old 16-bit one, LibreOffice's SHA-256 or
+      SHA-1), and Home › Lock cell (Excel's Format › Lock Cell) to leave cells open to typing — now saved (Excel's protection locked,
+      LibreOffice's cell-protect; Shrink to fit, read since step 6, now saved too). `SheetProtect`; `Sheet.guarded`. `a sheet protected
+      and unprotected` (both formats; the hashes checked against Python's; LibreOffice's conversions keep the protection, not the
+      password — it can't turn one hash into the other); emulator: protected with a password, A2 refused, a wrong password refused,
+      unprotected. Not yet: spelling.
 - [~] **View**: gridlines and headings on or off; split the window (later).
       Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
       view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes

@@ -191,6 +191,8 @@ internal class Sheet(
 ) {
     /** Review › Protect Sheet (Excel's sheetProtection, LibreOffice's table:protected): its locked cells are not to be changed. */
     var protected = false
+    /** Its protection has a password (asked for to unprotect it). */
+    var guarded = false
     /** Its drop-down lists (data validation). */
     var lists: List<SheetList> = emptyList()
     fun listAt(r: Int, c: Int) = lists.firstOrNull { l -> l.ranges.any { (r to c) in it } }
@@ -799,7 +801,7 @@ internal object Sheets {
             val page = HashMap<String, String>() // pageSetup, pageSetUpPr, printOptions and pageMargins, as they are
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
-            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false
+            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false; var guardedSheet = false
             val dvs = ArrayList<Pair<List<SheetRange>, String>>() // data validation lists: their cells and formula
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
@@ -879,7 +881,7 @@ internal object Sheets {
                         "rPr" -> if (inIs) rich.inPr = true
                         "b", "i", "u", "strike", "sz", "rFont" -> if (inIs && rich.inPr) rich.prop(local, at)
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
-                        "sheetProtection" -> protectedSheet = at.a("sheet").let { it == "1" || it == "true" }
+                        "sheetProtection" -> { protectedSheet = at.a("sheet").let { it == "1" || it == "true" }; guardedSheet = at.a("password") != null || at.a("hashValue") != null }
                         "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
                         "tablePart" -> at.a("id")?.let { rels[it] }?.let { tableParts += it }
                         "drawing" -> drawingPart = at.a("id")?.let { rels[it] }
@@ -964,7 +966,7 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet
                     it.lists = dvs.mapNotNull { (ranges, f) -> SheetList.of(ranges, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } }
         }
 
@@ -1389,7 +1391,7 @@ internal object Sheets {
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
                 var inStyles = false
-                var name = ""; var tableStyle: String? = null; var tableProtected = false; var printRanges: String? = null
+                var name = ""; var tableStyle: String? = null; var tableProtected = false; var tableGuarded = false; var printRanges: String? = null
                 var cells = CellMap()
                 var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
                 var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
@@ -1436,7 +1438,7 @@ internal object Sheets {
                         "table" -> {
                             tableIndex++
                             if (tableIndex != target) { skip = 1; return }
-                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name"); tableProtected = at.a("protected") == "true"; printRanges = at.a("print-ranges")
+                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name"); tableProtected = at.a("protected") == "true"; tableGuarded = !at.a("protection-key").isNullOrEmpty(); printRanges = at.a("print-ranges")
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
                             col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList(); rules = ArrayList()
@@ -1668,7 +1670,7 @@ internal object Sheets {
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
                         print = runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint(),
-                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected
+                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded
                         it.lists = validCells.mapNotNull { (v, at) -> validities[v]?.let { SheetList.odsList(it) }?.let { f -> SheetList.of(at, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } } }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read

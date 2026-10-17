@@ -185,6 +185,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
+    var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -390,11 +391,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * A change to the whole file ([op] from the copy with the edits in it to a new copy — rows, columns, sheets): the
      * edits written into a copy, [op] done, the new copy read again; one step to undo; [then] after, with it.
      */
-    fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, then: (Workbook) -> Unit = {}) {
+    fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, unprotecting: Boolean = false, then: (Workbook) -> Unit = {}) {
         val b = book ?: return; val i = index
         // one at a time: a second started before the first is done would start from the file without it
         if (saving) { message = "One moment — the last change is still being made"; return }
-        if (b.sheet(i).protected) { message = PROTECTED; return }
+        if (b.sheet(i).protected && !unprotecting) { message = PROTECTED; return }
         val from = work ?: file ?: return
         commit(false)
         saving = true
@@ -614,6 +615,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         fileStep(if (text == null) "note taken away" else "note put on", { baked, next, b -> when (b.kind) {
             "xlsx" -> SheetNotes.xlsx(baked, next, b.parts.getValue("$i"), r, c, author, text); "ods" -> SheetNotes.ods(baked, next, i, r, c, author, text)
             else -> error("A CSV file keeps no notes: save it as a workbook first.") } })
+    }
+    /** Protect ([protect]) or unprotect this sheet, with [password] (none: ""). */
+    fun protectSheet(protect: Boolean, password: String) { val i = index
+        fileStep(if (protect) "sheet protected" else "sheet unprotected", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetProtect.xlsx(baked, next, b.parts.getValue("$i"), protect, password); "ods" -> SheetProtect.ods(baked, next, i, protect, password)
+            else -> error("A CSV file can't be protected: save it as a workbook first.") } }, unprotecting = !protect) { message = if (protect) "Sheet protected" else "Sheet unprotected" }
     }
     /** Conditional formatting on cells [d] (the sheet's): [rule] made, null: the rules over them cleared. */
     fun putRule(d: SheetRange, rule: SheetConditional.Rule?) { val i = index
@@ -915,6 +922,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             // Excel's Hide and Unhide on a sheet's tab
                             RibbonDivider(w)
                             RibbonButton("Hide", w, R.drawable.ic_visibility_off, enabled = b.tabs.count { !it.hidden } > 1) { showSheet(index, true) }
+                            // Excel's Review › Protect Sheet: its locked cells kept as they are
+                            if (b.kind != "csv") RibbonButton(if (s.protected) "Unprotect" else "Protect", w, R.drawable.ic_lock, on = s.protected) {
+                                if (s.protected && !s.guarded) protectSheet(false, "") else protecting = true }
                             if (b.tabs.any { it.hidden }) Box {
                                 var open by remember { mutableStateOf(false) }
                                 RibbonButton("Unhide", w, R.drawable.ic_visibility) { open = true }
@@ -1110,6 +1120,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 opener("Cell styles", R.drawable.ic_style)
                                 if (b.kind != "csv") opener("Format as table", R.drawable.ic_table)
                                 if (b.kind != "csv") opener("Conditional formatting", R.drawable.ic_highlighter)
+                                // Excel's Format › Lock Cell: off, the cell can be typed in while the sheet is protected
+                                if (b.kind != "csv") RibbonButton("Lock cell", w, R.drawable.ic_lock, on = now.locked) { look { st, _ -> st.copy(locked = !now.locked) } }
                                 RibbonDivider(w)
                                 RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
@@ -1473,6 +1485,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = step.replace(',', '.').toDoubleOrNull() != null, onClick = { stepping = null
                 fillSeries(g, type, step.replace(',', '.').toDouble()) }) { Text("Fill") } },
             dismissButton = { TextButton(onClick = { stepping = null }) { Text("Cancel") } }) }
+    // the sheet tab › Protect (a password twice, or none) or Unprotect (its password)
+    if (protecting) sheet?.let { s -> val unprotect = s.protected
+        var password by remember { mutableStateOf("") }; var again by remember { mutableStateOf("") }
+        val hidden = androidx.compose.ui.text.input.PasswordVisualTransformation()
+        val keys = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
+        AlertDialog(onDismissRequest = { protecting = false }, title = { Text(if (unprotect) "Unprotect sheet" else "Protect sheet") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (unprotect) "This sheet's password:" else "Its locked cells (all, unless Home › Lock cell is off) can't be changed. A password is optional.")
+                OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = hidden, keyboardOptions = keys)
+                if (!unprotect && password.isNotEmpty()) OutlinedTextField(again, { again = it }, label = { Text("Password again") }, singleLine = true, visualTransformation = hidden, keyboardOptions = keys,
+                    isError = again.isNotEmpty() && again != password) } },
+            confirmButton = { TextButton(enabled = unprotect && password.isNotEmpty() || !unprotect && (password.isEmpty() || again == password), onClick = { protecting = false
+                protectSheet(!unprotect, password) }) { Text(if (unprotect) "Unprotect" else "Protect") } },
+            dismissButton = { TextButton(onClick = { protecting = false }) { Text("Cancel") } }) }
     // Home › Conditional formatting: Excel's dialog — the value(s) and the look
     ruling?.let { (kind, d) ->
         val count = when (kind) { "between" -> 2; "duplicate", "aboveAverage" -> 0; else -> 1 }
@@ -1641,7 +1667,7 @@ private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets
 
 /** What search found, to be drawn: the cells, and the one shown now. */
 /** What a protected sheet's refusal says (Excel's: unprotect it there first). */
-private const val PROTECTED = "This sheet is protected: unprotect it in Excel or LibreOffice to change these cells"
+private const val PROTECTED = "This sheet is protected: unprotect it (tap its tab › Unprotect) to change these cells"
 
 internal class SheetMarks(val found: Set<Long>, val current: Long)
 

@@ -172,6 +172,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
     var slideMenu by remember { mutableStateOf<Triple<Boolean, Int, androidx.compose.ui.geometry.Offset>?>(null) } // a right-click's menu: on the sidebar?, which slide, where
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
+    var notesTyping by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a slide's (uid) speaker notes being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
     var ribbonTab by remember { mutableStateOf("Slide") }
     var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
@@ -232,7 +233,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::putPicture) }
     fun leave() { if (changed) leaving = true else back() }
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
-    BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
+    BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     /** What is chosen on the slide, deleted — its animation with it (the slide's timing then names only what is there). */
@@ -254,7 +255,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
         change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames), removed = e.removed + e.removed.filter { it.first == uid }.map { nu to it.second },
             added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-            anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+            anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
         chosen = c + 1
     }
     /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
@@ -466,9 +467,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     // a keyboard's shortcuts (a tablet's or a desktop's, asked 16 Oct): the screen holds the keys while nothing is typed in
     val keys = remember { androidx.compose.ui.focus.FocusRequester() }
-    LaunchedEffect(editing, typing == null, cellEdit == null, presenting == null) { if (typing == null && cellEdit == null && presenting == null) runCatching { keys.requestFocus() } }
+    LaunchedEffect(editing, typing == null, cellEdit == null, notesTyping == null, presenting == null) { if (typing == null && cellEdit == null && notesTyping == null && presenting == null) runCatching { keys.requestFocus() } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B)).focusRequester(keys).focusable().onPreviewKeyEvent { k ->
-        if (k.type != KeyEventType.KeyDown || typing != null || cellEdit != null) return@onPreviewKeyEvent false
+        if (k.type != KeyEventType.KeyDown || typing != null || cellEdit != null || notesTyping != null) return@onPreviewKeyEvent false
         val step = (deck?.width ?: 720f) / (if (k.isShiftPressed) 8 else 40)
         when {
             k.key == Key.F5 -> { presenting = if (k.isShiftPressed) chosen ?: 0 else 0; true }
@@ -537,6 +538,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
                     // a tablet edits a slide at a time: the first is chosen to begin with
                     LaunchedEffect(editing, wide) { if (editing && wide && chosen == null) chosen = 0 }
+                    /** Slide [i]'s speaker notes under it while editing (asked 17 Oct), as PowerPoint's notes pane: tapped, they are typed in the bar below. */
+                    @Composable fun NotesBox(i: Int, s: Slide) {
+                        Text(s.notes.ifEmpty { "Tap to add speaker notes" }, color = if (s.notes.isEmpty()) Color.White.copy(alpha = 0.5f) else Color.White,
+                            style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF3A3A3A))
+                                .clickable { edit?.order?.getOrNull(i)?.let { e -> chosen = i; typing = null; item = null
+                                    notesTyping = e.uid to androidx.compose.ui.text.input.TextFieldValue(s.notes, androidx.compose.ui.text.TextRange(s.notes.length)) } }
+                                .heightIn(min = 56.dp).padding(12.dp))
+                    }
                     /** Slide [i] as it is edited: chosen with a tap, its items tapped, moved and sized (the phone's list, the tablet's big slide). */
                     @Composable fun SlideBox(i: Int, s: Slide) {
                         Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
@@ -665,7 +675,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         // the chosen slide as big as the room above the floating ribbon lets it be
                         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 24.dp, top = if (OfficeUi.top) 150.dp else 16.dp, bottom = if (OfficeUi.top) 16.dp else 150.dp), contentAlignment = Alignment.TopCenter) {
                             val c = (chosen ?: 0).coerceIn(0, d.slides.lastIndex)
-                            Column(Modifier.width(minOf(maxWidth, maxHeight * (d.width / d.height)))) { SlideBox(c, d.slides[c]) }
+                            // room kept under it for its notes (four lines)
+                            Column(Modifier.width(minOf(maxWidth, (maxHeight - 130.dp).coerceAtLeast(120.dp) * (d.width / d.height)))) { SlideBox(c, d.slides[c]); NotesBox(c, d.slides[c]) }
                         }
                     } else {
                     // page by page (asked 17 Oct): a swipe ends with the next or the one before in the middle, however hard it is flung
@@ -681,7 +692,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
                                 SlideBox(i, s)
-                                if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
+                                if (editing && chosen == i) NotesBox(i, s)
+                                else if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }
                         }
@@ -693,7 +705,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's ribbon, its tabs as Tables' (asked 16 Oct): what is chosen on it, the slide, Insert, Transitions, Animations
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && !layouts && !shapes && !tables && e != null,
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && notesTyping == null && !layouts && !shapes && !tables && e != null,
                         // at the bottom for a finger; at the top while a mouse is in use (or as Settings say), as a PC's PowerPoint
                         Modifier.align(if (OfficeUi.top) Alignment.TopCenter else Alignment.BottomCenter),
                         enter = if (OfficeUi.top) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
@@ -775,8 +787,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // a text box's words: a line a paragraph, ✕ leaves them, ✓ puts them in (one step of Undo)
-                    androidx.compose.animation.AnimatedVisibility(typing != null || cellEdit != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(typing != null || cellEdit != null || notesTyping != null, Modifier.align(Alignment.BottomCenter).imePadding(), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val cell = cellEdit
+                        // a slide's notes: ✕ leaves them, ✓ puts them in (one step of Undo)
+                        val nt = notesTyping
+                        if (nt != null) Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { notesTyping = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave them as they were") }
+                                val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                                LaunchedEffect(nt.first) { focus.requestFocus() }
+                                androidx.compose.material3.OutlinedTextField(nt.second, { notesTyping = nt.first to it }, modifier = Modifier.weight(1f).heightIn(max = 260.dp).focusRequester(focus),
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), label = { Text("Speaker notes") })
+                                IconButton(onClick = {
+                                    edit?.let { ee -> change(ee.copy(notes = ee.notes + (nt.first to nt.second.text.trimEnd()))); WriterLog.i("Slides: notes changed") }
+                                    notesTyping = null
+                                }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Put them in") }
+                            }
+                        }
                         if (cell != null) Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { cellEdit = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
@@ -790,7 +817,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                         val t = typing
-                        if (cell == null)
+                        if (cell == null && nt == null)
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }

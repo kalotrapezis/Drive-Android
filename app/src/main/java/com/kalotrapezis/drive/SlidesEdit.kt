@@ -5,7 +5,7 @@ import java.io.File
 
 /**
  * Editing a .pptx (16 Oct, the plan's next step after the viewer): the slides' order — moved, duplicated, deleted —
- * hidden or shown, and the words of the slides' own text boxes; kept apart from the deck as read, so Undo is the edit
+ * hidden or shown, the words of the slides' own text boxes and their speaker notes; kept apart from the deck as read, so Undo is the edit
  * before, and saved into the file: only the slides and lists that changed are written, every other part as it was.
  */
 internal object SlidesEdit {
@@ -25,7 +25,8 @@ internal object SlidesEdit {
         /** a slide's click animations as chosen, each its own click in their order: entrances and exits (appear, fade, fly) */ val anims: Map<Int, List<SlideEffect>> = emptyMap(),
         /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap(),
         /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet(),
-        /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null) {
+        /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null,
+        /** a slide's speaker notes as typed (asked 17 Oct), a line a paragraph */ val notes: Map<Int, String> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
@@ -90,7 +91,7 @@ internal object SlidesEdit {
         val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
-        return Slide(all, s.background, s.notes, edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
+        return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
     }
     /** A slide's clicks as a list to edit, each effect with its start (on a click, with the one before, after it) and its wait from then. */
     fun flat(steps: List<SlideStep>): List<SlideEffect> = steps.flatMap { st ->
@@ -348,8 +349,41 @@ internal object SlidesEdit {
     }
 
     /**
+     * A notes page with [text] as its notes, a line a paragraph: [old]'s (its other parts as they were, the paragraphs in
+     * the look of its first one), else a new one whose placeholders take their places from the notes master.
+     */
+    fun notesXml(old: ByteArray?, text: String): ByteArray {
+        val doc = OfficeFormats.parse(old ?: ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:notes xmlns:a="$A" xmlns:r="$R" xmlns:p="$P"><p:cSld><p:spTree>""" +
+            """<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>""" +
+            """<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>""" +
+            """</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>""").toByteArray())
+        val root = doc.documentElement
+        fun Element.under(ns: String, name: String) = getElementsByTagNameNS(ns, name).let { l -> (0 until l.length).map { l.item(it) as Element } }
+        val tree = root.under(P, "spTree").first()
+        val body = tree.kids().firstOrNull { sp -> sp.localName == "sp" && sp.under(P, "ph").firstOrNull()?.getAttribute("type") == "body" }
+            ?: (doc.importNode(OfficeFormats.parse(("""<p:sp xmlns:a="$A" xmlns:p="$P"><p:nvSpPr><p:cNvPr id="${(root.under(P, "cNvPr").mapNotNull { it.getAttribute("id").toIntOrNull() }.maxOrNull() ?: 1) + 1}" name="Notes Placeholder"/>""" +
+                """<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>""").toByteArray()).documentElement, true) as Element).also { tree.appendChild(it) }
+        val tx = body.kids().firstOrNull { it.localName == "txBody" } ?: doc.createElementNS(P, "p:txBody").also { t ->
+            body.appendChild(t); t.appendChild(doc.createElementNS(A, "a:bodyPr")); t.appendChild(doc.createElementNS(A, "a:lstStyle")) }
+        val paras = tx.kids().filter { it.localName == "p" }
+        // the first paragraph's look and its first run's, for every line
+        val pPr = paras.firstOrNull()?.kids()?.firstOrNull { it.localName == "pPr" }
+        val rPr = paras.firstOrNull()?.under(A, "rPr")?.firstOrNull()
+        paras.forEach { tx.removeChild(it) }
+        for (line in text.split("\n")) tx.appendChild(doc.createElementNS(A, "a:p").also { p ->
+            pPr?.let { p.appendChild(it.cloneNode(true)) }
+            if (line.isNotEmpty()) p.appendChild(doc.createElementNS(A, "a:r").also { r ->
+                r.appendChild(rPr?.cloneNode(true) ?: doc.createElementNS(A, "a:rPr").also { it.setAttribute("dirty", "0") })
+                r.appendChild(doc.createElementNS(A, "a:t").also { it.textContent = line })
+            })
+        })
+        return xml(doc)
+    }
+
+    /**
      * The deck saved: [source] to [target] with the slides in their new order (a duplicate a new slide part, a deleted
-     * slide's parts gone), hidden ones marked, edited words in their slides.
+     * slide's parts gone), hidden ones marked, edited words in their slides, notes typed in the slides' notes pages
+     * (a notes page made for a slide that had none, and the notes master for a deck that never had notes).
      */
     fun save(source: File, deck: Deck, edit: Edit, target: File) {
         val zip = java.util.zip.ZipFile(source)
@@ -393,6 +427,68 @@ internal object SlidesEdit {
             d.documentElement.kids().filter { it.getAttribute("Type").endsWith("/notesSlide") }.forEach { d.documentElement.removeChild(it) }
             return d
         }
+        val relNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        fun rel(d: org.w3c.dom.Document, type: String, target: String): String {
+            val taken = d.documentElement.kids().map { it.getAttribute("Id") }.toSet()
+            val rid = generateSequence(1) { it + 1 }.map { "rId$it" }.first { it !in taken }
+            d.documentElement.appendChild(d.createElementNS(d.documentElement.namespaceURI, "Relationship").apply { setAttribute("Id", rid); setAttribute("Type", "$relNs/$type"); setAttribute("Target", target) })
+            return rid
+        }
+        val emptyRels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"""
+        // the deck's notes master: its own, else one made (with a copy of the slides' theme, as PowerPoint gives it its own) the first time a notes page needs it
+        val notesMaster by lazy {
+            rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/notesMaster") }?.let { return@lazy "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }
+            val part = "ppt/notesMasters/notesMaster1.xml"
+            val mRels = OfficeFormats.parse(emptyRels.toByteArray())
+            rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/theme") }?.let { t -> read("ppt/" + t.getAttribute("Target").removePrefix("/ppt/").removePrefix("/")) }?.let { theme ->
+                val n = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/theme/theme(\d+)\.xml$""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+                out["ppt/theme/theme$n.xml"] = theme
+                typesOut = typesOut.replace("</Types>", """<Override PartName="/ppt/theme/theme$n.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>""")
+                rel(mRels, "theme", "../theme/theme$n.xml")
+            }
+            // its slide picture over its notes, on the notes page's paper (the deck's notesSz)
+            val sz = pres.documentElement.getElementsByTagNameNS(P, "notesSz").item(0) as Element?
+            val cx = sz?.getAttribute("cx")?.toLongOrNull() ?: 6858000L; val cy = sz?.getAttribute("cy")?.toLongOrNull() ?: 9144000L
+            val iw = cx * 8 / 9; val ih = iw * deck.height.toLong().coerceAtLeast(1) / deck.width.toLong().coerceAtLeast(1)
+            fun ph(id: Int, name: String, type: String, x: Long, y: Long, w: Long, h: Long, text: Boolean) =
+                """<p:sp><p:nvSpPr><p:cNvPr id="$id" name="$name"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="$type"${if (type == "body") " idx=\"1\"" else ""}/></p:nvPr></p:nvSpPr>""" +
+                """<p:spPr><a:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>""" +
+                (if (text) """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody>""" else "") + "</p:sp>"
+            val lvl = (1..9).joinToString("") { """<a:lvl${it}pPr marL="${(it - 1) * 457200}" algn="l" defTabSz="914400"><a:defRPr sz="1200" kern="1200"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mn-lt"/><a:ea typeface="+mn-ea"/><a:cs typeface="+mn-cs"/></a:defRPr></a:lvl${it}pPr>""" }
+            out[part] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:notesMaster xmlns:a="$A" xmlns:r="$R" xmlns:p="$P"><p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree>""" +
+                """<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>""" +
+                ph(2, "Slide Image Placeholder 1", "sldImg", (cx - iw) / 2, cy / 12, iw, ih, false) +
+                ph(3, "Notes Placeholder 2", "body", cx / 10, cy / 12 + ih + cy / 24, cx * 8 / 10, cy - (cy / 12 + ih + cy / 24) - cy / 12, true) +
+                """</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>""" +
+                """<p:notesStyle>$lvl</p:notesStyle></p:notesMaster>""").toByteArray()
+            out[relsPath(part)] = xml(mRels)
+            typesOut = typesOut.replace("</Types>", """<Override PartName="/$part" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/></Types>""")
+            val rid = "rId${nextRel++}"
+            rels.documentElement.appendChild(rels.createElementNS(rels.documentElement.namespaceURI, "Relationship").apply { setAttribute("Id", rid); setAttribute("Type", "$relNs/notesMaster"); setAttribute("Target", "notesMasters/notesMaster1.xml") })
+            // its listing: after the slide masters', as the schema orders presentation.xml
+            val lst = pres.createElementNS(P, "p:notesMasterIdLst").also { l -> l.appendChild(pres.createElementNS(P, "p:notesMasterId").also { it.setAttributeNS(R, "r:id", rid) }) }
+            val masters = pres.documentElement.kids().firstOrNull { it.localName == "sldMasterIdLst" }
+            pres.documentElement.insertBefore(lst, masters?.nextSibling ?: pres.documentElement.firstChild)
+            WriterLog.i("Slides: a notes master made")
+            part
+        }
+        var nextNotes = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/notesSlides/notesSlide(\d+)\.xml$""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        /** Slide [part]'s notes as [text]: written into its notes page ([relsXml] names it), else a new notes page (true: [relsXml] changed). */
+        fun notes(part: String, relsXml: org.w3c.dom.Document, text: String): Boolean {
+            relsXml.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/notesSlide") }?.let { r ->
+                val path = "ppt/notesSlides/" + r.getAttribute("Target").substringAfterLast('/')
+                out[path] = notesXml(read(path), text); return false
+            }
+            if (text.isBlank()) return false
+            val path = "ppt/notesSlides/notesSlide${nextNotes++}.xml"
+            val nRels = OfficeFormats.parse(emptyRels.toByteArray())
+            rel(nRels, "notesMaster", "../notesMasters/" + notesMaster.substringAfterLast('/'))
+            rel(nRels, "slide", "../slides/" + part.substringAfterLast('/'))
+            out[path] = notesXml(null, text); out[relsPath(path)] = xml(nRels)
+            typesOut = typesOut.replace("</Types>", """<Override PartName="/$path" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/></Types>""")
+            rel(relsXml, "notesSlide", "../notesSlides/" + path.substringAfterLast('/'))
+            return true
+        }
         fun list(part: String) {
             val rid = "rId${nextRel++}"
             rels.documentElement.appendChild(rels.createElementNS(rels.documentElement.namespaceURI, "Relationship").apply {
@@ -416,12 +512,14 @@ internal object SlidesEdit {
             val relsXml = if (original) relsDoc(part) else newRels(if (e.layout >= 0) deck.layouts[e.layout].part else null, source?.part)
             val ids = media(e.uid, relsXml)
             val base = if (e.layout >= 0) deck.layouts[e.layout].xml else read(source!!.part) ?: continue
+            // its notes as typed; a copy's own notes page with the first's words (its relationships leave the first's out)
+            val noted = (edit.notes[e.uid] ?: source?.notes?.takeIf { !original && it.isNotEmpty() })?.let { notes(part, relsXml, it) } ?: false
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
                 if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden))
                     out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
-                if (ids.isNotEmpty()) out[relsPath(part)] = xml(relsXml)
+                if (ids.isNotEmpty() || noted) out[relsPath(part)] = xml(relsXml)
             } else {
                 out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
                 out[relsPath(part)] = xml(relsXml)

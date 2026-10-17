@@ -384,6 +384,52 @@ class SlidesTest {
         }
     }
 
+    /** Speaker notes typed (asked 17 Oct): saved into notes pages — rewritten, made new, a copy's own, a notes master made — read back, and by LibreOffice. */
+    @Test fun `speaker notes saved`() {
+        fun lo(file: File, to: String): File? {
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
+            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
+            return dir.listFiles()!!.single { it.extension == to }
+        }
+        // .pptx: the first slide's notes rewritten (two lines), the second given notes (it had none), the first duplicated at the end
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        assertTrue(deck.slides[0].notes.isNotEmpty() && deck.slides[1].notes.isEmpty())
+        var e = SlidesEdit.start(deck)
+        // (a duplicate takes the notes as they are then, as Duplicate does)
+        val copy = e.next()
+        e = e.copy(order = e.order + SlidesEdit.Entry(0, copy), notes = mapOf(0 to "Greet them.\nThen the plan.", 1 to "Ask who has read it.", copy to "Greet them.\nThen the plan."))
+        assertEquals("Ask who has read it.", SlidesEdit.view(deck, e).slides[1].notes)
+        val out = File.createTempFile("notes", ".pptx"); SlidesEdit.save(src, deck, e, out)
+        fun check(d: Deck) {
+            assertEquals("Greet them.\nThen the plan.", d.slides[0].notes)
+            assertEquals("Ask who has read it.", d.slides[1].notes)
+            assertEquals("Greet them.\nThen the plan.", d.slides.last().notes) // the copy's own notes page
+        }
+        check(Slides.read(out))
+        java.util.zip.ZipFile(out).use { z -> assertEquals(1, z.entries().asSequence().count { it.name.startsWith("ppt/notesMasters/notesMaster") && it.name.endsWith(".xml") }) }
+        lo(out, "odp")?.let { check(Slides.read(it)) }
+        // a deck that never had notes: a notes master made with its own theme, listed in presentation.xml
+        val bare = File.createTempFile("bare", ".pptx"); SlidesTemplates.make(File("src/test/resources/example-school.potx"), bare)
+        val bd = Slides.read(bare)
+        val bout = File.createTempFile("bare-notes", ".pptx"); SlidesEdit.save(bare, bd, SlidesEdit.start(bd).copy(notes = mapOf(0 to "Welcome everyone.")), bout)
+        java.util.zip.ZipFile(bout).use { z ->
+            fun text(n: String) = String(z.getInputStream(z.getEntry(n)).readBytes())
+            assertTrue("notesMasterIdLst" in text("ppt/presentation.xml"))
+            assertTrue("theme" in text("ppt/notesMasters/_rels/notesMaster1.xml.rels"))
+            assertTrue("notesMaster+xml" in text("[Content_Types].xml") && "notesSlide+xml" in text("[Content_Types].xml"))
+        }
+        assertEquals("Welcome everyone.", Slides.read(bout).slides[0].notes)
+        lo(bout, "odp")?.let { assertEquals("Welcome everyone.", Slides.read(it).slides[0].notes) }
+        // .odp: the first page's notes rewritten, the second's (an empty notes box) typed
+        val osrc = File("src/test/resources/slides.odp"); val od = Slides.read(osrc)
+        val oout = File.createTempFile("notes", ".odp")
+        SlidesOdpEdit.save(osrc, od, SlidesEdit.start(od).copy(notes = mapOf(0 to "Greet them.\nThen the plan.", 1 to "Ask who has read it.")), oout)
+        fun ocheck(d: Deck) { assertEquals("Greet them.\nThen the plan.", d.slides[0].notes); assertEquals("Ask who has read it.", d.slides[1].notes) }
+        ocheck(Slides.read(oout))
+        lo(oout, "pptx")?.let { ocheck(Slides.read(it)) }
+    }
+
     /** A group chosen as a whole: moved and halved, its shapes coloured, it fading in — saved and read back, and by LibreOffice. */
     @Test fun `a group moved, coloured and animated`() {
         val src = File("src/test/resources/effects.pptx")

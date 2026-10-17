@@ -8,7 +8,7 @@ import java.util.Locale
  * Editing a LibreOffice deck (.odp), as [SlidesEdit] does a .pptx (asked 16 Oct: the three apps alike): the pages in
  * their new order (a duplicate a copy of its page, a deleted one gone), hidden or shown, words typed, the page's own
  * items moved, sized, coloured or deleted, pictures and shapes put on — written into content.xml (and the pictures with
- * the manifest), every other part as it was. Items are found by their place on the page ([SlidesOdp]'s "o3", "o3.1").
+ * the manifest), speaker notes in the page's notes, every other part as it was. Items are found by their place on the page ([SlidesOdp]'s "o3", "o3.1").
  */
 internal object SlidesOdpEdit {
     private const val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -300,6 +300,24 @@ internal object SlidesOdpEdit {
                 if (xml.isNotEmpty()) r.appendChild(fragment("""<anim:seq $ans smil:dur="indefinite" presentation:node-type="main-sequence">$xml</anim:seq>"""))
             }
             page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }?.let { if (it.kids().isEmpty()) page.removeChild(it) }
+            // the speaker notes as typed: the page's notes box's paragraphs (in the look of its first), a notes part made for a page without
+            edit.notes[uid]?.let { text ->
+                val notes = page.kids().firstOrNull { it.localName == "notes" && it.namespaceURI == PRES } ?: if (text.isBlank()) return@let else
+                    // shortcut: LibreOffice's A4 notes page places (cm), whatever the deck's own notes master says; it moves them to its own on the first save there
+                    fragment("""<presentation:notes xmlns:presentation="$PRES" xmlns:draw="$DRAW" xmlns:svg="$SVG"><draw:page-thumbnail draw:layer="layout" svg:width="17.271cm" svg:height="${String.format(Locale.ROOT, "%.3fcm", 17.271f * deck.height / deck.width.coerceAtLeast(1f))}" svg:x="1.865cm" svg:y="2.3cm" presentation:class="page"/>""" +
+                        """<draw:frame draw:layer="layout" svg:width="17.271cm" svg:height="13cm" svg:x="1.865cm" svg:y="14.2cm" presentation:class="notes" presentation:placeholder="true"><draw:text-box/></draw:frame></presentation:notes>""").also { page.appendChild(it) }
+                val frame = notes.kids().firstOrNull { it.a(PRES, "class") == "notes" } ?: fragment("""<draw:frame xmlns:presentation="$PRES" xmlns:draw="$DRAW" draw:layer="layout" presentation:class="notes"><draw:text-box/></draw:frame>""").also { notes.appendChild(it) }
+                val box = frame.kids().firstOrNull { it.localName == "text-box" } ?: doc.createElementNS(DRAW, "draw:text-box").also { frame.appendChild(it) }
+                frame.removeAttributeNS(PRES, "placeholder")
+                val old = box.kids().filter { it.namespaceURI == TEXT && (it.localName == "p" || it.localName == "h" || it.localName == "list") }
+                val pStyle = old.firstNotNullOfOrNull { o -> (listOf(o) + o.all()).firstOrNull { it.localName == "p" }?.a(TEXT, "style-name") }
+                val sStyle = old.firstNotNullOfOrNull { o -> o.all().firstOrNull { it.localName == "span" }?.a(TEXT, "style-name") }
+                old.forEach { box.removeChild(it) }
+                for (line in text.split("\n")) box.appendChild(doc.createElementNS(TEXT, "text:p").also { p ->
+                    pStyle?.let { p.setAttributeNS(TEXT, "text:style-name", it) }
+                    if (line.isNotEmpty()) p.appendChild(if (sStyle == null) doc.createTextNode(line) else doc.createElementNS(TEXT, "text:span").also { sp -> sp.setAttributeNS(TEXT, "text:style-name", sStyle); sp.textContent = line })
+                })
+            }
             edit.hidden[uid]?.let { h -> if (h != slide.hidden)
                 page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "hidden $h") { props(it, "drawing-page-properties").setAttributeNS(PRES, "presentation:visibility", if (h) "hidden" else "visible") }) }
         }

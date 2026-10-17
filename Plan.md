@@ -377,6 +377,8 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       (the first as its title, sections named), each typed into in place — one step of Undo a box visited, an empty placeholder shown
       by its hint; a slide's number opens it in Normal. Saved as any typed words (each line over the paragraph it came from).
       Emulator: "Plan and more" typed there. Not shown there: a paragraph's list level (kept in the file).
+      Notes page (office-C session, 17 Oct): View › Notes page — the speaker notes under the slide on a tablet or phone, typed there (the
+      desktop's notes pane, which a desktop always shows); emulator: slide 1's notes under it.
 - [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
 - [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).

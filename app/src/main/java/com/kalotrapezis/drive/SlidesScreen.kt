@@ -411,6 +411,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    var notesPage by remember { mutableStateOf(false) } // View › Notes page: the notes pane under the slide (a desktop always has it)
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
     /** The name of the section slide [i] starts, if one does (Home › Section). */
@@ -780,6 +781,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Normal", w, R.drawable.ic_crop_landscape, on = !sorter && !outline) { sorter = false; outline = false }
                 RibbonButton("Outline", w, R.drawable.ic_view_list, on = outline) { outline = true; sorter = false; item = null; typing = null }
                 RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; outline = false; item = null; marked = setOf(uid) }
+                // the speaker notes under the slide, typed there (PowerPoint's Notes); a desktop always shows them
+                if (!OfficeUi.top) RibbonButton("Notes page", w, R.drawable.ic_comment, on = notesPage) { notesPage = !notesPage; sorter = false; outline = false }
                 if (sorter) {
                     RibbonDivider(w)
                     Text("${marked.size} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -1270,9 +1273,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = (chosen ?: 0).coerceIn(0, d.slides.lastIndex)
                             // as big as it can be; on a desktop, room kept under it for its notes pane
                             // with little room (an on-screen keyboard up) the slide gives way and the pane keeps its height, at least a readable width
-                            val slideW = minOf(maxWidth, (maxHeight - if (OfficeUi.top) 96.dp else 0.dp).coerceAtLeast(if (OfficeUi.top) 0.dp else 120.dp) * (d.width / d.height))
-                            Column(Modifier.width(if (OfficeUi.top) maxOf(slideW, minOf(maxWidth, 480.dp)) else slideW), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) }; if (OfficeUi.top) NotesPane(c, d.slides[c]) }
+                            val withNotes = OfficeUi.top || notesPage
+                            val slideW = minOf(maxWidth, (maxHeight - if (withNotes) 96.dp else 0.dp).coerceAtLeast(if (OfficeUi.top) 0.dp else 120.dp) * (d.width / d.height))
+                            Column(Modifier.width(if (withNotes) maxOf(slideW, minOf(maxWidth, 480.dp)) else slideW), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) }; if (withNotes) NotesPane(c, d.slides[c]) }
                         }
                         if (commentsOn) CommentsPane(Modifier.width(320.dp).fillMaxHeight().padding(top = if (OfficeUi.top) 150.dp else 16.dp, end = 12.dp, bottom = if (OfficeUi.top) 16.dp else 150.dp))
                     } else {
@@ -1289,7 +1293,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}${sectionAt(i)?.let { " · $it" }.orEmpty()}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
                                 SlideBox(i, s)
-                                if (editing && chosen == i && OfficeUi.top) NotesPane(i, s)
+                                if (editing && chosen == i && (OfficeUi.top || notesPage)) NotesPane(i, s)
                                 else if (notes && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }

@@ -411,10 +411,31 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
+    var query by remember { mutableStateOf("") }; var replacement by remember { mutableStateOf("") }; var replacing by remember { mutableStateOf(false) }
+    var findAt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var grid by remember { mutableStateOf(false) } // View › Gridlines: a grid and the middle guides over the slide, what is dragged snapping to them
     var notesPage by remember { mutableStateOf(false) } // View › Notes page: the notes pane under the slide (a desktop always has it)
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
+    /** Find: every place [query] is in the slides' words (any case) — the slide, the box, its line and the letters there. */
+    class Found(val slide: Int, val id: String, val line: Int, val range: IntRange)
+    fun found(): List<Found> = if (query.isEmpty()) emptyList() else view?.slides.orEmpty().flatMapIndexed { i, s ->
+        s.items.filterIsInstance<SlideItem.Shape>().filter { it.id != null && it.text != null && !it.hint && !it.grouped }.sortedWith(compareBy({ it.y }, { it.x })).flatMap { sh ->
+            SlidesEdit.lines(sh).flatMapIndexed { li, line -> Regex(Regex.escape(query), RegexOption.IGNORE_CASE).findAll(line).map { Found(i, sh.id!!, li, it.range) }.toList() } }
+    }
+    /** The finds [ms] made [replacement] as one step of Undo: each box's lines with them changed from the end (each line keeps its paragraph's look). */
+    fun replaceFound(ms: List<Found>) {
+        val e = edit ?: return; val slides = view?.slides ?: return
+        var texts = e.texts
+        for ((key, list) in ms.groupBy { it.slide to it.id }) {
+            val sh = slides[key.first].items.filterIsInstance<SlideItem.Shape>().firstOrNull { it.id == key.second } ?: continue
+            val lines = SlidesEdit.lines(sh).toMutableList()
+            for (m in list.sortedByDescending { it.line * 100_000 + it.range.first }) lines[m.line] = lines[m.line].replaceRange(m.range, replacement)
+            texts = texts + ((e.order[key.first].uid to key.second) to lines)
+        }
+        change(e.copy(texts = texts)); WriterLog.i("Slides: replaced ${ms.size}")
+    }
     /** Gridlines' spacing (pt): half a centimetre, or a quarter inch in Words' inches. */
     fun gridStep() = if (WriterUnits.inches) 18f else 14.173f
     /** The name of the section slide [i] starts, if one does (Home › Section). */
@@ -943,6 +964,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             k.key == Key.F5 -> { presenting = if (k.isShiftPressed) chosen ?: 0 else 0; true }
             !editing -> false
             k.isCtrlPressed && k.key == Key.S -> { if (changed && !saving) save(); true }
+            k.isCtrlPressed && k.key == Key.F && editing -> { finding = true; true }
             k.isCtrlPressed && (k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed)) -> { redoEdit(); true }
             k.isCtrlPressed && k.key == Key.Z -> { undoEdit(); true }
             // Cut, Copy and Paste as Words' and Tables' (17 Oct): what is chosen on the slide
@@ -962,6 +984,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+            // Find and Replace across the slides (Words' bar): the box a find is in chosen on its slide
+            if (finding && editing) Box(Modifier.statusBarsPadding()) {
+                val ms = remember(query, view) { found() }
+                val at = findAt.coerceIn(0, (ms.size - 1).coerceAtLeast(0))
+                fun go(k: Int) { ms.getOrNull(Math.floorMod(k, ms.size.coerceAtLeast(1)))?.let { m -> findAt = Math.floorMod(k, ms.size); chosen = m.slide; item = m.id; sorter = false; outline = false } }
+                FindReplaceBar(islandContentColor(), query, { query = it; findAt = 0 }, if (query.isEmpty()) "" else if (ms.isEmpty()) "0" else "${at + 1}/${ms.size}", ms.isNotEmpty(),
+                    previous = { go(at - 1) }, next = { go(at + 1) }, replacing = replacing, setReplacing = { replacing = it }, replacement = replacement, setReplacement = { replacement = it },
+                    replace = { ms.getOrNull(at)?.let { replaceFound(listOf(it)) } }, replaceAll = { replaceFound(ms); message = "Replaced ${ms.size}" }, close = { finding = false })
+            } else
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
@@ -974,6 +1005,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         "$hidden hidden".takeIf { hidden > 0 }, if (editing) saveState(saving, changed) else null, file?.extension?.let { ".$it" }), islandContentColor())
                 }
                 if (editing) {
+                    IconButton(onClick = { finding = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Find and replace") }
                     IconButton(onClick = ::undoEdit, enabled = undos.isNotEmpty()) {
                         Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
                     IconButton(onClick = ::redoEdit, enabled = redos.isNotEmpty()) {

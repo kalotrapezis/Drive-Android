@@ -3148,29 +3148,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val matches = remember(text, query) { if (query.isEmpty()) emptyList() else Regex(Regex.escape(query), RegexOption.IGNORE_CASE).findAll(text).map { it.range }.toList() }
                 val at = matches.indexOfFirst { it.first >= state.selection.min }.let { if (it < 0) 0 else it }
                 fun go(i: Int) { matches.getOrNull(Math.floorMod(i, matches.size.coerceAtLeast(1)))?.let { state.selection = androidx.compose.ui.text.TextRange(it.first, it.last + 1) } }
-                Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Tool(R.drawable.ic_close, "Close find", w) { finding = false }
-                        val focus = remember { FocusRequester() }
-                        LaunchedEffect(Unit) { focus.requestFocus() }
-                        OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Find") }, modifier = Modifier.weight(1f).focusRequester(focus),
-                            suffix = { Text(if (query.isEmpty()) "" else if (matches.isEmpty()) "0" else "${at + 1}/${matches.size}") })
-                        Tool(R.drawable.ic_keyboard_arrow_up, "Previous", w, enabled = matches.isNotEmpty()) { go(at - 1) }
-                        Box(Modifier.graphicsLayer { rotationZ = 180f }) { Tool(R.drawable.ic_keyboard_arrow_up, "Next", w, enabled = matches.isNotEmpty()) { go(if (state.selection.collapsed) at else at + 1) } }
-                        Tool(R.drawable.ic_swap_horiz, "Replace", w, on = replacing) { replacing = !replacing }
-                    }
-                    if (replacing) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(replacement, { replacement = it }, singleLine = true, placeholder = { Text("Replace with") }, modifier = Modifier.weight(1f))
-                        RibbonButton("Replace", w, enabled = matches.isNotEmpty()) {
-                            val m = matches.getOrNull(at) ?: return@RibbonButton
-                            replaceKeepingLook(m.first, m.last + 1, replacement)
-                        }
-                        RibbonButton("All", w, enabled = matches.isNotEmpty()) {
-                            state.history.group { matches.asReversed().forEach { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } }
-                            message = "Replaced ${matches.size}"
-                        }
-                    }
-                }
+                FindReplaceBar(w, query, { query = it }, if (query.isEmpty()) "" else if (matches.isEmpty()) "0" else "${at + 1}/${matches.size}", matches.isNotEmpty(),
+                    previous = { go(at - 1) }, next = { go(if (state.selection.collapsed) at else at + 1) }, replacing = replacing, setReplacing = { replacing = it },
+                    replacement = replacement, setReplacement = { replacement = it },
+                    replace = { matches.getOrNull(at)?.let { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } },
+                    replaceAll = { state.history.group { matches.asReversed().forEach { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } }; message = "Replaced ${matches.size}" },
+                    close = { finding = false })
             } else
             // Word's top bar: back, the name (a dot while unsaved), find, undo and redo.
             androidx.compose.animation.AnimatedVisibility(barShown, Modifier.onSizeChanged { barPx = it.height }) { Column {

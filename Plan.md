@@ -383,7 +383,11 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       while editing; what is dragged snaps its corner to the grid, or its middle to the slide's middle when near it (PowerPoint's smart
       guide), and a size dragged ends on the grid. Emulator: the picture dragged, centred on the guide.
       Not yet: editing the slide master, zoom.
-- [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
+- [~] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
+      Find and Replace done 17 Oct (office-C session): Words' find bar moved into a shared `FindReplaceBar` (OfficeUi.kt; Words uses it
+      as before — checked on the emulator, 1/3 found) and Slides' top bar has it (the search button while editing, Ctrl+F as A planned):
+      every slide's words, any case, ‹ › choosing the box a find is in on its slide; Replace and All as one step of Undo, each line
+      kept over its paragraph. Emulator: "slides" → "decks" on slides 1 and 2, "Replaced 2". Versions were done in A.
 - [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).
 - [ ] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx

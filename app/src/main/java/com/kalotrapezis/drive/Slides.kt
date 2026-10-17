@@ -63,6 +63,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var anim: String? = null
     /** In a group: it moves with the group (not chosen to move on its own). */
     var grouped = false
+    /** In a group: its own id (cNvPr id, an .odp's place), what it is chosen by once the group is taken apart. */
+    var own: String? = null
     /** Its words for screen readers (alt text: PowerPoint's cNvPr descr, LibreOffice's svg:desc). */
     var alt: String? = null
     /** Its name in the Selection pane (PowerPoint's cNvPr name, LibreOffice's draw:name) and whether it is hidden there (not drawn: hidden="1", drawooo:display="none"). */
@@ -110,12 +112,14 @@ internal class Slide(val items: List<SlideItem>, val background: Int, val notes:
      *  its own ones' ids and kinds; whether it is a title slide (Don't show on title slide) */
     val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false,
     /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList(),
-    /** a picture over its [background], stretched to the slide (PowerPoint's blipFill background, LibreOffice's bitmap fill) */ val backPicture: (() -> ByteArray?)? = null)
+    /** a picture over its [background], stretched to the slide (PowerPoint's blipFill background, LibreOffice's bitmap fill) */ val backPicture: (() -> ByteArray?)? = null,
+    /** its own placeholders' ids (Home › Reset puts them back): as read, not kept by the edited slide */ val placeholders: Set<String> = emptySet())
 /** A comment on a slide: Words' [comment], its marker at [x], [y] (points). */
 internal data class SlideComment(val comment: DocComment, val x: Float, val y: Float)
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList(),
     /** Home › Layout: slide n read again on layout k (PowerPoint's layout, LibreOffice's master page); null: the file cannot say it */
-    val relaid: ((Int, Int) -> Slide?)? = null,
+    /** A slide read again: on another layout (its index; null its own), reset (Home › Reset) or not. */
+    val relaid: ((Int, Int?, Boolean) -> Slide?)? = null,
     /** PowerPoint's sections: each one's name and its first slide; null: the file cannot hold them (an .odp) */ val sections: List<Pair<String, Int>>? = null,
     /** Slide show › Loop until Esc (PowerPoint's showPr loop, LibreOffice's endless) */ val loop: Boolean = false,
     /** References (Words' sources): the deck's sources and their citation style */ val sources: List<DocSource> = emptyList(), val citeStyle: CiteStyle = CiteStyle.APA)
@@ -185,7 +189,7 @@ internal object Slides {
             val slides = pres.kid("sldIdLst")?.kids("sldId").orEmpty().mapNotNull { it.rid("id")?.let(rels::get) }
             val read = slides.mapNotNull { path -> runCatching { slide(path, defaults) }.onFailure { WriterLog.e("Slides: $path", it) }.getOrNull() }
             val kinds = runCatching { layouts(pres, rels, defaults) }.onFailure { WriterLog.w("Slides: layouts", it) }.getOrDefault(emptyList())
-            val again = HashMap<Pair<Int, Int>, Slide?>()
+            val again = HashMap<Triple<Int, Int?, Boolean>, Slide?>()
             // PowerPoint 2010's sections: each names its slides by their sldId
             val sldIds = pres.kid("sldIdLst")?.kids("sldId").orEmpty().map { it.attr("id") }
             val sections = pres.below("section").filter { it.namespaceURI?.contains("powerpoint/2010") == true }.mapNotNull { sec ->
@@ -193,8 +197,8 @@ internal object Slides {
             val loop = relType(xml, "ppt/presentation.xml", "presProps")?.let(xml)?.kid("showPr")?.attr("loop").let { it == "1" || it == "true" }
             // References: Word's bibliography part, which PowerPoint keeps too (customXml)
             val custom = (1..24).mapNotNull { n -> "customXml/item$n.xml".let { p -> part(p)?.let { p to it } } }.toMap()
-            return Deck(w, h, read, kinds, sections = sections, loop = loop, sources = WordSources.read(custom), citeStyle = CiteStyle.ofWord(WordSources.styleName(custom)), relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) {
-                slides.getOrNull(n)?.let { path -> runCatching { slide(path, defaults, layoutOf = kinds[k].part) }.onFailure { WriterLog.w("Slides: $path on another layout", it) }.getOrNull() } } } })
+            return Deck(w, h, read, kinds, sections = sections, loop = loop, sources = WordSources.read(custom), citeStyle = CiteStyle.ofWord(WordSources.styleName(custom)), relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) {
+                slides.getOrNull(n)?.let { path -> runCatching { slide(path, defaults, layoutOf = k?.let { kinds[it].part }, fix = if (reset) SlidesEdit::resetSlide else null) }.onFailure { WriterLog.w("Slides: $path on another layout", it) }.getOrNull() } } } })
         }
 
         /**
@@ -281,8 +285,8 @@ internal object Slides {
 
         /** One slide: its layout's and master's placeholders under it, its background, its notes. */
         /** [own]: a slide not in the file yet (a layout's new slide), [layoutOf] its layout. */
-        fun slide(path: String, defaults: Element?, own: Element? = null, layoutOf: String? = null): Slide {
-            val s = own ?: xml(path) ?: error("No $path.")
+        fun slide(path: String, defaults: Element?, own: Element? = null, layoutOf: String? = null, fix: ((Element) -> Unit)? = null): Slide {
+            val s = own ?: xml(path)?.let { x -> if (fix == null) x else (x.cloneNode(true) as Element).also(fix) } ?: error("No $path.")
             val rels = if (own != null) emptyMap() else rels(xml, path)
             val layoutPath = layoutOf ?: relType(xml, path, "slideLayout"); val layout = layoutPath?.let(xml)
             val masterPath = layoutPath?.let { relType(xml, it, "slideMaster") }; val master = masterPath?.let(xml)
@@ -314,7 +318,8 @@ internal object Slides {
             }.toMap()
             val own = s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp -> phOf(sp)?.attr("type")?.takeIf { it in kinds }?.let { k -> sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id")?.let { it to k } } }.toMap()
             val title = layout?.attr("type") == "title" || s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().any { phOf(it)?.attr("type") == "ctrTitle" }
-            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path), backPicture)
+            val phIds = s.below("ph").mapNotNull { (it.parentNode?.parentNode as? Element)?.kid("cNvPr")?.attr("id") }.toSet()
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path), backPicture, phIds)
         }
 
         /** Who wrote comments: the older list's authors (by number) and PowerPoint 365's (by their GUID) — name and initials. */
@@ -511,7 +516,7 @@ internal object Slides {
                 val descr = cNvPr?.attr("descr")
                 // its own click (PowerPoint's action on the object): a slide, a web page, or the slide it came from
                 val click = cNvPr?.kid("hlinkClick")?.let { h -> if (h.attr("action")?.contains("lastslideviewed") == true) "back" else h.rid("id")?.let(rels::get) }
-                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click; out[k].name = cNvPr?.attr("name")?.ifEmpty { null }; out[k].hidden = cNvPr?.attr("hidden").let { it == "1" || it == "true" } } }
+                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null && out[k].own == null) out[k].own = cNvPr?.attr("id"); if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click; out[k].name = cNvPr?.attr("name")?.ifEmpty { null }; out[k].hidden = cNvPr?.attr("hidden").let { it == "1" || it == "true" } } }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 

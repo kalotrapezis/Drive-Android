@@ -56,6 +56,8 @@ internal object SlidesOdpEdit {
             st.insertBefore(p, st.kids().firstOrNull { order.indexOf(it.localName) > order.indexOf(kind) }) }
         val made = HashMap<String, String>()
         val dashes = LinkedHashSet<String>() // the outlines' dashes used, defined in styles.xml
+        val masterPages by lazy { read("styles.xml")?.let { runCatching { OfficeFormats.parse(it) }.getOrNull() }?.getElementsByTagNameNS(STYLE, "master-page")
+            ?.let { l -> (0 until l.length).map { l.item(it) as Element } }.orEmpty().associateBy { it.a(STYLE, "name") } }
         /** A new automatic style of [family] for an element styled [name]: a copy of it when it is content.xml's own, else one on it; [key] the change, made once. */
         fun derive(family: String, name: String?, key: String, change: (Element) -> Unit): String = made.getOrPut("$family|$name|$key") {
             val old = name?.let { nm -> autos.kids().firstOrNull { it.localName == "style" && it.a(STYLE, "name") == nm && it.a(STYLE, "family") == family } }
@@ -577,6 +579,8 @@ internal object SlidesOdpEdit {
             }
             // Home › Layout: the page on the master page chosen
             edit.relayout[uid]?.let { k -> page.setAttributeNS(DRAW, "draw:master-page-name", deck.layouts[k].part) }
+            // Home › Reset: its placeholders as its master page has them (before anything done after the reset)
+            if (uid in edit.reset) SlidesOdp.resetPage(page, masterPages[page.a(DRAW, "master-page-name")])
             fun at(id: String): Element? { var el: Element? = page; for (k in id.removePrefix("o").split('.')) el = el?.kids()?.getOrNull(k.toIntOrNull() ?: return null); return el }
             // found before anything moves: the places name the page as it was read
             val texts = edit.texts.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }
@@ -586,7 +590,11 @@ internal object SlidesOdpEdit {
             val removed = edit.removed.filter { it.first == uid }.mapNotNull { at(it.second) }
             // Arrange: the page's own items turned, and the order from the back
             val turnsOwn = edit.turns.filterKeys { it.first == uid && it.second.startsWith("o") }.mapNotNull { (k, t) -> at(k.second)?.let { Triple(k.second, it, t) } }
-            val stackEls = edit.stack[uid]?.map { id -> id to (if (id.startsWith("o")) at(id) else null) }
+            val made = edit.groups[uid].orEmpty()
+            val stackEls = edit.stack[uid]?.flatMap { made[it] ?: listOf(it) }?.map { id -> id to (if (id.startsWith("o")) at(id) else null) }
+            // Group and Ungroup: found now, joined or taken apart once all else is done
+            val joins = made.map { (gid, ms) -> gid to ms.map { m -> m to (if (m.startsWith("o")) at(m) else null) } }
+            val aparts = edit.ungrouped.filter { it.first == uid }.mapNotNull { at(it.second)?.takeIf { g -> g.localName == "g" } }
             val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }
             looks.forEach { (el, l) -> restyle(el, l) }
@@ -648,6 +656,18 @@ internal object SlidesOdpEdit {
             }
             // Arrange's order: each named item moved, from the back, to the end of the page's items
             stackEls?.forEach { (id, el) -> (el ?: put[id])?.let { it.parentNode?.removeChild(it); page.insertBefore(it, before) } }
+            // Ungroup: a group's things in its place on the page (ODF's groups place nothing themselves), a group in it too
+            fun unwrap(g: Element) { for (k in g.kids()) { g.parentNode.insertBefore(k, g); if (k.localName == "g" && k.namespaceURI == DRAW) unwrap(k) }; g.parentNode.removeChild(g) }
+            aparts.forEach(::unwrap)
+            // Group: the things in one draw:g where the front-most was, then moved as one (from where its things are now)
+            for ((gid, ms) in joins) {
+                val els = ms.mapNotNull { (m, el) -> el ?: put[m] }.filter { it.parentNode == page }.distinct().sortedBy { page.kids().indexOf(it) }
+                if (els.size < 2) continue
+                val g = doc.createElementNS(DRAW, "draw:g")
+                page.insertBefore(g, els.last())
+                els.forEach { page.removeChild(it); g.appendChild(it) }
+                edit.frames[uid to gid]?.let { f -> place(g, f, SlidesEdit.box(SlidesEdit.slide(deck, edit.copy(frames = edit.frames - (uid to gid)), edit.order.first { it.uid == uid }), gid)) }
+            }
             // the transition: in the page's style and the timing's own filter, as LibreOffice writes it
             edit.transitions[uid]?.let { t ->
                 val smil = t.kind.takeIf { it.isNotEmpty() }?.let { OdpEffects.smil(it, t.dir) }

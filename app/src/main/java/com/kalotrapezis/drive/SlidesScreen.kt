@@ -204,6 +204,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var tableCell by remember { mutableStateOf(0) } // the cell of the chosen table last tapped (row × columns + column): where the Table tools work
     var notesTyping by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a slide's (uid) speaker notes being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
+    var more by remember { mutableStateOf(emptyList<String>()) } // chosen with it (Select all, Choose several): what Group, Align, Distribute and Delete take
+    var several by remember { mutableStateOf(false) } // Choose several: a tap adds a thing to what is chosen, or takes it away
+    LaunchedEffect(item) { if (item == null) { more = emptyList() } }
+    LaunchedEffect(chosen) { more = emptyList(); several = false }
     var ribbonTab by remember { mutableStateOf("Home") } // "Item": the contextual tab of what is chosen on the slide
     var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
@@ -232,7 +236,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val (x, y, w, h) = f(it); change(SlidesEdit.framed(e, e.order[c].uid, id, x, y, w, h))
     }
     /** The ids on slide [c] now (its own items', a group's shapes'), which a new item's must not be. */
-    fun taken(e: SlidesEdit.Edit, c: Int): List<String> = base?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, (it as? SlideItem.Shape)?.id) } }.orEmpty()
+    fun taken(e: SlidesEdit.Edit, c: Int): List<String> = base?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, it.own, (it as? SlideItem.Shape)?.id) } }.orEmpty()
     /** Arrange › Rotate and Flip: the chosen item's turn changed by [f] (its place written with it, so a placeholder gets one of its own). */
     fun turn(f: (SlidesEdit.Turn) -> SlidesEdit.Turn) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
@@ -693,16 +697,54 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     /** What is chosen on the slide, deleted — its animation with it (the slide's timing then names only what is there). */
-    fun deleteItem() {
-        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
+    fun deleteItem(ids: List<String> = listOfNotNull(item) + more) {
+        var e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
         val sl = view?.slides?.getOrNull(c)
-        val a = e.added[uid]?.firstOrNull { it.id == id }
-        if (a == null && sl?.items?.none { it.anim == id } != false) return
-        val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
-        val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
-        change(if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
-            else e.copy(removed = e.removed + (uid to id), anims = anims))
-        item = null; WriterLog.i("Slides: an item deleted")
+        // a group made here: its things, and the group gone
+        val made = e.groups[uid].orEmpty()
+        val members = ids.flatMap { made[it].orEmpty() }.toSet()
+        if (members.isNotEmpty()) e = e.copy(groups = e.groups + (uid to made - ids.toSet()))
+        for (id in ids.flatMap { made[it] ?: listOf(it) }) {
+            val a = e.added[uid]?.firstOrNull { it.id == id }
+            if (a == null && id !in members && sl?.items?.none { it.anim == id } != false) continue
+            val list = e.anims[uid] ?: SlidesEdit.flat(sl?.steps.orEmpty())
+            val anims = if (list.any { it.target == id }) e.anims + (uid to list.filter { it.target != id }) else e.anims
+            e = if (a != null) e.copy(added = e.added + (uid to e.added[uid].orEmpty().filter { it.id != id }), anims = anims)
+                else e.copy(removed = e.removed + (uid to id), anims = anims)
+        }
+        if (e == edit) return
+        change(e); item = null; WriterLog.i("Slides: ${ids.size} deleted")
+    }
+    /** Select all: everything on the chosen slide that can be chosen (not hidden), the front-most first. */
+    fun chooseAll() {
+        val c = chosen ?: return
+        val ids = view?.slides?.getOrNull(c)?.items?.filter { it.anim != null && !it.hidden }?.mapNotNull { it.anim }?.distinct()?.reversed().orEmpty()
+        if (ids.isEmpty()) { message = "Nothing on this slide to choose"; return }
+        item = ids.first(); more = ids.drop(1); typing = null
+    }
+    /** What is chosen moved or sized each by [f], given each one's box and all of theirs (one step of Undo). */
+    fun reframeAll(f: (SlideItem, SlideItem) -> List<Float>) {
+        var e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
+        val ids = listOfNotNull(item) + more
+        val boxes = ids.mapNotNull { id -> current(e, c, id)?.let { id to it } }
+        if (boxes.isEmpty()) return
+        val x = boxes.minOf { it.second.x }; val y = boxes.minOf { it.second.y }
+        val all = SlideItem.Shape(x, y, boxes.maxOf { it.second.x + it.second.w } - x, boxes.maxOf { it.second.y + it.second.h } - y, 0f, null, null)
+        for ((id, b) in boxes) { val (nx, ny, nw, nh) = f(b, all); e = SlidesEdit.framed(e, uid, id, nx, ny, nw, nh) }
+        change(e)
+    }
+    /** Distribute (Arrange): the chosen things spread evenly across ([across]) or down, the first and last staying where they are. */
+    fun distribute(across: Boolean) {
+        val e = edit ?: return; val c = chosen ?: return
+        val boxes = (listOfNotNull(item) + more).mapNotNull { id -> current(e, c, id)?.let { id to it } }.sortedBy { if (across) it.second.x else it.second.y }
+        if (boxes.size < 3) { message = "Choose three or more to distribute"; return }
+        val first = boxes.first().second; val last = boxes.last().second
+        val span = if (across) last.x + last.w - first.x else last.y + last.h - first.y
+        val gap = (span - boxes.sumOf { (if (across) it.second.w else it.second.h).toDouble() }.toFloat()) / (boxes.size - 1)
+        var at = if (across) first.x else first.y
+        var next = e; val uid = e.order[c].uid
+        for ((id, b) in boxes) { next = if (across) SlidesEdit.framed(next, uid, id, at, b.y, b.w, b.h) else SlidesEdit.framed(next, uid, id, b.x, at, b.w, b.h); at += (if (across) b.w else b.h) + gap }
+        change(next); WriterLog.i("Slides: distributed ${if (across) "across" else "down"}")
     }
     /** Slide [c] copied after itself: its words, what was put on it, its colours, transition and animations. */
     fun duplicateSlide(c: Int) {
@@ -713,7 +755,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             footers = e.footers + (e.footers[uid]?.let { mapOf(nu to it) } ?: emptyMap()), comments = e.comments + (e.comments[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap()), relayout = e.relayout + (e.relayout[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap()), groups = e.groups + (e.groups[uid]?.let { mapOf(nu to it) } ?: emptyMap()), ungrouped = e.ungrouped + e.ungrouped.filter { it.first == uid }.map { nu to it.second }, reset = if (uid in e.reset) e.reset + nu else e.reset, relayout = e.relayout + (e.relayout[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
         chosen = c + 1
     }
     /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
@@ -763,6 +805,30 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align, script = r?.script)
     }
     /** Home's text tools for [box] (17 Oct), Words' own: font strip, size, B I U S, colours, painter, clear; lists, alignment, spacing; anchor, autofit. */
+    /** Several things chosen (Select all, Choose several): Group, Align to each other, Distribute, Delete — PowerPoint's Arrange for a selection. */
+    @Composable fun SeveralTools(w: Color) {
+        val e = edit ?: return; val c = chosen ?: return; val d = base ?: return
+        Text("${more.size + 1} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+        RibbonButton("Group", w, R.drawable.ic_group_objects) {
+            val next = SlidesEdit.grouped(d, e, e.order[c], listOfNotNull(item) + more)
+            if (next == e) message = "These cannot be grouped" else { change(next); item = next.groups[e.order[c].uid]?.keys?.lastOrNull(); more = emptyList(); several = false; WriterLog.i("Slides: grouped") }
+        }
+        Box {
+            var aligning by remember { mutableStateOf(false) }
+            RibbonButton("Align", w, R.drawable.ic_align_horizontal_center) { aligning = true }
+            // to each other (PowerPoint's Align Selected Objects): to the edge or middle of all of them together
+            DropdownMenu(aligning, { aligning = false }) {
+                listOf("Align left" to { i: SlideItem, a: SlideItem -> listOf(a.x, i.y, i.w, i.h) }, "Align centre" to { i: SlideItem, a: SlideItem -> listOf(a.x + (a.w - i.w) / 2, i.y, i.w, i.h) },
+                    "Align right" to { i: SlideItem, a: SlideItem -> listOf(a.x + a.w - i.w, i.y, i.w, i.h) }, "Align top" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y, i.w, i.h) },
+                    "Align middle" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + (a.h - i.h) / 2, i.w, i.h) }, "Align bottom" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + a.h - i.h, i.w, i.h) })
+                    .forEach { (label, to) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; reframeAll(to); WriterLog.i("Slides: several, $label") }) }
+            }
+        }
+        RibbonButton("Distribute across", w, R.drawable.ic_horizontal_distribute, enabled = more.size >= 2) { distribute(true) }
+        RibbonButton("Distribute down", w, R.drawable.ic_vertical_distribute, enabled = more.size >= 2) { distribute(false) }
+        RibbonDivider(w)
+        RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
+    }
     @Composable fun HomeText(box: SlideItem.Shape, w: Color) {
         val t = box.text ?: return
         val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: t.paras.firstOrNull()?.runs?.firstOrNull()
@@ -826,6 +892,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Copy", w, R.drawable.ic_copy) { copyItem() }
                 RibbonButton("Paste", w, R.drawable.ic_content_paste, enabled = clip != null) { pasteItem() }
                 RibbonDivider(w)
+                RibbonButton("Select all", w, R.drawable.ic_select_all) { chooseAll() }
+                RibbonButton("Choose several", w, R.drawable.ic_checklist, on = several) { several = !several; if (several) message = "Tap more things to choose them with it" }
+                RibbonDivider(w)
                 RibbonButton("Paste text only", w, R.drawable.ic_content_paste) {
                     context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() }
                         ?.let { putWords(it); WriterLog.i("Slides: text pasted alone") } ?: run { message = "Nothing to paste" }
@@ -838,9 +907,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align, script = pl.script) }
                     WriterLog.i("Slides: formatting pasted") } }
             }
-            "Item" -> {
+            "Item" -> if (more.isNotEmpty()) SeveralTools(w) else {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
+                // a group (the file's or made here): taken apart, each thing where it is
+                if (it0?.grouped == true) { RibbonButton("Ungroup", w, R.drawable.ic_group_objects) { val d = base ?: return@RibbonButton
+                    change(SlidesEdit.ungrouped(d, e, entry, item!!)); item = null; WriterLog.i("Slides: ungrouped") }; RibbonDivider(w) }
                 if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
                 // an equation (put on here, or the deck's own): Words' equation editor again
                 ((it0 as? SlideItem.Picture)?.math ?: a?.math)?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equating = item to m }; RibbonDivider(w) }
@@ -960,11 +1032,18 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { relaying = false; layouts = true }
                 // Layout (PowerPoint's): the slide on another of the deck's layouts, its words and what is on it kept
                 if (deck?.relaid != null && deck?.layouts?.isNotEmpty() == true && entry.layout < 0) RibbonButton("Layout", w, R.drawable.ic_view_grid) { relaying = true; layouts = true }
+                // Reset (PowerPoint's Home › Slides): its placeholders back to their layout's place, size and look; Tetra's own changes to them gone too
+                if (deck?.relaid != null && entry.layout < 0) RibbonButton("Reset", w, R.drawable.ic_undo) {
+                    val ph = deck?.slides?.getOrNull(entry.src)?.placeholders.orEmpty()
+                    fun <V> kept(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first != uid || it.second !in ph }
+                    change(e.copy(reset = e.reset + uid, frames = kept(e.frames), looks = kept(e.looks), turns = kept(e.turns))); item = null; WriterLog.i("Slides: slide reset")
+                }
                 // Section (PowerPoint's): slides in named groups, from the chosen one; an .odp has none
                 if (deck?.sections != null) RibbonButton("Section", w, R.drawable.ic_label) { sectioning = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
-                // PowerPoint's Selection Pane (Home › Arrange): the way to reach a thing under another on a tablet
+                // PowerPoint's Selection Pane (Home › Arrange): the way to reach a thing under another on a tablet; Select all (Home › Select)
                 RibbonButton("Selection pane", w, R.drawable.ic_layers) { selectionPane = true }
+                RibbonButton("Select all", w, R.drawable.ic_select_all) { chooseAll() }
                 RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                 RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
@@ -1275,6 +1354,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             k.isCtrlPressed && item != null && k.key == Key.X -> { if (copyItem()) deleteItem(); true }
             k.isCtrlPressed && clip != null && k.key == Key.V -> { pasteItem(); true }
             item != null && (k.key == Key.Delete || k.key == Key.Backspace) -> { deleteItem(); true }
+            k.isCtrlPressed && k.key == Key.A && editing && chosen != null -> { chooseAll(); true }
             item != null && k.key == Key.DirectionLeft -> { reframe { listOf(it.x - step, it.y, it.w, it.h) }; true }
             item != null && k.key == Key.DirectionRight -> { reframe { listOf(it.x + step, it.y, it.w, it.h) }; true }
             item != null && k.key == Key.DirectionUp -> { reframe { listOf(it.x, it.y - step, it.w, it.h) }; true }
@@ -1490,7 +1570,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 }
                             }
                             // what is chosen, dragged with a finger: moved, or sized from its corner's handle (one step of Undo); elsewhere the list scrolls
-                            .pointerInput(editing, chosen, i, item) {
+                            .pointerInput(editing, chosen, i, item, more) {
                                 if (!editing || chosen != i || item == null) return@pointerInput
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -1503,6 +1583,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     if (!handle && !(px in a.x..(a.x + a.w) && py in a.y..(a.y + a.h))) return@awaitEachGesture
                                     down.consume()
                                     undos += ee; if (undos.size > 100) undos.removeAt(0)
+                                    // several chosen: all of them moved together (sized: the one whose handle it is)
+                                    val others = if (handle) emptyList() else more.mapNotNull { o -> current(ee, i, o)?.let { o to it } }
                                     var x = a.x; var y = a.y; var w = a.w; var h = a.h
                                     while (true) {
                                         val ev = awaitPointerEvent()
@@ -1517,6 +1599,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         if (grid && !handle) edit = SlidesEdit.framed(now, uid, id, snap(x, w, d.width), snap(y, h, d.height), w, h)
                                         else if (grid) edit = SlidesEdit.framed(now, uid, id, x, y, maxOf(step, Math.round((x + w) / step) * step - x), h)
                                         else edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
+                                        if (others.isNotEmpty()) edit = others.fold(edit!!) { acc, (o, b) -> SlidesEdit.framed(acc, uid, o, b.x + x - a.x, b.y + y - a.y, b.w, b.h) }
                                         ch.consume()
                                     }
                                     WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
@@ -1534,13 +1617,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     val a = hit?.anim?.let { id -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == id } } }
                                     when {
                                         hit == null -> { item = null; message = "Tap a text box, shape or picture on the slide" }
+                                        // Choose several: a tap adds it to what is chosen, or takes it away
+                                        several && item != null -> { val id = hit.anim!!; typing = null
+                                            if (id == item) { item = more.firstOrNull(); more = more.drop(1) } else more = if (id in more) more - id else more + id }
                                         a?.prst == "table" && item == a.id -> {
                                             val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
                                             val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
                                             cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); tableCell = r * a.cols + c
                                         }
                                         item == hit.anim && typable(hit, a) -> typeInto(hit as SlideItem.Shape)
-                                        else -> { item = hit.anim; typing = null }
+                                        else -> { item = hit.anim; more = emptyList(); typing = null }
                                     }
                                 }
                             })
@@ -1548,6 +1634,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val sel = if (editing && chosen == i) item?.let { SlidesEdit.box(s, it) } else null
                         sel?.let { a -> Canvas(Modifier.matchParentSize()) {
                             val k = size.width / d.width
+                            // the others chosen with it: an outline each
+                            more.mapNotNull { SlidesEdit.box(s, it) }.forEach { o -> drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(o.x * k, o.y * k), androidx.compose.ui.geometry.Size(o.w * k, o.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())) }
                             drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
@@ -1674,7 +1762,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
-                            when (val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }) {
+                            val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }
+                            // several chosen, or a group: PowerPoint's names for the tab's things
+                            if (more.isNotEmpty()) "Arrange" else if (it0?.grouped == true) "Group" else when (it0) {
                                 is SlideItem.Table -> "Table"; is SlideItem.Picture -> if (it0.math != null) "Equation" else if (it0.media != null) "Video" else "Image"; is SlideItem.Chart -> "Chart"
                                 is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
                                 null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Image" else "Shape"

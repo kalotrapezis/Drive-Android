@@ -58,7 +58,8 @@ How to write here:
 - [~] (office-F session, 17 Oct evening, the only writer in this checkout; took over the stopped office-E's half-done dash/shadow) B's leftovers:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
-      Tablet not touched tonight (the user asleep): emulator-5554 only.
+      Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
+      Ungroup, Distribute, Reset slide (next commit). Unit suite 439, 0 failing; sweep 349 + 29, none failing (21:45).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -346,6 +347,18 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       back from all of them. `a shape's dash and shadow saved` (Words, both formats, LibreOffice's other format of each), `shape options and
       alt text saved` (Slides, both, LibreOffice's conversions); emulator: arrange.pptx's arrow dashed 3 pt with a shadow, saved —
       LibreOffice draws it so. Seen in passing: LibreOffice draws the rounded box's theme shadow (its style's effectRef), Tetra does not.
+      Choosing several, Group / Ungroup, Distribute (office-F session, 17 Oct): Selection › Select all (also Home › Select all and Ctrl+A)
+      and Choose several (a tap adds a thing or takes it away; each chosen one outlined); with several chosen the tab is "Arrange" — Group,
+      Align ▾ to each other (PowerPoint's Align Selected Objects), Distribute across / down (three or more; the first and last stay), Delete;
+      dragging moves them all. A group's tab is "Group", Ungroup first on it. Kept as `Edit.groups` (a group made here: its things' ids;
+      a group of a group made here becomes one group of all their things) and `Edit.ungrouped` (a file's group taken apart, each piece by
+      its own id: `SlideItem.own`); moved as a group, then taken apart: each keeps where the group put it. Saved as PowerPoint's p:grpSp
+      (its box its things', chOff = off) and LibreOffice's draw:g; a file's group unwrapped, each piece's place said on the slide (a group
+      in it too). **Shared piece:** Words' Group / Ungroup labels and icon (Words groups two by "tap another"; Slides chooses several, as
+      PowerPoint does); Words' Align list. `things grouped and ungrouped saved` (both formats, LibreOffice's conversions, then the saved
+      group taken apart); emulator: Select all → Group → dragged → saved, LibreOffice draws it moved; Ungroup; three chosen, Distribute down.
+      Not done: an animation on a group made here in an .odp (LibreOffice names a group by xml:id: not written), Copy/Cut of several
+      (the first only), a group turned (as before).
 - [~] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
       reorder, many at once); copy slides between decks.
       Slide sorter done 17 Oct (office-C session): View › Normal / Slide sorter (PowerPoint's place for it) — every slide small in a
@@ -360,7 +373,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       first slide in the sidebar and in the sorter's and phone's numbers; PowerPoint 2010's p14:sectionLst read and written (slides
       before the first in a "Default Section", as PowerPoint makes it; written again whenever the file has some, so moved or deleted
       slides keep it right). Impress has no sections: the button is not there for an .odp. `sections saved`; LibreOffice opens it.
-      Not yet: Reset slide, copy slides between decks.
+      Reset slide (office-F session, 17 Oct): Home › Reset (PowerPoint's) — the slide's placeholders back to their layout's place, size and
+      look (their own spPr, body settings, list styles and their paragraphs' and letters' looks gone; list levels, links and the words kept);
+      Impress has no Reset, so an .odp's placeholders take their master page's place and presentation style, their text styles gone.
+      `SlidesEdit.resetSlide` / `SlidesOdp.resetPage`, one XML change used both to show the slide (`Deck.relaid` reads it again, reset) and
+      to save it; Tetra's own moves and looks on its placeholders dropped (`Slide.placeholders`); `Edit.reset`. `a slide reset saved` (a
+      title moved and made bold, saved; read again, reset: where and as its layout has it, shown, saved, LibreOffice's conversions; both
+      formats); emulator: Plan's title moved, Reset — back. Not yet: copy slides between decks.
 - [~] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
       Colour variants done 17 Oct (office-C session) with the theme's fonts (B's "From Words" Design line): Design › Colours and Fonts
@@ -552,6 +571,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       **Shared piece:** Words' Selection tab (labels, icons, order), Slides' own copy/paste underneath. Emulator: title copied and pasted,
       its look pasted on the subtitle. Not yet: Select all (needs choosing several things at once — with Group below); a pasted box's
       paragraph alignment (`Added.runs` keeps letters only); pasting into another deck works within one Slides session only.
+      Select all done (office-F session, 17 Oct, with Arrange's Group above).
 - [~] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
       lists; Words' paragraph page (More…: indents, spacing before and after, line spacing exactly); a text box's
       border and shading (as Words' Borders, written as the shape's line and fill).

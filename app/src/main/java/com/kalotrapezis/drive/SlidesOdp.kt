@@ -24,6 +24,23 @@ internal object SlidesOdp {
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
     private fun Element.a(ns: String, n: String): String? = getAttributeNS(ns, n).takeIf { it.isNotEmpty() }
+    /**
+     * Home › Reset (PowerPoint's; Impress has none): [page]'s placeholders back to [master]'s — their place and size, the
+     * master's presentation style, no paragraph or letter looks of their own (lists kept). Shown and saved alike.
+     */
+    fun resetPage(page: Element, master: Element?) {
+        val own = master?.let { m -> (0 until m.childNodes.length).mapNotNull { m.childNodes.item(it) as? Element } }.orEmpty().filter { it.a(PRES, "class") != null }
+        for (el in (0 until page.childNodes.length).mapNotNull { page.childNodes.item(it) as? Element }) {
+            val cls = el.a(PRES, "class") ?: continue
+            if (cls in setOf("date-time", "footer", "page-number", "header", "notes")) continue
+            // a subtitle where the master's outline is (Impress's own way)
+            val m = own.firstOrNull { it.a(PRES, "class") == cls } ?: own.firstOrNull { cls == "subtitle" && it.a(PRES, "class") == "outline" }
+            m?.let { for (n in listOf("x", "y", "width", "height")) it.a(SVG, n)?.let { v -> el.setAttributeNS(SVG, "svg:$n", v) }; el.removeAttributeNS(DRAW, "transform") }
+            m?.a(PRES, "style-name")?.let { el.setAttributeNS(PRES, "presentation:style-name", it) }
+            el.removeAttributeNS(DRAW, "text-style-name")
+            listOf("p", "span", "h").forEach { n -> el.getElementsByTagNameNS(TEXT, n).let { l -> (0 until l.length).forEach { (l.item(it) as Element).removeAttributeNS(TEXT, "style-name") } } }
+        }
+    }
     /** A paragraph's words, its line breaks kept (textContent drops them). */
     private fun plainText(n: org.w3c.dom.Node): String = when {
         n is Element && n.localName == "line-break" -> "\n"
@@ -288,7 +305,7 @@ internal object SlidesOdp {
                 val desc = e.kids().firstOrNull { it.localName == "desc" }?.textContent
                 // its click: LibreOffice's "go to page or object" or a web page (office:event-listeners)
                 val click = e.kids().firstOrNull { it.localName == "event-listeners" }?.kids()?.firstOrNull { it.localName == "event-listener" && it.a(PRES, "action") == "show" }?.a(XLINK, "href")
-                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click
+                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null && out[i].own == null) out[i].own = path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click
                     out[i].name = e.a(DRAW, "name")?.ifEmpty { null }; out[i].hidden = e.getAttributeNS("http://openoffice.org/2010/draw", "display") == "none" } }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
@@ -368,7 +385,7 @@ internal object SlidesOdp {
                     fun dc(k: String) = an.kids().firstOrNull { it.localName == k && it.namespaceURI == "http://purl.org/dc/elements/1.1/" }?.textContent
                     SlideComment(DocComment("odp-$index-$n", dc("creator").orEmpty(), dc("date"), an.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent },
                         initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) },
-                backPicture = backPicture)
+                backPicture = backPicture, placeholders = page.kids().withIndex().filter { it.value.a(PRES, "class") != null }.map { "o${it.index}" }.toSet())
         }
         val slides = pages.mapIndexed { index, page -> pageSlide(index, page, page.a(DRAW, "master-page-name")) }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
@@ -398,14 +415,15 @@ internal object SlidesOdp {
         val placeholders = setOf("title", "outline", "subtitle")
         val kinds = masters.values.filterNotNull().map { m -> layout(m, m.a(STYLE, "display-name") ?: odfDisplayName(m.a(STYLE, "name").orEmpty()), placeholders) }.toMutableList()
         if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
-        val again = HashMap<Pair<Int, Int>, Slide>()
+        val again = HashMap<Triple<Int, Int?, Boolean>, Slide>()
         val endless = content.getElementsByTagNameNS(PRES, "settings").let { l -> (0 until l.length).any { (l.item(it) as Element).a(PRES, "endless") == "true" } }
         // References: Tetra's sources in the deck's own properties (meta.xml's user-defined, which LibreOffice keeps), in Word's form
         val meta = part("meta.xml")?.let { runCatching { OfficeFormats.parse(it).documentElement }.getOrNull() }
         fun userDefined(n: String) = meta?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "user-defined")?.let { l -> (0 until l.length).map { l.item(it) as Element } }
             ?.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "name") == n }?.textContent
         val sources = userDefined(SOURCES_NAME)?.let { WordSources.read(mapOf("customXml/item1.xml" to it.toByteArray())) }.orEmpty()
-        Deck(width, height, slides, kinds, loop = endless, sources = sources, citeStyle = userDefined(STYLE_NAME)?.let { n -> CiteStyle.entries.firstOrNull { it.name == n } } ?: CiteStyle.APA, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } })
+        Deck(width, height, slides, kinds, loop = endless, sources = sources, citeStyle = userDefined(STYLE_NAME)?.let { n -> CiteStyle.entries.firstOrNull { it.name == n } } ?: CiteStyle.APA, relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) { val name = k?.let { kinds[it].part } ?: pages[n].a(DRAW, "master-page-name")
+            pageSlide(n, if (reset) (pages[n].cloneNode(true) as Element).also { resetPage(it, masters[name]) } else pages[n], name) } } })
     }
 }
 

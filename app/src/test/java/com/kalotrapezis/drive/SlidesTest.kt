@@ -262,6 +262,78 @@ class SlidesTest {
         }
     }
 
+    /** Home › Reset: a title moved and made bold, saved; read again and reset — back where and as its layout has it, shown and saved. */
+    @Test fun `a slide reset saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val title = deck.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Plan" }
+            assertTrue(name, title.anim!! in deck.slides[1].placeholders)
+            val e0 = SlidesEdit.start(deck)
+            val e = SlidesEdit.framed(e0, 1, title.anim!!, title.x + 60f, title.y + 30f, title.w, title.h).let { it.copy(looks = it.looks + ((1 to title.anim!!) to SlidesEdit.Look(bold = true))) }
+            val moved = File("build/office-roundtrip").apply { mkdirs() }.resolve("unreset-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, moved) else SlidesEdit.save(src, deck, e, moved)
+            val back = Slides.read(moved)
+            fun plan(d: List<SlideItem>) = d.filterIsInstance<SlideItem.Shape>().first { words(it) == "Plan" }
+            assertEquals(name, title.x + 60f, plan(back.slides[1].items).x, 0.5f)
+            assertTrue(name, plan(back.slides[1].items).text!!.paras[0].runs[0].bold == true)
+            val r = SlidesEdit.start(back).let { it.copy(reset = setOf(1)) }
+            fun check(its: List<SlideItem>, how: String) { val p = plan(its)
+                assertEquals(how, title.x, p.x, 1f); assertEquals(how, title.y, p.y, 1f); assertTrue(how, p.text!!.paras[0].runs[0].bold != true); assertEquals(how, "Plan", words(p)) }
+            check(SlidesEdit.slide(back, r, r.order[1]).items, "shown, $name")
+            val out = File("build/office-roundtrip").resolve("reset-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(moved, back, r, out) else SlidesEdit.save(moved, back, r, out)
+            check(Slides.read(out).slides[1].items, "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }).slides[1].items, "LibreOffice's $other of $name")
+            }
+        }
+    }
+
+    /** Group (two things, then moved as one) and Ungroup (the saved group taken apart, each where it was): PowerPoint's grpSp, LibreOffice's draw:g. */
+    @Test fun `things grouped and ungrouped saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val items = deck.slides[2].items
+            val box = items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+            val pic = items.filterIsInstance<SlideItem.Picture>().first()
+            val e0 = SlidesEdit.start(deck)
+            val g = SlidesEdit.grouped(deck, e0, e0.order[2], listOf(box.anim!!, pic.anim!!))
+            val gid = g.groups[2]!!.keys.single()
+            val v0 = SlidesEdit.slide(deck, g, g.order[2])
+            val b0 = SlidesEdit.box(v0, gid)!!
+            val e = SlidesEdit.framed(g, 2, gid, b0.x + 40f, b0.y + 20f, b0.w, b0.h)
+            fun check(its: List<SlideItem>, how: String) {
+                val bx = its.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }; val p = its.filterIsInstance<SlideItem.Picture>().first()
+                assertTrue(how, bx.grouped && p.grouped); assertEquals(how, bx.anim, p.anim)
+                assertEquals(how, box.x + 40f, bx.x, 0.5f); assertEquals(how, pic.y + 20f, p.y, 0.5f); assertEquals(how, pic.w, p.w, 0.5f)
+                assertTrue(how, its.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }.let { !it.grouped })
+            }
+            check(SlidesEdit.slide(deck, e, e.order[2]).items, "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("grouped-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out).slides[2].items, "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }).slides[2].items, "LibreOffice's $other of $name")
+            }
+            // the saved group taken apart: each on its own, where it was
+            val back = Slides.read(out); val e2 = SlidesEdit.start(back)
+            val gid2 = back.slides[2].items.filterIsInstance<SlideItem.Picture>().first().anim!!
+            val u = SlidesEdit.ungrouped(back, e2, e2.order[2], gid2)
+            val out2 = File("build/office-roundtrip").apply { mkdirs() }.resolve("ungrouped-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(out, back, u, out2) else SlidesEdit.save(out, back, u, out2)
+            val its = Slides.read(out2).slides[2].items
+            val bx = its.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }; val p = its.filterIsInstance<SlideItem.Picture>().first()
+            assertTrue(name, !bx.grouped && !p.grouped); assertTrue(name, bx.anim != p.anim)
+            assertEquals(name, box.x + 40f, bx.x, 0.5f); assertEquals(name, pic.y + 20f, p.y, 0.5f)
+        }
+    }
+
     /** A picture cropped (Words' crop editor): the cut kept as PowerPoint's srcRect / LibreOffice's clip of the whole picture; Reset takes it away. */
     @Test fun `a picture cropped saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
@@ -313,9 +385,9 @@ class SlidesTest {
                 continue
             }
             // a layout whose title stands elsewhere than the title slide's
-            val k = deck.layouts.indices.firstOrNull { k -> deck.relaid!!(0, k)?.let { s -> Math.abs(title(s).y - title(deck.slides[0]).y) > 20f } == true }
+            val k = deck.layouts.indices.firstOrNull { k -> deck.relaid!!(0, k, false)?.let { s -> Math.abs(title(s).y - title(deck.slides[0]).y) > 20f } == true }
             if (k == null) { println("$name: no layout with the title elsewhere"); continue }
-            val moved = title(deck.relaid!!(0, k)!!)
+            val moved = title(deck.relaid!!(0, k, false)!!)
             val e = SlidesEdit.start(deck).copy(relayout = mapOf(0 to k))
             assertEquals(name, moved.y, title(SlidesEdit.view(deck, e).slides[0]).y, 1f)
             val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("layout-${src.name}")

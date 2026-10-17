@@ -52,8 +52,9 @@ How to write here:
       Video — all on emulator-5554 (the tablet was not connected). Unit 430/0/7, sweep 349 + 29. Handing on (office-C-17oct.md).
 - [~] (office-D session, 17 Oct, from office-C's hand-over) Words' Online video, then B's two long lists, then C (Tables onto the engine),
       then A's walk. Tablet: Firefox in front at 19:40 — emulator. Done here (20:40): Words' video and in-frame playing (Words and Slides),
-      Slides' Selection tab, X²/X₂ and Aa, Table tab, a text box's Layout, Animation pane and painter, show taps while a video plays.
-      Unit 433/0/7 (after 328b855); sweep 349 + 29, none failing (after the show-taps commit). Handing on (notes: office-D-17oct.md in the group's folder).
+      Slides' Selection tab, X²/X₂ and Aa, Table tab, a text box's Layout, Animation pane and painter, show taps while a video plays;
+      then (21:00) the Selection pane and Picture styles / Transparency. Unit 435/0/7, sweep 349 + 29 none failing (20:56, after d782c1e).
+      Handing on (notes: office-D-17oct.md in the group's folder): the leftovers next touch Words' shared dialogs and drawing.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

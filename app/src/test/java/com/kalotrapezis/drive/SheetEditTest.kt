@@ -8,6 +8,13 @@ import org.junit.Test
 
 /** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
 class SheetEditTest {
+    /** Insert function: every category's name is one the bar knows, and every one the bar knows is in a category. */
+    @org.junit.Test fun `functions in categories`() {
+        val known = SheetFunctions.all.map { it.name }.toSet()
+        FunctionCategories.ALL.forEach { (c, names) -> org.junit.Assert.assertTrue("$c: ${names - known}", (names - known).isEmpty()) }
+        org.junit.Assert.assertEquals(emptyList<String>(), FunctionCategories.of("Other").map { it.name })
+    }
+
     /** Text to columns: cut at the separator, not inside quotes, pieces trimmed; spaces: runs as one. */
     @org.junit.Test fun `text cut into columns`() {
         org.junit.Assert.assertEquals(listOf("Alpha", "12", "Crete"), SheetInput.split("Alpha; 12 ;Crete", ";"))

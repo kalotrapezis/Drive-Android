@@ -723,9 +723,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       a web page or another sheet's A1, the words to show typed into the cell; Excel's hyperlink (an outside relationship, or a location)
       or LibreOffice's text:a round the cell's words (`SheetLinks`, a change to the file); Remove link. `links on cells saved` (both
       formats, LibreOffice's conversions, one taken away); emulator: A2 linked to the second sheet.
-- [ ] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
+- [~] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.
+      Browse by category done (office-F session, 17 Oct): Formulas › Insert function — Excel's categories (Maths, Statistics, Logical,
+      Text, Date and time, Lookup, Information) over the cell bar's own list (`SheetFunctions.all`, its arguments and words; seven it
+      lacked though Tables works them out added: CEILING.MATH, FLOOR.MATH, STDEV.S, STDEVP, VAR.S, VARP, RANK.EQ), a search; tapped, a
+      new formula in the cell or put in where one types (`FunctionsDialog`). `functions in categories`; emulator: =MAX( from Statistics.
 - [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row

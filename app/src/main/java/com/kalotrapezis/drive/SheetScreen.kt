@@ -172,6 +172,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var copiedLook by remember { mutableStateOf<SheetStyle?>(null) } // Copy formatting (Words' pair): the look Paste formatting puts on
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
+    var inserting by remember { mutableStateOf(false) } // Formulas › Insert function
+    var inserted by remember { mutableStateOf<String?>(null) } // the function chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
@@ -890,6 +892,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                         }
                         shown == "Formulas" -> {
+                            RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
+                            RibbonDivider(w)
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
                             RibbonButton("Average", w, R.drawable.ic_functions) { autoFunction("AVERAGE") }
                             RibbonButton("Count", w, R.drawable.ic_numbers) { autoFunction("COUNT") }
@@ -1282,6 +1286,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             else -> error("A CSV file cannot hold a chart: save it as a workbook first.") } }) } }
     // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
     if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
+    if (inserting) FunctionsDialog({ inserting = false }) { f -> inserting = false; inserted = f }
+    // a function chosen: a new formula in the cell, or (typing a formula) put in where the cursor is
+    LaunchedEffect(inserted) { val f = inserted ?: return@LaunchedEffect
+        delay(150)
+        val d = draft
+        if (d != null && d.text.startsWith("=")) draft = TextFieldValue(d.text.substring(0, d.selection.min) + "$f(" + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + f.length + 1))
+        else { runCatching { barFocus.requestFocus() }; draft = TextFieldValue("=$f(", androidx.compose.ui.text.TextRange(f.length + 2)) }
+        runCatching { barFocus.requestFocus() }
+        inserted = null; WriterLog.i("Sheets: function $f") }
     LaunchedEffect(symbol) { val sym = symbol ?: return@LaunchedEffect
         delay(150) // the dialog gone: the bar can take focus (which starts typing with the cell's own words, as AutoSum's)
         runCatching { barFocus.requestFocus() }

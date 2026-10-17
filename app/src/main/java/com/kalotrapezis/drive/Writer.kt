@@ -4064,7 +4064,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
                         RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
-                                cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { decodePicture(it, 2400) }.getOrNull() } }
+                                cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { OfficePages.croppedPicture(img, it, 2400) }.getOrNull() } }
                                 if (cropping == null) message = "Words cannot crop this kind of picture."
                             }
                         }
@@ -4987,7 +4987,7 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
 private fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Painter {
     val bitmap by produceState<ImageBitmap?>(null, img, parts) {
         val bytes = img.bytes ?: img.part?.let { parts[it] }
-        value = bytes?.let { withContext(Dispatchers.IO) { runCatching { decodePicture(it, 1400)?.asImageBitmap() }.getOrNull() } }
+        value = bytes?.let { withContext(Dispatchers.IO) { runCatching { OfficePages.croppedPicture(img, it, 1400)?.asImageBitmap() }.getOrNull() } }
     }
     return bitmap?.let { BitmapPainter(it) } ?: ColorPainter(Color(0xFFE3E3E3))
 }

@@ -495,7 +495,7 @@ class SlidesTest {
 
     /** The crop's maths: a 900 × 600 picture with 2/9 cut from each side shows its middle 500 × 600. */
     @Test fun `a crop in pixels`() {
-        assertEquals(listOf(199, 0, 700, 600), Slides.crop(900, 600, floatArrayOf(0.22222f, 0f, 0.22222f, 0f)).toList())
+        assertEquals(listOf(200, 0, 700, 600), Slides.crop(900, 600, floatArrayOf(0.22222f, 0f, 0.22222f, 0f)).toList())
         assertEquals(listOf(0, 0, 900, 600), Slides.crop(900, 600, null).toList())
         assertEquals(listOf(0, 60, 900, 480), Slides.crop(900, 600, floatArrayOf(-0.1f, 0.1f, 0f, 0.2f)).toList()) // a negative side drawn as none
         Slides.crop(10, 10, floatArrayOf(0.7f, 0f, 0.7f, 0f)).let { assertTrue(it[2] > it[0]) } // never an empty part

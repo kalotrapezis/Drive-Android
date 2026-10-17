@@ -209,7 +209,7 @@ internal object SlidesOdp {
                                 val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
-                            "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { part(p) } }
+                            "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) }) { part(p) } }
                             "table" -> out += table(inner, b)
                             "object" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }?.let(OfficeCharts::readOdf)?.let { out += SlideItem.Chart(b[0], b[1], b[2], b[3], it) }
                         }

@@ -348,8 +348,7 @@ internal object Slides {
                             id = if (ctx != null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null, hint = empty)
                     }
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p ->
-                        val src = e.kid("blipFill")?.kid("srcRect")
-                        val crop = src?.let { r -> listOf("l", "t", "r", "b").map { (r.attr(it)?.toFloatOrNull() ?: 0f) / 100_000f }.toFloatArray() }?.takeIf { c -> c.any { it != 0f } }
+                        val crop = srcRect(e.kid("blipFill")?.let(OfficeFormats::xml))
                         out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop) { part(p) }
                     }
                     "graphicFrame" -> {
@@ -533,8 +532,8 @@ internal object Slides {
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
                         var sample = 1; while (o.outWidth / (sample * 2) >= item.w * 3) sample *= 2
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
-                    } }.getOrNull()?.also { pictures.put(item, it) }
-                    bmp?.let { val r = crop(it.width, it.height, item.crop); c.drawBitmap(it, android.graphics.Rect(r[0], r[1], r[2], r[3]), android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h), paint) }
+                    } }.getOrNull()?.let { cropped(it, item.crop) }?.also { pictures.put(item, it) }
+                    bmp?.let { c.drawBitmap(it, null, android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h), paint) }
                 }
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)
@@ -551,8 +550,67 @@ internal object Slides {
     internal fun crop(w: Int, h: Int, crop: FloatArray?): IntArray {
         if (crop == null) return intArrayOf(0, 0, w, h)
         val (l, t, r, b) = crop.map { it.coerceIn(0f, 1f) }
-        val left = (w * l).toInt().coerceIn(0, w - 1); val top = (h * t).toInt().coerceIn(0, h - 1)
-        return intArrayOf(left, top, (w * (1 - r)).toInt().coerceIn(left + 1, w), (h * (1 - b)).toInt().coerceIn(top + 1, h))
+        // rounded: 2/9 of 900 written as 22222 is 199.998, and pixel 199 is the cut part's last
+        val left = Math.round(w * l).coerceIn(0, w - 1); val top = Math.round(h * t).coerceIn(0, h - 1)
+        return intArrayOf(left, top, Math.round(w * (1 - r)).coerceIn(left + 1, w), Math.round(h * (1 - b)).coerceIn(top + 1, h))
+    }
+
+    /** Only the part of [bmp] that [crop] leaves, as a bitmap of its own (a source rectangle drawn scaled lets the cut-off edge pixels blend in). */
+    internal fun cropped(bmp: android.graphics.Bitmap, crop: FloatArray?): android.graphics.Bitmap {
+        if (crop == null) return bmp
+        val r = crop(bmp.width, bmp.height, crop)
+        return android.graphics.Bitmap.createBitmap(bmp, r[0], r[1], r[2] - r[0], r[3] - r[1])
+    }
+
+    /** A DrawingML picture's crop in [xml] (its blipFill's a:srcRect: l, t, r, b in thousandths of a percent) as [crop] takes it; null: none. */
+    internal fun srcRect(xml: String?): FloatArray? {
+        val attrs = Regex("""<(?:\w+:)?srcRect\b([^>]*)>""").find(xml ?: return null)?.groupValues?.get(1) ?: return null
+        return listOf("l", "t", "r", "b").map { k -> (Regex("""\b$k="(-?\d+)"""").find(attrs)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f) / 100_000f }
+            .toFloatArray().takeIf { c -> c.any { it != 0f } }
+    }
+
+    /**
+     * An OpenDocument picture's crop (fo:clip="rect(top, right, bottom, left)", lengths of the picture at its own size) as
+     * [crop] takes it, for a picture of [bytes]. Null: none, or a kind whose size is not read here.
+     */
+    internal fun clip(clip: String?, bytes: ByteArray?): FloatArray? {
+        val sides = Regex("""rect\(([^)]*)\)""").find(clip ?: return null)?.groupValues?.get(1)?.split(Regex("""[,\s]+"""))?.filter { it.isNotEmpty() }?.takeIf { it.size == 4 } ?: return null
+        val (w, h) = picturePt(bytes ?: return null) ?: return null
+        val (t, r, b, l) = sides.map { s -> odfLength(s) ?: 0f }
+        return floatArrayOf(l / w, t / h, r / w, b / h).takeIf { c -> c.any { it != 0f } }
+    }
+
+    /**
+     * A PNG's or JPEG's size in points at its own resolution (PNG pHYs, JPEG JFIF density; 96 dpi when it says none, as
+     * LibreOffice takes it). shortcut: other kinds (GIF, WebP, EXIF-only resolution) are null, so their clip is not drawn.
+     */
+    internal fun picturePt(b: ByteArray): Pair<Float, Float>? {
+        fun u16(i: Int) = (b[i].toInt() and 255 shl 8) or (b[i + 1].toInt() and 255)
+        fun u32(i: Int) = (u16(i).toLong() shl 16) or u16(i + 2).toLong()
+        var dpiX = 96f; var dpiY = 96f
+        if (b.size > 24 && b[1] == 'P'.code.toByte() && b[2] == 'N'.code.toByte() && b[3] == 'G'.code.toByte()) {
+            var i = 8
+            while (i + 8 <= b.size) {
+                val len = u32(i).toInt(); val type = String(b, i + 4, 4, Charsets.ISO_8859_1)
+                if (type == "pHYs" && len >= 9 && i + 17 <= b.size && b[i + 16].toInt() == 1) { dpiX = (u32(i + 8) * 0.0254f).coerceAtLeast(1f); dpiY = (u32(i + 12) * 0.0254f).coerceAtLeast(1f) }
+                if (type == "IDAT" || len < 0) break
+                i += 12 + len
+            }
+            return (u32(16) * 72f / dpiX) to (u32(20) * 72f / dpiY)
+        }
+        if (b.size < 4 || u16(0) != 0xFFD8) return null
+        var i = 2
+        while (i + 9 < b.size && b[i] == 0xFF.toByte()) {
+            val marker = b[i + 1].toInt() and 255; val len = u16(i + 2)
+            if (marker == 0xE0 && String(b, i + 4, 4, Charsets.ISO_8859_1) == "JFIF" && i + 16 <= b.size) when (b[i + 11].toInt()) {
+                1 -> { dpiX = u16(i + 12).toFloat(); dpiY = u16(i + 14).toFloat() }
+                2 -> { dpiX = u16(i + 12) * 2.54f; dpiY = u16(i + 14) * 2.54f }
+            }
+            // the frame's header (SOF0–SOF15, not DHT/JPG/DAC): height, then width
+            if (marker in 0xC0..0xCF && marker !in setOf(0xC4, 0xC8, 0xCC)) return (u16(i + 7) * 72f / dpiX.coerceAtLeast(1f)) to (u16(i + 5) * 72f / dpiY.coerceAtLeast(1f))
+            i += 2 + len
+        }
+        return null
     }
 
     /**

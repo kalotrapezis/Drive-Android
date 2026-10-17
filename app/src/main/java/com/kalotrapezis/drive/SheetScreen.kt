@@ -2114,9 +2114,9 @@ internal class SheetPainter(
                             val bytes = d.image.invoke() ?: return@runCatching null
                             val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                             android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-                            val want = max(1f, box.width() * density * 2)
+                            val want = max(1f, box.width() * density * 2 / (1 - (d.crop?.let { it[0] + it[2] } ?: 0f)).coerceAtLeast(0.05f)) // the part shown fills the box
                             var sample = 1; while (o.outWidth / (sample * 2) >= want) sample *= 2
-                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })?.let { Slides.cropped(it, d.crop) }
                         }.onFailure { WriterLog.w("Sheets: a picture could not be read", it) }.getOrNull()
                     }
                 }

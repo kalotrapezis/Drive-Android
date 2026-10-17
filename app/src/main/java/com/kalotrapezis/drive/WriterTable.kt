@@ -637,7 +637,7 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
  * ponytail: Word's own rotation (a:xfrm rot) would keep the original; a turned copy is what LibreOffice and Word show alike.
  */
 internal fun transformedPicture(img: DocImage, bytes: ByteArray, turn: Int, flip: Boolean): DocImage? {
-    val bitmap = decodePicture(bytes, 2400) ?: return null
+    val bitmap = OfficePages.croppedPicture(img, bytes, 2400) ?: return null // a cropped one turns as it shows
     val m = android.graphics.Matrix().apply { if (turn != 0) postRotate(turn.toFloat()); if (flip) postScale(-1f, 1f) }
     val out = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
     val png = img.extension == "png" || img.part?.endsWith(".png", ignoreCase = true) == true

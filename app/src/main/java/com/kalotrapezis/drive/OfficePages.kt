@@ -1557,11 +1557,17 @@ internal object OfficePages {
         return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes), x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
     }
 
+    /** A picture's bitmap as the file shows it: only the part its crop leaves (Word's a:srcRect, LibreOffice's fo:clip on its style). */
+    fun croppedPicture(img: DocImage, bytes: ByteArray, max: Int): android.graphics.Bitmap? {
+        val bmp = decodePicture(bytes, max) ?: return null
+        return Slides.cropped(bmp, Slides.srcRect(img.raw) ?: img.look?.let { l -> Regex("""fo:clip="([^"]*)"""").findAll(l).lastOrNull() }?.let { Slides.clip(it.groupValues[1], bytes) })
+    }
+
     /** What a floating picture, shape, text box, chart, equation or group draws (a grey box for what Writer cannot draw). */
     fun pictureOf(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): android.graphics.drawable.Drawable =
         img.group?.let { parts -> GroupDrawable(img.widthPt, img.heightPt, parts.map { it to pictureOf(doc, styles, it.img, pictureBytes) }) }
             ?: img.math?.let { MathDrawable(it, doc.basePt) }
-            ?: textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
+            ?: textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> croppedPicture(img, b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
 
     /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */
     fun textBox(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): TextBoxDrawable? {
@@ -1635,7 +1641,7 @@ internal object OfficePages {
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
-                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> croppedPicture(img, b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img)?.let { it.withLine(it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
                 span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))

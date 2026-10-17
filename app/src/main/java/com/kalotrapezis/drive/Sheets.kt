@@ -52,6 +52,7 @@ internal class SheetDrawing(
     val chart: DocChart? = null, val image: (() -> ByteArray?)? = null, val text: String? = null, val fill: Int? = null, val line: Int? = null,
     /** A shape in its own outline (an arrow, a star: Excel's presets, LibreOffice's paths); null: a box. */
     val shape: ShapePicture? = null, val textColor: Int? = null, /** its words in the middle (Excel's shapes), not from the top left (a text box) */ val centred: Boolean = false,
+    /** A picture's crop (a:srcRect), as [Slides.crop] takes it. */ val crop: FloatArray? = null,
 )
 
 /** A cell's border edge: colour, width in pixels, double or dashed. */
@@ -923,6 +924,7 @@ internal object Sheets {
                     val p = rels[b.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed")] ?: return@let null
                     { parts(p) }
                 } ?: continue else null
+                val crop = if (image != null) Slides.srcRect(body.kid("blipFill")?.let(OfficeFormats::xml)) else null
                 val text = if (body.localName == "sp") body.below("p").joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }.trim() else null
                 // a colour: its own, or the theme's (accent1, lt1…), darker or lighter as it says (shade, tint)
                 fun scheme(c: Element?): Int? {
@@ -958,11 +960,11 @@ internal object Sheets {
                 if (body.localName == "sp" && text.isNullOrEmpty() && fillC == null && shape == null) continue
                 val x = at(from, "colOff") / emu; val y = at(from, "rowOff") / emu
                 out += if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
-                    width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
+                    width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
                 else if (to != null) SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, at(to, "row").toInt(), at(to, "col").toInt(), at(to, "colOff") / emu, at(to, "rowOff") / emu,
-                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
                 else SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu,
-                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred)
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
             }
             if (out.isNotEmpty()) WriterLog.i("Sheets: ${out.size} drawings (${out.count { it.chart != null }} charts, ${out.count { it.image != null }} pictures)")
             return out

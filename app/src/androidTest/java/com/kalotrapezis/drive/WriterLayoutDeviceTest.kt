@@ -133,4 +133,35 @@ class WriterLayoutDeviceTest {
         } finally { WriterBridge.pageWidthPt = oldWidth }
     }
 
+    // Asked 17 Oct: a picture alone in a centred paragraph sat right of centre in Edit, past the right margin, with a
+    // quarter of its height empty under it.
+    @Test fun centredPictureSitsBetweenTheMarginsWithNoGapUnderIt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val oldWidth = WriterBridge.pageWidthPt
+        WriterBridge.pageWidthPt = 432f
+        android.graphics.Paint().apply { textSize = 100f }.let { paint ->
+            WriterBridge.pictureGlyph = paint.measureText(OBJECT_MARK.toString()) / 100f
+            WriterBridge.lineRatio = paint.fontMetrics.let { it.descent - it.ascent } / 100f
+            WriterBridge.letterRise = -paint.fontMetrics.ascent / 100f
+        }
+        try {
+            val img = DocImage("p1", null, 396.85f, 248f) // 14 × 8.75 cm
+            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img)), align = DocAlign.Center),
+                DocPara(listOf(DocRun("Caption")), align = DocAlign.Center)), basePt = 12f)
+            val state = RichTextState()
+            state.setRichTextDocument(WriterBridge.toEditor(doc))
+            val measurer = TextMeasurer(createFontFamilyResolver(context), Density(1f), LayoutDirection.Ltr)
+            val style = TextStyle(fontSize = 16.sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.None))
+            val width = 576 // 432 pt, 16 sp to a 12 pt letter
+            val shown = WriterBridge.breakablePictures(WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, DocStyles.Plain))
+            val laid = measurer.measure(shown, style, constraints = Constraints.fixedWidth(width))
+            val (w, h) = WriterBridge.shownSize(img, 16f / 12f)
+            val box = laid.getBoundingBox(0)
+            assertEquals("Picture's left", (width - w) / 2, box.left, 2f)
+            assertEquals("Picture's width", w, box.width, 4f)
+            val fall = (WriterBridge.lineRatio - WriterBridge.letterRise) * 16f
+            assertEquals("Its line: the picture and a text line's fall", h + fall, laid.getLineBottom(0) - laid.getLineTop(0), 1.5f)
+        } finally { WriterBridge.pageWidthPt = oldWidth }
+    }
+
 }

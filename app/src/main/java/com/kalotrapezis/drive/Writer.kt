@@ -166,6 +166,7 @@ import com.mohamedrejeb.richeditor.document.RichTextSpanMark
 import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextGeometricTransform
 import com.mohamedrejeb.richeditor.ui.BasicRichTextEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -303,6 +304,10 @@ internal object WriterBridge {
     var pictureGlyph = 1f
     /** A line of the editor's text, top to bottom, for each point of its size. */
     var lineRatio = 1.17f
+    /** A line's top to its baseline, for each point of its size. */
+    var letterRise = 0.93f
+    /** The size of the letter standing for a picture [h] sp tall (a letter's rise is ~0.9 of its size). */
+    fun pictureLetter(h: Float) = (h * 1.12f).coerceAtLeast(4f)
     /** A capital's height for each point of its size (about, in most fonts): a drop cap's letters sized by it. */
     private const val DROP_CAP_RATIO = 0.7f
 
@@ -339,6 +344,19 @@ internal object WriterBridge {
                 val look = styles.look(p)
                 var at = 0
                 p.runs.forEach { run ->
+                    run.image?.takeIf { it.table == null }?.let { img ->
+                        // Asked 17 Oct: Android 15+ drops letter spacing at a line's ends, so a picture alone on its line took only
+                        // its letter's width and a centred one sat right of centre. A stretched letter keeps its width anywhere.
+                        val (w, h) = shownSize(img, BASE_SP / doc.basePt)
+                        // Alone in its paragraph: its line only the picture and a text line's fall, as LibreOffice lays it (asked
+                        // 17 Oct: the letter's own fall left a quarter of a picture's gap under it); drawn from the line's top.
+                        val alone = p.runs.size == 1 && run.text.length == 1 && !overOnPage(run)
+                        val letter = if (alone) h / lineRatio + ((look.sizePt ?: doc.basePt) * BASE_SP / doc.basePt) * (1f - letterRise / lineRatio) else pictureSp(pictureLetter(h))
+                        editorSpans(places, para, at, at + run.text.length).forEach { range ->
+                            addStyle(SpanStyle(fontSize = if (alone) letter.sp else androidx.compose.ui.unit.TextUnit.Unspecified, letterSpacing = 0.sp,
+                                textGeometricTransform = TextGeometricTransform(scaleX = w / (pictureGlyph * letter))), range.first, range.last + 1)
+                        }
+                    }
                     if (run.image == null) (styles.fontName(run.font)?.let(fontFamily) ?: fontFamily(look.font))?.let { family ->
                         editorSpans(places, para, at, at + run.text.length).forEach { range ->
                             addStyle(SpanStyle(fontFamily = family), range.first, range.last + 1)
@@ -565,7 +583,7 @@ internal object WriterBridge {
                     // picture, so its line makes room, and invisible.
                     // A table is a line of its own: its letter's whole line (rise and fall) is the table's height, and it is
                     // drawn from the line's top — standing on the baseline, the fall left a gap a quarter of its height.
-                    val size = (if (img.table != null) h / lineRatio else h * 1.12f).coerceAtLeast(4f) // a letter's rise is ~0.9 of its size
+                    val size = if (img.table != null) (h / lineRatio).coerceAtLeast(4f) else pictureLetter(h)
                     // ponytail: the space the editor puts after each paragraph keeps the editor's own text size, so in Mobile
                     // view (tables shrunk to the screen) a short table's line stays a text line tall; a mark cannot reach it
                     // (the library refuses a range past the block). Print layout has no gap.
@@ -1285,6 +1303,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     remember { OfficeFonts.assets = context.applicationContext.assets; OfficeMath.measure = MathDrawable.measure(); WriterUnits.load(context); WriterBridge.documentHeadings() }
     remember { WriterBridge.pictureGlyph = android.graphics.Paint().apply { textSize = 100f }.measureText(OBJECT_MARK.toString()) / 100f } // the letter Display lays it as
     remember { WriterBridge.lineRatio = android.graphics.Paint().apply { textSize = 100f }.fontMetrics.let { it.descent - it.ascent } / 100f }
+    remember { WriterBridge.letterRise = -android.graphics.Paint().apply { textSize = 100f }.fontMetrics.ascent / 100f }
     var packageParts by remember { mutableStateOf<Map<String, ByteArray>>(emptyMap()) } // the file's parts, for its pictures
     var documentStyles by remember { mutableStateOf<DocStyles>(DocStyles.Plain) }
     // A tablet edits on the page itself (asked 2026-09-29, as on a desktop): the page's width and margins at the
@@ -3519,7 +3538,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         val (w, h) = float?.let { it.w * scale to it.h * scale } ?: WriterBridge.shownSize(img, scale)
                                         val y = if (float != null) (l.getLineTop(l.getLineForOffset(paraStarts.lastOrNull { it <= i } ?: i)) + with(density) { (float.y * scale).sp.toPx() }).toInt()
                                             else if (img.table != null) l.getLineTop(l.getLineForOffset(i)).toInt()
-                                            else with(density) { (bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture
+                                            else with(density) { maxOf(l.getLineTop(l.getLineForOffset(i)), bottom - h.sp.toPx()).toInt() } // standing on the line, as Word places an inline picture (from its top when the line is only the picture: Display)
                                         val size = with(density) { stretch?.takeIf { selectedPicture?.first == i }?.let { (a, b) -> Modifier.size(a.toDp(), b.toDp()) } ?: Modifier.size(w.sp.toDp(), h.sp.toDp()) }
                                         val shownWidth = with(density) { w.sp.toPx() }
                                         val shownHeight = with(density) { h.sp.toPx() }

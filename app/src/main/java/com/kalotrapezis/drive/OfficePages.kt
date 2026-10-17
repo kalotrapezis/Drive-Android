@@ -1691,7 +1691,8 @@ internal object OfficePages {
         val aligned = p.align.takeIf { it != DocAlign.Start || p.keep?.parts?.any { k -> k.first == "jc" } == true } ?: look.align ?: DocAlign.Start // its own (left said in the file too), else its style's
         val align = when (aligned) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
         // Word's single line is the font's height and its line gap; Android's leaves the gap out (rows came out 4% short).
-        val multiple = if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
+        // A picture alone in its paragraph keeps its own height, as LibreOffice lays it (asked 17 Oct: 1.15 put a sixth of the picture under it).
+        val multiple = if (look.lineExact == null && !text.all { it == '\uFFFC' || it == '\n' }) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
         // The line gap of the font most of the text is in (a paragraph in Calibri may be all Times, letter by letter).
         val main = p.runs.filter { it.image == null }.groupBy { it.font to it.sizePt }.maxByOrNull { (_, rs) -> rs.sumOf { it.text.length } }?.value?.first()
         val gapPaint = TextPaint(paint).apply {

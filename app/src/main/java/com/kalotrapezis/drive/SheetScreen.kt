@@ -191,6 +191,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
     var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
+    var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1167,6 +1168,18 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
+                            // Excel's Formula Auditing: the cells a formula reads, those reading this one, the errors one by one; marked on the sheet
+                            RibbonDivider(w)
+                            RibbonButton("Precedents", w, R.drawable.ic_arrow_upward) { traced = SheetTrace.precedents(s, cr, cc, b.names)
+                                message = if (traced.isEmpty()) "${Sheets.colName(cc)}${cr + 1} has no formula reading cells here" else "${Sheets.colName(cc)}${cr + 1} reads ${traced.size} cells (marked)" }
+                            RibbonButton("Dependents", w, R.drawable.ic_arrow_downward) { traced = SheetTrace.dependents(s, cr, cc, b.names)
+                                message = if (traced.isEmpty()) "No formula here reads ${Sheets.colName(cc)}${cr + 1}" else "${traced.size} cells read ${Sheets.colName(cc)}${cr + 1} (marked)" }
+                            RibbonButton("Error checking", w, R.drawable.ic_error) { val errors = SheetTrace.errors(s); traced = errors.toSet()
+                                if (errors.isEmpty()) message = "No errors on this sheet" else {
+                                    val next = errors.firstOrNull { Sheet.row(it) > cr || (Sheet.row(it) == cr && Sheet.col(it) > cc) } ?: errors.first()
+                                    view.row = Sheet.row(next); view.col = Sheet.col(next); view.reveal++
+                                    message = "${s[Sheet.row(next), Sheet.col(next)]?.text} in ${Sheets.colName(Sheet.col(next))}${Sheet.row(next) + 1} (${errors.indexOf(next) + 1} of ${errors.size})" } }
+                            if (traced.isNotEmpty()) RibbonButton("Remove marks", w, R.drawable.ic_close) { traced = emptySet() }
                             // Excel's Name Manager: the workbook's names, one for the chosen cells, one taken away
                             if (editing && b.kind != "csv") RibbonButton("Names", w, R.drawable.ic_label) { namesFor = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) }
                             RibbonDivider(w)
@@ -1391,7 +1404,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet(), found.getOrNull(current) ?: -1L), formulas, version,
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L), formulas, version,
                         column = { col, _ -> header = 'c' to col; group = null }, row = { r, _ -> header = 'r' to r; group = null },
                         pick = { r, c ->
                             header = null

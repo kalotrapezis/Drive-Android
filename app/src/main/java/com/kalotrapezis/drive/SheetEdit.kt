@@ -710,3 +710,28 @@ internal object SheetSortRows {
         }
     }
 }
+
+/**
+ * Formulas › Trace Precedents, Trace Dependents and Error Checking (Excel's): the cells a cell's formula reads, the cells
+ * whose formulas read it (this sheet's), and the cells showing an error, in reading order — marked on the sheet as found
+ * cells are (Excel draws arrows; a phone marks them).
+ */
+internal object SheetTrace {
+    private fun refs(f: String, names: Map<String, String>) = runCatching { SheetCalc.refs(SheetCalc.parse(f), names = names) }.getOrDefault(emptyList())
+
+    fun precedents(sheet: Sheet, r: Int, c: Int, names: Map<String, String> = emptyMap()): Set<Long> {
+        val f = sheet[r, c]?.formula ?: return emptySet()
+        return refs(f, names).filter { it.sheet == null || it.sheet.trim('\'').equals(sheet.name, true) }
+            .flatMap { g -> (g.range.r1..minOf(g.range.r2, g.range.r1 + 9_999)).flatMap { rr -> (g.range.c1..minOf(g.range.c2, g.range.c1 + 99)).map { cc -> Sheet.key(rr, cc) } } }.toSet()
+    }
+
+    fun dependents(sheet: Sheet, r: Int, c: Int, names: Map<String, String> = emptyMap()): Set<Long> {
+        val out = HashSet<Long>()
+        sheet.cells.forEach { k, cell -> val f = cell.formula ?: return@forEach
+            if (refs(f, names).any { (it.sheet == null || it.sheet.trim('\'').equals(sheet.name, true)) && r in it.range.r1..it.range.r2 && c in it.range.c1..it.range.c2 }) out += k }
+        return out
+    }
+
+    fun errors(sheet: Sheet): List<Long> = ArrayList<Long>().also { out -> sheet.cells.forEach { k, cell -> if (cell.kind == SheetKind.Error) out += k } }
+        .sortedWith(compareBy({ Sheet.row(it) }, { Sheet.col(it) }))
+}

@@ -195,6 +195,20 @@ class SheetEditTest {
         assertEquals(listOf("gamma", "delta", "beta", "Alpha"), sorted(listOf(0 to false)).first)
     }
 
+    /** Trace precedents and dependents, and error checking: the cells a formula reads, those that read a cell, the error cells in order. */
+    @Test fun `formulas traced and errors found`() {
+        val s = Sheets.csv("1,2\n3,4".toByteArray()).sheet(0)
+        s.cells[Sheet.key(0, 2)] = SheetCell("3", SheetKind.Number, 3.0, formula = "=SUM(A1:B1)")
+        s.cells[Sheet.key(1, 2)] = SheetCell("#DIV/0!", SheetKind.Error, formula = "=A2/0")
+        s.cells[Sheet.key(2, 0)] = SheetCell("#REF!", SheetKind.Error, formula = "=#REF!")
+        s.cells[Sheet.key(2, 1)] = SheetCell("4", SheetKind.Number, 4.0, formula = "=Other!A1+B1")
+        fun k(r: Int, c: Int) = Sheet.key(r, c)
+        assertEquals(setOf(k(0, 0), k(0, 1)), SheetTrace.precedents(s, 0, 2))
+        assertEquals(setOf(k(0, 1)), SheetTrace.precedents(s, 2, 1)) // another sheet's cells not marked here
+        assertEquals(setOf(k(0, 2), k(2, 1)), SheetTrace.dependents(s, 0, 1))
+        assertEquals(listOf(k(1, 2), k(2, 0)), SheetTrace.errors(s))
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

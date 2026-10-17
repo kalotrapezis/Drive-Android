@@ -74,7 +74,8 @@ How to write here:
       engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸ (e6b8549), sheet copy
       and tab colour (a7f9980), cells shifted (ce1b197),
       Picture and Text box (5001224), Sort (d275c8d),
-      AutoFilter kept (22bebc0), Names (2ab13f5). Checks at a925139: unit
+      AutoFilter kept (22bebc0), Names (2ab13f5),
+      Trace and error checking. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
@@ -793,6 +794,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       it, LibreOffice's conversions both ways); emulator: Amounts for B2:B3 of an .ods, =SUM(Amounts) 1192.50.
       Seen on the way (not changed): in an .ods a new formula's result shows the phone's separators (1,192.50) beside the file's
       own stored text in LibreOffice's (1.192,50) — older behaviour; worth a look with Words' and Tables' number display.
+      Trace and error checking done (office-F session, 18 Oct): Formulas › Precedents (the cells the chosen cell's formula reads, names
+      followed), Dependents (this sheet's formulas reading it), Error checking (each tap the next error cell, "#DIV/0! in C7 (1 of 3)"),
+      Remove marks — marked on the sheet as found cells are (Excel draws arrows). `SheetTrace`; `formulas traced and errors found`;
+      emulator: B5's B2:B3 marked. shortcut: another sheet's cells are not marked.
 - [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row

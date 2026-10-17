@@ -53,9 +53,7 @@ How to write here:
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
-- (office-C session, 17 Oct) Slides › References in an .odp: the plan said "an .odp needs its own place: to decide". I chose the deck's
-  own properties (meta.xml user-defined "Tetra sources", in Word's bibliography form), which LibreOffice keeps when it saves the file
-  and which no one sees in the slides. The other way would be a hidden last slide holding them. Keep meta.xml?
+- (none now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
 
@@ -419,7 +417,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       `Citations.tagFor`), Style ▾ (Words' `CiteStyle`: APA 7, MLA 9, Chicago, Harvard), Insert citation (Words' `CitationDialog`, put in
       where one types). Kept in a .pptx in Word's bibliography part by Words' `WordSources` (customXml, as PowerPoint keeps it); in an
       .odp in meta.xml's user-defined properties in Word's form ("Tetra sources", "Tetra citation style" — **my choice, see Waiting on
-      the user**), which LibreOffice keeps when it saves. Live: changing the style or a source writes every citation in the slides
+      the user**; the user, 17 Oct: "Keep the .odp's sources in meta.xml"), which LibreOffice keeps when it saves. Live: changing the style or a source writes every citation in the slides
       again (found by the sources' citations in the old style). `sources saved` (both; LibreOffice's own save of the .odp keeps them);
       emulator: "(Smith)" (MLA) became "(Smith, 2020)" when the style was made APA. Shortcuts: one source and no page a citation
       (Words' fields hold more), IEEE not offered (its numbers follow the order of citing).

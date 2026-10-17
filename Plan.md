@@ -324,8 +324,12 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       new cut picture instead: here PowerPoint's own way is kept). `a picture cropped saved` (both, LibreOffice's conversions, Reset);
       emulator: cropped, saved — srcRect in the file. Unit 419/0/7, sweep 349 + 29 none failing (after the disk was cleared: the
       tests' LibreOffice folders had filled /tmp, a 6.8 GB RAM disk — they are now removed: `scratchDir`, and the sweep at once).
-- [ ] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
+- [~] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
       reorder, many at once); copy slides between decks.
+      Slide sorter done 17 Oct (office-C session): View › Normal / Slide sorter (PowerPoint's place for it) — every slide small in a
+      grid (thumbnails as the sidebar draws them), a tap chooses or lets go (many at once), a slide held and dragged moves there with
+      the others chosen (one not chosen moves alone), a double tap opens it; Choose all, Duplicate, Hide/Show, Delete on the chosen.
+      Also fixed: Duplicate slide now copies a slide's comments, header & footer, turns and order too. Emulator: slide 4 dragged first.
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.

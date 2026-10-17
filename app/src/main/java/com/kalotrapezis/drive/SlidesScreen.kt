@@ -81,6 +81,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -375,6 +378,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sizing by remember { mutableStateOf(false) } // Arrange › Size and position: the numbers
     var shaping by remember { mutableStateOf(false) } // Shape options: Words' page of a shape's styles, fill, outline, size, angle and alt text
     var alting by remember { mutableStateOf(false) } // Alt text of what is not a shape (a picture, a chart, a table, a text box)
+    var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
+    var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
     /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
     fun recomment(f: (List<SlideComment>) -> List<SlideComment>) {
@@ -497,7 +502,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         fun <V> mine(m: Map<Pair<Int, String>, V>) = m.filterKeys { it.first == uid }.mapKeys { nu to it.key.second }
         change(e.copy(order = e.order.toMutableList().apply { add(c + 1, SlidesEdit.Entry(entry.src, nu, entry.layout)) }, texts = e.texts + mine(e.texts), looks = e.looks + mine(e.looks), frames = e.frames + mine(e.frames), removed = e.removed + e.removed.filter { it.first == uid }.map { nu to it.second },
             added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-            anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+            anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
+            footers = e.footers + (e.footers[uid]?.let { mapOf(nu to it) } ?: emptyMap()), comments = e.comments + (e.comments[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
+            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
         chosen = c + 1
     }
     /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
@@ -721,6 +728,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
                 RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
+            }
+            "View" -> {
+                // PowerPoint's Presentation Views: the slide (Normal) or every slide in a grid (Slide sorter), where several are moved at once
+                RibbonButton("Normal", w, R.drawable.ic_crop_landscape, on = !sorter) { sorter = false }
+                RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; item = null; marked = setOf(uid) }
+                if (sorter) {
+                    RibbonDivider(w)
+                    Text("${marked.size} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+                    RibbonButton("Choose all", w, R.drawable.ic_done_all) { marked = e.order.map { it.uid }.toSet() }
+                    RibbonButton("Duplicate", w, R.drawable.ic_copy, enabled = marked.isNotEmpty()) {
+                        e.order.withIndex().filter { it.value.uid in marked }.map { it.index }.reversed().forEach { duplicateSlide(it) } }
+                    val allHidden = e.order.filter { it.uid in marked }.all { en -> e.hidden[en.uid] ?: deck?.slides?.getOrNull(en.src)?.hidden ?: false }
+                    RibbonButton(if (allHidden) "Show" else "Hide", w, if (allHidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off, enabled = marked.isNotEmpty()) {
+                        change(e.copy(hidden = e.hidden + marked.associateWith { !allHidden })) }
+                    RibbonButton("Delete", w, R.drawable.ic_delete, enabled = marked.isNotEmpty() && marked.size < e.order.size) {
+                        change(e.copy(order = e.order.filter { it.uid !in marked })); marked = emptySet(); chosen = 0 }
+                }
+                RibbonDivider(w)
+                RibbonButton("Comments", w, R.drawable.ic_comment, on = commentsOn) { commentsOn = !commentsOn }
             }
             "Review" -> {
                 // Words' Comments group: a new one, the comments shown, the one before or after (on other slides too), and the one tapped
@@ -964,6 +990,47 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             list.filter { it.comment.parent == null }.forEach { sc -> CommentCard(sc.comment, sc.comment.id == hereComment, act) }
                         }
                     }
+                    /**
+                     * View › Slide sorter (PowerPoint's): every slide small in a grid. A tap chooses it (or lets it go); a slide held and
+                     * dragged moves there, with the others chosen; double-tapped, it opens in Normal.
+                     */
+                    @Composable fun SlideSorter(d: Deck) {
+                        val ee = edit ?: return
+                        val cells = remember { HashMap<Int, androidx.compose.ui.geometry.Rect>() }
+                        var held by remember { mutableStateOf<Int?>(null) }; var over by remember { mutableStateOf<Int?>(null) }
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(if (wide) 220.dp else 150.dp), Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp, if (OfficeUi.top) 150.dp else 16.dp, 16.dp, if (OfficeUi.top) 16.dp else 150.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(d.slides.size) { i ->
+                                val s = d.slides[i]; val uid = ee.order.getOrNull(i)?.uid ?: return@items
+                                val on = uid in marked
+                                Column(Modifier.onGloballyPositioned { cells[i] = it.boundsInRoot() }.alpha(if (held != null && on) 0.5f else 1f)
+                                    .pointerInput(i, uid) {
+                                        detectDragGesturesAfterLongPress(onDragStart = { held = i; if (uid !in marked) marked = setOf(uid) },
+                                            onDrag = { ch, _ -> ch.consume(); val at = (cells[i]?.topLeft ?: androidx.compose.ui.geometry.Offset.Zero) + ch.position
+                                                over = cells.entries.firstOrNull { it.value.contains(at) }?.key },
+                                            onDragEnd = {
+                                                val to = over; held = null; over = null
+                                                val e2 = edit ?: return@detectDragGesturesAfterLongPress
+                                                if (to != null && e2.order.getOrNull(to)?.uid !in marked) {
+                                                    // the chosen ones, in their order, before the slide dropped on (after it when moving on)
+                                                    val moving = e2.order.filter { it.uid in marked }; val rest = e2.order.filter { it.uid !in marked }
+                                                    val k = rest.indexOf(e2.order[to]) + if (to > e2.order.indexOfFirst { it.uid in marked }) 1 else 0
+                                                    change(e2.copy(order = rest.take(k) + moving + rest.drop(k))); WriterLog.i("Slides: sorter moved ${moving.size}")
+                                                }
+                                            }, onDragCancel = { held = null; over = null })
+                                    }
+                                    .pointerInput(i) { detectTapGestures(
+                                        onTap = { marked = if (uid in marked) marked - uid else marked + uid; chosen = i },
+                                        onDoubleTap = { chosen = i; marked = setOf(uid); sorter = false }) }) {
+                                    SlideCanvas(d, s, Modifier.fillMaxWidth().aspectRatio(d.width / d.height).clip(RoundedCornerShape(4.dp))
+                                        .border(if (on) 3.dp else 1.dp, if (on) POWERPOINT_ORANGE else if (over == i) Color.White else Color(0xFF555555), RoundedCornerShape(4.dp))
+                                        .then(if (s.hidden) Modifier.alpha(0.5f) else Modifier))
+                                    Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (on) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                                }
+                            }
+                        }
+                    }
                     /** Slide [i] as it is edited: chosen with a tap, its items tapped, moved and sized (the phone's list, the tablet's big slide). */
                     @Composable fun SlideBox(i: Int, s: Slide) {
                         Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
@@ -1069,7 +1136,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     // a tablet editing (asked 16 Oct): the slides in a sidebar, the chosen one big beside it, as PowerPoint's and LibreOffice's
-                    if (wide && editing) Row(Modifier.fillMaxSize()) {
+                    if (sorter && editing) SlideSorter(d) else if (wide && editing) Row(Modifier.fillMaxSize()) {
                         LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 150.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(d.slides) { i, s ->
                                 Row(verticalAlignment = Alignment.Top) {
@@ -1144,7 +1211,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Review", "Item".takeIf { item != null })
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }

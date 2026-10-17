@@ -1002,8 +1002,9 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
     }
 }
 
-/** What Picture › Shape options sets: fill and outline (null: none), the outline's width, size, angle, alt text. */
-internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String)
+/** What Picture › Shape options sets: fill and outline (null: none), the outline's width and dash ([LineDash]'s names), size, angle, alt text, a shadow. */
+internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String,
+    val dash: String? = null, val shadow: Boolean = false)
 
 /**
  * Picture › Shape options (OnlyOffice's "Advanced settings", Word's Format Shape): the shape's fill and outline, the
@@ -1037,6 +1038,8 @@ internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply:
                     if (o.line != null) Section("Outline width") {
                         listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2.25f, 3f, 4.5f, 6f).forEach { w -> Choice("${if (w % 1f == 0f) w.toInt() else w} pt", o.lineWidth == w) { o = o.copy(lineWidth = w) } }
                     }
+                    if (o.line != null) Section("Dash") { LineDash.CHOICES.forEach { (k, name) -> Choice(name, o.dash == k) { o = o.copy(dash = k) } } }
+                    Section("Shadow") { Choice("None", !o.shadow) { o = o.copy(shadow = false) }; Choice("Offset: bottom right", o.shadow) { o = o.copy(shadow = true) } }
                     Section("Size ($unitName)") {
                         OutlinedTextField(wText, { v -> wText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
                             val w = n * unit; o = if (locked) { val h = o.heightPt * w / o.widthPt.coerceAtLeast(0.1f); hText = shown(h); o.copy(widthPt = w, heightPt = h) } else o.copy(widthPt = w) } },

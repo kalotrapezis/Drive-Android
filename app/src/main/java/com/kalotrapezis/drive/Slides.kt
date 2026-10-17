@@ -452,7 +452,8 @@ internal object Slides {
                         val lineC = if (ln?.kid("noFill") != null) null else ln?.kid("solidFill")?.let(::color) ?: style?.kid("lnRef")?.takeIf { it.attr("idx") != "0" }?.let(::color)
                         val width = (ln?.attr("w")?.toFloatOrNull() ?: 12700f) / EMU
                         val shape = if (fillC != null || lineC != null) ShapePicture(geom?.takeIf { it in ShapeGeometry.presets || it in ShapePicture.KINDS } ?: "rect", fillC, lineC, width,
-                            adjust = spPr?.kid("prstGeom")?.below("gd")?.mapNotNull { g -> g.attr("fmla")?.removePrefix("val ")?.trim()?.toDoubleOrNull()?.let { (g.attr("name") ?: "") to it } }?.toMap().orEmpty()) else null
+                            adjust = spPr?.kid("prstGeom")?.below("gd")?.mapNotNull { g -> g.attr("fmla")?.removePrefix("val ")?.trim()?.toDoubleOrNull()?.let { (g.attr("name") ?: "") to it } }?.toMap().orEmpty(),
+                            dash = ln?.kid("prstDash")?.attr("val")?.takeIf { it != "solid" }, shadow = spPr?.kid("effectLst")?.kid("outerShdw") != null) else null
                         val fontColor = style?.kid("fontRef")?.let(::color)
                         // a slide's own empty placeholder: a grey hint to tap and type into (PowerPoint's "Click to add title"), never shown in a show
                         val ph = if (ctx != null) e.kid("nvSpPr")?.kid("nvPr")?.kid("ph") else null
@@ -881,6 +882,7 @@ internal object Slides {
             } else listOf(ShapePicture.path(kind, item.w, item.h).apply { offset(item.x, item.y) } to null)
         }
         val g = item.gradient
+        item.shape?.let { s -> for ((path, sp) in paths) s.shadowOf(c, path, (sp?.fill ?: true) && (fill != null || g != null)) }
         for ((path, sp) in paths) {
             if ((sp?.fill ?: true) && g != null) {
                 // along its angle through the box's middle, as far as the box reaches that way
@@ -890,7 +892,8 @@ internal object Slides {
                     g.colors, g.stops, android.graphics.Shader.TileMode.CLAMP)
                 paint.style = Paint.Style.FILL; paint.color = 0xFF000000.toInt(); c.drawPath(path, paint); paint.shader = null
             } else if ((sp?.fill ?: true) && fill != null) { paint.style = Paint.Style.FILL; paint.color = fill; c.drawPath(path, paint) }
-            if ((sp?.stroke ?: true) && line != null) { paint.style = Paint.Style.STROKE; paint.strokeWidth = item.shape?.lineWidth ?: 1f; paint.strokeJoin = Paint.Join.ROUND; paint.color = line; c.drawPath(path, paint) }
+            if ((sp?.stroke ?: true) && line != null) { paint.style = Paint.Style.STROKE; paint.strokeWidth = item.shape?.lineWidth ?: 1f; paint.strokeJoin = Paint.Join.ROUND; paint.color = line
+                paint.pathEffect = item.shape?.dashes(); c.drawPath(path, paint); paint.pathEffect = null }
         }
     }
 

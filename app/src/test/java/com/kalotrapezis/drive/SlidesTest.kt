@@ -242,11 +242,12 @@ class SlidesTest {
             val src = File("src/test/resources/$name"); val deck = Slides.read(src)
             val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
             val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
-            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to box.anim!!) to SlidesEdit.Look(line = 0xFF000000.toInt(), lineWidth = 3f, alt = "A blue box"),
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to box.anim!!) to SlidesEdit.Look(line = 0xFF000000.toInt(), lineWidth = 3f, alt = "A blue box", dash = "sysDash", shadow = true),
                 (2 to pic.anim!!) to SlidesEdit.Look(alt = "A flag, blue and yellow")))
             fun check(d: Deck, how: String) {
                 val b = d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
                 assertEquals(how, 3f, b.shape!!.lineWidth, 0.1f); assertEquals(how, "A blue box", b.alt)
+                assertEquals(how, "sysDash", b.shape!!.dash); assertTrue(how, b.shape!!.shadow)
                 assertEquals(how, "A flag, blue and yellow", d.slides[2].items.filterIsInstance<SlideItem.Picture>().first().alt)
             }
             check(SlidesEdit.view(deck, e), "shown, $name")

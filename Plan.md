@@ -55,6 +55,10 @@ How to write here:
       Slides' Selection tab, X²/X₂ and Aa, Table tab, a text box's Layout, Animation pane and painter, show taps while a video plays;
       then (21:00) the Selection pane and Picture styles / Transparency. Unit 435/0/7, sweep 349 + 29 none failing (20:56, after d782c1e).
       Handing on (notes: office-D-17oct.md in the group's folder): the leftovers next touch Words' shared dialogs and drawing.
+- [~] (office-F session, 17 Oct evening, the only writer in this checkout; took over the stopped office-E's half-done dash/shadow) B's leftovers:
+      outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
+      backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
+      Tablet not touched tonight (the user asleep): emulator-5554 only.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -333,6 +337,15 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       new cut picture instead: here PowerPoint's own way is kept). `a picture cropped saved` (both, LibreOffice's conversions, Reset);
       emulator: cropped, saved — srcRect in the file. Unit 419/0/7, sweep 349 + 29 none failing (after the disk was cleared: the
       tests' LibreOffice folders had filled /tmp, a 6.8 GB RAM disk — they are now removed: `scratchDir`, and the sweep at once).
+      Outline dash and shadow (office-F session, 17 Oct): Words' Shape options dialog gains Dash (Word's list: Solid, Round dot, Square dot,
+      Dash, Dash dot, Long dash…) and Shadow (None / Offset: bottom right) — in Words and Slides alike. **Shared piece:** `LineDash`
+      (OfficePages.kt: DrawingML's prstDash names ↔ LibreOffice's draw:stroke-dash, drawn as Android dashes) and `ShapePicture.dash/shadow`
+      (`dashes()`, `shadowOf()` — Slides' own shape drawing uses them too). Words: .docx a:ln prstDash + effectLst outerShdw (its other
+      effects kept), .odt Writer's shape style name `Tetra_20_shape_…_<width>[-dash][-shadow]_<wrap>` with the dash defined in styles.xml;
+      Slides: `Look.dash/shadow`, .pptx the same XML, .odp the shape's style (draw:stroke="dash", draw:shadow) and styles.xml's dash. Read
+      back from all of them. `a shape's dash and shadow saved` (Words, both formats, LibreOffice's other format of each), `shape options and
+      alt text saved` (Slides, both, LibreOffice's conversions); emulator: arrange.pptx's arrow dashed 3 pt with a shadow, saved —
+      LibreOffice draws it so. Seen in passing: LibreOffice draws the rounded box's theme shadow (its style's effectRef), Tetra does not.
 - [~] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
       reorder, many at once); copy slides between decks.
       Slide sorter done 17 Oct (office-C session): View › Normal / Slide sorter (PowerPoint's place for it) — every slide small in a

@@ -3,6 +3,7 @@ package com.kalotrapezis.drive
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class OfficeFormatsTest {
@@ -725,6 +726,28 @@ class OfficeFormatsTest {
                 val again = OfficeFormats.read(java.io.File(dir, "c.$other").readBytes(), if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx)
                 val entry = again.paras.first { it.text.startsWith("Method\t") }
                 assert(entry.runs.any { it.link?.startsWith("#") == true }) { "$kind → $other: ${entry.runs.map { it.link }}" }
+            }
+        }
+    }
+
+    /** Shape options' dash and shadow: Word's prstDash and outer shadow, Writer's shape style; read back, and from LibreOffice's other format. */
+    @Test fun `a shape's dash and shadow saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) for (dash in listOf("dash", "sysDot", "lgDashDot")) {
+            val img = PictureXml.placed(DocImage("s", null, 100f, 60f, PictureXml.newShape("rect", kind, 0xFF4472C4.toInt(), 0xFF000000.toInt(), 1f, 100f, 60f)), 80f, 80f, kind)
+            val styled = PictureXml.shapeLook(img, 0xFF4472C4.toInt(), 0xFFC00000.toInt(), 2f, dash, true)!!
+            ShapePicture.of(styled)!!.let { assertEquals("$kind $dash", dash, it.dash); assertTrue("$kind $dash", it.shadow) }
+            val bytes = OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun("x"), DocRun(OBJECT_MARK.toString(), image = styled))))), kind)
+            fun back(b: ByteArray, k: OfficeKind) = ShapePicture.of(OfficeFormats.read(b, k).paras.flatMap { it.runs }.mapNotNull { it.image }.single())!!
+            back(bytes, kind).let { assertEquals("$kind $dash", dash, it.dash); assertTrue("$kind $dash", it.shadow); assertEquals(0xFFC00000.toInt(), it.line) }
+            // solid and no shadow again
+            val plain = back(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = PictureXml.shapeLook(styled, null, 0xFFC00000.toInt(), 2f)!!))))), kind), kind)
+            assertEquals("$kind $dash", null, plain.dash); assertFalse("$kind $dash", plain.shadow)
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
+                val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                back(java.io.File(dir, "s.${other.extension}").readBytes(), other).let { assertEquals("LibreOffice's ${other.extension} of $kind $dash", dash, it.dash); assertTrue("LibreOffice's ${other.extension} of $kind $dash", it.shadow) }
             }
         }
     }

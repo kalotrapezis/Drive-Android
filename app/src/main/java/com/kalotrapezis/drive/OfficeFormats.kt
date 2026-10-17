@@ -214,7 +214,7 @@ internal object PictureXml {
         val raw = img.raw ?: return PictureWrap.InLine
         if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return if ("text:anchor-type=\"as-char\"" in raw.substring(0, raw.indexOf('>'))) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
-            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
+            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+(?:-[A-Za-z]+)*_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             // Another's frame: its style's wrap (a letterhead the text runs through no longer pushed the text down).
             ?: img.look?.let { l -> fun v(n: String) = Regex("""\s$n="([^"]*)"""").findAll(l).lastOrNull()?.groupValues?.get(1)
                 when (v("style:wrap")) { "run-through" -> if (v("style:run-through") == "background") PictureWrap.Behind else PictureWrap.InFront; "none" -> PictureWrap.TopBottom; null -> null; else -> PictureWrap.Square } }
@@ -277,7 +277,7 @@ internal object PictureXml {
         // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
         // it is placed on the page).
         if (xml.startsWith("<draw:custom-shape") && "Tetra_20_shape_" in xml) {
-            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+_)[A-Za-z]+(?:$ODT_PAGE_REL)?"""), "$1${wrap.name}" + if (at.isEmpty()) "" else ODT_PAGE_REL)
+            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+(?:-[A-Za-z]+)*_)[A-Za-z]+(?:$ODT_PAGE_REL)?"""), "$1${wrap.name}" + if (at.isEmpty()) "" else ODT_PAGE_REL)
                 .replace(Regex("""\s(text:anchor-type|svg:x|svg:y)="[^"]*""""), "") + " text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + at
             return head + xml.substring(end)
         }
@@ -325,7 +325,7 @@ internal object PictureXml {
     fun newShape(kind: String, file: OfficeKind, fill: Int?, line: Int?, lineWidth: Float, widthPt: Float, heightPt: Float): String {
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (file == OfficeKind.Odt) {
-            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${PictureWrap.InLine.name}"
+            val style = odtShapeName(fill, line, lineWidth, PictureWrap.InLine, false)
             return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/>${ShapeGeometry.odfGeometry(kind, widthPt, heightPt)?.takeIf { kind != "line" } ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/>"""}</draw:custom-shape>"""
         }
         val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
@@ -469,14 +469,14 @@ internal object PictureXml {
      * fill and a:ln replaced, the geometry kept); in an .odt Writer's own shape style named for them (and its wrap, as
      * placed). Null: not a shape.
      */
-    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float): DocImage? {
+    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float, dash: String? = null, shadow: Boolean = false): DocImage? {
         val raw = img.raw ?: return null
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (raw.startsWith("<draw:custom-shape")) {
             val end = raw.indexOf('>')
             val wrap = wrapOf(img) ?: PictureWrap.InLine
             val page = placeOf(img)?.fromV == "page"
-            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+            val style = odtShapeName(fill, line, lineWidth, wrap, page, dash, shadow)
             val head = raw.substring(0, end).replace(Regex("""\sdraw:style-name="[^"]*""""), "") + " draw:style-name=\"$style\""
             return img.with(raw = head + raw.substring(end))
         }
@@ -486,11 +486,17 @@ internal object PictureXml {
             .replace(Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill|grpFill)\b[^>]*?(?:/>|>[\s\S]*?</a:\1>)"""), "")
         val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
         // the old outline's dash and arrowheads kept (only its colour and width are chosen here)
-        val kept = Regex("""<a:ln\b[^>]*>([\s\S]*?)</a:ln>""").find(sp.groupValues[1])?.groupValues?.get(1)?.let { o -> Regex("""<a:(prstDash|headEnd|tailEnd)\b[^>]*/>""").findAll(o).joinToString("") { it.value } }.orEmpty()
-        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}$kept</a:ln>"""
+        val kept = Regex("""<a:ln\b[^>]*>([\s\S]*?)</a:ln>""").find(sp.groupValues[1])?.groupValues?.get(1)?.let { o -> Regex("""<a:(headEnd|tailEnd)\b[^>]*/>""").findAll(o).joinToString("") { it.value } }.orEmpty()
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}${dash?.let { """<a:prstDash val="$it"/>""" } ?: ""}$kept</a:ln>"""
+        // the shadow: Word's "Offset: bottom right" in its effects (others there kept)
+        val had = Regex("""<a:effectLst>([\s\S]*?)</a:effectLst>|<a:effectLst/>""").find(inner)
+        val effects = had?.groupValues?.get(1).orEmpty().replace(Regex("""<a:outerShdw\b[\s\S]*?</a:outerShdw>|<a:outerShdw\b[^>]*/>"""), "")
+        if (had != null) inner = inner.removeRange(had.range)
+        val cut = Regex("""<a:(prstShdw|reflection|softEdge)\b""").find(effects)?.range?.first ?: effects.length
+        val effectXml = if (shadow) "<a:effectLst>${effects.substring(0, cut)}$OUTER_SHADOW${effects.substring(cut)}</a:effectLst>" else if (had != null) "<a:effectLst>$effects</a:effectLst>" else ""
         // In spPr's order: the transform, the geometry, then the fill, then the outline.
         val at = Regex("""</a:prstGeom>|</a:custGeom>|<a:prstGeom\b[^>]*/>""").find(inner)?.range?.last?.plus(1) ?: Regex("""</a:xfrm>""").find(inner)?.range?.last?.plus(1) ?: 0
-        inner = inner.substring(0, at) + fillXml + lineXml + inner.substring(at)
+        inner = inner.substring(0, at) + fillXml + lineXml + effectXml + inner.substring(at)
         val open = Regex("""<wps:spPr\b[^>]*>""").find(sp.value)!!.value
         return img.with(raw = raw.replaceRange(sp.range, "$open$inner</wps:spPr>"))
     }
@@ -511,15 +517,23 @@ internal object PictureXml {
         return img.with(raw = raw.replaceRange(doc.range, head))
     }
 
+    /** Writer's own shape's style, named for its look: Tetra_20_shape_<fill|none>_<line|none>_<width×100>[-<dash>][-shadow]_<wrap>[_20_page]. */
+    fun odtShapeName(fill: Int?, line: Int?, lineWidth: Float, wrap: PictureWrap, page: Boolean, dash: String? = null, shadow: Boolean = false) =
+        "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let { "%06X".format(it and 0xFFFFFF) } ?: "none"}_${(lineWidth * 100).toInt()}" +
+            "${dash?.let { "-$it" } ?: ""}${if (shadow) "-shadow" else ""}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+    private const val OUTER_SHADOW = """<a:outerShdw blurRad="50800" dist="38100" dir="2700000" algn="tl" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="40000"/></a:srgbClr></a:outerShdw>"""
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
     fun odtShapeStyle(name: String): String? {
-        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
-        val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[4] } ?: PictureWrap.InLine
-        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap, m.groupValues[5].isNotEmpty()))?.groupValues?.get(1) ?: ""
+        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)((?:-[A-Za-z]+)*)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
+        val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[5] } ?: PictureWrap.InLine
+        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap, m.groupValues[6].isNotEmpty()))?.groupValues?.get(1) ?: ""
+        val extra = m.groupValues[4].split('-').filter { it.isNotEmpty() }
+        val dash = extra.firstOrNull { it != "shadow" }?.let(LineDash::odfName)
         val fill = m.groupValues[1].takeIf { it != "none" }?.toLong(16)
         val fillXml = if (fill == null) """draw:fill="none"""" else """draw:fill="solid" draw:fill-color="#${"%06X".format(fill and 0xFFFFFF)}"""" +
             Math.round((fill ushr 24) * 100 / 255f).let { if (it < 100) """ draw:opacity="$it%"""" else "" }
-        val lineXml = m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="solid" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none""""
+        val lineXml = (m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="${if (dash != null) "dash\" draw:stroke-dash=\"$dash" else "solid"}" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none"""") +
+            if ("shadow" in extra) """ draw:shadow="visible" draw:shadow-offset-x="0.075cm" draw:shadow-offset-y="0.075cm" draw:shadow-color="#000000" draw:shadow-opacity="40%"""" else ""
         // Words in it (a text box) fill its width from the top, Word's insets round them; it keeps its size.
         val textArea = """draw:textarea-horizontal-align="justify" draw:textarea-vertical-align="top" draw:auto-grow-height="false" draw:auto-grow-width="false" fo:wrap-option="wrap" fo:padding-left="7.2pt" fo:padding-right="7.2pt" fo:padding-top="3.6pt" fo:padding-bottom="3.6pt""""
         return """<style:style style:name="$name" style:family="graphic"><style:graphic-properties $fillXml $lineXml $textArea $base/></style:style>"""
@@ -3245,6 +3259,9 @@ private object OdtWriter {
             if ("xmlns:$prefix=" !in head) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:$prefix=\"$ns\"")
         }
         parts["content.xml"] = out.toByteArray()
+        // a dashed outline names its dash, which LibreOffice keeps in styles.xml
+        shapeStyles.mapNotNull { n -> Regex("""Tetra_20_shape_\w+?_\w+?_\d+-([A-Za-z]+)""").find(n)?.groupValues?.get(1)?.takeIf { it != "shadow" } }.takeIf { it.isNotEmpty() }?.let { dashes ->
+            parts["styles.xml"]?.let { parts["styles.xml"] = LineDash.intoStyles(String(it, Charsets.UTF_8), dashes).toByteArray() } }
         NoteFormats.odt(parts, doc)
         return OfficeFormats.zip(parts, stored = "mimetype")
     }

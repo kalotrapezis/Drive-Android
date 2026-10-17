@@ -1969,6 +1969,41 @@ internal object OfficeFonts {
 }
 
 /**
+ * An outline's dashes as Word and PowerPoint name them (DrawingML's prstDash) and as LibreOffice converts each (its
+ * draw:stroke-dash: dashes, their length, dots after them, their length, the gap — in line widths; checked with
+ * LibreOffice 26.2's conversions, 17 Oct). Shape options offers [CHOICES]; every name is read and drawn.
+ */
+internal object LineDash {
+    private class Dash(val odf: String, val dots1: Int, val len1: Int, val dots2: Int, val len2: Int, val gap: Int)
+    private val ALL = linkedMapOf(
+        "sysDot" to Dash("Dot", 1, 1, 0, 0, 1), "sysDash" to Dash("Dash", 1, 3, 0, 0, 1), "dash" to Dash("Long_20_Dash", 1, 4, 0, 0, 3),
+        "dashDot" to Dash("Long_20_Dash_20_Dot", 1, 4, 1, 1, 3), "lgDash" to Dash("Double_20_Dash", 1, 8, 0, 0, 3),
+        "lgDashDot" to Dash("Double_20_Dash_20_Dot", 1, 8, 1, 1, 3), "lgDashDotDot" to Dash("Double_20_Dash_20_Dot_20_Dot", 1, 8, 2, 1, 3),
+        "dot" to Dash("Long_20_Dot", 1, 1, 0, 0, 3), "sysDashDot" to Dash("Dash_20_Dot", 1, 3, 1, 1, 1), "sysDashDotDot" to Dash("Dash_20_Dot_20_Dot", 1, 3, 2, 1, 1))
+    /** Word's list of dashes (Format Shape › Line › Dash type): its name and the shown word. */
+    val CHOICES = listOf(null to "Solid", "sysDot" to "Round dot", "sysDash" to "Square dot", "dash" to "Dash", "dashDot" to "Dash dot",
+        "lgDash" to "Long dash", "lgDashDot" to "Long dash dot", "lgDashDotDot" to "Long dash dot dot")
+    /** Android's on/off lengths for [name] on a line [width] pt wide; null: solid. */
+    fun intervals(name: String, width: Float): FloatArray? {
+        val d = ALL[name] ?: return null
+        val w = width.coerceAtLeast(0.5f)
+        return (List(d.dots1) { listOf(d.len1 * w, d.gap * w) } + List(d.dots2) { listOf(d.len2 * w, d.gap * w) }).flatten().toFloatArray()
+    }
+    /** LibreOffice's draw:stroke-dash name for [name] (what a style's draw:stroke-dash says). */
+    fun odfName(name: String) = ALL[name]?.odf
+    /** LibreOffice's draw:stroke-dash element for [name], to go into styles.xml's office:styles. */
+    fun odfStyle(name: String): String? = ALL[name]?.let { d -> """<draw:stroke-dash draw:name="${d.odf}" draw:display-name="${d.odf.replace("_20_", " ")}" draw:style="rect" draw:dots1="${d.dots1}" draw:dots1-length="${d.len1 * 100}%"""" +
+        (if (d.dots2 > 0) """ draw:dots2="${d.dots2}" draw:dots2-length="${d.len2 * 100}%"""" else "") + """ draw:distance="${d.gap * 100}%"/>""" }
+    /** A LibreOffice dash by its name (its own names for these; any other a plain dash). */
+    fun fromOdf(odf: String): String = ALL.entries.firstOrNull { it.value.odf == odf }?.key ?: "dash"
+    /** Adds the draw:stroke-dash definitions [names] need to an ODF styles.xml (those it has kept). */
+    fun intoStyles(styles: String, names: Collection<String>): String {
+        val add = names.mapNotNull { n -> odfName(n)?.takeIf { "draw:name=\"$it\"" !in styles }?.let { odfStyle(n) } }.distinct().joinToString("")
+        return if (add.isEmpty() || "</office:styles>" !in styles) styles else styles.replace("</office:styles>", "$add</office:styles>")
+    }
+}
+
+/**
  * A drawn shape (Word's wps:wsp, LibreOffice's draw:custom-shape): its outline path in a w×h box, with its fill (and
  * see-through) and outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey
  * boxes; Insert › Shapes makes them). A shape of another kind is still a grey box.
@@ -1976,11 +2011,25 @@ internal object OfficeFonts {
 internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float,
     /** Its own geometry (a LibreOffice shape's enhanced path); else Word's preset [geometry]'s. */
     val custom: ShapeGeometry? = null, /** Word's adjustments (avLst), by name. */ val adjust: Map<String, Double> = emptyMap(),
-    /** a line's arrowheads: 1 at its start, 2 at its end (Word's headEnd, tailEnd) */ val ends: Int = 0) : android.graphics.drawable.Drawable() {
-    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust, ends)
+    /** a line's arrowheads: 1 at its start, 2 at its end (Word's headEnd, tailEnd) */ val ends: Int = 0,
+    /** its outline's dashes ([LineDash]'s names, DrawingML's prstDash; null: solid) and a shadow under it (PowerPoint's "Offset: bottom right") */
+    val dash: String? = null, val shadow: Boolean = false) : android.graphics.drawable.Drawable() {
+    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust, ends, dash, shadow)
+    /** Its outline's dashes for a Paint (null: solid). */
+    fun dashes() = dash?.let { LineDash.intervals(it, lineWidth) }?.let { android.graphics.DashPathEffect(it, 0f) }
+    /** Its shadow under [path]: the shape 3 pt down and right, 40 % black, softened (PowerPoint's and Word's "Offset: bottom right"). */
+    fun shadowOf(canvas: Canvas, path: android.graphics.Path, filled: Boolean) {
+        if (!shadow) return
+        val shade = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000
+            maskFilter = android.graphics.BlurMaskFilter(2f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            style = if (filled) android.graphics.Paint.Style.FILL else android.graphics.Paint.Style.STROKE; strokeWidth = lineWidth }
+        canvas.drawPath(android.graphics.Path(path).apply { offset(2.12f, 2.12f) }, shade)
+    }
     fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.strokeJoin = android.graphics.Paint.Join.ROUND
+        val dashes = dashes()
+        fun shadowOf(path: android.graphics.Path, filled: Boolean) = shadowOf(canvas, path, filled)
         // Drawn from its geometry (Word's 187 presets, LibreOffice's paths): each sub-path filled (shaded) and stroked as it says.
         val geo = custom ?: ShapeGeometry.presets[geometry]
         if (geo != null && geometry !in LINES) {
@@ -1993,14 +2042,17 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                     is ShapeGeometry.Op.Quad -> path.quadTo(x + op.x1, y + op.y1, x + op.x, y + op.y)
                     ShapeGeometry.Op.Close -> path.close()
                 }
-                if (sub.fill) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = shaded(it, sub.shade); canvas.drawPath(path, paint) }
-                if (sub.stroke) line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+                shadowOf(path, sub.fill && fill != null)
+                if (sub.fill) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.pathEffect = null; paint.color = shaded(it, sub.shade); canvas.drawPath(path, paint) }
+                if (sub.stroke) line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.pathEffect = dashes; paint.color = it; canvas.drawPath(path, paint) }
             }
             return
         }
         val path = path(geometry, w, h).apply { offset(x, y) }
+        shadowOf(path, geometry !in LINES && fill != null)
         if (geometry !in LINES) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; canvas.drawPath(path, paint) }
-        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.pathEffect = dashes; paint.color = it; canvas.drawPath(path, paint) }
+        paint.pathEffect = null
         // a line's arrowheads: a filled triangle at each end that has one, along the line
         val heads = ends or when (geometry) { "lineArrow" -> 2; "lineArrows" -> 3; else -> 0 }
         if (geometry in LINES && heads != 0) line?.let { c ->
@@ -2099,7 +2151,7 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val fill = when (v("draw:fill")) { "none" -> null; null -> 0xFF729FCF.toInt(); else -> color(v("draw:fill-color")) ?: 0xFF729FCF.toInt() }
             val line = when (v("draw:stroke")) { "none" -> null; null -> 0xFF3465A4.toInt(); else -> color(v("svg:stroke-color")) ?: 0xFF3465A4.toInt() }
             val width = v("svg:stroke-width")?.let { odfLength(it) }?.takeIf { it > 0f } ?: 1f
-            return ShapePicture(kind, fill, line, width)
+            return ShapePicture(kind, fill, line, width, dash = v("draw:stroke-dash")?.takeIf { v("draw:stroke") == "dash" }?.let(LineDash::fromOdf), shadow = v("draw:shadow") == "visible")
         }
 
         /** From a drawing's XML, when it is a shape of those kinds (Word's, or a custom shape Writer made); null otherwise. */
@@ -2111,11 +2163,13 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                 val own = ShapeGeometry.ofOdf(raw)
                 val type = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)
                 val kind = type?.let(::presetOf) ?: if (own != null) "custom" else return null
-                fun sized(p: ShapePicture) = if (own != null) ShapePicture(kind, p.fill, p.line, p.lineWidth, own) else p
-                // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>_<wrap>.
-                val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_""").find(raw)
+                fun sized(p: ShapePicture) = if (own != null) ShapePicture(kind, p.fill, p.line, p.lineWidth, own, dash = p.dash, shadow = p.shadow) else p
+                // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>[-<dash>][-shadow]_<wrap>.
+                val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)((?:-[A-Za-z]+)*)_""").find(raw)
                 fun hex(v: String?) = v?.takeIf { it != "none" }?.let { t -> t.toLongOrNull(16)?.let { if (t.length == 8) it.toInt() else (0xFF000000 or it).toInt() } }
-                return sized(if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
+                val extra = m?.groupValues?.get(4)?.split('-')?.filter { it.isNotEmpty() }.orEmpty()
+                return sized(if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f,
+                    dash = extra.firstOrNull { it != "shadow" }, shadow = "shadow" in extra)
                     else styledShape(kind, look)) // its style's fill and line, else LibreOffice's own default look
             }
             val sp = Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(raw)?.groupValues?.get(1) ?: return null
@@ -2137,7 +2191,9 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
             // its arrowheads (Word's line ends that are not "none")
             fun end(tag: String) = Regex("""<a:$tag\b[^>]*\btype="(\w+)"""").find(ln?.groupValues?.get(2).orEmpty())?.groupValues?.get(1)?.let { it != "none" } == true
-            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust, ends = (if (end("headEnd")) 1 else 0) or (if (end("tailEnd")) 2 else 0))
+            val dash = Regex("""<a:prstDash val="(\w+)"""").find(ln?.groupValues?.get(2).orEmpty())?.groupValues?.get(1)?.takeIf { it != "solid" }
+            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust, ends = (if (end("headEnd")) 1 else 0) or (if (end("tailEnd")) 2 else 0),
+                dash = dash, shadow = "<a:outerShdw" in sp)
         }
     }
 }

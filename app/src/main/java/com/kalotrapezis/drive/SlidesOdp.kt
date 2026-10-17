@@ -232,6 +232,7 @@ internal object SlidesOdp {
                     if (g("fill") == "gradient") hex(g("fill-color")) ?: 0xFF729FCF.toInt() else null // shortcut: a gradient as one colour
                 fun line() = if (g("stroke") == "none") null else hex(g("stroke-color")) ?: if (g("stroke") == "solid") 0xFF3465A4.toInt() else null
                 fun gradient() = if (g("fill") == "gradient") g("fill-gradient-name")?.let(gradients::get) else null
+                fun dash() = g("stroke-dash")?.takeIf { g("stroke") == "dash" }?.let(LineDash::fromOdf)
                 when (e.localName) {
                     "frame" -> {
                         val inner = e.kids().firstOrNull() ?: return@runCatching
@@ -239,7 +240,7 @@ internal object SlidesOdp {
                             "text-box" -> {
                                 val t = text(inner, pres, gr)
                                 val f = fill(); val l = line()
-                                val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
+                                val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, dash = dash(), shadow = g("shadow") == "visible") else null
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
                             // a video (Impress's plugin): its picture the frame's image, its film a part of the file or a web address
@@ -270,7 +271,7 @@ internal object SlidesOdp {
                         val adjust = preset?.let { ShapeGeometry.presets[it]?.adjustNames?.zip(mods)?.toMap() }.orEmpty()
                         val own = if (preset == null && geo != null) ShapeGeometry.ofOdf(xml(geo)) else null
                         val f = fill() ?: if (g("fill") == null) 0xFF729FCF.toInt() else null; val l = line()
-                        val shape = if (preset != null || own != null) ShapePicture(preset ?: "custom", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, own, adjust) else null
+                        val shape = if (preset != null || own != null) ShapePicture(preset ?: "custom", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, own, adjust, dash = dash(), shadow = g("shadow") == "visible") else null
                         // LibreOffice's fontwork (WordArt): its words along the bend, in the shape's fill (LibreOffice paints its letters so), no shape drawn
                         val warp = geo?.takeIf { it.a(DRAW, "text-path") == "true" }?.let { TextWarp.entries.firstOrNull { w -> w.fontwork == type } }
                         val words = text(e, null, gr)

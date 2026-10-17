@@ -55,6 +55,7 @@ internal object SlidesOdpEdit {
         fun props(st: Element, kind: String): Element = st.kids().firstOrNull { it.localName == kind } ?: doc.createElementNS(STYLE, "style:$kind").also { p ->
             st.insertBefore(p, st.kids().firstOrNull { order.indexOf(it.localName) > order.indexOf(kind) }) }
         val made = HashMap<String, String>()
+        val dashes = LinkedHashSet<String>() // the outlines' dashes used, defined in styles.xml
         /** A new automatic style of [family] for an element styled [name]: a copy of it when it is content.xml's own, else one on it; [key] the change, made once. */
         fun derive(family: String, name: String?, key: String, change: (Element) -> Unit): String = made.getOrPut("$family|$name|$key") {
             val old = name?.let { nm -> autos.kids().firstOrNull { it.localName == "style" && it.a(STYLE, "name") == nm && it.a(STYLE, "family") == family } }
@@ -360,13 +361,18 @@ internal object SlidesOdpEdit {
         fun restyle(el: Element, l: SlidesEdit.Look) {
             val shapes = if (el.localName == "g") el.all().filter { it.namespaceURI == DRAW && it.localName in setOf("frame", "custom-shape", "rect", "ellipse") } else listOf(el)
             for (s in shapes) {
-                if (l.fill != null || l.line != null || l.lineWidth != null) {
+                if (l.fill != null || l.line != null || l.lineWidth != null || l.dash != null || l.shadow != null) {
                     val pr = s.a(PRES, "style-name")
-                    val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "fill ${l.fill} line ${l.line} ${l.lineWidth}") { st ->
+                    val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "fill ${l.fill} line ${l.line} ${l.lineWidth} ${l.dash} ${l.shadow}") { st ->
                         val g = props(st, "graphic-properties")
                         l.fill?.let { g.removeAttributeNS(DRAW, "fill-gradient-name"); if (it == SlidesEdit.NONE) g.setAttributeNS(DRAW, "draw:fill", "none") else { g.setAttributeNS(DRAW, "draw:fill", "solid"); g.setAttributeNS(DRAW, "draw:fill-color", hex(it)) } }
                         l.line?.let { if (it == SlidesEdit.NONE) g.setAttributeNS(DRAW, "draw:stroke", "none") else { g.setAttributeNS(DRAW, "draw:stroke", "solid"); g.setAttributeNS(SVG, "svg:stroke-color", hex(it)) } }
                         l.lineWidth?.let { g.setAttributeNS(SVG, "svg:stroke-width", cm(it)) }
+                        // a dash names its draw:stroke-dash (added to styles.xml on saving); solid again where it was dashed
+                        l.dash?.let { d -> LineDash.odfName(d)?.let { n -> dashes += d; g.setAttributeNS(DRAW, "draw:stroke", "dash"); g.setAttributeNS(DRAW, "draw:stroke-dash", n) }
+                            ?: run { g.removeAttributeNS(DRAW, "stroke-dash"); if (g.getAttributeNS(DRAW, "stroke") == "dash") g.setAttributeNS(DRAW, "draw:stroke", "solid") } }
+                        l.shadow?.let { on -> g.setAttributeNS(DRAW, "draw:shadow", if (on) "visible" else "hidden")
+                            if (on) { g.setAttributeNS(DRAW, "draw:shadow-offset-x", "0.075cm"); g.setAttributeNS(DRAW, "draw:shadow-offset-y", "0.075cm"); g.setAttributeNS(DRAW, "draw:shadow-color", "#000000"); g.setAttributeNS(DRAW, "draw:shadow-opacity", "40%") } }
                     }
                     if (pr != null) s.setAttributeNS(PRES, "presentation:style-name", nm) else s.setAttributeNS(DRAW, "draw:style-name", nm)
                     // LibreOffice keeps a copy of the fill in the shape's text style (loext:graphic-properties), and paints that one
@@ -747,6 +753,7 @@ internal object SlidesOdpEdit {
             val images = fillImages.values.withIndex().joinToString("") { (k, href) -> """<draw:fill-image draw:name="tetra-bg-${k + 1}" xlink:href="$href" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>""" }
             out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$images</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$images</office:styles><office:automatic-styles")).toByteArray()
         }
+        if (dashes.isNotEmpty()) (out["styles.xml"] ?: read("styles.xml"))?.let { out["styles.xml"] = LineDash.intoStyles(String(it), dashes).toByteArray() }
         if (manifest != null && out.keys.any { it.startsWith("Pictures/") || it.startsWith("Media/") || it.startsWith("Object tetra-") }) out["META-INF/manifest.xml"] = xml(manifest)
         SheetSave.rezip(zip, target, out, stored = "mimetype")
         zip.close()

@@ -1782,14 +1782,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
                     if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }
                     if (shaping && arranged is SlideItem.Shape) arranged.shape?.let { sp ->
-                        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, arranged.w, arranged.h, arranged.rotation, arranged.alt.orEmpty()), { shaping = false }) { o ->
+                        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, arranged.w, arranged.h, arranged.rotation, arranged.alt.orEmpty(), sp.dash, sp.shadow), { shaping = false }) { o ->
                             shaping = false
                             // one step of Undo: its looks, its size (its top left kept), its angle
                             val ee = edit ?: return@ShapeOptionsDialog; val cc = chosen ?: return@ShapeOptionsDialog; val id = item ?: return@ShapeOptionsDialog; val k = ee.order[cc].uid to id
                             val l = ee.looks[k] ?: SlidesEdit.Look()
                             var next = ee.copy(looks = ee.looks + (k to l.copy(fill = if (o.fill != sp.fill) o.fill ?: SlidesEdit.NONE else l.fill, // only what was changed (a gradient shows as no fill)
                                 line = if (o.line != sp.line) o.line ?: SlidesEdit.NONE else l.line, lineWidth = o.lineWidth.takeIf { it != sp.lineWidth } ?: l.lineWidth,
-                                alt = o.alt.takeIf { it != arranged.alt.orEmpty() } ?: l.alt)))
+                                alt = o.alt.takeIf { it != arranged.alt.orEmpty() } ?: l.alt,
+                                dash = if (o.dash != sp.dash) o.dash.orEmpty() else l.dash, shadow = o.shadow.takeIf { it != sp.shadow } ?: l.shadow)))
                             if (o.widthPt != arranged.w || o.heightPt != arranged.h) next = SlidesEdit.framed(next, k.first, id, arranged.x, arranged.y, o.widthPt, o.heightPt)
                             if (o.degrees != arranged.rotation) next = next.copy(turns = next.turns + (k to (next.turns[k] ?: SlidesEdit.Turn(arranged.rotation, arranged.flipH, arranged.flipV)).copy(deg = o.degrees)))
                             change(next); WriterLog.i("Slides: shape options")

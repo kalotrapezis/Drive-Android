@@ -41,6 +41,7 @@ internal object SlidesEdit {
         /** Insert › WordArt (Words' looks and bends): every letter's outline, shadow and glow; the words' bend ("" straight, else PowerPoint's prstTxWarp name) */
         val effects: TextEffects? = null, val warp: String? = null,
         /** Shape options (Words'): the outline's width (pt); its words for screen readers ("" none) */ val lineWidth: Float? = null, val alt: String? = null,
+        /** Shape options: the outline's dash ([LineDash]'s names, "" solid) and a shadow under it */ val dash: String? = null, val shadow: Boolean? = null,
         /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
         /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
         /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null,
@@ -266,7 +267,8 @@ internal object SlidesEdit {
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
-        val shape = if (l.fill == null && l.line == null && l.lineWidth == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line), l.lineWidth ?: sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap())
+        val shape = if (l.fill == null && l.line == null && l.lineWidth == null && l.dash == null && l.shadow == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line),
+            l.lineWidth ?: sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap(), sp?.ends ?: 0, if (l.dash != null) l.dash.ifEmpty { null } else sp?.dash, l.shadow ?: sp?.shadow ?: false)
         val text = item.text?.let { looked(it, l) }
         // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
@@ -364,6 +366,10 @@ internal object SlidesEdit {
     }
 
     /** A text body ([body]: a:txBody) in Home's looks [l], as PowerPoint writes them: on every run and paragraph mark, each paragraph, the body. */
+    /** PowerPoint's "Offset: bottom right" shadow (3 pt at 45°, 40 % black), [blur] EMU soft. */
+    private fun outerShadow(doc: org.w3c.dom.Document, blur: String = "50800") = doc.createElementNS(A, "a:outerShdw").also { sh ->
+        listOf("blurRad" to blur, "dist" to "38100", "dir" to "2700000", "algn" to "tl", "rotWithShape" to "0").forEach { (k, v) -> sh.setAttribute(k, v) }
+        sh.appendChild(doc.createElementNS(A, "a:srgbClr").also { c -> c.setAttribute("val", "000000"); c.appendChild(doc.createElementNS(A, "a:alpha").also { it.setAttribute("val", "40000") }) }) }
     private fun words(doc: org.w3c.dom.Document, body: Element, l: Look, link: String? = null) {
         fun a(name: String, vararg attrs: Pair<String, String>) = doc.createElementNS(A, "a:$name").also { e -> attrs.forEach { (k, v) -> e.setAttribute(k, v) } }
         fun rgb(c: Int, holder: String) = a(holder).also { it.appendChild(a("srgbClr", "val" to "%06X".format(c and 0xFFFFFF))) }
@@ -574,6 +580,17 @@ internal object SlidesEdit {
                 refill(ln, c, ln.kids().map { it.localName }.filter { it !in fills }.toSet())
             }
             l.lineWidth?.let { w -> spPr.kids().firstOrNull { it.localName == "ln" }?.setAttribute("w", "${Math.round(w * 12700)}") }
+            // its dash (a:ln's prstDash, after its fill) and shadow (an outer shadow in its effects; none: an empty list, so its style's goes too)
+            l.dash?.let { d -> val ln = spPr.kids().firstOrNull { it.localName == "ln" } ?: doc.createElementNS(A, "a:ln").also { n ->
+                    spPr.insertBefore(n, spPr.kids().firstOrNull { it.localName in setOf("effectLst", "effectDag", "scene3d", "sp3d", "extLst") }) }
+                ln.kids().filter { it.localName == "prstDash" || it.localName == "custDash" }.forEach { ln.removeChild(it) }
+                if (d.isNotEmpty()) ln.insertBefore(doc.createElementNS(A, "a:prstDash").also { it.setAttribute("val", d) }, ln.kids().firstOrNull { it.localName in setOf("round", "bevel", "miter", "headEnd", "tailEnd", "extLst") })
+            }
+            l.shadow?.let { on -> val fx = spPr.kids().firstOrNull { it.localName == "effectLst" } ?: doc.createElementNS(A, "a:effectLst").also { n ->
+                    spPr.insertBefore(n, spPr.kids().firstOrNull { it.localName in setOf("effectDag", "scene3d", "sp3d", "extLst") }) }
+                fx.kids().filter { it.localName == "outerShdw" }.forEach { fx.removeChild(it) }
+                if (on) fx.insertBefore(outerShadow(doc), fx.kids().firstOrNull { it.localName in setOf("prstShdw", "reflection", "softEdge") })
+            }
             if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l, rels["link $id"]) }
         }
         // a picture's crop: its blip's srcRect (in thousandths of a percent of the whole picture), none when nothing is cut
@@ -594,9 +611,7 @@ internal object SlidesEdit {
                 val after = spPr.kids().firstOrNull { it.localName in setOf("scene3d", "sp3d", "extLst") }
                 s.line?.takeIf { s.lineW > 0f }?.let { c -> spPr.insertBefore(doc.createElementNS(A, "a:ln").also { ln -> ln.setAttribute("w", "${Math.round(s.lineW * 12700)}")
                     ln.appendChild(doc.createElementNS(A, "a:solidFill").also { f -> f.appendChild(doc.createElementNS(A, "a:srgbClr").also { it.setAttribute("val", "%06X".format(c and 0xFFFFFF)) }) }) }, after) }
-                if (s.shadow) spPr.insertBefore(doc.createElementNS(A, "a:effectLst").also { fl -> fl.appendChild(doc.createElementNS(A, "a:outerShdw").also { sh ->
-                    listOf("blurRad" to "76200", "dist" to "38100", "dir" to "2700000", "algn" to "tl", "rotWithShape" to "0").forEach { (k, v) -> sh.setAttribute(k, v) }
-                    sh.appendChild(doc.createElementNS(A, "a:srgbClr").also { c -> c.setAttribute("val", "000000"); c.appendChild(doc.createElementNS(A, "a:alpha").also { it.setAttribute("val", "40000") }) }) }) }, after)
+                if (s.shadow) spPr.insertBefore(doc.createElementNS(A, "a:effectLst").also { fl -> fl.appendChild(outerShadow(doc, "76200")) }, after)
             }
         }
         // Replace picture, Edit drawing: the picture's blip names its new media part

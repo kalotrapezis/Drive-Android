@@ -4471,14 +4471,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     if (standards) StandardsDialog(meta.citeStyle, { standards = false }, paper = { standards = false; apaPage = true },
         runIn = { level -> standards = false; apaRunIn(level) }, citeStyle = { c -> standards = false; setCiteStyle(c) }, styles = CiteStyle.entries.filter { it != CiteStyle.IEEE || kind == OfficeKind.Docx })
     shapeOptions?.let { key -> pictures[key]?.let { img -> ShapePicture.of(img)?.let { sp ->
-        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img)), { shapeOptions = null }) { o ->
+        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img), sp.dash, sp.shadow), { shapeOptions = null }) { o ->
             shapeOptions = null
-            var next = PictureXml.shapeLook(img, o.fill, o.line, o.lineWidth) ?: img
+            var next = PictureXml.shapeLook(img, o.fill, o.line, o.lineWidth, o.dash, o.shadow) ?: img
             if (o.widthPt != img.widthPt || o.heightPt != img.heightPt) next = PictureXml.resized(next, o.widthPt, o.heightPt)
             if (o.degrees != Arrange.rotationOf(img)) next = Arrange.rotated(next, o.degrees) ?: next
             if (o.alt != PictureXml.altOf(img)) next = PictureXml.withAlt(next, o.alt) ?: next
             changePicture(key, next)
-            WriterLog.i("shape options $key: fill ${o.fill?.let { "%08X".format(it) }} line ${o.line?.let { "%06X".format(it and 0xFFFFFF) }} ${o.lineWidth}pt ${o.widthPt.toInt()}×${o.heightPt.toInt()} ${o.degrees}°")
+            WriterLog.i("shape options $key: fill ${o.fill?.let { "%08X".format(it) }} line ${o.line?.let { "%06X".format(it and 0xFFFFFF) }} ${o.lineWidth}pt ${o.dash ?: "solid"}${if (o.shadow) " shadow" else ""} ${o.widthPt.toInt()}×${o.heightPt.toInt()} ${o.degrees}°")
         } } } }
     rotating?.let { key -> RotateDialog(pictures[key]?.let { Arrange.rotationOf(it) } ?: 0f, { rotating = null }) { deg -> rotating = null; rotate(key, deg) } }
     equationOpen?.let { (key, math) -> EquationDialog(math, { equationOpen = null }) { m -> equationOpen = null; putEquation(key, m) } }

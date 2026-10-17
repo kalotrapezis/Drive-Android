@@ -824,6 +824,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             if (bb.kind == "xlsx") SheetAutoFilter.xlsx(baked, next, bb.parts.getValue("$i"), i, name, range.takeIf { keepIt }, keep, hidden, old = s.autoFilter)
             else SheetAutoFilter.ods(baked, next, i, name, range.takeIf { keepIt }, keep, hidden, old = s.autoFilter) }) { if (!keepIt) view.filters.clear() }
     }
+    /** Rows [rows] (the sheet's) grouped a level deeper ([by] 1) or less (-1), or their group collapsed or expanded ([collapse]). */
+    fun outlineStep(rows: IntRange, by: Int, collapse: Boolean?) { val i = index
+        fileStep(when { by > 0 -> "rows grouped"; by < 0 -> "rows ungrouped"; collapse == true -> "group collapsed"; else -> "group expanded" }, { baked, next, bb ->
+            if (bb.kind == "xlsx") SheetOutline.xlsx(baked, next, bb.parts.getValue("$i"), rows.first, rows.last, by, collapse) else SheetOutline.ods(baked, next, i, rows.first, rows.last, by, collapse) }) {
+            if (collapse == true) { view.row = rows.last + 1; view.reveal++ } }
+    }
     /** Cells [g] (the sheet's) inserted, the rest shifted down ([rows]) or right, or deleted, the rest shifted up or left: one step of Undo. */
     fun shiftCells(g: SheetRange, rows: Boolean, insert: Boolean) {
         val s = sheet ?: return; val b = book ?: return
@@ -1198,6 +1204,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 // Excel's AutoFilter kept in the file: the view's filter (its buttons, its values, the rows it hides), or taken away
                                 if (b.kind != "csv" && view.filters.isNotEmpty()) RibbonButton("Keep filter in file", w, R.drawable.ic_filter) { filterStep(s, keepIt = true) }
                                 if (b.kind != "csv" && s.autoFilter != null) RibbonButton("Remove file filter", w, R.drawable.ic_filter_off) { filterStep(s, keepIt = false) }
+                                // Excel's Outline: the chosen rows grouped a level deeper or less; a group's rows hidden (Collapse) or shown (Expand)
+                                if (b.kind != "csv") { val rows = g?.let { l.rows[it.r1]..l.rows[it.r2] } ?: (cr..cr); val group = SheetOutline.groupAt(s.rowLevels, cr)
+                                    RibbonButton("Group", w, R.drawable.ic_unfold_less) { outlineStep(rows, 1, null) }
+                                    if ((rows.first..rows.last).any { (s.rowLevels[it] ?: 0) > 0 }) RibbonButton("Ungroup", w, R.drawable.ic_unfold_more) { outlineStep(rows, -1, null) }
+                                    if (group != null) { val shut = group.all { it in s.hiddenRows }
+                                        RibbonButton(if (shut) "Expand" else "Collapse", w, if (shut) R.drawable.ic_add else R.drawable.ic_remove) { outlineStep(group, 0, !shut) } } }
                                 // Excel's Sort dialog: the rows themselves reordered (the file changes), by one column then others
                                 RibbonButton("Sort", w, R.drawable.ic_sort_name) {
                                     sortingRows = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }

@@ -198,6 +198,8 @@ internal class Sheet(
     var protected = false
     /** Its protection has a password (asked for to unprotect it). */
     var guarded = false
+    /** Its rows' outline levels (Data › Group; Excel's outlineLevel, LibreOffice's row groups): a grouped row's depth. */
+    var rowLevels: Map<Int, Int> = emptyMap()
     /** Its AutoFilter's kept values by column (Excel's filterColumn; "" an empty cell): the view's filter when opened. */
     var filterKeep: Map<Int, Set<String>> = emptyMap()
     /** View › Headings: its column letters and row numbers shown (Excel's showRowColHeaders, LibreOffice's HasColumnRowHeaders). */
@@ -816,6 +818,7 @@ internal object Sheets {
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false; var guardedSheet = false; var headings = true
             val dvs = ArrayList<Pair<List<SheetRange>, String>>() // data validation lists: their cells and formula
             val filterKeep = HashMap<Int, MutableSet<String>>(); var filterCol = 0 // the AutoFilter's kept values by column
+            val rowLevels = HashMap<Int, Int>() // grouped rows' outline levels
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
@@ -879,6 +882,7 @@ internal object Sheets {
                             row = at.a("r")?.toIntOrNull()?.minus(1) ?: (row + 1); col = -1
                             at.a("ht")?.toFloatOrNull()?.let { rowHeights[row] = it * 4 / 3 }
                             if (at.a("hidden").let { it == "1" || it == "true" }) hiddenRows += row
+                            at.a("outlineLevel")?.toIntOrNull()?.takeIf { it > 0 }?.let { rowLevels[row] = it }
                             if (at.a("customFormat").let { it == "1" || it == "true" }) at.a("s")?.toIntOrNull()?.takeIf { it != 0 }?.let { rowStyles[row] = it }
                         }
                         "c" -> {
@@ -989,7 +993,7 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet; it.headings = headings; it.filterKeep = filterKeep
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet; it.headings = headings; it.filterKeep = filterKeep; it.rowLevels = rowLevels
                     it.lists = dvs.mapNotNull { (ranges, f) -> SheetList.of(ranges, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } }
         }
 
@@ -1423,7 +1427,7 @@ internal object Sheets {
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
                 var inStyles = false
-                var name = ""; var tableStyle: String? = null; var tableProtected = false; var tableGuarded = false; var titlesFrom = -1; var titlesTo = -1; var printRanges: String? = null
+                var name = ""; var tableStyle: String? = null; var tableProtected = false; var tableGuarded = false; var titlesFrom = -1; var titlesTo = -1; var groupDepth = 0; val rowLevels = HashMap<Int, Int>(); var printRanges: String? = null
                 var cells = CellMap()
                 var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
                 var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
@@ -1502,10 +1506,12 @@ internal object Sheets {
                             col += n
                         }
                         "table-header-rows" -> titlesFrom = row // rows printed on every page
+                        "table-row-group" -> groupDepth++
                         // rich text: a span's look from where its words start
                         "span" -> if (inP) { val look = spanLook(spanLooks.lastOrNull() ?: DocRun(""), at.a("style-name")); spanLooks += look; cuts += text.length to look }
                         "table-row" -> {
                             rowRepeat = at.a("number-rows-repeated")?.toIntOrNull() ?: 1
+                            if (groupDepth > 0) for (k in row until row + minOf(rowRepeat, 1000)) rowLevels[k] = groupDepth
                             rowDefault = at.a("default-cell-style-name")
                             odfPx(props(at.a("style-name"))["row.row-height"])?.let { rowRuns += Triple(row, rowRepeat, it) }
                             if (at.a("visibility").let { it == "collapse" || it == "filter" }) hiddenRuns += row to rowRepeat
@@ -1569,6 +1575,7 @@ internal object Sheets {
                         "table-cell" -> { endCell(); inCell = false }
                         "table-row" -> endRow()
                         "table-header-rows" -> if (titlesFrom >= 0) titlesTo = row - 1
+                        "table-row-group" -> groupDepth--
                         "table" -> endTable()
                     }
                 }
@@ -1729,7 +1736,7 @@ internal object Sheets {
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
                         print = (runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint())
                             .let { if (titlesFrom in 0..titlesTo) it.copy(titles = titlesFrom..titlesTo) else it },
-                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded; it.headings = settings.headings != "false"
+                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded; it.headings = settings.headings != "false"; it.rowLevels = rowLevels
                         it.lists = validCells.mapNotNull { (v, at) -> validities[v]?.let { SheetList.odsList(it) }?.let { f -> SheetList.of(at, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } } }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read

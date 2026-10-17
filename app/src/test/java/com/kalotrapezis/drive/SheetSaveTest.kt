@@ -598,6 +598,31 @@ class SheetSaveTest {
         }
     }
 
+    /** Data › Group, Collapse, Expand, Ungroup: Excel's outline levels and hidden rows, LibreOffice's row groups — read back, and by LibreOffice. */
+    @Test fun `rows grouped and collapsed`() {
+        assertEquals(1..2, SheetOutline.groupAt(mapOf(1 to 1, 2 to 1), 2)); assertEquals(1..2, SheetOutline.groupAt(mapOf(1 to 1, 2 to 1), 3)); assertEquals(null, SheetOutline.groupAt(mapOf(1 to 1), 4))
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("outline").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(by: Int, collapse: Boolean?) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetOutline.xlsx(f, next, parts.getValue("0"), 1, 2, by, collapse) else SheetOutline.ods(f, next, 0, 1, 2, by, collapse); f = next }
+            step(1, null); step(0, true)
+            fun check(file: File, how: String) { val s = Sheets.read(file, ',', '.').sheet(0)
+                assertEquals(how, mapOf(1 to 1, 2 to 1), s.rowLevels); assertTrue(how, 1 in s.hiddenRows && 2 in s.hiddenRows && 3 !in s.hiddenRows)
+                assertEquals(how, "Alpha", s[1, 0]?.text) }
+            check(f, "grouped and collapsed in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+            step(0, false); Sheets.read(f, ',', '.').sheet(0).let { s -> assertTrue(name, 1 !in s.hiddenRows && 2 !in s.hiddenRows); assertEquals(name, 1, s.rowLevels[1]) }
+            step(-1, null); assertTrue(name, Sheets.read(f, ',', '.').sheet(0).rowLevels.isEmpty())
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

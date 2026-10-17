@@ -76,11 +76,11 @@ How to write here:
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
-      dynamic arrays. Checks at a925139: unit
+      dynamic arrays (dc739be), row groups. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -781,7 +781,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       LibreOffice's frame with its image (Pictures/, in the manifest) and rectangle shape with its words. `SheetChart`'s drawing code
       shared by chart, picture and text box (`anchored`). `a picture and a text box put on a sheet` (both formats, LibreOffice's
       conversions); emulator: a text box at B7, a picture at C14. Not yet: moving, resizing or deleting drawings on the sheet; shapes.
-- [~] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
+- [x] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.
       Browse by category done (office-F session, 17 Oct): Formulas › Insert function — Excel's categories (Maths, Statistics, Logical,
@@ -831,6 +831,12 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       shown again). An .xlsx's AutoFilter values are now read and become the view's filter when the sheet opens (Clear filter shows
       its rows). `SheetAutoFilter`. `an AutoFilter kept in the file` (both formats, LibreOffice's conversions both ways); emulator: Βήτα
       filtered out of A, kept, saved. shortcut: an .ods's filter values are not read (its filtered rows show hidden).
+      Group and outline rows done (office-F session, 18 Oct): Data › Group / Ungroup the chosen rows (a level deeper or less), and on a
+      grouped row (or the row after a group) Collapse / Expand — Excel's row outlineLevel, hidden, collapsed on the summary row and
+      sheetFormatPr outlineLevelRow; LibreOffice's table:table-row-group (display "false", rows visibility "collapse"); both read
+      (`Sheet.rowLevels`). `SheetOutline`. `rows grouped and collapsed` (both formats, LibreOffice's conversions); emulator: rows 2–3 of
+      an .ods grouped, collapsed, expanded. shortcut: no outline bar beside the row numbers (the ribbon has the buttons); columns not
+      grouped; rows across a group's edge not grouped in an .ods.
       Drop-down lists done (office-F session, 18 Oct): Data › Drop-down list on the chosen cells — the values typed, comma-separated
       (Excel's Source box), Take away; Excel's list dataValidation and LibreOffice's table:content-validation (`SheetLists`, a change to
       the file), both read (`Sheet.lists`/`listAt`, `SheetList`: a quoted list, or this sheet's cells). While editing, the chosen

@@ -645,6 +645,30 @@ class SheetSaveTest {
         }
     }
 
+    /** Insert › Shape: Excel's preset shape, LibreOffice's custom shape (Words' geometry) — read back with fill, line and outline, and by LibreOffice. */
+    @Test fun `shapes put on a sheet`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("shape").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(kind: String, r: Int) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetChart.shapeXlsx(f, next, parts.getValue("0"), r, 1, 72f, 72f, kind, 0xFFFFC000.toInt(), 0xFF000000.toInt())
+                else SheetChart.shapeOds(f, next, 0, r, 1, 72f, 72f, kind, 0xFFFFC000.toInt(), 0xFF000000.toInt()); f = next }
+            step("rect", 6); step("rightArrow", 12)
+            fun check(file: File, how: String) { val s = Sheets.read(file, ',', '.').sheet(0)
+                val shapes = s.drawings.filter { it.image == null && it.chart == null }.sortedBy { it.row }
+                assertEquals("$how: ${s.drawings.size}", listOf(6, 12), shapes.map { it.row })
+                assertEquals(how, 0xFFFFC000.toInt(), shapes[0].fill); assertTrue(how, shapes[1].shape != null) }
+            check(f, "put in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

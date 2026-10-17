@@ -42,6 +42,16 @@ internal object SheetChart {
             """<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="808080"/></a:solidFill></a:ln></xdr:spPr>""" +
             """<xdr:txBody><a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>$paras</xdr:txBody></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>""" }
 
+    /** Insert › Shape (Words' shapes dialog): preset [kind] ("rect", "rightArrow"…) at cell [row], [col], its [fill] and [line] — Excel's shape. */
+    fun shapeXlsx(source: File, target: File, sheetPart: String, row: Int, col: Int, widthPt: Float, heightPt: Float, kind: String, fill: Int?, line: Int?) =
+        anchored(source, target, sheetPart, null) { n, _ -> val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
+            fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+            val fillXml = fill?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"
+            val arrows = when (kind) { "lineArrow" -> """<a:tailEnd type="triangle"/>"""; "lineArrows" -> """<a:headEnd type="triangle"/><a:tailEnd type="triangle"/>"""; else -> "" }
+            val lineXml = """<a:ln w="12700">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}$arrows</a:ln>"""
+            """<xdr:oneCellAnchor>${mark("from", row, col)}<xdr:ext cx="$cx" cy="$cy"/><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="$n" name="Shape $n"/><xdr:cNvSpPr/></xdr:nvSpPr>""" +
+            """<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="${if (kind.startsWith("lineArrow")) "line" else kind}"><a:avLst/></a:prstGeom>$fillXml$lineXml</xdr:spPr></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>""" }
+
     private fun mark(tag: String, r: Int, c: Int) = "<xdr:$tag><xdr:col>$c</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>$r</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:$tag>"
 
     /** The workbook's content types, changed as parts are added. */
@@ -135,6 +145,29 @@ internal object SheetChart {
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             val paras = text.split('\n').joinToString("") { "<text:p>${OfficeFormats.esc(it)}</text:p>" }
             val shape = OfficeFormats.parse("""<draw:custom-shape xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" draw:z-index="0" draw:name="TextBox tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}">$paras<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle" draw:enhanced-path="M 0 0 L 21600 0 21600 21600 0 21600 0 0 Z N"/></draw:custom-shape>""".toByteArray()).documentElement
+            val cell = SheetMerge.odsCell(doc, table, row, col)
+            cell.insertBefore(doc.importNode(shape, true), cell.firstChild)
+            SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")
+        }
+    }
+
+    /** LibreOffice: a shape in cell [row], [col] of sheet [index] — Words' geometry for [kind], a graphic style of its own for its fill and line. */
+    fun shapeOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, kind: String, fill: Int?, line: Int?) {
+        ZipFile(source).use { zip ->
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+            val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"; val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"; val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
+            val taken = (0 until autos.childNodes.length).mapNotNull { (autos.childNodes.item(it) as? Element)?.getAttributeNS(S, "name") }.toSet()
+            val name = generateSequence(1) { it + 1 }.map { "grT$it" }.first { it !in taken }
+            autos.appendChild(doc.createElementNS(S, "style:style").also { st -> st.setAttributeNS(S, "style:name", name); st.setAttributeNS(S, "style:family", "graphic")
+                st.appendChild(doc.createElementNS(S, "style:graphic-properties").also { p ->
+                    if (fill != null) { p.setAttributeNS(DRAW, "draw:fill", "solid"); p.setAttributeNS(DRAW, "draw:fill-color", "#%06x".format(fill and 0xFFFFFF)) } else p.setAttributeNS(DRAW, "draw:fill", "none")
+                    if (line != null) { p.setAttributeNS(DRAW, "draw:stroke", "solid"); p.setAttributeNS(SVG, "svg:stroke-color", "#%06x".format(line and 0xFFFFFF)); p.setAttributeNS(SVG, "svg:stroke-width", "0.035cm") } else p.setAttributeNS(DRAW, "draw:stroke", "none") }) })
+            fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
+            val geometry = ShapeGeometry.odfGeometry(kind, widthPt, heightPt)?.takeIf { kind != "line" } ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/>"""
+            val shape = OfficeFormats.parse("""<draw:custom-shape xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" draw:style-name="$name" draw:z-index="0" draw:name="Shape tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}"><text:p/>$geometry</draw:custom-shape>""".toByteArray()).documentElement
             val cell = SheetMerge.odsCell(doc, table, row, col)
             cell.insertBefore(doc.importNode(shape, true), cell.firstChild)
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")

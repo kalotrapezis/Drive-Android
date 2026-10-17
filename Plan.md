@@ -76,11 +76,11 @@ How to write here:
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
-      dynamic arrays (dc739be), row groups (40132d5), subtotals. Checks at a925139: unit
+      dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -780,7 +780,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       300 pt wide) and Text box (its words asked; 2 × 0.8 in) at the chosen cell — Excel's pic and txBox shapes in the sheet's drawing,
       LibreOffice's frame with its image (Pictures/, in the manifest) and rectangle shape with its words. `SheetChart`'s drawing code
       shared by chart, picture and text box (`anchored`). `a picture and a text box put on a sheet` (both formats, LibreOffice's
-      conversions); emulator: a text box at B7, a picture at C14. Not yet: moving, resizing or deleting drawings on the sheet; shapes.
+      conversions); emulator: a text box at B7, a picture at C14. Not yet: moving, resizing or deleting drawings on the sheet.
+      Shape done (office-F session, 18 Oct): Insert › Shape — Words' and Slides' `ShapesDialog` (styles, fill, outline, every preset),
+      the shape at the chosen cell sized as Words sizes it: Excel's preset shape (prstGeom, arrows' line ends), LibreOffice's custom
+      shape with Words' geometry (`ShapeGeometry.odfGeometry`) and a graphic style of its own. `shapes put on a sheet` (both formats,
+      LibreOffice's conversions); emulator: an orange heart at C8 of an .ods.
 - [x] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.

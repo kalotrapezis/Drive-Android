@@ -193,6 +193,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
+    var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1132,6 +1133,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             // Excel's Insert › Pictures (Words' picker) and Text Box: on the sheet at the chosen cell
                             if (b.kind != "csv") RibbonButton("Picture", w, R.drawable.ic_gallery) { pickPicture.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                             if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
+                            if (b.kind != "csv") RibbonButton("Shape", w, R.drawable.ic_category) { shaping = true }
                             // Excel's notes (LibreOffice's comments): made or changed in Words' comment dialog; taken away
                             val hasNote = s[cr, cc]?.note != null
                             RibbonButton(if (hasNote) "Edit note" else "Note", w, R.drawable.ic_comment) { noting = true }
@@ -1743,6 +1745,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 if (s.merges.any { m -> m.r1 <= d.r2 && d.r1 <= m.r2 && m.c1 <= d.c2 && d.c1 <= m.c2 }) { message = "Merged cells are in the way: unmerge them first"; return@TextButton }
                 fileStep("subtotals", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSubtotal.apply(baked, next, bb, i, d, by, chosen, fn, sym.decimalSeparator, sym.groupingSeparator) } }) }) { Text("OK") } },
             dismissButton = { TextButton(onClick = { totalling = null }) { Text("Cancel") } }) } }
+    // Insert › Shape: Words' and Slides' shapes dialog; the shape at the chosen cell, an inch square (long ones twice as wide), as Words sizes them
+    if (shaping) sheet?.let { s -> ShapesDialog(odt = book?.kind == "ods", dismiss = { shaping = false }) { kind, fill, line ->
+        shaping = false; val (r, c) = chosen(s); val i = index
+        val (w, h) = if (kind == "line" || kind.startsWith("lineArrow")) 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(kind)) 108f to 54f else 72f to 72f
+        fileStep("shape put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.shapeXlsx(baked, next, bb.parts.getValue("$i"), r, c, w, h, kind, fill, line)
+            else SheetChart.shapeOds(baked, next, i, r, c, w, h, kind, fill, line) }) } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

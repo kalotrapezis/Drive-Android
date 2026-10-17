@@ -169,6 +169,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var about by remember { mutableStateOf(false) }
+    var copiedLook by remember { mutableStateOf<SheetStyle?>(null) } // Copy formatting (Words' pair): the look Paste formatting puts on
+    var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
+    var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     val history = remember { SheetHistory() }
@@ -731,6 +734,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         RibbonButton("Copy", w, R.drawable.ic_copy) { copyCells(cut = false) }
                         if (editing) RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste() }
                         if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) { clearCells() }
+                        // Words' Copy formatting / Paste formatting (Home's Format painter in Excel): one cell's look onto the cells chosen
+                        if (editing) { RibbonDivider(w)
+                            RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) { copiedLook = now; message = "Formatting copied — choose cells, then Paste formatting" }
+                            RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { c -> look { _, _ -> c } } } }
                     }
                     @Composable fun sortFilter(col: Int) {
                         RibbonButton(if (col in view.filters) "Change filter" else "Filter", w, R.drawable.ic_filter) { filtering = col }
@@ -831,6 +838,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } })
                             }
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
+                            RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
                         }
                         shown == "Formulas" -> {
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
@@ -871,6 +879,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
                                 RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
                                 RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
+                                // Excel's Fill ▸ Down and Right: the chosen cells' first row (or column) carried through them, as the fill handle carries it
+                                if (g != null && (g.r2 > g.r1 || g.c2 > g.c1)) {
+                                    if (g.r2 > g.r1) RibbonButton("Fill down", w, R.drawable.ic_keyboard_arrow_down) { fillCells(SheetRange(g.r1, g.c1, g.r1, g.c2), g) }
+                                    if (g.c2 > g.c1) RibbonButton("Fill right", w, R.drawable.ic_chevron_right) { fillCells(SheetRange(g.r1, g.c1, g.r2, g.c1), g) }
+                                }
                                 // Excel's Merge & Centre: the chosen cells one cell; a merged one chosen: Unmerge
                                 s.merge(cr, cc)?.let { m -> RibbonButton("Unmerge", w, R.drawable.ic_cell_merge) { merge(m, false) } }
                                     ?: g?.takeIf { it.r2 > it.r1 || it.c2 > it.c1 }?.let { d -> RibbonButton("Merge & centre", w, R.drawable.ic_cell_merge) { merge(SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2]), true) } }
@@ -1150,6 +1163,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
             }
         })
+    // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
+    if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
+    LaunchedEffect(symbol) { val sym = symbol ?: return@LaunchedEffect
+        delay(150) // the dialog gone: the bar can take focus (which starts typing with the cell's own words, as AutoSum's)
+        runCatching { barFocus.requestFocus() }
+        if (draft == null) startTyping()
+        draft?.let { d -> draft = TextFieldValue(d.text.substring(0, d.selection.min) + sym + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + sym.length)) }
+        symbol = null }
     if (about) {
         val b = book
         AlertDialog(onDismissRequest = { about = false }, confirmButton = { TextButton(onClick = { about = false }) { Text("Close") } },

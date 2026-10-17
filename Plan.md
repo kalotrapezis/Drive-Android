@@ -699,6 +699,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       schema's place, LibreOffice's spanned cell over covered ones, repeated rows and cells cut first), as inserting rows is (`fileStep`;
       the centring a second step of Undo). `cells merged and unmerged` (both formats, LibreOffice's conversions); emulator: A4 unmerged,
       A4:C4 merged and centred.
+      Format painter, Fill down / right done (office-F session, 17 Oct): the Selection tab gets Words' Copy formatting / Paste formatting
+      (a cell's look onto all the cells chosen — a range, which a one-tap painter cannot take on a phone); Home › Fill down / Fill right
+      with several rows or columns chosen (the fill handle's own `fillCells`: series and formulas carried as the handle carries them).
+      Insert › Symbol: Words' `SymbolDialog`, put in where one types in the cell (typing begun with its words). Emulator: A1's yellow on
+      A7:B7; € in C9.
 - [ ] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

@@ -39,6 +39,8 @@ How to write here:
 - [~] (office-engine session, 17 Oct) B top-down on the engine, then C, then A's walk (the user: "ok comit and continue to finish office").
       Done here: Home (0ce3c4d), Insert › Text box (17b9bfb), Drop cap strip + Raised (c9c4683); handing on (notes:
       office-engine-17oct.md in the group's notes folder). Tablet in use (Crunchyroll) 15:00: these three seen on the emulator only.
+- [~] (office-B session, 17 Oct, from office-engine's hand-over) B on from Dropped drop cap: the rest of Insert, Arrange, Slide,
+      Design, Draw, Review, View, File, Slide show, References; then C, then A's walk. Tablet: Crunchyroll in front 15:35 — emulator.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -329,8 +331,15 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Raised (the first letter a run of its own, lines × the words' size, saved as a bigger run in .pptx and .odp,
       made plain again by None), More… Words' dialog in a raised form (lines, the letter's face and colour). Found in
       passing: a Words drop cap in a paragraph whose second line holds a picture came out huge (fixed: a line's step no
-      more than the first line). `a raised first letter saved` (.pptx, .odp, LibreOffice's conversions). Not yet:
-      Slides' Dropped (its own box beside the first lines). Date and time
+      more than the first line). `a raised first letter saved` (.pptx, .odp, LibreOffice's conversions). Slides' Dropped
+      (office-B session, 17 Oct): the letter in a text box of its own (Insert › Text box's), N lines tall, its capital from the first
+      line's capitals to line N's foot, beside the paragraph; the paragraph split where Words' engine breaks its line N
+      (`SlidesText.drop`), the lines before standing in by the letter's width (`Look.drop`: marL / fo:margin-left, no space after),
+      the rest under them (no space before); each letter's look kept (`relook` now finds the words inside what was there). Shared
+      pieces: the strip (`DesignGalleryStrip`), `DropCapDialog` (Slides: None, Dropped, Raised; distance for Dropped), the text box,
+      Words' layout. `a dropped first letter saved` (.pptx, .odp, LibreOffice's conversions); emulator: 3 and 4 lines on a typed
+      paragraph, saved, LibreOffice draws it the same (its own line breaks: its font). Doesn't reflow (as planned): None
+      afterwards only un-raises; the letter box is deleted as any box. Date and time
       (fixed, or a field that updates, as PowerPoint's); line break inside a paragraph; Comment; a link's Edit
       (beside Link above). Slide numbers come with Header & footer.
 - [ ] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline

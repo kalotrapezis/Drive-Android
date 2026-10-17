@@ -209,8 +209,14 @@ internal object SlidesOdpEdit {
                         p.replaceChild(span, t); span.appendChild(t)
                     }
                 }
-                if (l.align != null || l.spacing != null) p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", p.a(TEXT, "style-name"), key) { st ->
+                val first = paras(h).indexOfFirst { it.textContent.isNotBlank() }
+                val dropped = l.drop?.takeIf { first >= 0 }?.let { paras(h).indexOf(p) - first }?.takeIf { it == 0 || it == 1 && l.dropRest }
+                if (l.align != null || l.spacing != null || dropped != null) p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", p.a(TEXT, "style-name"), "$key $dropped") { st ->
                     val pp = props(st, "paragraph-properties")
+                    // dropped: the lines beside the letter stand in, with no space under them; the rest goes on under them
+                    if (dropped != null) { pp.setAttributeNS(FO, "fo:text-indent", "0cm")
+                        if (dropped == 0) { pp.setAttributeNS(FO, "fo:margin-left", String.format(Locale.ROOT, "%.3fcm", l.drop!! * 2.54f / 72)); pp.setAttributeNS(FO, "fo:margin-bottom", "0cm") }
+                        else pp.setAttributeNS(FO, "fo:margin-top", "0cm") }
                     l.align?.let { pp.setAttributeNS(FO, "fo:text-align", when (it) { DocAlign.Center -> "center"; DocAlign.End -> "end"; DocAlign.Justify -> "justify"; else -> "start" }) }
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
                 })

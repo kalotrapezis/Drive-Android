@@ -166,6 +166,39 @@ class SlidesTest {
         }
     }
 
+    /**
+     * Insert › Drop cap on a slide, dropped: the first letter in a text box of its own, the paragraph split where its lines beside it end — the
+     * lines before standing in (no space under them), the rest under them (no space over it), each letter's look kept. As the screen makes it.
+     */
+    @Test fun `a dropped first letter saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val red = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }
+            val id = red.anim!!
+            val e = SlidesEdit.start(deck).copy(texts = mapOf((2 to id) to listOf("old red words,", "28 pt"), (2 to "9300") to listOf("B")),
+                looks = mapOf((2 to id) to SlidesEdit.Look(drop = 60f), (2 to "9300") to SlidesEdit.Look(size = 84f, bold = true, text = 0xFFC00000.toInt())),
+                added = mapOf(2 to listOf(SlidesEdit.Added("9300", red.x, red.y, 70f, 100f, prst = SlidesEdit.TEXT_BOX))))
+            fun check(d: Deck, how: String) {
+                val shapes = d.slides[2].items.filterIsInstance<SlideItem.Shape>()
+                val ps = shapes.first { words(it) == "old red words,\n28 pt" }.text!!.paras
+                assertEquals(how, 60f, ps[0].look.left, 1f); assertEquals(how, 0f, ps[0].look.after, 0.1f); assertEquals(how, 0f, ps[1].look.before, 0.1f)
+                assertTrue(how, ps.all { p -> p.runs.filter { it.text.isNotBlank() }.all { it.bold && it.color == 0xC00000 } }) // each letter's look kept
+                val letter = shapes.first { words(it) == "B" }.text!!.paras[0].runs[0]
+                assertEquals(how, 84f, letter.sizePt!!, 0.5f); assertEquals(how, 0xC00000, letter.color)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("dropped-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

@@ -60,6 +60,25 @@ internal object SlidesText {
         return 120f / (fm.descent - fm.ascent + fm.leading).coerceAtLeast(1f)
     }
 
+    /** Where a Drop cap, dropped, splits paragraph [i] of [t]: [at] letters into its words (its first letter off) its line [lines] ends (all of them: fewer),
+     *  [top] its first line's baseline under the words' top, [step] line [lines]' baseline under the first's (pt). */
+    class Drop(val at: Int, val top: Float, val step: Float)
+    fun drop(t: SlideText, w: Float, i: Int, left: Float, lines: Int): Drop? {
+        val p = t.paras.getOrNull(i) ?: return null
+        val k = p.runs.indexOfFirst { it.text.isNotEmpty() }.takeIf { it >= 0 } ?: return null
+        val r = p.runs[k]
+        val rest = SlidePara(p.para.copy(runs = p.runs.take(k) + r.copy(text = r.text.substring(r.text.offsetByCodePoints(0, 1))) + p.runs.drop(k + 1)), p.look.copy(left = left, firstLine = 0f), p.bullet, p.base)
+        val b = block(SlideText(t.paras.take(i) + rest, t.anchor, t.insets, t.scale, t.wrap, t.shrink), w)
+        val pc = b.pieces.lastOrNull() ?: return null; val lay = pc.layout
+        val words = rest.runs.joinToString("") { it.text }
+        val n = minOf(lines, lay.lineCount)
+        // layout units are twentieths of a point (OfficePages' U); fewer lines than asked: the rest at the first lines' pitch
+        val pitch = if (lay.lineCount > 1) (lay.getLineBaseline(1) - lay.getLineBaseline(0)) / 20f else lay.getLineBottom(0) / 20f
+        val step = (lay.getLineBaseline(n - 1) - lay.getLineBaseline(0)) / 20f + (lines - n) * pitch
+        val at = if (lay.lineCount <= lines) words.length else (lay.getLineEnd(lines - 1) - (lay.text.length - words.length)).coerceIn(0, words.length)
+        return Drop(at, pc.y + lay.getLineBaseline(0) / 20f, step)
+    }
+
     /** How tall [t] stands in a box [w] wide, its insets too (a table's row grows to it). */
     fun height(t: SlideText, w: Float) = block(t, w).height + t.insets[1] + t.insets[3]
 

@@ -291,6 +291,49 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val k = p.runs.indexOfFirst { it.text.isNotEmpty() }
         return SlidesEdit.isRaised(p.runs, k) ?: p.runs.getOrNull(k)?.sizePt ?: 18f
     }
+    /**
+     * Drop cap, dropped (17 Oct): [b] with item [id] of slide [c]'s first letter in a text box of its own, [n] lines tall, beside the paragraph's
+     * first [n] lines — the paragraph split where Words' engine breaks its line [n], the lines before standing in by the letter's width and
+     * [distance]. PowerPoint and Impress have no drop cap, so it looks right everywhere but doesn't move with the words. Null: nothing to drop.
+     */
+    fun dropped(b: SlidesEdit.Edit, c: Int, id: String, n: Int, font: String? = null, color: Int? = null, distance: Float = 0f): SlidesEdit.Edit? {
+        val d = base ?: return null; val e = b.order[c]
+        val box = SlidesEdit.slide(d, b, e).items.lastOrNull { it.anim == id } as? SlideItem.Shape ?: return null
+        val t = box.text ?: return null
+        val f = t.paras.indexOfFirst { p -> p.runs.any { it.text.isNotBlank() } }.takeIf { it >= 0 } ?: return null
+        val p = t.paras[f]; val r = p.runs.first { it.text.isNotEmpty() }
+        val words = SlidesEdit.lines(box).toMutableList()
+        val letter = words[f].substring(0, words[f].offsetByCodePoints(0, 1)); val rest = words[f].substring(letter.length)
+        // the letter's size: its capital as tall as from the first line's capitals to the last line's foot
+        val size = wordsSize(box)
+        val face = font ?: DocStyles.Plain.fontName(r.font)
+        val paint = android.graphics.Paint().apply { typeface = OfficeFonts.styled(OfficeFonts.typeface(face), r.bold == true, r.italic == true); textSize = 100f }
+        val cap = android.graphics.Rect().also { paint.getTextBounds("H", 0, 1, it) }.height() / 100f
+        val step = SlidesText.drop(t, box.w, f, p.look.left + size * n * 0.7f, n)?.step ?: return null
+        val big = (step + cap * size) / cap
+        val left = p.look.left + paint.measureText(letter) * big / 100f + distance + size * 0.15f
+        val split = SlidesText.drop(t, box.w, f, left, n) ?: return null
+        words[f] = rest.substring(0, split.at).trimEnd()
+        val more = split.at < rest.length
+        if (more) words.add(f + 1, rest.substring(split.at))
+        val k = e.uid to id
+        val nu = b.newId(e.uid, taken(b, c))
+        // the letter's box: a text box (insets 7.2 and 3.6 pt) its left at the words' edge, its letter's foot on line n's
+        val made = b.copy(texts = b.texts + (k to words) + ((e.uid to nu) to listOf(letter)),
+            looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(raise = null, drop = left, dropRest = more)) +
+                ((e.uid to nu) to SlidesEdit.Look(size = big, font = face, bold = r.bold, italic = r.italic, text = (color ?: r.color)?.or(0xFF000000.toInt()))),
+            added = b.added + (e.uid to b.added[e.uid].orEmpty() + SlidesEdit.Added(nu, box.x + t.insets[0] + p.look.left - 7.2f, box.y, paint.measureText(letter) * big / 100f * 1.15f + 14.4f, big * 1.2f, prst = SlidesEdit.TEXT_BOX)))
+        // where the words now stand (from the top, middle or bottom of their box), and the letter's baseline in its own box
+        val shown = SlidesEdit.slide(d, made, e).items
+        val now = (shown.lastOrNull { it.anim == id } as? SlideItem.Shape)?.text ?: return null
+        val laid = SlidesText.block(now, box.w); val room = box.h - now.insets[1] - now.insets[3]
+        val top = box.y + now.insets[1] + when (now.anchor) { 'c' -> (room - laid.height) / 2; 'b' -> room - laid.height; else -> 0f }
+        val base0 = SlidesText.drop(now, box.w, f, left, n)?.top ?: return null
+        val mine = (shown.lastOrNull { it.anim == nu } as? SlideItem.Shape)?.text ?: return null
+        val foot = SlidesText.block(mine, 1000f).pieces.firstOrNull()?.let { it.y + it.layout.getLineBaseline(0) / 20f } ?: return null
+        val y = top + base0 + split.step - mine.insets[1] - foot
+        return made.copy(added = made.added + (e.uid to made.added[e.uid].orEmpty().map { if (it.id == nu) it.copy(y = y) else it }))
+    }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too); a box with words
     // keeps Home (17 Oct: its text tools are there, as PowerPoint's), and takes the look a Format painter holds
     LaunchedEffect(item) {
@@ -953,17 +996,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val k = b.order[cc].uid to id; val l = b.looks[k] ?: SlidesEdit.Look()
                             val size = wordsSize(chosenWords())
                             stripBefore = b; stripPicked = ch
-                            edit = b.copy(looks = b.looks + (k to when (ch) {
+                            edit = if (ch == DropKind.Dropped) dropped(b, cc, id, dropLines) ?: b else b.copy(looks = b.looks + (k to when (ch) {
                                 is FontChoice -> l.copy(font = ch.name)
                                 DropKind.Raised -> l.copy(raise = size * dropLines)
                                 else -> l.copy(raise = 0f) // None
                             }))
                         }, more = if (stripShown == DesignGallery.DropCap) { { stripBefore?.let { edit = it }; close(); dropOptions = true } } else null,
-                            fonts = fonts, now = now, drops = listOf(DropKind.None, DropKind.Raised), dropLines = dropLines, dropLinesChange = { n ->
+                            fonts = fonts, now = now, drops = listOf(DropKind.None, DropKind.Dropped, DropKind.Raised), dropLines = dropLines, dropLinesChange = { n ->
                                 dropLines = n
-                                // the raised letter tapped shown again at its new height
-                                if (stripPicked == DropKind.Raised) { val b = stripBefore ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
-                                    val k = b.order[cc].uid to id; edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(raise = wordsSize(chosenWords()) * n))) }
+                                // the letter tapped shown again at its new height
+                                val b = stripBefore ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
+                                val k = b.order[cc].uid to id
+                                if (stripPicked == DropKind.Raised) edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(raise = SlidesEdit.slide(base ?: return@DesignGalleryStrip, b, b.order[cc]).items.lastOrNull { it.anim == id }.let { wordsSize(it as? SlideItem.Shape) } * n)))
+                                if (stripPicked == DropKind.Dropped) dropped(b, cc, id, n)?.let { edit = it }
                             })
                     }
                     if (dropOptions) chosenWords()?.let { box ->
@@ -971,10 +1016,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val k = p?.runs?.indexOfFirst { it.text.isNotEmpty() } ?: -1
                         val size = wordsSize(box)
                         val letter = p?.runs?.getOrNull(k)?.takeIf { SlidesEdit.isRaised(p.runs, k) != null }
-                        DropCapDialog(letter?.let { DropCap(lines = Math.round((it.sizePt ?: size) / size).coerceIn(2, 10)) }, true, letter?.font?.let(DocStyles.Plain::fontName), letter?.color,
+                        DropCapDialog(letter?.let { DropCap(lines = Math.round((it.sizePt ?: size) / size).coerceIn(2, 10), raised = true) }, true, letter?.font?.let(DocStyles.Plain::fontName), letter?.color,
                             { dropOptions = false }, raised = true) { d, font, color ->
                             dropOptions = false
-                            restyle { it.copy(raise = d?.let { dc -> size * dc.lines } ?: 0f, raiseFont = font, raiseColor = color?.or(0xFF000000.toInt())) }
+                            val ee = edit; val cc = chosen; val id = item
+                            if (d != null && !d.raised) { if (ee != null && cc != null && id != null) dropped(ee, cc, id, d.lines, font, color?.or(0xFF000000.toInt()), d.distance)?.let { change(it); WriterLog.i("Slides: a drop cap dropped") } }
+                            else restyle { it.copy(raise = d?.let { dc -> size * dc.lines } ?: 0f, raiseFont = font, raiseColor = color?.or(0xFF000000.toInt())) }
                         }
                     }
                     androidx.compose.animation.AnimatedVisibility(editing && layouts && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {

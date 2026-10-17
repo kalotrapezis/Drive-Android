@@ -27,10 +27,13 @@ internal object SlidesEdit {
         /** Clear formatting: the letters' own looks gone, their paragraph's (its level's, the master's) left — the choices above apply after it */
         val cleared: Boolean = false,
         /** Insert › Drop cap, raised: the first letter's size (pt; 0: none, a raised one made plain again), its own face and colour */
-        val raise: Float? = null, val raiseFont: String? = null, val raiseColor: Int? = null) {
+        val raise: Float? = null, val raiseFont: String? = null, val raiseColor: Int? = null,
+        /** Insert › Drop cap, dropped (the letter in a text box of its own beside it): the first paragraph's left edge (pt), no first-line indent
+         *  nor space after it; the paragraph after it (the rest of the words, split where the letter's lines end) no space before nor first-line indent */
+        val drop: Float? = null, val dropRest: Boolean = true) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -67,7 +70,8 @@ internal object SlidesEdit {
             }
             // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
             val bullet = when (l.list) { null -> p.bullet; 'n' -> null; 'b' -> SlideBullet("•"); else -> SlideBullet("1.") } // counted by numbered()
-            val look = when (l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f); else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
+            val look0 = when (l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f); else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
+            val look = l.drop?.let { d -> when (i) { first -> look0.copy(left = d, firstLine = 0f, after = 0f); first + 1 -> if (l.dropRest) look0.copy(firstLine = 0f, before = 0f) else null; else -> null } } ?: look0
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.text?.first()?.isDigit() == true, p.level)),
                 l.spacing?.let { look.copy(lineMultiple = it, lineExact = null) } ?: look, bullet, p.base)
         }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink)
@@ -292,8 +296,14 @@ internal object SlidesEdit {
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }
             }
             if (p === paras.firstOrNull { q -> q.getElementsByTagNameNS(A, "t").let { ts -> (0 until ts.length).any { ts.item(it).textContent.isNotBlank() } } }) l.raise?.let { raise(doc, p, l) }
-            if (l.align == null && l.list == null && l.spacing == null) continue
+            val first = paras.indexOfFirst { q -> q.getElementsByTagNameNS(A, "t").let { ts -> (0 until ts.length).any { ts.item(it).textContent.isNotBlank() } } }
+            val dropped = l.drop != null && first >= 0 && p in paras.subList(first, minOf(first + if (l.dropRest) 2 else 1, paras.size))
+            if (l.align == null && l.list == null && l.spacing == null && !dropped) continue
             val pPr = p.kids().firstOrNull { it.localName == "pPr" } ?: a("pPr").also { p.insertBefore(it, p.firstChild) }
+            // dropped: the lines beside the letter stand in, with no space under them; the rest goes on under them
+            if (dropped) { pPr.setAttribute("indent", "0")
+                if (p === paras[first]) { pPr.setAttribute("marL", "${Math.round(l.drop!! * 12700)}"); place(pPr, a("spcAft").also { it.appendChild(a("spcPts", "val" to "0")) }, PPR) }
+                else place(pPr, a("spcBef").also { it.appendChild(a("spcPts", "val" to "0")) }, PPR) }
             l.align?.let { pPr.setAttribute("algn", when (it) { DocAlign.Center -> "ctr"; DocAlign.End -> "r"; DocAlign.Justify -> "just"; else -> "l" }) }
             l.spacing?.let { m -> place(pPr, a("lnSpc").also { it.appendChild(a("spcPct", "val" to "${Math.round(m * 100_000)}")) }, PPR) }
             l.list?.let { kind ->

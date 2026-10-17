@@ -421,7 +421,10 @@ internal object PictureXml {
         while (suf < was.length - pre && suf < text.length - pre && was[was.length - 1 - suf] == text[text.length - 1 - suf]) suf++
         // Letters typed over others take the first replaced one's look (as Word's typing over a selection); else the one before.
         val typed = when { pre + suf < was.length -> owner[pre]; pre > 0 -> owner[pre - 1]; owner.isNotEmpty() -> owner[0]; else -> runs.firstOrNull()?.first }
+        // the words a piece of what was there (a paragraph split, its first letter taken off): each letter keeps its own
+        val inside = if (pre + suf < text.length && text.length > 1) was.indexOf(text) else -1
         val looks = List(text.length) { k -> when {
+            inside >= 0 -> owner[inside + k]
             k < pre -> owner[k]
             k >= text.length - suf -> owner[was.length - (text.length - k)]
             else -> typed
@@ -551,7 +554,8 @@ internal data class DocKeep(val style: String? = null, val parts: List<Pair<Stri
  * lines ([margin]: out in the margin), [distance] pt from the text. Kept with the paragraph's own formatting: an ODT's
  * style:drop-cap; in Word the letters are a framed paragraph of their own before it — read in, written out again.
  */
-internal data class DropCap(val lines: Int = 3, val margin: Boolean = false, val distance: Float = 0f, val length: Int = 1) {
+internal data class DropCap(val lines: Int = 3, val margin: Boolean = false, val distance: Float = 0f, val length: Int = 1,
+    /** Slides' (17 Oct): a raised first letter, in its line, not dropped */ val raised: Boolean = false) {
     companion object {
         /** The paragraph's drop cap, from either kind's words; null: none. */
         fun of(keep: DocKeep?): DropCap? {

@@ -277,9 +277,10 @@ internal object SlidesOdp {
         // Header & footer as LibreOffice keeps them: the words a page's footer and date name (presentation:footer-decl, date-time-decl)
         val decls = content.getElementsByTagNameNS(PRES, "*").let { l -> (0 until l.length).map { l.item(it) as Element } }.filter { it.localName in setOf("footer-decl", "date-time-decl") }
         val FOOT = mapOf("date-time" to "dt", "footer" to "ftr", "page-number" to "sldNum")
-        val slides = pages.mapIndexed { index, page ->
+        /** Page [index] read as it shows on master page [masterName] (its own, or another chosen by Home › Layout). */
+        fun pageSlide(index: Int, page: Element, masterName: String?): Slide {
             val items = ArrayList<SlideItem>()
-            val master = masters[page.a(DRAW, "master-page-name")]
+            val master = masters[masterName]
             val dp = page.a(DRAW, "style-name")
             // the master's date, footer and number boxes as a page's own would show (its field as the kind's name, for the words put in)
             val footers = master?.kids().orEmpty().filter { it.localName == "frame" && it.a(PRES, "class") in FOOT }.mapNotNull { f ->
@@ -338,7 +339,7 @@ internal object SlidesOdp {
             }
             // its part: its name as a link names it ("#page3"), so a show follows one
             val own = page.kids().withIndex().mapNotNull { (k, e) -> FOOT[e.a(PRES, "class")]?.let { "o$k" to it } }.toMap() + footed.mapNotNull { it.id }.associateWith { it.removePrefix("footer.") }
-            Slide(items + footed, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps,
+            return Slide(items + footed, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps,
                 footers = footers, footerIds = own, titleSlide = page.kids().any { it.a(PRES, "class") == "subtitle" },
                 // Impress's comments: an annotation each, where its marker stands, who and when (Dublin Core)
                 comments = page.kids().filter { it.localName == "annotation" }.mapIndexed { n, an ->
@@ -346,6 +347,7 @@ internal object SlidesOdp {
                     SlideComment(DocComment("odp-$index-$n", dc("creator").orEmpty(), dc("date"), an.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent },
                         initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) })
         }
+        val slides = pages.mapIndexed { index, page -> pageSlide(index, page, page.a(DRAW, "master-page-name")) }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
         // placeholders as a page's empty boxes (grey hints); a deck of one master gets Title only and Blank as well
         val presStyles = styles?.getElementsByTagNameNS(STYLE, "style")?.let { l -> (0 until l.length).map { l.item(it) as Element } }.orEmpty()
@@ -373,7 +375,8 @@ internal object SlidesOdp {
         val placeholders = setOf("title", "outline", "subtitle")
         val kinds = masters.values.filterNotNull().map { m -> layout(m, m.a(STYLE, "display-name") ?: odfDisplayName(m.a(STYLE, "name").orEmpty()), placeholders) }.toMutableList()
         if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
-        Deck(width, height, slides, kinds)
+        val again = HashMap<Pair<Int, Int>, Slide>()
+        Deck(width, height, slides, kinds) { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } }
     }
 }
 

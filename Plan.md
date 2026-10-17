@@ -330,6 +330,11 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       grid (thumbnails as the sidebar draws them), a tap chooses or lets go (many at once), a slide held and dragged moves there with
       the others chosen (one not chosen moves alone), a double tap opens it; Choose all, Duplicate, Hide/Show, Delete on the chosen.
       Also fixed: Duplicate slide now copies a slide's comments, header & footer, turns and order too. Emulator: slide 4 dragged first.
+      Home › Layout (office-C session, 17 Oct): the New slide strip of the deck's layouts, tapped: the chosen slide on that one, its words
+      and what is on it kept (`Edit.relayout`; `Deck.relaid` reads the slide again on it — PowerPoint's slideLayout relationship; in an
+      .odp the page's master page, whose boxes keep their own places as LibreOffice's do). `a slide's layout changed saved` (.pptx,
+      the test .odp, LibreOffice's .odp of the deck with its many masters); emulator: the title slide put on Section Header.
+      Not yet: Reset slide, sections, copy slides between decks.
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.

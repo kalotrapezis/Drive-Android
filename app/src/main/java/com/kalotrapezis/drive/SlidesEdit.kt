@@ -109,7 +109,8 @@ internal object SlidesEdit {
         /** a slide's date, number and footer as chosen (Insert › Header & footer) — its own ones replaced */ val footers: Map<Int, Footers> = emptyMap(),
         /** a slide's comments as they are now (Review › Comments: added, edited, answered, deleted), the whole list */ val comments: Map<Int, List<SlideComment>> = emptyMap(),
         /** (slide uid, item id) → Arrange's rotation and flips */ val turns: Map<Pair<Int, String>, Turn> = emptyMap(),
-        /** a slide's items from the back to the front as arranged (Bring forward, Send backward…), by id */ val stack: Map<Int, List<String>> = emptyMap()) {
+        /** a slide's items from the back to the front as arranged (Bring forward, Send backward…), by id */ val stack: Map<Int, List<String>> = emptyMap(),
+        /** Home › Layout: a slide of the file's put on another of the deck's layouts (its index) */ val relayout: Map<Int, Int> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
@@ -159,7 +160,7 @@ internal object SlidesEdit {
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
     fun slide(deck: Deck, edit: Edit, e: Entry): Slide {
-        val s = if (e.layout >= 0) deck.layouts[e.layout].preview else deck.slides[e.src]
+        val s = if (e.layout >= 0) deck.layouts[e.layout].preview else edit.relayout[e.uid]?.let { k -> deck.relaid?.invoke(e.src, k) } ?: deck.slides[e.src]
         val items = s.items.map { item ->
             // a new slide's placeholder typed into is no longer a hint
             val lines = (item as? SlideItem.Shape)?.id?.let { edit.texts[e.uid to it] }?.takeIf { l -> l.any { it.isNotBlank() } || !(item as SlideItem.Shape).hint } ?: return@map item
@@ -875,12 +876,15 @@ internal object SlidesEdit {
             val noted = (edit.notes[e.uid] ?: source?.notes?.takeIf { !original && it.isNotEmpty() })?.let { notes(part, relsXml, it) } ?: false
             // its comments as they are now; a copy gets its own copy of the first's
             val commented = (edit.comments[e.uid] ?: source?.comments?.takeIf { !original && it.isNotEmpty() })?.also { comments(part, relsXml, it, original) } != null
+            // Home › Layout: the slide's layout relationship names the one chosen
+            val relaid = edit.relayout[e.uid]?.takeIf { e.layout < 0 }?.let { k -> relsXml.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/slideLayout") }
+                ?.setAttribute("Target", "../slideLayouts/" + deck.layouts[k].part.substringAfterLast('/')) } != null
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
                 if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || turns.isNotEmpty() || e.uid in edit.stack || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
                     out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid])
-                if (ids.isNotEmpty() || noted || commented) out[relsPath(part)] = xml(relsXml)
+                if (ids.isNotEmpty() || noted || commented || relaid) out[relsPath(part)] = xml(relsXml)
             } else {
                 out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid])
                 out[relsPath(part)] = xml(relsXml)

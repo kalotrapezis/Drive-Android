@@ -100,7 +100,9 @@ internal class Slide(val items: List<SlideItem>, val background: Int, val notes:
     /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList())
 /** A comment on a slide: Words' [comment], its marker at [x], [y] (points). */
 internal data class SlideComment(val comment: DocComment, val x: Float, val y: Float)
-internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList())
+internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList(),
+    /** Home › Layout: slide n read again on layout k (PowerPoint's layout, LibreOffice's master page); null: the file cannot say it */
+    val relaid: ((Int, Int) -> Slide?)? = null)
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
 internal class SlideLayout(val name: String, val part: String, val preview: Slide, val xml: ByteArray)
@@ -166,7 +168,10 @@ internal object Slides {
             val defaults = pres.kid("defaultTextStyle")
             val slides = pres.kid("sldIdLst")?.kids("sldId").orEmpty().mapNotNull { it.rid("id")?.let(rels::get) }
             val read = slides.mapNotNull { path -> runCatching { slide(path, defaults) }.onFailure { WriterLog.e("Slides: $path", it) }.getOrNull() }
-            return Deck(w, h, read, runCatching { layouts(pres, rels, defaults) }.onFailure { WriterLog.w("Slides: layouts", it) }.getOrDefault(emptyList()))
+            val kinds = runCatching { layouts(pres, rels, defaults) }.onFailure { WriterLog.w("Slides: layouts", it) }.getOrDefault(emptyList())
+            val again = HashMap<Pair<Int, Int>, Slide?>()
+            return Deck(w, h, read, kinds) { n, k -> synchronized(again) { again.getOrPut(n to k) {
+                slides.getOrNull(n)?.let { path -> runCatching { slide(path, defaults, layoutOf = kinds[k].part) }.onFailure { WriterLog.w("Slides: $path on another layout", it) }.getOrNull() } } } }
         }
 
         /**

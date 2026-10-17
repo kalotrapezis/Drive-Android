@@ -132,6 +132,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var leaving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
+    var relaying by remember { mutableStateOf(false) } // …for Home › Layout: the chosen slide put on the one tapped
     var source by remember { mutableStateOf<File?>(null) } // File › Versions: the version opened, saved over the file by Save
     var showVersions by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
@@ -504,7 +505,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             footers = e.footers + (e.footers[uid]?.let { mapOf(nu to it) } ?: emptyMap()), comments = e.comments + (e.comments[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap()), relayout = e.relayout + (e.relayout[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
         chosen = c + 1
     }
     /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
@@ -661,7 +662,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // a box with words chosen: Words' text tools, on all its words (a letter's own needs the rich typing editor, later)
                 chosenWords()?.let { box -> HomeText(box, w); RibbonDivider(w) }
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
+                if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { relaying = false; layouts = true }
+                // Layout (PowerPoint's): the slide on another of the deck's layouts, its words and what is on it kept
+                if (deck?.relaid != null && deck?.layouts?.isNotEmpty() == true && entry.layout < 0) RibbonButton("Layout", w, R.drawable.ic_view_grid) { relaying = true; layouts = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
                 RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
@@ -1441,7 +1444,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(end = 12.dp)) {
                                     if (full != null) itemsIndexed(full.layouts) { l, layout ->
                                         Column(Modifier.width(132.dp).clickable {
-                                            val ee = edit ?: return@clickable; val c = (chosen ?: -1) + 1
+                                            val ee = edit ?: return@clickable
+                                            if (relaying) { val uid = ee.order.getOrNull(chosen ?: -1)?.uid ?: return@clickable
+                                                change(ee.copy(relayout = ee.relayout + (uid to l))); layouts = false; relaying = false; WriterLog.i("Slides: layout ${layout.name}"); return@clickable }
+                                            val c = (chosen ?: -1) + 1
                                             change(ee.copy(order = ee.order.toMutableList().apply { add(c.coerceIn(0, size), SlidesEdit.Entry(-1, ee.next(), l)) }))
                                             chosen = c; layouts = false; WriterLog.i("Slides: a new slide (${layout.name})")
                                         }) {

@@ -497,6 +497,8 @@ internal object SlidesOdpEdit {
 
         /** Page [page] (showing [slide] as read, [uid] in the edit) with its edits. */
         fun apply(page: Element, slide: Slide, uid: Int) {
+            // Home › Layout: the page on the master page chosen
+            edit.relayout[uid]?.let { k -> page.setAttributeNS(DRAW, "draw:master-page-name", deck.layouts[k].part) }
             fun at(id: String): Element? { var el: Element? = page; for (k in id.removePrefix("o").split('.')) el = el?.kids()?.getOrNull(k.toIntOrNull() ?: return null); return el }
             // found before anything moves: the places name the page as it was read
             val texts = edit.texts.filterKeys { it.first == uid }.mapNotNull { (k, v) -> at(k.second)?.let { it to v } }

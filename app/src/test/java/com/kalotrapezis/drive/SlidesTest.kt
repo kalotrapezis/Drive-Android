@@ -291,6 +291,38 @@ class SlidesTest {
         }
     }
 
+    /** Home › Layout: the title slide put on another layout — its words kept, its title where that layout puts it, saved and read back. */
+    @Test fun `a slide's layout changed saved`() {
+        // LibreOffice's .odp of the deck has a master page for each PowerPoint layout
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val converted = if (!lo) null else scratchDir("lo").let { dir ->
+            ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, File("src/test/resources/slides.pptx").path).redirectErrorStream(true).start().waitFor()
+            File(dir, "slides.odp").takeIf { it.exists() } }
+        for (src in listOfNotNull(File("src/test/resources/slides.pptx"), File("src/test/resources/slides.odp"), converted)) {
+            val name = src.path; val deck = Slides.read(src)
+            fun title(s: Slide) = s.items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Tetra Slides" }
+            if (src.extension == "odp") {
+                // an .odp page's boxes keep their own places (the master gives its looks): the page names the master chosen
+                fun master(f: File) = java.util.zip.ZipFile(f).use { z -> Regex("""<draw:page\b[^>]*draw:master-page-name="([^"]*)"""").find(String(z.getInputStream(z.getEntry("content.xml")).readBytes()))?.groupValues?.get(1) }
+                val k = deck.layouts.indexOfFirst { it.part != master(src) }.takeIf { it >= 0 } ?: continue
+                val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("layout-${src.name}")
+                SlidesOdpEdit.save(src, deck, SlidesEdit.start(deck).copy(relayout = mapOf(0 to k)), out)
+                assertEquals(name, deck.layouts[k].part, master(out)); assertEquals(name, "Tetra Slides", words(title(Slides.read(out).slides[0])))
+                continue
+            }
+            // a layout whose title stands elsewhere than the title slide's
+            val k = deck.layouts.indices.firstOrNull { k -> deck.relaid!!(0, k)?.let { s -> Math.abs(title(s).y - title(deck.slides[0]).y) > 20f } == true }
+            if (k == null) { println("$name: no layout with the title elsewhere"); continue }
+            val moved = title(deck.relaid!!(0, k)!!)
+            val e = SlidesEdit.start(deck).copy(relayout = mapOf(0 to k))
+            assertEquals(name, moved.y, title(SlidesEdit.view(deck, e).slides[0]).y, 1f)
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("layout-${src.name}")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val saved = Slides.read(out)
+            assertEquals(name, moved.y, title(saved.slides[0]).y, 1f); assertEquals(name, "A test deck, 16 Oct 2026", words(saved.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("A test") == true }))
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

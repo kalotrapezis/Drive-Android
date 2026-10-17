@@ -71,7 +71,7 @@ How to write here:
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
       Print titles (420575e), Header and footer (b66a9cb),
-      engine step 6 for .ods (rich text) (95a08d5), Home's alignment. Checks at a925139: unit
+      engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF).
@@ -857,6 +857,9 @@ what is not already above:
       (style:rotation-angle) and indent (paragraph margin, 0.2965 cm a level as LibreOffice turns Excel's) and reads the indent; a cell's
       angle is Excel's number everywhere now (an .ods angled down was read negative). `alignment xlsx/ods` (LibreOffice's conversions);
       emulator: Alpha angled, Βήτα indented twice.
+      Clear ▸ done (office-F session, 18 Oct): Selection › Clear ▾ — Excel's Clear all, formats, contents, notes, hyperlinks (contents
+      and formats as cell changes, one step of Undo; notes and links one change to the file, Words'-dialog parts `SheetNotes`/`SheetLinks`
+      cell by cell). Emulator: A2's note cleared, B3 cleared of all (the total recalculated). No new logic beyond those tested parts.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);

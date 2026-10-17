@@ -800,10 +800,35 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * that comes by itself, as Writer's Selection tab does.
      */
     /** Clear: the chosen cells' contents gone, their looks kept (one step of Undo). */
-    fun clearCells() {
+    /** Excel's Clear ▾ on the chosen cells: [what] "contents", "formats", "all" (both), "notes" or "links" (changes to the file). */
+    fun clearCells(what: String = "contents") {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        val keys = targets(s, l); val i = index
         val changes = LinkedHashMap<Long, SheetCell>()
-        for (k in targets(s, l)) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
+        when (what) {
+            "contents" -> for (k in keys) { val old = s.cells[k] ?: continue; if (old.kind != SheetKind.Empty || old.formula != null) changes[k] = SheetInput.cell("", old, old.style, "General", b.format) }
+            "formats" -> changes += SheetLook.change(b, s, keys) { _, _ -> b.styles.getOrNull(0) ?: SheetStyle() }
+            "all" -> for (k in keys) { val old = s.cells[k] ?: continue; changes[k] = SheetCell("", SheetKind.Empty, style = 0, note = old.note, link = old.link) }
+            else -> {
+                // notes and links live in the file's own parts: one change to it, a step for each cell
+                val cells = keys.filter { k -> s.cells[k]?.let { if (what == "notes") it.note != null else it.link != null } == true }
+                if (cells.isEmpty()) { message = if (what == "notes") "No notes here" else "No links here"; return }
+                fileStep(if (what == "notes") "notes cleared" else "links cleared", { baked, next, bb ->
+                    var from = baked
+                    cells.forEachIndexed { n, k -> val to = if (n == cells.lastIndex) next else File(next.parentFile, "${next.name}.$n.part")
+                        val r = Sheet.row(k); val c = Sheet.col(k)
+                        when {
+                            bb.kind == "xlsx" && what == "notes" -> SheetNotes.xlsx(from, to, bb.parts.getValue("$i"), r, c, "", null)
+                            bb.kind == "xlsx" -> SheetLinks.xlsx(from, to, bb.parts.getValue("$i"), r, c, null)
+                            bb.kind == "ods" && what == "notes" -> SheetNotes.ods(from, to, i, r, c, "", null)
+                            bb.kind == "ods" -> SheetLinks.ods(from, to, i, r, c, null)
+                            else -> error("A CSV file keeps no notes or links.")
+                        }
+                        if (from != baked) from.delete(); from = to }
+                })
+                return
+            }
+        }
         if (changes.isNotEmpty()) { history.apply(b, index, changes); version++ }
     }
 
@@ -900,7 +925,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         if (editing) RibbonButton("Cut", w, R.drawable.ic_content_cut) { copyCells(cut = true) }
                         RibbonButton("Copy", w, R.drawable.ic_copy) { copyCells(cut = false) }
                         if (editing) RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste() }
-                        if (editing) RibbonButton("Clear", w, R.drawable.ic_delete) { clearCells() }
+                        // Excel's Clear ▾
+                        if (editing) Box { var open by remember { mutableStateOf(false) }
+                            RibbonButton("Clear", w, R.drawable.ic_delete) { open = true }
+                            DropdownMenu(open, { open = false }) {
+                                listOf("Clear all" to "all", "Clear formats" to "formats", "Clear contents" to "contents", "Clear notes" to "notes", "Clear hyperlinks" to "links")
+                                    .forEach { (name, what) -> if (b.kind != "csv" || what == "contents" || what == "all") DropdownMenuItem(text = { Text(name) }, onClick = { open = false; clearCells(what) }) } } }
                         // Words' Copy formatting / Paste formatting (Home's Format painter in Excel): one cell's look onto the cells chosen
                         if (editing) { RibbonDivider(w)
                             RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) { copiedLook = now; message = "Formatting copied — choose cells, then Paste formatting" }

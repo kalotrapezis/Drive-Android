@@ -172,7 +172,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var copiedLook by remember { mutableStateOf<SheetStyle?>(null) } // Copy formatting (Words' pair): the look Paste formatting puts on
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
-    var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) } // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
+    var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
+    var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     val history = remember { SheetHistory() }
@@ -371,6 +372,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      */
     fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, then: (Workbook) -> Unit = {}) {
         val b = book ?: return; val i = index
+        // one at a time: a second started before the first is done would start from the file without it
+        if (saving) { message = "One moment — the last change is still being made"; return }
         val from = work ?: file ?: return
         commit(false)
         saving = true
@@ -414,6 +417,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
             }
         })
+    }
+
+    /** A column's width or a row's height ([px] sheet pixels; null: as it is) and hiding it ([hidden]): [cols] or rows [from]..[to], the sheet's. */
+    fun resize(cols: Boolean, from: Int, to: Int, px: Float?, hidden: Boolean?) {
+        val i = index
+        fileStep(listOfNotNull(px?.let { "sized" }, hidden?.let { if (it) "hidden" else "shown" }).joinToString(" and ") + " ${to - from + 1} ${if (cols) "columns" else "rows"}", { baked, next, b ->
+            when (b.kind) { "xlsx" -> SheetSizes.xlsx(baked, next, b.parts.getValue("$i"), cols, from, to, px, hidden); "ods" -> SheetSizes.ods(baked, next, i, cols, from, to, px, hidden)
+                else -> error("A CSV file keeps no widths: save it as a workbook first.") } })
+    }
+    /** AutoFit (Excel's): column [c] as wide as its longest words, or row [r] as tall as its biggest letters (sheet pixels). */
+    fun fitted(s: Sheet, b: Workbook, cols: Boolean, at: Int): Float {
+        val paint = android.text.TextPaint()
+        var most = 0f
+        if (cols) for (r in 0 until minOf(s.rows, 5000)) { val cell = s[r, at] ?: continue; val st = s.look(cell.style, b.styles) ?: SheetStyle()
+            paint.textSize = st.size * 4 / 3; paint.isFakeBoldText = st.bold; most = maxOf(most, cell.text.split('\n').maxOf { paint.measureText(it) }) }
+        else for (c in 0 until minOf(s.cols, 1000)) { val cell = s[at, c] ?: continue; val st = s.look(cell.style, b.styles) ?: SheetStyle()
+            most = maxOf(most, st.size * 4 / 3 * 1.3f * (cell.text.count { it == '\n' } + 1)) }
+        return if (cols) maxOf(most + 10f, 20f) else maxOf(most + 4f, 15f)
     }
 
     /** Home › Merge & centre (Excel's): [g] (the sheet's rows and columns) one cell, its words centred; or ([on] false) its cells again. */
@@ -771,6 +792,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Insert left", w, R.drawable.ic_add_column_left) { header = null; shift(false, col, 1) }
                                 RibbonButton("Insert right", w, R.drawable.ic_add_column_right) { header = null; shift(false, col + 1, 1) }
                                 RibbonButton("Delete", w, R.drawable.ic_delete_column) { header = null; shift(false, col, -1) }
+                                // Excel's Format: its width (typed, or AutoFit), hidden; the hidden ones beside it shown again
+                                RibbonDivider(w)
+                                RibbonButton("Width", w, R.drawable.ic_aspect_ratio) { sizing = true to col }
+                                RibbonButton("AutoFit", w, R.drawable.ic_fit_page) { header = null; resize(true, col, col, fitted(s, b, true, col), null) }
+                                RibbonButton("Hide", w, R.drawable.ic_visibility_off) { header = null; resize(true, col, col, null, true) }
+                                val near = listOf(col - 1, col + 1).filter { it >= 0 && it in s.hiddenCols }
+                                if (near.isNotEmpty()) RibbonButton("Unhide", w, R.drawable.ic_visibility) { header = null
+                                    val lo = generateSequence(near.min()) { it - 1 }.takeWhile { it >= 0 && it in s.hiddenCols }.last(); val hi = generateSequence(near.max()) { it + 1 }.takeWhile { it in s.hiddenCols }.last()
+                                    resize(true, lo, hi, null, false) }
                             }
                         }
                         shown.startsWith("Row") && h != null -> {
@@ -784,6 +814,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Insert above", w, R.drawable.ic_add_row_above) { header = null; shift(true, sheetRow, 1) }
                                 RibbonButton("Insert below", w, R.drawable.ic_add_row_below) { header = null; shift(true, sheetRow + 1, 1) }
                                 RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
+                                RibbonDivider(w)
+                                RibbonButton("Height", w, R.drawable.ic_aspect_ratio) { sizing = false to sheetRow }
+                                RibbonButton("AutoFit", w, R.drawable.ic_fit_page) { header = null; resize(false, sheetRow, sheetRow, fitted(s, b, false, sheetRow), null) }
+                                RibbonButton("Hide", w, R.drawable.ic_visibility_off) { header = null; resize(false, sheetRow, sheetRow, null, true) }
+                                val near = listOf(sheetRow - 1, sheetRow + 1).filter { it >= 0 && it in s.hiddenRows }
+                                if (near.isNotEmpty()) RibbonButton("Unhide", w, R.drawable.ic_visibility) { header = null
+                                    val lo = generateSequence(near.min()) { it - 1 }.takeWhile { it >= 0 && it in s.hiddenRows }.last(); val hi = generateSequence(near.max()) { it + 1 }.takeWhile { it in s.hiddenRows }.last()
+                                    resize(false, lo, hi, null, false) }
                             }
                         }
                         shown == "Selection" -> {
@@ -1170,6 +1208,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
             }
         })
+    // a column's Width or a row's Height, typed in Words' unit (cm or inches)
+    sizing?.let { (cols, at) -> val s = sheet
+        val now = s?.let { if (cols) it.width(at) else it.height(at) } ?: 0f
+        var typed by remember(sizing) { mutableStateOf("%.2f".format(java.util.Locale.ROOT, now * 3 / 4 / WriterUnits.pt)) }
+        AlertDialog(onDismissRequest = { sizing = null }, title = { Text(if (cols) "Column width" else "Row height") },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(WriterUnits.name) }, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)) },
+            confirmButton = { TextButton(onClick = { val v = typed.replace(',', '.').toFloatOrNull()
+                if (v != null && v > 0f) { sizing = null; header = null; resize(cols, at, at, v * WriterUnits.pt * 4 / 3, null) } }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { sizing = null }) { Text("Cancel") } }) }
     // Insert › Chart: Words' chart editor; done, the chart on the sheet to the right of the cells (Excel's default size, 8 × 15 cells)
     charting?.let { (g, start) -> ChartDialog(start, false, { charting = null }) { ch -> charting = null; val i = index
         fileStep("chart put on", { baked, next, b -> when (b.kind) {

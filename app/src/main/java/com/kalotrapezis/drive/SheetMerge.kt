@@ -40,11 +40,11 @@ internal object SheetMerge {
         }
     }
 
-    private const val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
-    private fun kids(e: Element, vararg names: String) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }.filter { it.namespaceURI == T && it.localName in names }
-    private fun rowsOf(e: Element): List<Element> = kids(e, "table-row", "table-header-rows", "table-row-group", "table-rows").flatMap { if (it.localName == "table-row") listOf(it) else rowsOf(it) }
+    internal const val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    internal fun kids(e: Element, vararg names: String) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }.filter { it.namespaceURI == T && it.localName in names }
+    internal fun rowsOf(e: Element): List<Element> = kids(e, "table-row", "table-header-rows", "table-row-group", "table-rows").flatMap { if (it.localName == "table-row") listOf(it) else rowsOf(it) }
     /** A run of repeated rows or cells cut so place [i] is an element of its own; that element (made, past the end). */
-    private fun at(list: () -> List<Element>, i: Int, attr: String, make: () -> Element): Element {
+    internal fun at(list: () -> List<Element>, i: Int, attr: String, make: () -> Element): Element {
         var n0 = 0
         for (e in list()) {
             val n = e.getAttributeNS(T, attr).toIntOrNull() ?: 1

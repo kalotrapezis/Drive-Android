@@ -132,6 +132,36 @@ class SheetSaveTest {
         }
     }
 
+    /** Column width, row height, Hide and Unhide (Excel's cols and rows, LibreOffice's column and row styles and visibility). */
+    @Test fun `widths heights and hidden saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("sizes").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val part = Sheets.read(f, ',', '.').parts["0"]
+            fun step(cols: Boolean, from: Int, to: Int, px: Float?, hidden: Boolean?) {
+                val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetSizes.xlsx(f, next, part!!, cols, from, to, px, hidden) else SheetSizes.ods(f, next, 0, cols, from, to, px, hidden)
+                f = next
+            }
+            step(true, 2, 2, 150f, null); step(true, 3, 3, null, true); step(false, 2, 2, 40f, null); step(false, 3, 3, null, true)
+            fun check(file: File, how: String, d: Boolean) {
+                val s = Sheets.read(file, ',', '.').sheet(0)
+                // LibreOffice reads Excel's width in characters with its own character's width (150 px → 159)
+                assertEquals(how, 150f, s.width(2), if (how.startsWith("LibreOffice")) 12f else 2f); assertEquals(how, 40f, s.height(2), 2f); assertTrue(how, 3 in s.hiddenRows)
+                assertEquals(how, d, 3 in s.hiddenCols); assertEquals(how, "Alpha", s[1, 0]?.text); assertEquals(how, "Βήτα", s[2, 0]?.text)
+            }
+            check(f, "sized $name", true)
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", true)
+            }
+            step(true, 3, 3, null, false)
+            check(f, "column D shown again, $name", false)
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

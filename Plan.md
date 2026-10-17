@@ -704,6 +704,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       with several rows or columns chosen (the fill handle's own `fillCells`: series and formulas carried as the handle carries them).
       Insert › Symbol: Words' `SymbolDialog`, put in where one types in the cell (typing begun with its words). Emulator: A1's yellow on
       A7:B7; € in C9.
+      Column width and row height, Hide and Unhide done (office-F session, 17 Oct): a column's or row's tab (its letter or number tapped)
+      › Width / Height (typed in Words' unit, cm or inches), AutoFit (its longest words, its biggest letters), Hide, and Unhide when one
+      beside it is hidden — a change to the file (`SheetSizes`: Excel's `<cols>` runs cut and changed, a row's ht/customHeight/hidden, a
+      row made where the sheet has none; LibreOffice's column and row styles and table:visibility, repeated ones cut first). Fixed on the
+      way: two file changes started together (the second from the file without the first) — now one at a time. `widths heights and hidden
+      saved` (both formats; LibreOffice reads Excel's width in characters a few % wider — its own character); emulator: C made 4 cm, hidden,
+      shown again. Not yet: hiding and showing sheets.
 - [~] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

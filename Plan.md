@@ -560,7 +560,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       columns are `SlidesEdit.rowAdded/columnAdded/rowTaken/columnTaken` on the table's cells. `a table's rows and columns`; emulator:
       2×2 made 3×3, saved — LibreOffice opens it. Not yet: a deck's own tables (their rows and columns are the file's XML: later), merge
       and split, borders, table styles.
-- [ ] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
+- [x] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
+      Done 17 Oct (office-D session): the chosen box's tab › Layout (PowerPoint's Format Shape › Text Box): inner margins in Words' unit,
+      "Wrap the words in the box", Columns 1–6 and the room between them. Saved as PowerPoint's bodyPr lIns…bIns, wrap, numCol/spcCol and
+      LibreOffice's fo:padding-*, fo:wrap-option, style:columns; read back from both (an .odp's columns and no-wrap were not read before).
+      Columns are drawn by the shared engine: the words laid a column wide, going on into the next where the box's room ends
+      (`SlidesText.columns`, splitting Words' laid pieces by line). **Shared piece:** Words' engine (`OfficePages.stack`, `Block`) and
+      `WriterUnits`. `a box's layout saved` (both formats, LibreOffice's conversions keep all of it); emulator: a box in two columns.
 - [x] **Design**: the theme's fonts (Words' Fonts), besides its colours above (office-C session, 17 Oct, with B › Design).
 - [x] **Review**: Read aloud (a slide's words, or its notes), as Words'.
       Done 17 Oct (office-C session): Review › Read aloud — Words' `ReadAloud` (Android's speech, each paragraph in its own language)

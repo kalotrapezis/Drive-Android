@@ -286,10 +286,15 @@ internal object SlidesOdpEdit {
                     }
                 }
             }
-            if (l.anchor != null || l.autofit != null) {
+            if (l.anchor != null || l.autofit != null || l.insets != null || l.wrap != null || l.cols != null) {
                 val pr = s.a(PRES, "style-name")
-                val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "box ${l.anchor} ${l.autofit}") { st ->
+                val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "box ${l.anchor} ${l.autofit} ${l.insets} ${l.wrap} ${l.cols} ${l.colGap}") { st ->
                     val g = props(st, "graphic-properties")
+                    // Layout: LibreOffice's Text attributes — spacing to borders, word wrap, columns
+                    l.insets?.let { m -> listOf("left", "top", "right", "bottom").forEachIndexed { i, side -> g.setAttributeNS(FO, "fo:padding-$side", String.format(Locale.ROOT, "%.2fpt", m[i])) } }
+                    l.wrap?.let { g.setAttributeNS(FO, "fo:wrap-option", if (it) "wrap" else "no-wrap") }
+                    l.cols?.let { n -> g.kids().filter { it.localName == "columns" }.forEach { g.removeChild(it) }
+                        if (n > 1) g.appendChild(st.ownerDocument.createElementNS(STYLE, "style:columns").apply { setAttributeNS(FO, "fo:column-count", "$n"); setAttributeNS(FO, "fo:column-gap", String.format(Locale.ROOT, "%.2fpt", l.colGap ?: 0f)) }) }
                     l.anchor?.let { g.setAttributeNS(DRAW, "draw:textarea-vertical-align", when (it) { 'c' -> "middle"; 'b' -> "bottom"; else -> "top" }) }
                     l.autofit?.let { f ->
                         g.setAttributeNS(DRAW, "draw:auto-grow-height", if (f == 'g') "true" else "false")

@@ -438,6 +438,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var hereComment by remember { mutableStateOf<String?>(null) } // the comment tapped (its marker or card)
     var rotating by remember { mutableStateOf(false) } // Arrange › Rotate: Words' rotate dialog
     var sizing by remember { mutableStateOf(false) } // Arrange › Size and position: the numbers
+    var boxLayout by remember { mutableStateOf<SlideText?>(null) } // a text box's Layout: its words' margins, wrap and columns as they are
     var shaping by remember { mutableStateOf(false) } // Shape options: Words' page of a shape's styles, fill, outline, size, angle and alt text
     var alting by remember { mutableStateOf(false) } // Alt text of what is not a shape (a picture, a chart, a table, a text box)
     var drawing by remember { mutableStateOf(false) } // Draw › Draw on slide: Words' drawing page over the chosen slide
@@ -895,6 +896,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         RibbonButton("Flip up and down", w, R.drawable.ic_flip) { turn { it.copy(flipV = !it.flipV) } }
                     }
                     RibbonButton("Size and position", w, R.drawable.ic_aspect_ratio) { sizing = true }
+                    // a box with words: PowerPoint's Format Shape › Text Box (inner margins, wrap, columns)
+                    (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null }?.let { t -> RibbonButton("Layout", w, R.drawable.ic_margin) { boxLayout = t } }
                     // a video: played in its frame on the slide
                     it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
@@ -1776,6 +1779,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (sizing && arranged != null) SizeAndPosition(arranged, { sizing = false }) { x, y, ww, hh -> sizing = false; reframe { listOf(x, y, ww, hh) } }
+                    boxLayout?.let { t -> TextBoxLayout(t, { boxLayout = null }) { m, wrap, n, gap -> boxLayout = null; restyle { it.copy(insets = m, wrap = wrap, cols = n, colGap = gap) }; WriterLog.i("Slides: a box's layout ($n columns)") } }
                     if (drawing) base?.let { d -> view?.slides?.getOrNull(chosen ?: -1)?.let { sl ->
                         DrawDialog(d.width, { drawing = false }, slide = Triple(d.width, d.height) { c -> Slides.draw(c, d, sl, 1f) }) { png, ww, hh, at, _ ->
                             drawing = false
@@ -2649,6 +2653,34 @@ internal fun ThemeCard(t: SlideTheme, chosen: Boolean, modifier: Modifier = Modi
 /** Changes not yet saved, kept when the app went to the background: one per presentation (by its path), in the app's storage. */
 private fun slideDraft(context: android.content.Context, file: File) =
     File(File(context.filesDir, "slide-drafts"), "${file.absolutePath.hashCode().toUInt()}.${file.extension}")
+
+/** A text box's Layout (PowerPoint's Format Shape › Text Box, LibreOffice's Text attributes): inner margins in the user's unit, wrap, columns. */
+@Composable
+private fun TextBoxLayout(t: SlideText, dismiss: () -> Unit, set: (List<Float>, Boolean, Int, Float) -> Unit) {
+    val margins = remember { t.insets.map { mutableStateOf(WriterUnits.text(it)) } }
+    var wrap by remember { mutableStateOf(t.wrap) }
+    var cols by remember { mutableStateOf(t.cols.coerceAtLeast(1)) }
+    var gap by remember { mutableStateOf(WriterUnits.text(if (t.cols > 1) t.colGap else 7.2f)) }
+    fun num(s: String) = s.replace(',', '.').toFloatOrNull()
+    val ok = margins.all { (num(it.value) ?: -1f) >= 0f } && (num(gap) ?: -1f) >= 0f
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Layout") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Text("Inner margins (${WriterUnits.name})", style = MaterialTheme.typography.labelLarge)
+            listOf("Left", "Top", "Right", "Bottom").chunked(2).forEachIndexed { row, pair -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEachIndexed { k, label -> val m = margins[row * 2 + k]
+                    androidx.compose.material3.OutlinedTextField(m.value, { m.value = it }, label = { Text(label) }, singleLine = true, modifier = Modifier.weight(1f),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)) } } }
+            Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(wrap, { wrap = it }); Text("Wrap the words in the box") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Columns", modifier = Modifier.weight(1f))
+                SizeStepper("$cols", MaterialTheme.colorScheme.onSurface, cols > 1, cols < 6, { cols-- }, { cols++ })
+            }
+            if (cols > 1) androidx.compose.material3.OutlinedTextField(gap, { gap = it }, label = { Text("Between columns (${WriterUnits.name})") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+        } },
+        confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { set(margins.map { WriterUnits.toPt(num(it.value)!!) }, wrap, cols, WriterUnits.toPt(num(gap)!!)) }) { Text("OK") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
+}
 
 /** Arrange › Size and position (PowerPoint's): [item]'s width, height and place from the slide's top left, in Words' unit (cm or inches); the proportions kept or not. */
 @Composable

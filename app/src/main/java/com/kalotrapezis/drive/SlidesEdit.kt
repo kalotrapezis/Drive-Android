@@ -44,10 +44,12 @@ internal object SlidesEdit {
         /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
         /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
         /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null,
-        /** Home's superscript and subscript (Words'): every letter raised (1), lowered (−1) or on the line (0) */ val script: Int? = null) {
+        /** Home's superscript and subscript (Words'): every letter raised (1), lowered (−1) or on the line (0) */ val script: Int? = null,
+        /** a text box's Layout: its inner margins (pt: left, top, right, bottom), whether its words wrap, its columns and the room between them */
+        val insets: List<Float>? = null, val wrap: Boolean? = null, val cols: Int? = null, val colGap: Float? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -92,7 +94,8 @@ internal object SlidesEdit {
             val look = l.drop?.let { d -> when (i) { first -> look0.copy(left = d, firstLine = 0f, after = 0f); first + 1 -> if (l.dropRest) look0.copy(firstLine = 0f, before = 0f) else null; else -> null } } ?: look0
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.text?.first()?.isDigit() == true, p.level)),
                 l.spacing?.let { look.copy(lineMultiple = it, lineExact = null) } ?: look, bullet, p.base)
-        }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink, if (l.warp == null) t.warp else TextWarp.entries.firstOrNull { it.word == l.warp })
+        }), l.anchor ?: t.anchor, l.insets?.toFloatArray() ?: t.insets, t.scale, l.wrap ?: t.wrap, l.autofit?.let { it == 's' } ?: t.shrink, if (l.warp == null) t.warp else TextWarp.entries.firstOrNull { it.word == l.warp },
+            l.cols ?: t.cols, l.colGap ?: t.colGap)
     }
     /** A run's own text effects, as Word writes them or LibreOffice: what WordArt's replace. */
     private val EFFECTS = Regex("""<w14:(glow|shadow|textOutline)\b[\s\S]*?</w14:\1>|\s?style:text-outline="[^"]*"|\s?fo:text-shadow="[^"]*"""")
@@ -185,7 +188,7 @@ internal object SlidesEdit {
                 val rs = runs.map { (r, t) -> (r ?: DocRun("", sizePt = 18f)).copy(text = t).let { if (item.hint) it.copy(color = 0) else it } }
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
-            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp) }
+            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap) }
                 ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
         }
         // what was put on it: pictures and shapes, over the rest
@@ -417,6 +420,10 @@ internal object SlidesEdit {
         }
         val bodyPr = body.kids().firstOrNull { it.localName == "bodyPr" } ?: a("bodyPr").also { body.insertBefore(it, body.firstChild) }
         l.anchor?.let { bodyPr.setAttribute("anchor", when (it) { 'c' -> "ctr"; 'b' -> "b"; else -> "t" }) }
+        // Layout: PowerPoint's Format Shape › Text Box — inner margins, Wrap text in shape, Columns
+        l.insets?.let { m -> listOf("lIns", "tIns", "rIns", "bIns").forEachIndexed { i, n -> bodyPr.setAttribute(n, "${Math.round(m[i] * 12700)}") } }
+        l.wrap?.let { bodyPr.setAttribute("wrap", if (it) "square" else "none") }
+        l.cols?.let { n -> if (n > 1) { bodyPr.setAttribute("numCol", "$n"); bodyPr.setAttribute("spcCol", "${Math.round((l.colGap ?: 0f) * 12700)}") } else { bodyPr.removeAttribute("numCol"); bodyPr.removeAttribute("spcCol") } }
         // WordArt's bend: PowerPoint's preset text warp, first in the body's settings
         l.warp?.let { w -> bodyPr.kids().filter { it.localName == "prstTxWarp" }.forEach { bodyPr.removeChild(it) }
             if (w.isNotEmpty()) { place(bodyPr, a("prstTxWarp", "prst" to w).also { it.appendChild(a("avLst")) }, BODY); bodyPr.setAttribute("fromWordArt", "1") } else bodyPr.removeAttribute("fromWordArt") }

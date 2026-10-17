@@ -82,6 +82,27 @@ internal object SlidesText {
     /** How tall [t] stands in a box [w] wide, its insets too (a table's row grows to it). */
     fun height(t: SlideText, w: Float) = block(t, w).height + t.insets[1] + t.insets[3]
 
+    /** [b]'s lines in [n] columns [step] apart (a column's width and the gap), each going on into the next below [room]; the last takes the rest. */
+    fun columns(b: Block, n: Int, step: Float, room: Float): Block {
+        val out = ArrayList<LaidPage.Piece>(); var col = 0; var shift = 0f; var tallest = 0f
+        for (p in b.pieces) {
+            if (p.turn != 0) { out += p; continue }
+            val top = p.layout.getLineTop(p.firstLine) / 20f
+            var from = p.firstLine
+            for (line in p.firstLine..p.lastLine) {
+                val y = p.y + (p.layout.getLineTop(line) / 20f - top); val foot = p.y + (p.layout.getLineBottom(line) / 20f - top)
+                if (foot - shift > room && col < n - 1 && y - shift > 0f) {
+                    if (line > from) out += LaidPage.Piece(p.layout, from, line - 1, p.x + col * step, p.y + (p.layout.getLineTop(from) / 20f - top) - shift)
+                    col++; shift = y; from = line
+                }
+                tallest = maxOf(tallest, foot - shift)
+            }
+            out += LaidPage.Piece(p.layout, from, p.lastLine, p.x + col * step, p.y + (p.layout.getLineTop(from) / 20f - top) - shift)
+        }
+        // shortcut: a paragraph's shading and borders (rare in a slide's columns) stay where one column would put them
+        return Block(tallest, out, b.boxes, b.lines, b.across)
+    }
+
     /** [t] in its box: from the top, the middle or the bottom; made smaller until it fits when it shrinks on overflow. */
     fun draw(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
         // WordArt bent: its words along the bend, in its first letters' look (as Words draws a document's)
@@ -93,10 +114,14 @@ internal object SlidesText {
             return
         }
         val room = h - t.insets[1] - t.insets[3]
+        // in columns: laid as wide as one, flowing into the next where the box's room ends (PowerPoint's way)
+        val cols = if (t.wrap) t.cols.coerceAtLeast(1) else 1
+        val colW = (w - t.insets[0] - t.insets[2] - t.colGap * (cols - 1)) / cols
+        fun laid(k: Float) = if (cols == 1) block(t, w, k) else columns(block(t, colW + t.insets[0] + t.insets[2], k), cols, colW + t.colGap, room)
         // shrink on overflow: a size a twentieth smaller each time, until the words fit (no smaller than a third)
         var k = 1f
-        var text = block(t, w)
-        while (t.shrink && text.height > room && k > 0.35f) { k -= 0.05f; text = block(t, w, k) }
+        var text = laid(k)
+        while (t.shrink && text.height > room && k > 0.35f) { k -= 0.05f; text = laid(k) }
         TextBoxDrawable.framed(c, text, x, y, w, h, t.insets[0], t.insets[1], t.insets[2], t.insets[3], t.anchor, false)
     }
 }

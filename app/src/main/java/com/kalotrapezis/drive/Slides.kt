@@ -44,7 +44,7 @@ internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIn
 }
 /** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box; [warp]: WordArt's bend (Words' TextWarp). */
 internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false,
-    val warp: TextWarp? = null)
+    val warp: TextWarp? = null, /** its columns (PowerPoint's numCol, LibreOffice's column-count) and the room between them (pt) */ val cols: Int = 1, val colGap: Float = 0f)
 
 /**
  * A shape's own outline (DrawingML's custGeom): its moves (0), lines (1), curves (2) and closes (4), the points from 0 to 1
@@ -628,7 +628,8 @@ internal object Slides {
             }
             return SlideText(SlidePara.numbered(out), anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
                 bodyPr.any { it.kid("normAutofit") != null },
-                bodyPr.firstNotNullOfOrNull { it.kid("prstTxWarp")?.attr("prst") }?.let { w -> TextWarp.entries.firstOrNull { it.word == w } })
+                bodyPr.firstNotNullOfOrNull { it.kid("prstTxWarp")?.attr("prst") }?.let { w -> TextWarp.entries.firstOrNull { it.word == w } },
+                bodyAttr("numCol")?.toIntOrNull()?.coerceIn(1, 16) ?: 1, bodyAttr("spcCol")?.toFloatOrNull()?.div(EMU) ?: 0f)
         }
     }
 

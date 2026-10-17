@@ -489,6 +489,35 @@ class SlidesTest {
     }
 
     /** Insert › Video (asked 17 Oct): a film from the phone kept in the deck, and an online one linked, each with its picture; saved and read back. */
+    /** A text box's Layout (B, 17 Oct): inner margins, wrap and columns saved as PowerPoint's and LibreOffice's, read back, through LibreOffice. */
+    @Test fun `a box's layout saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = deck.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((1 to box.anim!!) to SlidesEdit.Look(insets = listOf(14f, 10f, 20f, 6f), cols = 2, colGap = 18f)))
+            fun check(d: Deck, how: String) {
+                val t = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!
+                listOf(14f, 10f, 20f, 6f).forEachIndexed { i, m -> assertEquals("$how margin $i", m, t.insets[i], 0.2f) }
+                assertEquals(how, 2, t.cols); assertEquals(how, 18f, t.colGap, 0.2f)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("layout-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+            // not wrapped: saved as such
+            val e2 = SlidesEdit.start(deck).copy(looks = mapOf((1 to box.anim!!) to SlidesEdit.Look(wrap = false)))
+            val out2 = File("build/office-roundtrip").resolve("nowrap-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e2, out2) else SlidesEdit.save(src, deck, e2, out2)
+            assertEquals(name, false, Slides.read(out2).slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!.wrap)
+        }
+    }
+
     /** Table tab (Words'): rows and columns put in and taken away round a cell of a table put on a slide, the words staying in their cells. */
     @Test fun `a table's rows and columns`() {
         val t = SlidesEdit.Added("t", 0f, 0f, 200f, 100f, prst = "table", rows = 2, cols = 2, cells = listOf("a", "b", "c", "d"))

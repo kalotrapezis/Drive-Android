@@ -196,6 +196,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
     var figureSizing by remember { mutableStateOf<SheetDrawing?>(null) } // a drawing's Size: its width and height asked
+    var sourcing by remember { mutableStateOf(false) } // Insert › Source: Words' source dialog
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1151,6 +1152,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Picture", w, R.drawable.ic_gallery) { pickPicture.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                             if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
                             if (b.kind != "csv") RibbonButton("Shape", w, R.drawable.ic_category) { shaping = true }
+                            // References: where the data came from — Words' source dialog, the reference in APA 7 on the Sources sheet
+                            if (b.kind != "csv") RibbonButton("Source", w, R.drawable.ic_menu_book) { sourcing = true }
                             // References: a first sheet listing every sheet as a link (made again when there is one)
                             if (b.kind != "csv" && b.tabs.size > 1) RibbonButton("Contents sheet", w, R.drawable.ic_toc) {
                                 fileStep("contents sheet", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetContents.apply(baked, next, bb, sym.decimalSeparator, sym.groupingSeparator) } }) { views.clear(); header = null; index = 0 } }
@@ -1773,6 +1776,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val (w, h) = if (kind == "line" || kind.startsWith("lineArrow")) 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(kind)) 108f to 54f else 72f to 72f
         fileStep("shape put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.shapeXlsx(baked, next, bb.parts.getValue("$i"), r, c, w, h, kind, fill, line)
             else SheetChart.shapeOds(baked, next, i, r, c, w, h, kind, fill, line) }) } }
+    // Insert › Source: Words' source dialog; the reference (APA 7) onto the Sources sheet, which is shown
+    if (sourcing) SourceDialog(null, { sourcing = false }) { src -> sourcing = false
+        fileStep("source added", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSources.add(baked, next, bb, CiteStyle.APA.entry(src), sym.decimalSeparator, sym.groupingSeparator) } }) { nb ->
+            views.clear(); header = null; index = nb.tabs.indexOfFirst { it.name.equals(SheetSources.NAME, true) }.coerceAtLeast(0); message = "Added to the Sources sheet" } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

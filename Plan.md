@@ -77,11 +77,12 @@ How to write here:
       AutoFilter kept (22bebc0), Names (2ab13f5),
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
-      drawings moved/sized/deleted (9b077de), contents sheet. Checks at a925139: unit
+      drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
+      Sources sheet. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -899,13 +900,18 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       HasColumnRowHeaders (the whole file's: its headings are one setting); read too (`Sheet.headings`), and off the grid has no
       letters and numbers, the cells from the edge, as Excel. `SheetVisibility.gridXlsx`/`gridOds` take the setting's name.
       `headings off and on` (both formats; LibreOffice carries them both ways); emulator: an .ods's off and on.
-- [~] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
+- [x] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
       workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
       dialogs. In-text citations in cells: not planned unless asked.
       Contents sheet done (office-F session, 18 Oct): Insert › Contents sheet (a workbook of two sheets or more) — a first sheet,
       "Contents", each shown sheet's name a link to its A1 (made again, not twice, when there is one); one change to the file:
       Words'-shared parts in a row (`SheetBook` add, delete and move, the cells, `SheetLinks`). `SheetContents`; `a contents sheet made`
       (both formats, twice, LibreOffice shows it); emulator: Contents first with Numbers and Second as links.
+      Sources sheet done (office-F session, 18 Oct): Insert › Source — Words' `SourceDialog`; the reference as APA 7 writes it (Words'
+      `CiteStyle.APA.entry`, its italics the cell's rich text) on a "Sources" sheet (made the first time, last, its column wide, its
+      cells wrapping) under "References", in APA's order. `SheetSources`; `a sources sheet made` (both formats, two sources sorted, the
+      italic title kept by LibreOffice both ways); emulator: Kirk, A. (2021). *Olive harvests*. Crete Press. shortcut: a source is kept
+      as its reference's words (change its cell to change it), not Words' fields.
 
 **From Excel's ribbon** (checked online 17 Oct: desktop Excel's tabs and groups, and the tablet app's shorter ribbon);
 what is not already above:

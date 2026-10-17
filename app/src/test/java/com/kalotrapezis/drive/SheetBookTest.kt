@@ -66,6 +66,27 @@ class SheetBookTest {
         }
     }
 
+    /** References › Sources sheet: two sources from Words' dialog as APA 7 writes them, in APA's order, the title in italics; LibreOffice keeps them. */
+    @Test fun `a sources sheet made`() {
+        val kirk = DocSource("k", DocSource.Type.Book, listOf(DocSource.Person("Kirk", "Anna")), "2021", "Olive harvests", publisher = "Crete Press")
+        val bell = DocSource("b", DocSource.Type.Book, listOf(DocSource.Person("Bell", "Tom")), "2019", "Ferries of the Aegean", publisher = "Sea Books")
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("sources").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            for (src in listOf(kirk, bell)) { val next = File(dir, "${System.nanoTime()}.${f.extension}"); SheetSources.add(f, next, Sheets.read(f, ',', '.'), CiteStyle.APA.entry(src), ',', '.'); f = next }
+            fun check(file: File, how: String) { val b = Sheets.read(file, ',', '.'); val s = b.sheet(b.tabs.indexOfFirst { it.name == "Sources" })
+                assertEquals(how, "References", s[0, 0]?.text)
+                assertTrue(how + ": " + s[1, 0]?.text, s[1, 0]?.text?.startsWith("Bell, T.") == true); assertTrue(how, s[2, 0]?.text?.startsWith("Kirk, A.") == true)
+                assertTrue(how, s[1, 0]?.rich?.any { it.italic && "Ferries" in it.text } == true) }
+            check(f, "made in $name")
+            if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun `quoted names`() {
         assertEquals("Rows", SheetBook.quoted("Rows")); assertEquals("'Grades Σ'", SheetBook.quoted("Grades Σ")); assertEquals("'A1'", SheetBook.quoted("A1"))
         assertEquals("SUM('My x'!B3:B12)+Other!A1", SheetBook.renamed("SUM(Rows!B3:B12)+Other!A1", "Rows", "My x"))

@@ -59,7 +59,7 @@ How to write here:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds. Unit suite 439, 0 failing; sweep 349 + 29,
+      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables. Unit suite 439, 0 failing; sweep 349 + 29,
       none failing (21:45).
 - Other sessions: add your line here when you start.
 
@@ -629,8 +629,14 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       tapped; the table a row taller, a column wider — keeping its width when it would leave the slide), Delete row, column, table; its
       fill and words' colour as before. **Shared piece:** Words' Table tab (its labels, icons and order) and `fromTable`; the rows and
       columns are `SlidesEdit.rowAdded/columnAdded/rowTaken/columnTaken` on the table's cells. `a table's rows and columns`; emulator:
-      2×2 made 3×3, saved — LibreOffice opens it. Not yet: a deck's own tables (their rows and columns are the file's XML: later), merge
-      and split, borders, table styles.
+      2×2 made 3×3, saved — LibreOffice opens it. Not yet: merge and split, borders, table styles.
+      A deck's own tables (office-F session, 17 Oct): the same Table tab on a table that came with the file — a second tap chooses the cell
+      the rows and columns go round; Make chart from its words. Kept as `Edit.tables` (rows and columns added or taken, in order;
+      `SlidesEdit.tabled` shows them), saved into the file's own table: PowerPoint's a:tbl (a gridCol and each row's a:tc copied with no
+      words, their ids dropped; a:tr likewise; the frame grown), LibreOffice's table:table (repeated columns and cells split first; a
+      copied column keeps its width style). **Shared piece:** Words' Table tab (labels, icons, order) and `OfficeCharts.fromTable`.
+      `a deck's own table's rows and columns saved` (a table saved, read as the file's, a row and column added and a row taken; both
+      formats, LibreOffice's conversions); emulator: owntable.pptx, Row below and Column right. Not: merged cells (copied unmerged).
 - [x] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
       Done 17 Oct (office-D session): the chosen box's tab › Layout (PowerPoint's Format Shape › Text Box): inner margins in Words' unit,
       "Wrap the words in the box", Columns 1–6 and the room between them. Saved as PowerPoint's bodyPr lIns…bIns, wrap, numCol/spcCol and

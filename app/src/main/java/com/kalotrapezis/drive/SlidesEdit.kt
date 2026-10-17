@@ -130,7 +130,8 @@ internal object SlidesEdit {
         /** Group: a slide's groups made here, each its id and its things' ids (back to front) */ val groups: Map<Int, Map<String, List<String>>> = emptyMap(),
         /** Ungroup: (slide uid, group id) the file's own groups taken apart, their things each on its own (a group in one too) */ val ungrouped: Set<Pair<Int, String>> = emptySet(),
         /** Home › Reset: the file's slides whose placeholders are back to their layout's place, size and look */ val reset: Set<Int> = emptySet(),
-        /** Design › Slide size: the deck made another size (shown and saved from a copy, as a theme is) */ val size: SlidesSize.Size? = null) {
+        /** Design › Slide size: the deck made another size (shown and saved from a copy, as a theme is) */ val size: SlidesSize.Size? = null,
+        /** Table tab on a deck's own table: its rows and columns added and taken, in order ([tabled]) */ val tables: Map<Pair<Int, String>, List<Pair<Char, Int>>> = emptyMap()) {
         /** The sections in the slides' order, each from the slide its first is (one whose first slide is gone, gone). */
         fun sectionsNow(deck: Deck): List<Pair<String, Int>> = (sections ?: deck.sections.orEmpty()).filter { (_, uid) -> order.any { it.uid == uid } }.sortedBy { (_, uid) -> order.indexOfFirst { it.uid == uid } }
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
@@ -189,6 +190,54 @@ internal object SlidesEdit {
                 else -> k.kids().firstOrNull { it.localName == "rPr" }?.let { bare(it, setOf("lang", "dirty"), setOf("hlinkClick")) }
             }
         }
+    }
+    /**
+     * A deck's own table with [ops] done, in order (the Table tab, as PowerPoint's): 'r' a row before row k, 'c' a column before
+     * column k (each as big as the one before it, its cells' fills, no words), 'R' row k taken, 'C' column k taken; the table
+     * grows and shrinks with them.
+     */
+    fun tabled(t: SlideItem.Table, ops: List<Pair<Char, Int>>): SlideItem.Table {
+        var cols = t.cols; var rows = t.rows; var cells = t.cells; var w = t.w; var h = t.h
+        for ((op, k) in ops) when (op) {
+            'r' -> if (k in 0..rows.size) { val src = (k - 1).coerceIn(0, rows.lastIndex); h += rows[src]
+                rows = rows.toMutableList().apply { add(k, rows[src]) }; cells = cells.toMutableList().apply { add(k, cells[src].map { it.first to null }) } }
+            'c' -> if (k in 0..cols.size) { val src = (k - 1).coerceIn(0, cols.lastIndex); w += cols[src]
+                cols = cols.toMutableList().apply { add(k, cols[src]) }; cells = cells.map { row -> row.toMutableList().apply { add(k.coerceAtMost(size), row.getOrNull(src)?.first to null) } } }
+            'R' -> if (rows.size > 1 && k in rows.indices) { h -= rows[k]; rows = rows.filterIndexed { i, _ -> i != k }; cells = cells.filterIndexed { i, _ -> i != k } }
+            'C' -> if (cols.size > 1 && k in cols.indices) { w -= cols[k]; cols = cols.filterIndexed { i, _ -> i != k }; cells = cells.map { r -> r.filterIndexed { i, _ -> i != k } } }
+        }
+        return SlideItem.Table(t.x, t.y, w, h, cols, rows, cells, t.line).also { it.anim = t.anim; it.grouped = t.grouped; it.own = t.own; it.alt = t.alt; it.link = t.link; it.media = t.media; it.name = t.name; it.hidden = t.hidden; it.pic = t.pic }
+    }
+    /** PowerPoint's a:tbl in graphicFrame [gf] with [ops] done ([tabled]'s), its frame as big as it now is. */
+    private fun tabledXml(gf: Element, ops: List<Pair<Char, Int>>) {
+        val tbl = gf.getElementsByTagNameNS(A, "tbl").item(0) as? Element ?: return
+        val grid = tbl.kids().firstOrNull { it.localName == "tblGrid" } ?: return
+        fun trs() = tbl.kids().filter { it.localName == "tr" }
+        fun tcs(tr: Element) = tr.kids().filter { it.localName == "tc" }
+        fun emu(e: Element, n: String) = e.getAttribute(n).toLongOrNull() ?: 0L
+        // a copy of a cell with no words (its first paragraph's and run's look kept), no merging; a row's or column's id dropped (PowerPoint's must differ)
+        fun emptied(tc: Element): Element = (tc.cloneNode(true) as Element).also { c ->
+            listOf("gridSpan", "rowSpan", "hMerge", "vMerge").forEach { c.removeAttribute(it) }
+            (c.getElementsByTagNameNS(A, "txBody").item(0) as? Element)?.let { body -> val ps = body.kids().filter { it.localName == "p" }
+                ps.drop(1).forEach { body.removeChild(it) }
+                ps.firstOrNull()?.let { p -> val look = p.kids().firstOrNull { it.localName == "r" }?.kids()?.firstOrNull { it.localName == "rPr" }
+                    p.kids().filter { it.localName in setOf("r", "fld", "br", "endParaRPr") }.forEach { p.removeChild(it) }
+                    p.appendChild((look?.cloneNode(true) as Element?)?.let { r -> c.ownerDocument.renameNode(r, A, "a:endParaRPr") as Element } ?: c.ownerDocument.createElementNS(A, "a:endParaRPr")) } }
+        }
+        fun bare(e: Element) = e.also { x -> x.kids().filter { it.localName == "extLst" }.forEach { x.removeChild(it) } }
+        var dw = 0L; var dh = 0L
+        for ((op, k) in ops) when (op) {
+            'r' -> { val rows = trs(); if (k !in 0..rows.size) continue; val src = rows[(k - 1).coerceIn(0, rows.lastIndex)]
+                val nr = bare(src.cloneNode(false) as Element); tcs(src).forEach { nr.appendChild(emptied(it)) }; dh += emu(src, "h")
+                tbl.insertBefore(nr, rows.getOrNull(k) ?: rows.last().nextSibling) }
+            'c' -> { val g = grid.kids().filter { it.localName == "gridCol" }; if (k !in 0..g.size) continue; val src = (k - 1).coerceIn(0, g.lastIndex)
+                grid.insertBefore(bare(g[src].cloneNode(true) as Element), g.getOrNull(k)); dw += emu(g[src], "w")
+                for (tr in trs()) { val cs = tcs(tr); if (cs.isEmpty()) continue; tr.insertBefore(emptied(cs[src.coerceAtMost(cs.lastIndex)]), cs.getOrNull(k) ?: cs.last().nextSibling) } }
+            'R' -> { val rows = trs(); if (rows.size > 1 && k in rows.indices) { dh -= emu(rows[k], "h"); tbl.removeChild(rows[k]) } }
+            'C' -> { val g = grid.kids().filter { it.localName == "gridCol" }; if (g.size > 1 && k in g.indices) { dw -= emu(g[k], "w"); grid.removeChild(g[k])
+                for (tr in trs()) tcs(tr).getOrNull(k)?.let { tr.removeChild(it) } } }
+        }
+        gf.kids().firstOrNull { it.localName == "xfrm" }?.kids()?.firstOrNull { it.localName == "ext" }?.let { e -> e.setAttribute("cx", "${emu(e, "cx") + dw}"); e.setAttribute("cy", "${emu(e, "cy") + dh}") }
     }
     /** A copy of [i] chosen by [anim], in a group or not. */
     private fun copied(i: SlideItem, anim: String?, grouped: Boolean) = moved(i, listOf(i.x, i.y, i.w, i.h), null).also { it.anim = anim; it.grouped = grouped }
@@ -279,7 +328,8 @@ internal object SlidesEdit {
             s.footers["sldNum"]?.takeIf { f.number }?.let { worded(it, "${edit.order.indexOf(e) + 1}") }) }.orEmpty()
         // the file's groups taken apart: each thing in one chosen by its own id
         val apart = edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet()
-        val loose = if (apart.isEmpty()) items else items.map { if (it.grouped && it.anim in apart) copied(it, it.own, false) else it }
+        val loose = (if (apart.isEmpty()) items else items.map { if (it.grouped && it.anim in apart) copied(it, it.own, false) else it })
+            .map { i -> if (i is SlideItem.Table) edit.tables[e.uid to (i.anim ?: "")]?.let { tabled(i, it) } ?: i else i }
         val groups = loose.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { boxOf(loose, it) }
         // groups made here: their things joined (after each was moved on its own), then the group moved as one
         val made = edit.groups[e.uid].orEmpty()
@@ -525,10 +575,14 @@ internal object SlidesEdit {
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
         looks: Map<String, Look> = emptyMap(), transition: SlideTransition? = null, anims: List<SlideEffect>? = null, frames: Map<String, List<Float>> = emptyMap(),
         removed: Set<String> = emptySet(), footers: Footers? = null, number: Int = 0, layoutPhs: List<Triple<String, String?, String?>> = emptyList(),
-        turns: Map<String, Turn> = emptyMap(), stack: List<String>? = null, back: Back? = null, groups: Map<String, List<String>> = emptyMap(), apart: Set<String> = emptySet(), reset: Boolean = false): ByteArray {
+        turns: Map<String, Turn> = emptyMap(), stack: List<String>? = null, back: Back? = null, groups: Map<String, List<String>> = emptyMap(), apart: Set<String> = emptySet(), reset: Boolean = false,
+        tables: Map<String, List<Pair<Char, Int>>> = emptyMap()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         if (reset) resetSlide(root)
+        // a deck's own tables' rows and columns (before their frames are placed)
+        for ((id, ops) in tables) (root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
+            ?.parentNode?.parentNode as? Element)?.takeIf { it.localName == "graphicFrame" }?.let { tabledXml(it, ops) }
         val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
         fun cNvPrs() = root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }
         fun xfrmOf(el: Element): Element? = if (el.localName == "graphicFrame") el.kids().firstOrNull { it.localName == "xfrm" }
@@ -1126,13 +1180,15 @@ internal object SlidesEdit {
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
-                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || turns.isNotEmpty() || e.uid in edit.stack || e.uid in edit.backgrounds || e.uid in edit.groups || edit.ungrouped.any { it.first == e.uid } || e.uid in edit.reset || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
+                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || turns.isNotEmpty() || e.uid in edit.stack || e.uid in edit.backgrounds || e.uid in edit.groups || edit.ungrouped.any { it.first == e.uid } || e.uid in edit.reset || edit.tables.keys.any { it.first == e.uid } || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
                     out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid], edit.backgrounds[e.uid],
-                        edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset)
+                        edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset,
+                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second })
                 if (ids.isNotEmpty() || noted || commented || relaid) out[relsPath(part)] = xml(relsXml)
             } else {
                 out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid], edit.backgrounds[e.uid],
-                        edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset)
+                        edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset,
+                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second })
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }

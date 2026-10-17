@@ -712,6 +712,36 @@ class SlidesTest {
         assertEquals(SlidesEdit.rowTaken(t, 0).let { it.rows to it.cells }, 1 to listOf("c", "d"))
     }
 
+    /** The Table tab on a deck's own table (one saved here, then read as the file's): a row and a column added, another row taken — in the XML, the frame grown. */
+    @Test fun `a deck's own table's rows and columns saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e0 = SlidesEdit.start(deck)
+            val put = e0.copy(added = mapOf(1 to listOf(SlidesEdit.Added(e0.newId(1, deck.slides[1].items.mapNotNull { it.anim }), 100f, 300f, 300f, 90f, prst = "table", rows = 3, cols = 2, cells = listOf("Year", "Olives", "2025", "12", "2026", "15")))))
+            val made = File("build/office-roundtrip").apply { mkdirs() }.resolve("own-table0-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, put, made) else SlidesEdit.save(src, deck, put, made)
+            val own = Slides.read(made); val t = own.slides[1].items.filterIsInstance<SlideItem.Table>().single()
+            fun text(c: Pair<Int?, SlideText?>) = c.second?.paras?.joinToString("") { p -> p.runs.joinToString("") { it.text } }.orEmpty()
+            // a row below the first, a column left of the second, the last row taken
+            val e = SlidesEdit.start(own).copy(tables = mapOf((1 to t.anim!!) to listOf('r' to 1, 'c' to 1, 'R' to 3)))
+            fun check(d: Deck, how: String) {
+                val n = d.slides[1].items.filterIsInstance<SlideItem.Table>().single()
+                assertEquals(how, listOf(listOf("Year", "", "Olives"), listOf("", "", ""), listOf("2025", "", "12")), n.cells.map { r -> r.map(::text) })
+                assertEquals(how, t.w * 1.5f, n.w, 2f); assertEquals(how, t.h, n.h, 2f)
+            }
+            check(SlidesEdit.view(own, e), "shown, $name")
+            val out = File("build/office-roundtrip").resolve("own-table-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(made, own, e, out) else SlidesEdit.save(made, own, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun `videos put on saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
         val dir = scratchDir("video")

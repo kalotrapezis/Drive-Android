@@ -227,6 +227,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         change(e.copy(added = e.added + (uid to (e.added[uid].orEmpty() + a)))); item = a.id
     }
     /** The chosen added thing changed by [f] (moved, sized), or gone (null). */
+    /** The Table tab on a deck's own table: [op] at [k] ('r' 'c' a row or column before it, 'R' 'C' taken), its moved frame grown with it. */
+    fun tableOp(op: Char, k: Int) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid; val d = base ?: return
+        val was = SlidesEdit.slide(d, e, e.order[c]).items.lastOrNull { it.anim == id } as? SlideItem.Table ?: return
+        var next = e.copy(tables = e.tables + ((uid to id) to e.tables[uid to id].orEmpty() + (op to k)))
+        val now = SlidesEdit.slide(d, next, next.order[c]).items.lastOrNull { it.anim == id } ?: return
+        next.frames[uid to id]?.let { f -> val kx = if (was.w > 0) f[2] / was.w else 1f; val ky = if (was.h > 0) f[3] / was.h else 1f
+            next = next.copy(frames = next.frames + ((uid to id) to listOf(f[0], f[1], f[2] + (now.w - was.w) * kx, f[3] + (now.h - was.h) * ky))) }
+        change(next); WriterLog.i("Slides: own table $op$k")
+    }
     fun alter(f: (SlidesEdit.Added) -> SlidesEdit.Added?) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid; val id = item ?: return
         change(e.copy(added = e.added + (uid to e.added[uid].orEmpty().mapNotNull { if (it.id == id) f(it) else it })))
@@ -759,7 +769,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             added = e.added + (e.added[uid]?.let { mapOf(nu to it) } ?: emptyMap()), transitions = e.transitions + (e.transitions[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             anims = e.anims + (e.anims[uid]?.let { mapOf(nu to it) } ?: emptyMap()), notes = e.notes + (e.notes[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
             footers = e.footers + (e.footers[uid]?.let { mapOf(nu to it) } ?: emptyMap()), comments = e.comments + (e.comments[uid]?.let { mapOf(nu to it) } ?: emptyMap()),
-            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap()), groups = e.groups + (e.groups[uid]?.let { mapOf(nu to it) } ?: emptyMap()), ungrouped = e.ungrouped + e.ungrouped.filter { it.first == uid }.map { nu to it.second }, reset = if (uid in e.reset) e.reset + nu else e.reset, relayout = e.relayout + (e.relayout[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
+            turns = e.turns + mine(e.turns), stack = e.stack + (e.stack[uid]?.let { mapOf(nu to it) } ?: emptyMap()), groups = e.groups + (e.groups[uid]?.let { mapOf(nu to it) } ?: emptyMap()), ungrouped = e.ungrouped + e.ungrouped.filter { it.first == uid }.map { nu to it.second }, reset = if (uid in e.reset) e.reset + nu else e.reset, tables = e.tables + mine(e.tables), relayout = e.relayout + (e.relayout[uid]?.let { mapOf(nu to it) } ?: emptyMap())))
         chosen = c + 1
     }
     /** Copy (Cut): the chosen item kept for Paste — what was put here, a picture, a shape with no words; its words on the clipboard for other apps. */
@@ -936,6 +946,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Column right", w, R.drawable.ic_add_column_right) { alter { t -> SlidesEdit.columnAdded(t, c0 + 1).let { n -> if (n.x + n.w > (deck?.width ?: Float.MAX_VALUE)) n.copy(w = t.w) else n } }; tableCell += r0 }
                     RibbonButton("Delete row", w, R.drawable.ic_delete_row, enabled = a.rows > 1) { alter { t -> SlidesEdit.rowTaken(t, r0) }; tableCell = 0 }
                     RibbonButton("Delete column", w, R.drawable.ic_delete_column, enabled = a.cols > 1) { alter { t -> SlidesEdit.columnTaken(t, c0) }; tableCell = 0 }
+                    RibbonButton("Delete table", w, R.drawable.ic_delete) { deleteItem() }
+                    RibbonDivider(w)
+                }
+                // a deck's own table: the same tab, its rows and columns kept as the file's (SlidesEdit.tabled)
+                if (a == null && it0 is SlideItem.Table) {
+                    val rows = it0.rows.size; val cols = it0.cols.size.coerceAtLeast(1)
+                    val r0 = (tableCell / cols).coerceIn(0, rows - 1); val c0 = (tableCell % cols).coerceIn(0, cols - 1)
+                    RibbonButton("Make chart", w, R.drawable.ic_bar_chart) {
+                        OfficeCharts.fromTable(DocTable("", "", it0.cells.map { row -> DocRow("", row.map { (_, t) -> DocCell("", listOf(DocPara(listOf(DocRun(t?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }.orEmpty()))))) }) }))
+                            ?.let { charting = null to it } ?: run { message = "The table has no numbers to chart." } }
+                    RibbonDivider(w)
+                    RibbonButton("Row above", w, R.drawable.ic_add_row_above) { tableOp('r', r0); tableCell += cols }
+                    RibbonButton("Row below", w, R.drawable.ic_add_row_below) { tableOp('r', r0 + 1) }
+                    RibbonButton("Column left", w, R.drawable.ic_add_column_left) { tableOp('c', c0); tableCell += r0 + 1 }
+                    RibbonButton("Column right", w, R.drawable.ic_add_column_right) { tableOp('c', c0 + 1); tableCell += r0 }
+                    RibbonButton("Delete row", w, R.drawable.ic_delete_row, enabled = rows > 1) { tableOp('R', r0); tableCell = 0 }
+                    RibbonButton("Delete column", w, R.drawable.ic_delete_column, enabled = cols > 1) { tableOp('C', c0); tableCell = 0 }
                     RibbonButton("Delete table", w, R.drawable.ic_delete) { deleteItem() }
                     RibbonDivider(w)
                 }
@@ -1651,6 +1678,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); tableCell = r * a.cols + c
                                         }
                                         item == hit.anim && typable(hit, a) -> typeInto(hit as SlideItem.Shape)
+                                        // a deck's own table tapped again: the cell under the finger is the one the Table tab's rows and columns go round
+                                        hit is SlideItem.Table && a == null && item == hit.anim -> {
+                                            var r = 0; var acc = hit.y; while (r < hit.rows.lastIndex && y > acc + hit.rows[r]) { acc += hit.rows[r]; r++ }
+                                            var cc = 0; var ax = hit.x; while (cc < hit.cols.lastIndex && x > ax + hit.cols[cc]) { ax += hit.cols[cc]; cc++ }
+                                            tableCell = r * hit.cols.size + cc; message = "Row ${r + 1}, column ${cc + 1}" }
                                         else -> { item = hit.anim; more = emptyList(); typing = null }
                                     }
                                 }

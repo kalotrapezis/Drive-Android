@@ -398,6 +398,31 @@ internal object SlidesOdpEdit {
             l.crop?.let { crop(el, it) }
             picLook(el, l)
         }
+        /** A deck's own table in [frame] with [ops] done (SlidesEdit.tabled's): rows and columns copied with no words, or taken; [now] its size. */
+        fun tabled(frame: Element, ops: List<Pair<Char, Int>>, now: SlideItem?) {
+            val t = frame.kids().firstOrNull { it.localName == "table" } ?: return
+            // repeated columns and cells each one of their own first, so each can be copied or taken
+            fun split(e: Element) { val n = e.a(TABLE, "number-columns-repeated")?.toIntOrNull()?.coerceIn(1, 64) ?: return; e.removeAttributeNS(TABLE, "number-columns-repeated")
+                repeat(n - 1) { e.parentNode.insertBefore(e.cloneNode(true), e.nextSibling) } }
+            fun cols() = t.kids().filter { it.localName == "table-column" }
+            fun rows() = t.kids().filter { it.localName == "table-row" }
+            fun cells(r: Element) = r.kids().filter { it.localName == "table-cell" || it.localName == "covered-table-cell" }
+            cols().forEach(::split); rows().forEach { r -> cells(r).forEach(::split) }
+            fun emptied(c: Element): Element = (c.cloneNode(true) as Element).let { x -> (if (x.localName == "covered-table-cell") doc.renameNode(x, TABLE, "table:table-cell") as Element else x).also { n ->
+                n.removeAttributeNS(TABLE, "number-columns-spanned"); n.removeAttributeNS(TABLE, "number-rows-spanned")
+                val ps = n.kids(); ps.drop(1).forEach { n.removeChild(it) }
+                ps.firstOrNull()?.let { p -> if (p.localName == "p") p.kids().forEach { p.removeChild(it) } else n.removeChild(p) } } }
+            for ((op, k) in ops) when (op) {
+                'r' -> { val rs = rows(); if (k !in 0..rs.size) continue; val src = rs[(k - 1).coerceIn(0, rs.lastIndex)]
+                    val nr = src.cloneNode(false) as Element; cells(src).forEach { nr.appendChild(emptied(it)) }; t.insertBefore(nr, rs.getOrNull(k) ?: rs.last().nextSibling) }
+                'c' -> { val cs = cols(); if (k !in 0..cs.size) continue; val src = (k - 1).coerceIn(0, cs.lastIndex)
+                    t.insertBefore(cs[src].cloneNode(true), cs.getOrNull(k) ?: cs.last().nextSibling)
+                    for (r in rows()) { val cl = cells(r); if (cl.isEmpty()) continue; r.insertBefore(emptied(cl[src.coerceAtMost(cl.lastIndex)]), cl.getOrNull(k) ?: cl.last().nextSibling) } }
+                'R' -> { val rs = rows(); if (rs.size > 1 && k in rs.indices) t.removeChild(rs[k]) }
+                'C' -> { val cs = cols(); if (cs.size > 1 && k in cs.indices) { t.removeChild(cs[k]); for (r in rows()) cells(r).getOrNull(k)?.let { r.removeChild(it) } } }
+            }
+            now?.let { frame.setAttributeNS(SVG, "svg:width", cm(it.w)); frame.setAttributeNS(SVG, "svg:height", cm(it.h)) }
+        }
         /** [el] at [x], [y], [w] × [h] (points), turned [deg] clockwise about its middle (Words' draw:transform; 0: plain svg:x and svg:y). */
         fun turnTo(el: Element, x: Float, y: Float, w: Float, h: Float, deg: Float) {
             listOf("x", "y").forEach { el.removeAttributeNS(SVG, it) }; el.removeAttributeNS(DRAW, "transform")
@@ -602,6 +627,10 @@ internal object SlidesOdpEdit {
             val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }
             looks.forEach { (el, l) -> restyle(el, l) }
+            // a deck's own tables' rows and columns (the Table tab), the frame as big as the table now is
+            edit.tables.filterKeys { it.first == uid && it.second.startsWith("o") }.takeIf { it.isNotEmpty() }?.let { ts ->
+                val shown = SlidesEdit.slide(deck, edit, edit.order.first { it.uid == uid })
+                ts.forEach { (k, ops) -> at(k.second)?.let { tabled(it, ops, shown.items.lastOrNull { i -> i.anim == k.second }) } } }
             frames.forEach { (el, f, box) -> place(el, f, box) }
             removed.forEach { it.parentNode?.removeChild(it) }
             // Insert › Header & footer, as LibreOffice keeps it: the page's own date, footer and number boxes gone; the master's shown or not by the

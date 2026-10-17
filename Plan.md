@@ -505,8 +505,15 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
 **From Words** (asked 17 Oct: "transfer the rest of the features from Words to Slides" — Slides' Insert had only
 Picture, Shape and Table). Each Words button checked against what a slide can hold; what is already listed above is not
 repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
-- [ ] **Selection** (Slides has none of these): Cut, Copy, Paste a shape, picture or table (on another slide, in
+- [~] **Selection** (Slides has none of these): Cut, Copy, Paste a shape, picture or table (on another slide, in
       another deck); Paste text only; Select all on the slide; Copy formatting / Paste formatting.
+      Done 17 Oct (office-D session): a Selection tab first whenever something is chosen (A's rule), Words' buttons in Words' order — Cut,
+      Copy, Paste (what was put on, a picture, a shape, and now a box of the file's with words, pasted as a text box keeping its words'
+      size, bold, italic, colour and links), Paste text only (the clipboard's words into the chosen box, else a new text box: `putWords`),
+      Copy formatting / Paste formatting (the look kept until replaced, as Words'; Home's Format painter now reads the same `lookOf`).
+      **Shared piece:** Words' Selection tab (labels, icons, order), Slides' own copy/paste underneath. Emulator: title copied and pasted,
+      its look pasted on the subtitle. Not yet: Select all (needs choosing several things at once — with Group below); a pasted box's
+      paragraph alignment (`Added.runs` keeps letters only); pasting into another deck works within one Slides session only.
 - [ ] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
       lists; Words' paragraph page (More…: indents, spacing before and after, line spacing exactly); a text box's
       border and shading (as Words' Borders, written as the shape's line and fill).

@@ -423,6 +423,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     /** The chosen box with words of the file's own (a text box, a placeholder, a shape with words), as it shows: what Home's text tools change. */
     fun chosenWords(): SlideItem.Shape? = (view?.slides?.getOrNull(chosen ?: -1)?.items?.lastOrNull { it.anim == item } as? SlideItem.Shape)?.takeIf { it.text != null && it.id != null && !it.grouped }
     var painter by remember { mutableStateOf<SlidesEdit.Look?>(null) } // Format painter: the look taken, put on the next box chosen
+    var copiedLook by remember { mutableStateOf<SlidesEdit.Look?>(null) } // Selection › Copy formatting: kept for Paste formatting (as in Words)
     var strip by remember { mutableStateOf<DesignGallery?>(null) } // Home › Font, Insert › Drop cap: Words' strip of cards in the ribbon's place
     var stripBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a card tapped there (Cancel goes back to it)
     var stripPicked by remember { mutableStateOf<Any?>(null) } // …and the card tapped
@@ -716,9 +717,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.${if (png) "png" else "jpeg"}").apply { writeBytes(b) }
                 SlidesEdit.Added("", it0.x, it0.y, it0.w, it0.h, image = f.path, ext = if (png) "png" else "jpeg") to null }
             it0 is SlideItem.Shape && it0.shape != null && it0.text == null -> SlidesEdit.Added("", it0.x, it0.y, it0.w, it0.h, prst = it0.shape.geometry, fill = it0.shape.fill ?: 0xFF4472C4.toInt()) to null
+            // a box of the file's with words (B's Selection, 17 Oct): pasted as a text box, its words keeping their size, bold, italic, colour and links
+            it0 is SlideItem.Shape && it0.text != null && !it0.hint -> SlidesEdit.Added("", it0.x, it0.y, it0.w, it0.h, prst = SlidesEdit.TEXT_BOX, runs = it0.text.paras.map { it.runs }) to null
             else -> null
         }
-        message = if (clip != null) "Copied" else if (it0 is SlideItem.Shape && it0.text != null) "Its words copied" else "This one cannot be copied yet"
+        message = if (clip != null) "Copied" else "This one cannot be copied yet"
         WriterLog.i("Slides: an item copied (${if (clip != null) "to paste" else "words only"})")
         return clip != null
     }
@@ -733,6 +736,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
+    /** The look of [box]'s words (its first letters' and paragraph's), for the Format painter and Copy formatting. */
+    fun lookOf(box: SlideItem.Shape): SlidesEdit.Look? {
+        val t = box.text ?: return null
+        val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: t.paras.firstOrNull()?.runs?.firstOrNull()
+        val p = t.paras.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } } ?: t.paras.firstOrNull()
+        return SlidesEdit.Look(font = DocStyles.Plain.fontName(r?.font), size = r?.sizePt, bold = r?.bold, italic = r?.italic, underline = r?.underline,
+            strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align)
+    }
     /** Home's text tools for [box] (17 Oct), Words' own: font strip, size, B I U S, colours, painter, clear; lists, alignment, spacing; anchor, autofit. */
     @Composable fun HomeText(box: SlideItem.Shape, w: Color) {
         val t = box.text ?: return
@@ -750,8 +761,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
         // Format painter: this box's look taken, put on the next box chosen
         Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
-            painter = if (painter != null) null else SlidesEdit.Look(font = DocStyles.Plain.fontName(r?.font), size = r?.sizePt, bold = r?.bold, italic = r?.italic, underline = r?.underline,
-                strike = r?.strike, text = r?.color?.or(0xFF000000.toInt()), highlight = r?.highlight?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, align = p?.para?.align)
+            painter = if (painter != null) null else lookOf(box)
             if (painter != null) message = "Choose the box to paint"
         }
         // Clear formatting: the letters' own looks gone (the box's fill, border, anchor and autofit stay)
@@ -782,6 +792,24 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val entry = e.order[c]; val uid = entry.uid
         val sl = view?.slides?.getOrNull(c)
         when (tab) {
+            // Words' Selection tab (B, 17 Oct): what is chosen cut, copied, pasted; words pasted alone; its words' look copied and put on another
+            "Selection" -> {
+                RibbonButton("Cut", w, R.drawable.ic_content_cut) { if (copyItem()) deleteItem() }
+                RibbonButton("Copy", w, R.drawable.ic_copy) { copyItem() }
+                RibbonButton("Paste", w, R.drawable.ic_content_paste, enabled = clip != null) { pasteItem() }
+                RibbonDivider(w)
+                RibbonButton("Paste text only", w, R.drawable.ic_content_paste) {
+                    context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() }
+                        ?.let { putWords(it); WriterLog.i("Slides: text pasted alone") } ?: run { message = "Nothing to paste" }
+                }
+                RibbonDivider(w)
+                val box = chosenWords()
+                RibbonButton("Copy formatting", w, R.drawable.ic_format_paint, enabled = box != null) {
+                    copiedLook = box?.let(::lookOf); message = "Formatting copied — choose another box, then Paste formatting" }
+                RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null && box != null) { copiedLook?.let { pl ->
+                    restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align) }
+                    WriterLog.i("Slides: formatting pasted") } }
+            }
             "Item" -> {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
@@ -1567,7 +1595,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "References", "Review", "View", "Item".takeIf { item != null && !sorter && !outline })
+                        val tabs = listOfNotNull("Selection".takeIf { item != null && !sorter && !outline }, "File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "References", "Review", "View", "Item".takeIf { item != null && !sorter && !outline })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }

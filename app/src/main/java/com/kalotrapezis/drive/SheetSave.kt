@@ -32,7 +32,7 @@ internal object SheetSave {
     /** A cell as SpreadsheetML: its value by kind, a formula with its value, words inline; null: no cell at all. */
     fun cellXml(ref: String, style: Int, cell: SheetCell): String? {
         val s = if (style > 0) " s=\"$style\"" else ""
-        val f = cell.formula?.removePrefix("=")?.let { "<f>${esc(it)}</f>" } ?: ""
+        val f = cell.formula?.removePrefix("=")?.let { "<f>${esc(SheetCalc.toXlsx(it))}</f>" } ?: ""
         return when {
             cell.formula != null -> when (cell.kind) {
                 SheetKind.Number -> "<c r=\"$ref\"$s>$f<v>${num(cell.value ?: 0.0)}</v></c>"
@@ -111,7 +111,7 @@ internal object SheetSave {
                 var x = m.value
                 // a broken shared formula: written out in full here
                 Regex("""<f\b([^>]*?)(?:/>|>([^<]*)</f>)""").find(x)?.let { f ->
-                    if (attr(f.groupValues[1], "t") == "shared" && attr(f.groupValues[1], "si") in broken) formulaAt(r, c)?.let { full -> x = x.replace(f.value, "<f>${esc(full.removePrefix("="))}</f>") }
+                    if (attr(f.groupValues[1], "t") == "shared" && attr(f.groupValues[1], "si") in broken) formulaAt(r, c)?.let { full -> x = x.replace(f.value, "<f>${esc(SheetCalc.toXlsx(full.removePrefix("=")))}</f>") }
                 }
                 cells[c] = x
             }
@@ -274,7 +274,7 @@ internal object SheetSave {
 
     /** An Excel formula in LibreOffice's way: "of:=SUM([.A1:.B2];[$Other.C3])". */
     fun odfFormula(f: String): String {
-        val body = f.removePrefix("=")
+        val body = SheetCalc.toOds(f.removePrefix("="))
         val ref = Regex("""(?:('(?:[^']|'')+'|[\p{L}_][\p{L}\p{N}_.]*)!)?(\$?[A-Za-z]{1,3}\$?\d+)(?::(\$?[A-Za-z]{1,3}\$?\d+))?(?![\p{L}\p{N}_(])""")
         val out = StringBuilder()
         // outside words in quotes: references bracketed, commas as semicolons

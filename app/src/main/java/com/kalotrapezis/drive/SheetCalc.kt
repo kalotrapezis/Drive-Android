@@ -24,6 +24,24 @@ internal object SheetCalc {
     /** A formula this engine cannot work out (an unknown function): its file value stays. */
     class Unknown(what: String) : Exception(what)
 
+    // --- newer functions' names in files ---
+
+    /** Excel's newer functions LibreOffice keeps as "COM.MICROSOFT.<name>" (as its 26.2 writes them). */
+    private val MICROSOFT = setOf("XLOOKUP", "XMATCH", "IFS", "SWITCH", "MAXIFS", "MINIFS", "CONCAT", "TEXTJOIN", "STDEV.S", "STDEV.P", "VAR.S", "VAR.P",
+        "RANK.EQ", "RANK.AVG", "CEILING.MATH", "FLOOR.MATH", "UNIQUE", "SORT", "SORTBY", "FILTER", "SEQUENCE")
+    /** And those Excel keeps as "_xlfn.<name>" (FILTER and SORT "_xlfn._xlws."): without it Excel shows #NAME?. */
+    private val XLFN = MICROSOFT + setOf("IFNA", "DAYS", "XOR", "ISOWEEKNUM", "NUMBERVALUE")
+    private fun outsideQuotes(f: String, change: (String) -> String) = f.split('"').mapIndexed { i, p -> if (i % 2 == 1) p else change(p) }.joinToString("\"")
+    private val CALLED = Regex("""(?<![\p{L}\p{N}_.])([A-Za-z][A-Za-z0-9.]*)\(""")
+
+    /** A formula as a file keeps it ("_xlfn.XLOOKUP(", "COM.MICROSOFT.IFS(") as Excel shows it: "XLOOKUP(". */
+    fun fromFile(f: String) = outsideQuotes(f) { it.replace(Regex("""(?i)_xlfn\.(?:_xlws\.)?|_xlpm\.|COM\.MICROSOFT\."""), "") }
+    /** As Excel's file keeps it. */
+    fun toXlsx(f: String) = outsideQuotes(f) { p -> CALLED.replace(p) { m -> val n = m.groupValues[1].uppercase()
+        if (n in XLFN) "_xlfn." + (if (n == "FILTER" || n == "SORT") "_xlws." else "") + m.value else m.value } }
+    /** As LibreOffice's file keeps it. */
+    fun toOds(f: String) = outsideQuotes(f) { p -> CALLED.replace(p) { m -> if (m.groupValues[1].uppercase() in MICROSOFT) "COM.MICROSOFT." + m.value else m.value } }
+
     // --- the formula as a tree ---
 
     sealed interface Node

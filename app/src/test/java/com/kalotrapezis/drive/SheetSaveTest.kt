@@ -553,6 +553,25 @@ class SheetSaveTest {
         }
     }
 
+    /** Newer functions as files name them: Excel's _xlfn. (FILTER and SORT _xlfn._xlws.), LibreOffice's COM.MICROSOFT. — written so, read back plain. */
+    @Test fun `newer functions named as files name them`() {
+        assertEquals("_xlfn.XLOOKUP(A1,B:B,C:C)+_xlfn._xlws.FILTER(A1:A3,B1:B3>0)+SUM(A1)&\"IFS(\"", SheetCalc.toXlsx("XLOOKUP(A1,B:B,C:C)+FILTER(A1:A3,B1:B3>0)+SUM(A1)&\"IFS(\""))
+        assertEquals("COM.MICROSOFT.TEXTJOIN(\",\",TRUE,A1:A2)+IFNA(1,2)", SheetCalc.toOds("TEXTJOIN(\",\",TRUE,A1:A2)+IFNA(1,2)"))
+        assertEquals("=XLOOKUP(1,A:A,B:B)+SORT(A1:A2)", SheetCalc.fromFile("=_xlfn.XLOOKUP(1,A:A,B:B)+_xlfn._xlws.SORT(A1:A2)"))
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("newer").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b = Sheets.read(f, ',', '.'); val s = b.sheet(0)
+            SheetHistory().apply(b, 0, mapOf(Sheet.key(8, 0) to SheetInput.cell("=XLOOKUP(\"Alpha\",A2:A3,B2:B3)", null, 0, "General", b.format),
+                Sheet.key(9, 0) to SheetInput.cell("=TEXTJOIN(\"-\",TRUE,A2:A3)", null, 0, "General", b.format)))
+            assertEquals(name, 1234.5, s[8, 0]?.value); assertEquals(name, "Alpha-Βήτα", s[9, 0]?.text)
+            val saved = File(dir, "saved.${f.extension}"); SheetSave.save(b, f, saved)
+            val xml = String(OfficeFormats.unzip(saved.readBytes()).getValue(if (name.endsWith("xlsx")) "xl/worksheets/sheet1.xml" else "content.xml"))
+            if (name.endsWith("xlsx")) assertTrue(name, "_xlfn.XLOOKUP(" in xml && "_xlfn.TEXTJOIN(" in xml) else assertTrue(name, "COM.MICROSOFT.XLOOKUP(" in xml && "COM.MICROSOFT.TEXTJOIN(" in xml)
+            Sheets.read(saved, ',', '.').sheet(0).let { t -> assertEquals(name, "=XLOOKUP(\"Alpha\",A2:A3,B2:B3)", t[8, 0]?.formula); assertEquals(name, 1234.5, t[8, 0]?.value) }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

@@ -75,7 +75,7 @@ How to write here:
       and tab colour (a7f9980), cells shifted (ce1b197),
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
-      Trace and error checking. Checks at a925139: unit
+      Trace and error checking (b924d9c), newer functions' file names. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
@@ -798,6 +798,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       followed), Dependents (this sheet's formulas reading it), Error checking (each tap the next error cell, "#DIV/0! in C7 (1 of 3)"),
       Remove marks — marked on the sheet as found cells are (Excel draws arrows). `SheetTrace`; `formulas traced and errors found`;
       emulator: B5's B2:B3 marked. shortcut: another sheet's cells are not marked.
+      Newer functions' names in files fixed (office-F session, 18 Oct): Excel keeps XLOOKUP, IFS, TEXTJOIN, MAXIFS, STDEV.S and the rest
+      as "_xlfn.XLOOKUP(" (FILTER, SORT "_xlfn._xlws."), LibreOffice as "COM.MICROSOFT.XLOOKUP(" — a formula typed here was saved
+      bare (Excel shows #NAME? then), and a file's prefixed ones read as unknown functions (never worked out again). Now read without,
+      written with them (`SheetCalc.fromFile/toXlsx/toOds`, names as LibreOffice 26.2 writes them). `newer functions named as files name
+      them` (both formats); full run after it: unit 474, 0 failing, 2 skipped; sweep 349 + 29, none failing.
 - [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row

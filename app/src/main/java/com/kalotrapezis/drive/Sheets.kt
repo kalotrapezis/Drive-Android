@@ -960,7 +960,7 @@ internal object Sheets {
                             val shown = runCatching { format.format(n, style.format) }.getOrElse { SheetFormat.Shown(format.general(n)) }
                             SheetCell(shown.text, SheetKind.Number, n, style = s, color = shown.color)
                         } ?: empties.getOrPut(s) { SheetCell("", SheetKind.Empty, style = s) } // one for every empty cell of a look
-                    }.let { if (formula != null) it.copy(formula = "=$formula", link = hyperlink(formula!!)) else it }
+                    }.let { if (formula != null) it.copy(formula = "=" + SheetCalc.fromFile(formula!!), link = hyperlink(formula!!)) else it }
                     if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
                     cells[Sheet.key(r, c)] = cell
                     if (cell.kind != SheetKind.Empty) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) } else boxed.add(r, c)
@@ -1771,7 +1771,7 @@ internal object Sheets {
                 val cell = part.substringAfter('.')
                 if (sheet.isEmpty()) cell else "${SheetBook.quoted(sheet)}!$cell"
             }
-        }.let { if (it.startsWith("=")) it else "=$it" }
+        }.let { if (it.startsWith("=")) it else "=$it" }.let(SheetCalc::fromFile)
     }
 
     // --- .csv ---

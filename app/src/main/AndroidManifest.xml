@@ -49,6 +49,31 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+        <!-- Settings › App icons (asked 17 Oct): a launcher icon for each part of Tetra, off until switched on; AppletLaunch
+             hands the part to MainActivity (its own empty task affinity, so a running Tetra is asked, not just brought up). -->
+        <activity android:name=".AppletLaunch" android:exported="false" android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" />
+        <activity-alias android:name=".AppPhotos" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Photos" android:icon="@mipmap/applet_photos" android:roundIcon="@mipmap/applet_photos">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppFiles" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Files" android:icon="@mipmap/applet_files" android:roundIcon="@mipmap/applet_files">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppNotes" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Notes" android:icon="@mipmap/applet_notes" android:roundIcon="@mipmap/applet_notes">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppScanner" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Scanner" android:icon="@mipmap/applet_scanner" android:roundIcon="@mipmap/applet_scanner">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppCodes" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Codes" android:icon="@mipmap/applet_codes" android:roundIcon="@mipmap/applet_codes">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppOffice" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Office" android:icon="@mipmap/applet_office" android:roundIcon="@mipmap/applet_office">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppTextEditor" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Text" android:icon="@mipmap/applet_text_editor" android:roundIcon="@mipmap/applet_text_editor">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
         <!-- Office: "Open with › Tetra Office" for documents, spreadsheets, presentations and PDFs (17 Oct) from any app (asked 16 Oct);
              Android's Always makes it the default. -->
         <activity-alias android:name=".OfficeOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Office" android:icon="@drawable/ic_office">

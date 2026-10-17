@@ -211,6 +211,14 @@ private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 private fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageDirectory())
 
 class MainActivity : ComponentActivity() {
+    /** The part an applet icon asked for (Settings › App icons), until Tetra has turned to it. */
+    private val applet = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(Applet.EXTRA)?.let { applet.value = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
@@ -224,7 +232,8 @@ class MainActivity : ComponentActivity() {
         OfficeUi.load(this)
         DriveRules.chosenFolders = getSharedPreferences("drive", MODE_PRIVATE).getStringSet("systemFolders", null).orEmpty().toSet()
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
-        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office) } }
+        if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA)
+        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
     }
 }
 
@@ -295,7 +304,7 @@ private sealed interface DriveListState {
 }
 
 @Composable
-private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null) {
+private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null, applet: androidx.compose.runtime.MutableState<String?>) {
     val context = LocalContext.current
     // A MediaStore item opens in the full Gallery viewer; anything else (another app's file) in a single-item viewer.
     val externalMediaId = external?.uri?.takeIf { it.authority == MediaStore.AUTHORITY }?.lastPathSegment
@@ -591,6 +600,22 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
     // Home's Office card: Open Words, Tables, Slides, PDFs — each Android's picker for that kind only (asked 17 Oct)
     val pickOffice = rememberOfficePicker { openOfficeFile(it, Screen.Home) }
+    // an applet icon's part (Settings › App icons), as its card on Home opens it; Back goes to Home (first-run photo setup stays first)
+    LaunchedEffect(applet.value) {
+        val a = Applet.of(applet.value) ?: return@LaunchedEffect
+        applet.value = null
+        if (screen == Screen.PhotoSetup) return@LaunchedEffect
+        WriterLog.i("App icon: $a")
+        when (a) {
+            Applet.Photos -> { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() }
+            Applet.Files -> { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") }
+            Applet.Notes -> { notesStart = null; screen = Screen.Notes }
+            Applet.Scanner -> { lockScannerPortrait(); clearScanPages(); scannerError = null; screen = Screen.Scanner }
+            Applet.Codes -> screen = Screen.Codes
+            Applet.Office -> screen = Screen.Office
+            Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
+        }
+    }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
     LaunchedEffect(office) {
         val o = office ?: return@LaunchedEffect
@@ -857,7 +882,7 @@ private fun Home(
         {
             HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeFilesCard(openFiles, Modifier.weight(1f))
+                    HomeArtCard("Files", R.drawable.files_art, openFiles, Modifier.weight(1f), artSize = 76) // the user's own tile (17 Oct), as Office's
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Favorites", R.drawable.ic_favorite_border, openFavorites)
                         HomeCompactCard("Recent", R.drawable.ic_home, openRecent)
@@ -987,20 +1012,6 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     }
 }
 
-@Composable private fun HomeFilesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
-    shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-    modifier = modifier.height(156.dp).clickable(onClick = click),
-) { Box(Modifier.fillMaxSize().padding(18.dp)) {
-    Image(
-        painter = painterResource(R.drawable.files_documents), contentDescription = null, contentScale = ContentScale.Fit,
-        alpha = 0.82f, modifier = Modifier.align(Alignment.TopEnd).size(100.dp),
-    )
-    Row(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(painterResource(R.drawable.ic_folder), contentDescription = "Files", modifier = Modifier.size(28.dp))
-        Text("Files", style = MaterialTheme.typography.titleLarge)
-    }
-} }
-
 /** A part's own card on Home: its art at the top, its name at the bottom (Notes, Text editor). */
 @Composable private fun HomeArtCard(title: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier, artSize: Int = 100) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
@@ -1015,19 +1026,20 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 
 @Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PdfToolCard("Scanner", R.drawable.ic_document_scanner, Modifier.weight(1f), openScanner)
-        PdfToolCard("Codes", R.drawable.ic_qr_code, Modifier.weight(1f), openCodes)
+        // the user's own tiles for both (17 Oct), as Office's and the Text editor's art
+        PdfToolCard("Scanner", R.drawable.scanner_art, Modifier.weight(1f), openScanner)
+        PdfToolCard("Codes", R.drawable.codes_art, Modifier.weight(1f), openCodes)
     }
 }
 
 @Composable
-private fun PdfToolCard(label: String, icon: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
+private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = Color(0xFF651B1B),
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
-        Icon(painterResource(icon), contentDescription = label, modifier = Modifier.align(Alignment.TopEnd).size(42.dp))
+        Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
         Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
     }
 }
@@ -1660,6 +1672,21 @@ private fun SettingsTab(
                 }
                 Text("Save new files in", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        item {
+            // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
+            SettingsCard("App icons") {
+                val iconContext = LocalContext.current
+                Text("Give a part of Tetra its own icon on the home screen and in the app list; it opens straight into that part.", style = MaterialTheme.typography.bodySmall)
+                Applet.entries.forEach { a ->
+                    var on by remember { mutableStateOf(a.shown(iconContext)) }
+                    Row(Modifier.fillMaxWidth().clickable { on = !on; a.show(iconContext, on) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Image(painterResource(a.art), contentDescription = null, modifier = Modifier.size(32.dp))
+                        Text(a.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Switch(checked = on, onCheckedChange = { on = it; a.show(iconContext, it) })
+                    }
+                }
             }
         }
         item {

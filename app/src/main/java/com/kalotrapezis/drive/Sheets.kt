@@ -258,6 +258,8 @@ internal class Workbook(
     val names: Map<String, String> = emptyMap(),
     /** An .ods's cell styles' names by index (to write a cell's look back by name). */
     val styleNames: List<String> = emptyList(),
+    /** Its names as Formulas › Name Manager lists them: each in its own letters, and what it stands for (Excel's form). */
+    val nameList: () -> List<Pair<String, String>> = { emptyList() },
     /** Its theme's colours (an .xlsx's own, else Office's): Format as table's gallery. */
     val theme: IntArray = SheetTables.OFFICE,
     private val load: (Int) -> Sheet,
@@ -549,6 +551,7 @@ internal object Sheets {
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
                 kind = "xlsx", format = format, theme = theme.takeIf { it.size >= 10 } ?: SheetTables.OFFICE,
                 names = names.filter { it.attr("name")?.startsWith("_xlnm.") == false }.associate { it.attr("name")!!.lowercase() to it.textContent.trim() },
+                nameList = { names.filter { it.attr("name")?.startsWith("_xlnm.") == false && it.attr("localSheetId") == null }.map { it.attr("name")!! to it.textContent.trim() } },
                 parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
                     found.mapIndexed { i, f -> "$i" to f.second }) { i ->
                 val (tab, path) = found[i]
@@ -1369,7 +1372,12 @@ internal object Sheets {
             WriterLog.i("Sheets: ods, ${tabs.size} sheets, ${styles.size} looks")
             val active = tabs.indexOfFirst { it.name == settings.active }.coerceAtLeast(0)
             val names = Array(styles.size) { "Default" }.also { a -> styleIndex.forEach { (n, i) -> if (n.isNotEmpty()) a[i] = n } }.toList()
-            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+            // the named ranges are at content.xml's end: read when a formula first needs one (a giant file opens without it)
+            val named by lazy { runCatching { parts("content.xml")?.let { SheetNames.ods(String(it, Charsets.UTF_8)) } }.getOrNull().orEmpty() }
+            val lazyNames = object : AbstractMap<String, String>() { override val entries get() = named.entries }
+            val listNames = { runCatching { parts("content.xml")?.let { c -> Regex("""<table:named-(?:range|expression)\b[^>]*\btable:name="([^"]*)"""").findAll(String(c, Charsets.UTF_8)).map { it.groupValues[1] }.toList() } }.getOrNull().orEmpty()
+                .mapNotNull { n -> named[n.lowercase()]?.let { n to it } } }
+            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names, names = lazyNames, nameList = listNames) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */

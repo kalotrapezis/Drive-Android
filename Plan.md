@@ -76,7 +76,8 @@ How to write here:
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
-      failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
+      failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
+      failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file.
 - Other sessions: add your line here when you start.
 

@@ -190,6 +190,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
     var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
     var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
+    var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -628,6 +629,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (book?.kind == "csv") { message = "A CSV file keeps no page settings: save it as a workbook first."; return }
         fileStep("page layout", { baked, out, bb -> if (bb.kind == "xlsx") SheetPageSetup.xlsx(baked, out, bb.parts.getValue("$i"), i, bb.tabs[i].name, next)
             else SheetPageSetup.ods(baked, out, i, bb.tabs[i].name, next) })
+    }
+    /** A workbook name [name] made to stand for cells [g] of this sheet (null: taken away). */
+    fun nameStep(name: String, g: SheetRange?) { val i = index
+        fileStep(if (g == null) "name taken away" else "name defined", { baked, next, bb -> val sheetName = bb.tabs[i].name
+            if (bb.kind == "xlsx") SheetNames.xlsx(baked, next, bb.parts.getValue("workbook"), name, g?.let { SheetNames.refersTo(sheetName, it) })
+            else SheetNames.ods(baked, next, name, sheetName.takeIf { g != null }, g) }) { message = if (g == null) "Name $name taken away" else "$name stands for ${SheetNames.refersTo(it.tabs[i].name, g)}" }
     }
     /** Protect ([protect]) or unprotect this sheet, with [password] (none: ""). */
     fun protectSheet(protect: Boolean, password: String) { val i = index
@@ -1160,6 +1167,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
+                            // Excel's Name Manager: the workbook's names, one for the chosen cells, one taken away
+                            if (editing && b.kind != "csv") RibbonButton("Names", w, R.drawable.ic_label) { namesFor = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) }
                             RibbonDivider(w)
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
                             RibbonButton("Average", w, R.drawable.ic_functions) { autoFunction("AVERAGE") }
@@ -1667,6 +1676,22 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 val changes = SheetSortRows.changes(s, d, levels.toList(), headers)
                 if (changes.isEmpty()) message = "Already in that order" else { history.apply(b, index, changes); version++; view.sort = null; WriterLog.i("Sheets: sorted by ${levels.size} levels") } }) { Text("Sort") } },
             dismissButton = { TextButton(onClick = { sortingRows = null }) { Text("Cancel") } }) } }
+    // Formulas › Names: Excel's Name Manager — the names and what they stand for, Delete; a new one for the chosen cells
+    namesFor?.let { g -> book?.let { b -> val list = remember(version, b) { b.nameList() }
+        var name by remember(g) { mutableStateOf("") }
+        val problem = SheetNames.valid(name.trim(), list.map { it.first })
+        AlertDialog(onDismissRequest = { namesFor = null }, title = { Text("Names") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (list.isEmpty()) Text("This workbook has no names yet.")
+                list.forEach { (n, to) -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(n, fontWeight = FontWeight.Bold); Text(to, style = MaterialTheme.typography.bodySmall) }
+                    IconButton(onClick = { namesFor = null; nameStep(n, null) }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete $n") } } }
+                HorizontalDivider()
+                Text("A new name for ${SheetNames.refersTo(b.tabs[index].name, g)}:")
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, isError = name.isNotEmpty() && problem != null,
+                    supportingText = { if (name.isNotEmpty() && problem != null) Text(problem) }) } },
+            confirmButton = { TextButton(enabled = problem == null, onClick = { namesFor = null; nameStep(name.trim(), g) }) { Text("Add") } },
+            dismissButton = { TextButton(onClick = { namesFor = null }) { Text("Close") } }) } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

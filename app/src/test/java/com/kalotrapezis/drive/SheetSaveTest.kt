@@ -525,6 +525,34 @@ class SheetSaveTest {
         }
     }
 
+    /** Formulas › Names: a name for B2:B3 (Excel's definedName, LibreOffice's named range), used by a formula, kept by LibreOffice, taken away. */
+    @Test fun `names defined and taken away`() {
+        assertEquals("That is a cell's name", SheetNames.valid("AB12", emptyList())); assertEquals(null, SheetNames.valid("Amounts_2026", listOf("Other")))
+        assertEquals("'My x'!\$A\$1:\$B\$5", SheetNames.fromOds("\$'My x'.\$A\$1:.\$B\$5"))
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("names").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.'); val g = SheetRange(1, 1, 2, 1)
+            val named = File(dir, "named.${f.extension}")
+            if (name.endsWith("xlsx")) SheetNames.xlsx(f, named, b0.parts.getValue("workbook"), "Amounts", SheetNames.refersTo(b0.tabs[0].name, g))
+            else SheetNames.ods(f, named, "Amounts", b0.tabs[0].name, g)
+            fun check(file: File, how: String) { val b = Sheets.read(file, ',', '.')
+                assertEquals(how, "Numbers!\$B\$2:\$B\$3", b.names["amounts"]); assertTrue(how + ": " + b.nameList(), b.nameList().any { it.first == "Amounts" })
+                val s = b.sheet(0); SheetHistory().apply(b, 0, mapOf(Sheet.key(8, 0) to SheetInput.cell("=SUM(Amounts)", null, 0, "General", b.format)))
+                assertEquals(how, 1192.5, s[8, 0]?.value) }
+            check(named, "named in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, named.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "named.$other"), "LibreOffice's $other of $name")
+            }
+            val gone = File(dir, "gone.${f.extension}")
+            if (name.endsWith("xlsx")) SheetNames.xlsx(named, gone, b0.parts.getValue("workbook"), "Amounts", null) else SheetNames.ods(named, gone, "Amounts", null, null)
+            assertEquals(name, null, Sheets.read(gone, ',', '.').names["amounts"])
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

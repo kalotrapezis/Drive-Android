@@ -30,9 +30,19 @@ class SlidesTest {
     @Test fun `text effects read from a pptx`() {
         fun run(d: Deck, words: String) = d.slides[2].items.mapNotNull { (it as? SlideItem.Shape)?.text }.flatMap { t -> t.paras.flatMap { it.runs } }.first { it.text == words }
         val d = Slides.read(File("src/test/resources/text-effects.pptx"))
-        assertEquals(TextEffects(glow = 0xFFC000), run(d, "A glowing box").effects)
-        assertEquals(TextEffects(outline = 0x002060, shadow = true), run(d, "Bold red words, 28 pt").effects)
-        assertEquals(TextEffects(), run(Slides.read(File("src/test/resources/slides.pptx")), "Bold red words, 28 pt").effects)
+        assertEquals(TextEffects(glow = 0xFFC000), TextEffects.of(run(d, "A glowing box").font))
+        assertEquals(TextEffects(outline = 0x002060, shadow = true), TextEffects.of(run(d, "Bold red words, 28 pt").font))
+        assertEquals(TextEffects(), TextEffects.of(run(Slides.read(File("src/test/resources/slides.pptx")), "Bold red words, 28 pt").font))
+    }
+
+    /** Words' letter looks on a slide (step 3): text-looks.pptx is slides.pptx with a paragraph of them, its line exactly 30 pt, a tab stop. */
+    @Test fun `letter looks read from a pptx`() {
+        val p = Slides.read(File("src/test/resources/text-looks.pptx")).slides[2].items.mapNotNull { (it as? SlideItem.Shape)?.text }.flatMap { it.paras }.first { it.runs.size == 4 }
+        val (struck, up, caps, link) = p.runs
+        assertTrue(struck.strike && !up.strike); assertEquals(1, up.script)
+        assertTrue(LetterLooks.of(caps.font).smallCaps); assertEquals(0xFFFF00, caps.highlight); assertEquals("Calibri", DocStyles.Plain.fontName(caps.font))
+        assertEquals("https://example.com/", link.link); assertEquals("\tlink", link.text)
+        assertEquals(30f, p.look.lineExact!!, 0.01f); assertEquals(listOf(TabStop(288f, 'r')), p.look.tabs)
     }
 
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
@@ -45,21 +55,21 @@ class SlidesTest {
         // the title slide: its placeholders' places and looks from the layout and the master
         val title = d.slides[0].items.first { words(it) == "Tetra Slides" } as SlideItem.Shape
         assertTrue(title.w > 500 && title.y > 100) // the layout's centred title box
-        assertEquals(44f, title.text!!.paras[0].runs[0].size, 0.1f) // the master's title style
-        assertEquals('c', title.text.paras[0].align)
+        assertEquals(44f, title.text!!.paras[0].runs[0].sizePt!!, 0.1f) // the master's title style
+        assertEquals(DocAlign.Center, title.text.paras[0].para.align)
         assertEquals("Say hello first.", d.slides[0].notes)
         // bullets in two levels, the second smaller and further in
         val body = d.slides[1].items.first { words(it)?.startsWith("Read the slides") == true } as SlideItem.Shape
         val paras = body.text!!.paras
         assertEquals(listOf(0, 1, 1, 0, 1), paras.map { it.level })
-        assertEquals("•", paras[0].bullet); assertTrue(paras[1].marL > paras[0].marL); assertTrue(paras[1].runs[0].size < paras[0].runs[0].size)
+        assertEquals("•", paras[0].bullet?.text); assertTrue(paras[1].look.left > paras[0].look.left); assertTrue(paras[1].runs[0].sizePt!! < paras[0].runs[0].sizePt!!)
         // shapes, words of their own, a picture
         val third = d.slides[2].items
         val shapes = third.filterIsInstance<SlideItem.Shape>()
         assertEquals("roundRect", shapes.first { words(it) == "A rounded box" }.shape!!.geometry)
         assertEquals(0xFF70AD47.toInt(), shapes.first { it.shape?.geometry == "rightArrow" }.shape!!.fill)
         val red = shapes.first { words(it) == "Bold red words, 28 pt" }.text!!.paras[0].runs[0]
-        assertTrue(red.bold); assertEquals(28f, red.size, 0.1f); assertEquals(0xFFC00000.toInt(), red.color)
+        assertTrue(red.bold); assertEquals(28f, red.sizePt!!, 0.1f); assertEquals(0xC00000, red.color)
         assertEquals(1, third.count { it is SlideItem.Picture })
         // a chart
         val chart = d.slides[3].items.filterIsInstance<SlideItem.Chart>().single().chart
@@ -102,7 +112,7 @@ class SlidesTest {
         assertTrue(back.slides[0].items.filterIsInstance<SlideItem.Picture>().any { it.bytes()?.size == png.length().toInt() })
         assertTrue(back.slides[1].hidden)
         assertEquals("Tetra Slides, edited", back.slides[1].items.firstNotNullOf { words(it)?.takeIf { w -> w.startsWith("Tetra") } })
-        assertEquals(44f, (back.slides[1].items.first { words(it)?.startsWith("Tetra") == true } as SlideItem.Shape).text!!.paras[0].runs[0].size, 0.1f) // its look kept
+        assertEquals(44f, (back.slides[1].items.first { words(it)?.startsWith("Tetra") == true } as SlideItem.Shape).text!!.paras[0].runs[0].sizePt!!, 0.1f) // its look kept
         assertEquals(2, back.slides.count { s -> s.items.any { words(it)?.startsWith("Plan") == true } }) // duplicated
         assertTrue(back.slides.none { s -> s.items.any { it is SlideItem.Chart } }) // deleted
         assertEquals("Say hello first.", back.slides[1].notes) // its notes went with it
@@ -141,7 +151,7 @@ class SlidesTest {
         val b = back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
         assertEquals(listOf(100f, 120f, 200f, 90f), listOf(b.x, b.y, b.w, b.h))
         assertEquals(pictures - 1, back.slides[2].items.count { it is SlideItem.Picture })
-        assertEquals(0xFFC00000.toInt(), b.shape!!.fill); assertEquals(null, b.shape!!.line); assertEquals(0xFFFFFFFF.toInt(), b.text!!.paras[0].runs[0].color)
+        assertEquals(0xFFC00000.toInt(), b.shape!!.fill); assertEquals(null, b.shape!!.line); assertEquals(0xFFFFFF, b.text!!.paras[0].runs[0].color)
         assertEquals(0xFF00B050.toInt(), back.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.shape?.geometry == "star5" }.shape!!.fill)
         assertEquals(SlideTransition("wipe", "d", 1000), back.slides[2].transition)
         assertEquals(null, back.slides[0].transition)
@@ -189,17 +199,17 @@ class SlidesTest {
             assertEquals(5, d.slides.size)
             assertTrue(d.slides[4].items.any { words(it) == "A new page" })
             assertEquals(listOf("First point", "Second point"), (d.slides[4].items.first { words(it)?.startsWith("First") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
-            assertEquals("•", (d.slides[4].items.first { words(it)?.startsWith("First") == true } as SlideItem.Shape).text!!.paras[0].bullet?.trim()?.take(1)?.let { if (it.isNotEmpty()) "•" else it })
+            assertEquals("•", (d.slides[4].items.first { words(it)?.startsWith("First") == true } as SlideItem.Shape).text!!.paras[0].bullet?.text?.trim()?.take(1)?.let { if (it.isNotEmpty()) "•" else it })
             val shapes = d.slides[0].items.filterIsInstance<SlideItem.Shape>()
             val box = shapes.first { words(it) == "A rounded box" }
-            assertEquals(0xFFC00000.toInt(), box.shape!!.fill); assertEquals(0xFFFFFFFF.toInt(), box.text!!.paras[0].runs[0].color)
+            assertEquals(0xFFC00000.toInt(), box.shape!!.fill); assertEquals(0xFFFFFF, box.text!!.paras[0].runs[0].color)
             assertTrue(shapes.any { Math.abs(it.x - 100f) < 1 && Math.abs(it.y - 400f) < 1 && Math.abs(it.w - 150f) < 1 }) // moved and sized
             assertEquals(1, d.slides[0].items.count { it is SlideItem.Picture }) // its own deleted, one put on
             assertTrue(shapes.any { it.shape?.fill == 0xFFFFC000.toInt() && Math.abs(it.x - 550f) < 1 }) // the star
             val table = d.slides[0].items.filterIsInstance<SlideItem.Table>().single()
             assertEquals(listOf("Name", "Score", "Anna", "18"), table.cells.flatten().map { (_, t) -> t?.paras?.joinToString { p -> p.runs.joinToString("") { it.text } }.orEmpty() })
             assertEquals(0xFF4472C4.toInt(), table.cells[0][0].first); assertEquals(0xFFCFD5EA.toInt(), table.cells[1][1].first)
-            assertEquals(0xFFFFFFFF.toInt(), table.cells[0][0].second!!.paras[0].runs[0].color); assertEquals(150f, table.cols[0], 1f)
+            assertEquals(0xFFFFFF, table.cells[0][0].second!!.paras[0].runs[0].color); assertEquals(150f, table.cols[0], 1f)
             assertTrue(d.slides[1].hidden); assertTrue(d.slides[1].items.any { words(it) == "Tetra Slides, edited" })
             for (k in 2..3) assertEquals(listOf("One", "Two"), (d.slides[k].items.first { words(it)?.startsWith("One") == true } as SlideItem.Shape).text!!.paras.map { p -> p.runs.joinToString("") { it.text } })
             assertTrue(d.slides.none { s -> s.items.any { it is SlideItem.Chart } })
@@ -373,10 +383,10 @@ class SlidesTest {
         assertEquals(0xFF000000.toInt() or midnight.colors[1], d.slides[1].background)
         val plan = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Plan" }
         val run = plan.text!!.paras[0].runs[0]
-        assertEquals(midnight.colors[0], run.color and 0xFFFFFF)
-        assertEquals(midnight.minor, run.font) // its words in the theme's font (the deck's own font was on its words)
+        assertEquals(midnight.colors[0], run.color!! and 0xFFFFFF)
+        assertEquals(midnight.minor, DocStyles.Plain.fontName(run.font)) // its words in the theme's font (the deck's own font was on its words)
         val paper = File.createTempFile("paper", ".odp"); SlidesThemes.apply(src, SlidesThemes.BUILT_IN.first { it.name == "Paper" }, paper)
-        assertEquals("Georgia", Slides.read(paper).slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!.paras[0].runs[0].font)
+        assertEquals("Georgia", Slides.read(paper).slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read") == true }.text!!.paras[0].runs[0].font.let(DocStyles.Plain::fontName))
         assertTrue(d.slides[1].items.any { it is SlideItem.Shape && it.shape?.fill == (0xFF000000.toInt() or midnight.colors[4]) }) // the band
         // again with another: one band still
         val again = File.createTempFile("theme2", ".odp"); SlidesThemes.apply(out, SlidesThemes.BUILT_IN.first { it.name == "Leaf" }, again)

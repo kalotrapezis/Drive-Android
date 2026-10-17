@@ -163,8 +163,17 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       drawn by Words' `EffectSpan` (the run's raw settings carry Word's w14 form). Also: an empty paragraph shows no
       bullet (PowerPoint's and LibreOffice's way; Slides drew one). `text effects read from a pptx` (text-effects.pptx).
       LibreOffice 26.2 draws a slide's text glow but not its shadow or outline from a .pptx; PowerPoint draws all three.
-- [ ] 3. Slides read straight into `DocPara`/`DocRun` (`SlideRun`/`SlidePara` gone): slides gain strike, sub- and
+- [x] 3. Slides read straight into `DocPara`/`DocRun` (`SlideRun`/`SlidePara` gone): slides gain strike, sub- and
       superscript, caps, highlight, links, tabs, exact line spacing. ~150 lines.
+      Done (office-engine session, 17 Oct): `SlideRun` gone — a slide's runs are `DocRun`s (face and letter looks in
+      Word's form in `font`: rFonts, caps/smallCaps, dstrike, double underline, w14 effects; LibreOffice's attributes
+      in an .odp); a `SlidePara` is now a `DocPara` with its `ParaLook` (spacing, indents, tab stops, exact lines) and
+      `SlideBullet`. Read: strike (sngStrike, dblStrike), baseline (raised, lowered), cap (all, small), highlight,
+      hyperlinks (in the theme's link colour; external targets were turned into package paths — fixed), a:tabLst,
+      lnSpc spcPts; .odp: line-through, text-position, text-transform, font-variant, background colour, text:a,
+      line-height in points. `letter looks read from a pptx` (text-looks.pptx). Of the 11 decks only the three that
+      use these changed (cronbach's small-caps title, counseling's 19ου superscripts, jamovi's link colour), as
+      LibreOffice shows them. Unit suite green; sweep 349 + 29, none failing; Words' fingerprint unchanged.
 - [ ] 4. Words kept per letter when a slide's text is edited (Words' `PictureXml.relaid`/`relook`, already used for
       a document's text boxes): an edited paragraph keeps its bold word and its red word; slide-number and date fields
       and line breaks kept. ~50 lines. This is "a slide's words as runs".

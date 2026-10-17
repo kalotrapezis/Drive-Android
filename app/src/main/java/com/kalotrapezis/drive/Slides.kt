@@ -4,17 +4,30 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import org.w3c.dom.Element
 import kotlin.math.max
+import kotlin.math.sign
 
 /**
  * PowerPoint (the plan: after Excel; a viewer first, its animations later with the user watching): a deck's slides as
  * they show — text in placeholders and boxes with the looks their layout, master and theme give them, shapes in their
  * outlines, pictures, charts, tables, groups, backgrounds — and each slide's speaker notes. Sizes in points.
  */
-internal class SlideRun(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: Int, val font: String?,
-    /** shadow, glow and outline (PowerPoint's effectLst and ln on the letters, LibreOffice's text-shadow and text-outline) */ val effects: TextEffects = TextEffects())
-internal class SlidePara(val runs: List<SlideRun>, val align: Char, val level: Int, val bullet: String?, val bulletColor: Int?,
-    val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float,
-    /** the bullet's size, a share of its letters' (buSzPct); its own face (buFont) */ val bulletSize: Float = 1f, val bulletFont: String? = null)
+/** A slide's bullet: its character or number, its colour (0xAARRGGBB), its size a share of its letters' (buSzPct), its own face (buFont). */
+internal class SlideBullet(val text: String, val color: Int? = null, val size: Float = 1f, val font: String? = null)
+/**
+ * A slide's paragraph (the Office engine, step 3): Words' paragraph and runs — [para]'s level in its list, its alignment,
+ * its runs with every look Words draws (a run's face and letter looks in Word's form, in [DocRun.font]) — with its
+ * spacing and indents as the file says them ([look]: lineMultiple a share of PowerPoint's single line, 1.2 × the letters'
+ * size; [SlidesText] turns it into Words') and its [bullet].
+ */
+internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIndented = true), val bullet: SlideBullet? = null) {
+    val runs get() = para.runs
+    val level get() = para.list?.level ?: 0
+    companion object {
+        /** Words in one look ([size] pt, [color] 0xRRGGBB, [face]), aligned [align]: a hint, a new table's cell. */
+        fun plain(words: String, size: Float, color: Int, face: String? = null, bold: Boolean = false, align: DocAlign = DocAlign.Start) =
+            SlidePara(DocPara(listOf(DocRun(words, bold = bold, sizePt = size, color = color and 0xFFFFFF, font = face?.let(Slides::face))), list = DocList(false, 0), align = align))
+    }
+}
 /** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box. */
 internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false)
 
@@ -67,6 +80,8 @@ internal class Deck(val width: Float, val height: Float, val slides: List<Slide>
 internal class SlideLayout(val name: String, val part: String, val preview: Slide, val xml: ByteArray)
 
 internal object Slides {
+    /** A face as a run's raw settings name it (Word's rFonts, which [DocStyles.fontName] reads). */
+    fun face(name: String) = """<w:rFonts w:ascii="${name.replace("&", "&amp;").replace("\"", "&quot;")}"/>"""
     fun isSlides(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("pptx", "ppsx", "odp")
 
     private const val EMU = 12700f // EMUs in a point
@@ -94,7 +109,7 @@ internal object Slides {
         val r = xml((if (dir.isEmpty()) "" else "$dir/") + "_rels/" + path.substringAfterLast('/') + ".rels") ?: return emptyMap()
         return r.kids("Relationship").associate { e ->
             val t = e.attr("Target").orEmpty()
-            e.attr("Id").orEmpty() to (if (t.startsWith("/")) t.drop(1) else normalize("$dir/$t"))
+            e.attr("Id").orEmpty() to (if (e.attr("TargetMode") == "External") t else if (t.startsWith("/")) t.drop(1) else normalize("$dir/$t"))
         }
     }
     private fun relType(xml: (String) -> Element?, path: String, type: String): String? {
@@ -339,7 +354,7 @@ internal object Slides {
                         val paths = spPr?.kid("custGeom")?.let(::custom).orEmpty()
                         val hintBody = if (empty) OfficeFormats.parse(("""<p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>""" +
                             (when (ph?.attr("type")) { "title", "ctrTitle" -> "Title"; "subTitle" -> "Subtitle"; else -> "Text" }) + "</a:t></a:r></a:p></p:txBody>").toByteArray()).documentElement else null
-                        val text = (hintBody ?: e.kid("txBody"))?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor) }
+                        val text = (hintBody ?: e.kid("txBody"))?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor, rels = rels) }
                         if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text, paths,
                             xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad,
                             id = if (ctx != null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null, hint = empty)
@@ -431,7 +446,7 @@ internal object Slides {
         }
 
         /** A text body: its paragraphs with the looks of their level from the shape, its placeholders and the master. */
-        fun text(body: Element, inherited: List<Element>, master: Element?, fontColor: Int?, defaultSize: Float = 18f, boldAll: Boolean = false): SlideText? {
+        fun text(body: Element, inherited: List<Element>, master: Element?, fontColor: Int?, defaultSize: Float = 18f, boldAll: Boolean = false, rels: Map<String, String> = emptyMap()): SlideText? {
             val paras = body.kids("p")
             if (paras.none { p -> p.below("t").any { it.textContent.isNotEmpty() } }) return null
             // a level's pPr from the nearest: the shape's lstStyle, its placeholders', the master's style
@@ -451,7 +466,7 @@ internal object Slides {
                 fun pAttr(a: String) = looks.firstNotNullOfOrNull { it.attr(a) }
                 fun pKid(n: String) = looks.firstNotNullOfOrNull { it.kid(n) }
                 val defR = looks.mapNotNull { it.kid("defRPr") }
-                fun runOf(r: Element?, t: String): SlideRun {
+                fun runOf(r: Element?, t: String): DocRun {
                     val rPr = listOfNotNull(r?.kid("rPr")) + defR
                     fun rAttr(a: String) = rPr.firstNotNullOfOrNull { it.attr(a) }
                     val size = (rAttr("sz")?.toFloatOrNull()?.div(100f) ?: defaultSize) * scale
@@ -464,20 +479,33 @@ internal object Slides {
                     val fx = rPr.firstOrNull { it.kid("effectLst") != null }?.kid("effectLst")
                     val ln = rPr.firstNotNullOfOrNull { it.kid("ln") }?.takeIf { it.kid("noFill") == null }
                     val effects = TextEffects(ln?.kid("solidFill")?.let(::color)?.and(0xFFFFFF), fx?.kid("outerShdw") != null, fx?.kid("glow")?.let(::color)?.and(0xFFFFFF))
-                    return SlideRun(t, size, boldAll || rAttr("b") == "1", rAttr("i") == "1", rAttr("u").let { it != null && it != "none" }, color, face, effects)
+                    // a link in the theme's link colour unless it has its own, as PowerPoint shows it
+                    val link = r?.kid("rPr")?.kid("hlinkClick")?.rid("id")?.let { rels[it] }
+                    val u = rAttr("u"); val strike = rAttr("strike"); val cap = rAttr("cap")
+                    // the letters' looks Words reads from a run's raw settings, in Word's form
+                    val looks = (if (cap == "all") "<w:caps/>" else if (cap == "small") "<w:smallCaps/>" else "") +
+                        (if (strike == "dblStrike") "<w:dstrike/>" else "") + (if (u == "dbl") """<w:u w:val="double"/>""" else "") + (if (effects.any) effects.docx() else "")
+                    return DocRun(t, bold = boldAll || rAttr("b") == "1", italic = rAttr("i") == "1", underline = u != null && u != "none" && u != "dbl", strike = strike == "sngStrike",
+                        sizePt = size, color = (if (link != null && own == null) scheme["hlink"] ?: color else color) and 0xFFFFFF, link = link,
+                        highlight = rPr.firstNotNullOfOrNull { it.kid("highlight") }?.let(::color)?.and(0xFFFFFF), font = Slides.face(face) + looks,
+                        script = (rAttr("baseline")?.toIntOrNull() ?: 0).sign)
                 }
-                val runs = p.kids().mapNotNull { r -> when (r.localName) { "r", "fld" -> runOf(r, r.kid("t")?.textContent.orEmpty()); "br" -> runOf(r, "\n"); else -> null } }
+                val runs = p.kids().mapNotNull { r -> when (r.localName) { "r", "fld" -> runOf(r, r.kid("t")?.textContent.orEmpty()); "br" -> runOf(r, LINE_BREAK.toString()); else -> null } }
                     .ifEmpty { listOf(runOf(null, "")) }
                 val bullet = when {
                     pKid("buNone") != null || pPr?.kid("buNone") != null -> null
                     else -> pKid("buChar")?.attr("char") ?: pKid("buAutoNum")?.let { "${paras.indexOf(p) + 1}." }
                 }
                 fun pt(a: String) = pAttr(a)?.toFloatOrNull()?.div(EMU) ?: 0f
-                fun spacing(n: String) = pKid(n)?.let { s -> s.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f) ?: s.kid("spcPct")?.attr("val")?.toFloatOrNull()?.let { it / 100_000f * (runs.firstOrNull()?.size ?: defaultSize) } } ?: 0f
+                fun spacing(n: String) = pKid(n)?.let { s -> s.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f) ?: s.kid("spcPct")?.attr("val")?.toFloatOrNull()?.let { it / 100_000f * (runs.firstOrNull()?.sizePt ?: defaultSize) } } ?: 0f
                 val line = pKid("lnSpc")?.kid("spcPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f
-                SlidePara(runs, when (pAttr("algn")) { "ctr" -> 'c'; "r" -> 'r'; "just" -> 'j'; else -> 'l' }, lvl, bullet,
-                    pKid("buClr")?.let(::color), pt("marL"), pt("indent"), spacing("spcBef") * scale, spacing("spcAft") * scale, (line - reduce).coerceAtLeast(0.5f),
-                    pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface"))
+                // exact line spacing (spcPts): shrinking on overflow takes the same share off it
+                val exact = pKid("lnSpc")?.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f)?.times(1 - reduce)
+                val tabs = pKid("tabLst")?.kids("tab").orEmpty().mapNotNull { t -> t.attr("pos")?.toFloatOrNull()?.div(EMU)?.let { TabStop(it, when (t.attr("algn")) { "r" -> 'r'; "ctr" -> 'c'; else -> 'l' }) } }
+                SlidePara(DocPara(runs, list = DocList(bullet?.firstOrNull()?.isDigit() == true, lvl), align = when (pAttr("algn")) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start }),
+                    ParaLook(before = spacing("spcBef") * scale, after = spacing("spcAft") * scale, lineMultiple = (line - reduce).coerceAtLeast(0.5f), lineExact = exact,
+                        left = pt("marL"), firstLine = pt("indent"), listIndented = true, tabs = tabs),
+                    bullet?.let { SlideBullet(it, pKid("buClr")?.let(::color), pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface")) })
             }
             return SlideText(out, anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
                 bodyPr.any { it.kid("normAutofit") != null })

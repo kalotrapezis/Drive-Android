@@ -8,13 +8,12 @@ import android.graphics.Canvas
  * the box by [TextBoxDrawable.framed] — not cut at the box, as PowerPoint lets words overflow it.
  */
 internal object SlidesText {
-    /** A slide's paragraphs' looks, bullets and their colours; its runs name their face itself. */
-    private class Styles(val looks: java.util.IdentityHashMap<DocPara, ParaLook>, val bullets: java.util.IdentityHashMap<DocPara, SlidePara>) : DocStyles() {
+    /** A slide's paragraphs' looks and bullets. */
+    private class Styles(val looks: java.util.IdentityHashMap<DocPara, ParaLook>, val bullets: java.util.IdentityHashMap<DocPara, SlideBullet>) : DocStyles() {
         override fun look(p: DocPara) = looks[p] ?: ParaLook()
-        override fun fontName(raw: String?) = raw?.substringBefore('<')?.takeIf { it.isNotEmpty() } // the face, then its effects as Word writes them
         // a bullet no face here has (Noto Sans Symbols' 🞆): Word's •; one the phone draws as a colour emoji (⚫) asked for as a letter, in its colour
-        override fun marker(p: DocPara) = bullets[p]?.bullet?.let { bullet(it) }?.let { b -> if (glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
-        override fun markerLook(p: DocPara) = bullets[p]?.let { MarkerLook(it.bulletColor, it.bulletSize, it.bulletFont) }
+        override fun marker(p: DocPara) = bullets[p]?.text?.let { bullet(it) }?.let { b -> if (glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
+        override fun markerLook(p: DocPara) = bullets[p]?.let { MarkerLook(it.color, it.size, it.font) }
         private val glyphs = android.graphics.Paint()
     }
 
@@ -25,21 +24,17 @@ internal object SlidesText {
     fun block(t: SlideText, w: Float, k: Float = 1f): Block {
         val key = (w.toRawBits().toLong() shl 32) or k.toRawBits().toLong().and(0xFFFFFFFFL)
         synchronized(laid) { laid[t]?.get(key) }?.let { return it }
-        val looks = java.util.IdentityHashMap<DocPara, ParaLook>(); val bullets = java.util.IdentityHashMap<DocPara, SlidePara>()
+        val styles = Styles(java.util.IdentityHashMap(), java.util.IdentityHashMap())
         val paras = t.paras.map { p ->
             val first = p.runs.firstOrNull()
-            val bullet = p.bullet?.takeIf { p.runs.any { it.text.isNotEmpty() } } // an empty paragraph shows none, as PowerPoint's
-            // shortcut: a run's colour loses its see-through part (Words' runs are 0xRRGGBB), when one has it: carry alpha in DocRun
-            val runs = p.runs.map { r -> DocRun(r.text.replace('\n', LINE_BREAK), bold = r.bold, italic = r.italic, underline = r.underline,
-                sizePt = r.size * k, color = r.color and 0xFFFFFF, font = (r.font ?: "") + (if (r.effects.any) r.effects.docx() else "")) }
-            DocPara(runs, list = bullet?.let { DocList(it.firstOrNull()?.isDigit() == true, p.level) },
-                align = when (p.align) { 'c' -> DocAlign.Center; 'r' -> DocAlign.End; 'j' -> DocAlign.Justify; else -> DocAlign.Start }).also { d ->
-                looks[d] = ParaLook(before = p.before, after = p.after, lineMultiple = p.line * single(first), left = p.marL, firstLine = p.indent, listIndented = true,
-                    sizePt = (first?.size ?: 18f) * k, font = first?.font, color = first?.color?.and(0xFFFFFF))
-                if (bullet != null) bullets[d] = p
+            // shortcut: a run's colour has no see-through part (Words' runs are 0xRRGGBB); when a deck needs one, carry alpha in DocRun
+            p.para.copy(runs = p.runs.map { r -> r.copy(sizePt = (r.sizePt ?: 18f) * k) }).also { d ->
+                styles.looks[d] = p.look.copy(lineMultiple = p.look.lineMultiple * single(first, styles), lineExact = p.look.lineExact?.times(k),
+                    sizePt = (first?.sizePt ?: 18f) * k, font = styles.fontName(first?.font), color = first?.color)
+                // an empty paragraph shows no bullet, as PowerPoint's
+                p.bullet?.takeIf { p.runs.any { it.text.isNotEmpty() } }?.let { styles.bullets[d] = it }
             }
         }
-        val styles = Styles(looks, bullets)
         val doc = OfficeDoc(paras, basePt = 18f * k)
         val inner = maxOf(1f, w - t.insets[0] - t.insets[2])
         fun stack(width: Float) = OfficePages.stack(doc, paras, styles, DocPage(), width, { null }, null, 0f, 0f)
@@ -58,8 +53,8 @@ internal object SlidesText {
      * PowerPoint's single line is 1.2 times its letters' size (LibreOffice draws it so too), Word's the font's own height:
      * the share of Words' line that makes PowerPoint's, for [r]'s face.
      */
-    private fun single(r: SlideRun?): Float {
-        val fm = android.text.TextPaint().apply { typeface = OfficeFonts.styled(OfficeFonts.typeface(r?.font), r?.bold == true, r?.italic == true); textSize = 100f }.fontMetrics
+    private fun single(r: DocRun?, styles: DocStyles): Float {
+        val fm = android.text.TextPaint().apply { typeface = OfficeFonts.styled(OfficeFonts.typeface(styles.fontName(r?.font)), r?.bold == true, r?.italic == true); textSize = 100f }.fontMetrics
         return 120f / (fm.descent - fm.ascent + fm.leading).coerceAtLeast(1f)
     }
 

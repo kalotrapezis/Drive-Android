@@ -74,10 +74,8 @@ internal object SlidesEdit {
                 val p = old?.paras?.getOrNull(i) ?: old?.paras?.lastOrNull()
                 val look = p?.runs?.firstOrNull { it.text.isNotBlank() } ?: p?.runs?.firstOrNull()
                 // a hint's grey is not the words' colour: those take the theme's text colour
-                val color = if (item.hint) 0xFF000000.toInt() else look?.color ?: 0xFF000000.toInt()
-                val run = SlideRun(line, look?.size ?: 18f, look?.bold == true, look?.italic == true, look?.underline == true, color, look?.font, look?.effects ?: TextEffects())
-                if (p == null) SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)
-                else SlidePara(listOf(run), p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line, p.bulletSize, p.bulletFont)
+                if (p == null || look == null) SlidePara.plain(line, 18f, 0)
+                else SlidePara(p.para.copy(runs = listOf(look.copy(text = line, color = if (item.hint) 0 else look.color))), p.look, p.bullet)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink) }
                 ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped }
@@ -123,8 +121,7 @@ internal object SlidesEdit {
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
         val shape = if (l.fill == null && l.line == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line), sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap())
-        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.runs.map { r -> SlideRun(r.text, r.size, r.bold, r.italic, r.underline, l.text, r.font, r.effects) },
-            p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line, p.bulletSize, p.bulletFont) }, t.anchor, t.insets, t.scale, t.wrap, t.shrink) }
+        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.para.copy(runs = p.runs.map { it.copy(color = l.text and 0xFFFFFF) }), p.look, p.bullet) }, t.anchor, t.insets, t.scale, t.wrap, t.shrink) }
         return SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped }
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
@@ -132,9 +129,8 @@ internal object SlidesEdit {
         fun cell(r: Int, c: Int): Pair<Int?, SlideText?> {
             val head = r == 0
             val words = a.cells.getOrNull(r * a.cols + c).orEmpty()
-            val run = SlideRun(words, 14f, head, false, false, look?.text ?: if (head) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(), null)
             val fill = cellFill(look?.fill, r)
-            return fill to SlideText(listOf(SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)), 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
+            return fill to SlideText(listOf(SlidePara.plain(words, 14f, look?.text ?: if (head) 0xFFFFFF else 0, bold = head)), 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
         }
         return SlideItem.Table(a.x, a.y, a.w, a.h, List(a.cols) { a.w / a.cols }, List(a.rows) { a.h / a.rows }, List(a.rows) { r -> List(a.cols) { c -> cell(r, c) } }, 0xFFFFFFFF.toInt())
     }
@@ -155,7 +151,7 @@ internal object SlidesEdit {
     fun view(deck: Deck, edit: Edit) = Deck(deck.width, deck.height, edit.order.map { slide(deck, edit, it) })
 
     /** The words of a text box as lines, for editing: one a paragraph. */
-    fun lines(item: SlideItem.Shape): List<String> = item.text?.paras?.map { p -> p.runs.joinToString("") { it.text }.replace("\n", " ") } ?: listOf("")
+    fun lines(item: SlideItem.Shape): List<String> = item.text?.paras?.map { p -> p.runs.joinToString("") { it.text }.replace(LINE_BREAK, ' ') } ?: listOf("")
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
     private const val A = "http://schemas.openxmlformats.org/drawingml/2006/main"

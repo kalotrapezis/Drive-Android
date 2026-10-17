@@ -1,6 +1,7 @@
 package com.kalotrapezis.drive
 
 import org.w3c.dom.Element
+import kotlin.math.sign
 
 /**
  * LibreOffice Impress's decks (.odp): each draw:page's frames (titles, outlines, text boxes, pictures, charts), custom
@@ -116,33 +117,47 @@ internal object SlidesOdp {
                     if (level > 0 && Regex("""outline\d$""").containsMatchIn(base)) base.dropLast(1) + (level + 1) else base }
                 fun textProp(span: String?, key: String) = prop("text", span, "t.$key") ?: prop("paragraph", pStyle, "t.$key")
                     ?: levelStyle?.let { prop("presentation", it, "t.$key") } ?: shapeProp("t.$key")
-                val runs = ArrayList<SlideRun>()
-                fun run(t: String, span: String?) {
-                    val size = pt(textProp(span, "font-size")) ?: 18f
-                    runs += SlideRun(t, size, textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, textProp(span, "font-style") == "italic",
-                        textProp(span, "text-underline-style").let { it != null && it != "none" }, hex(textProp(span, "color")) ?: 0xFF000000.toInt(),
-                        textProp(span, "font-name") ?: textProp(span, "font-family"),
-                        TextEffects(if (textProp(span, "text-outline") == "true") 0 else null, textProp(span, "text-shadow").let { it != null && it != "none" }))
+                val runs = ArrayList<DocRun>()
+                fun run(t: String, span: String?, link: String? = null) {
+                    fun has(key: String) = textProp(span, key).let { it != null && it != "none" }
+                    val face = textProp(span, "font-name") ?: textProp(span, "font-family")
+                    val effects = TextEffects(if (textProp(span, "text-outline") == "true") 0 else null, has("text-shadow"))
+                    // the letters' looks Words reads from a run's raw settings, in LibreOffice's form
+                    val looks = listOfNotNull("text-transform".takeIf { textProp(span, it) == "uppercase" }?.let { """ fo:text-transform="uppercase"""" },
+                        "font-variant".takeIf { textProp(span, it) == "small-caps" }?.let { """ fo:font-variant="small-caps"""" },
+                        "text-line-through-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-line-through-type="double"""" },
+                        "text-underline-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-underline-type="double"""" }).joinToString("") + effects.odt()
+                    // "super 58%", "sub", "33% 58%": raised or lowered
+                    val position = textProp(span, "text-position")?.substringBefore(' ')
+                    runs += DocRun(t, bold = textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, italic = textProp(span, "font-style") == "italic",
+                        underline = has("text-underline-style"), strike = has("text-line-through-style"), sizePt = pt(textProp(span, "font-size")) ?: 18f,
+                        color = (hex(textProp(span, "color")) ?: 0) and 0xFFFFFF, highlight = textProp(span, "background-color")?.takeIf { it != "transparent" }?.let(::hex)?.and(0xFFFFFF),
+                        link = link, font = (face?.let { """style:font-name="$it"""" } ?: "") + looks,
+                        script = when { position == null -> 0; position == "super" -> 1; position == "sub" -> -1; else -> position.removeSuffix("%").toFloatOrNull()?.sign?.toInt() ?: 0 })
                 }
-                fun walk(n: org.w3c.dom.Node, span: String?) {
+                fun walk(n: org.w3c.dom.Node, span: String?, link: String? = null) {
                     when {
-                        n is org.w3c.dom.Text -> if (n.data.isNotEmpty()) run(n.data.replace('\n', ' '), span)
-                        n is Element && n.localName == "span" -> for (i in 0 until n.childNodes.length) walk(n.childNodes.item(i), n.a(TEXT, "style-name") ?: span)
-                        n is Element && n.localName == "s" -> run(" ".repeat(n.a(TEXT, "c")?.toIntOrNull() ?: 1), span)
-                        n is Element && n.localName == "tab" -> run("\t", span)
-                        n is Element && n.localName == "line-break" -> run("\n", span)
-                        n is Element && n.localName in setOf("a", "page-number", "date", "time") -> for (i in 0 until n.childNodes.length) walk(n.childNodes.item(i), span)
+                        n is org.w3c.dom.Text -> if (n.data.isNotEmpty()) run(n.data.replace('\n', ' '), span, link)
+                        n is Element && n.localName == "span" -> for (i in 0 until n.childNodes.length) walk(n.childNodes.item(i), n.a(TEXT, "style-name") ?: span, link)
+                        n is Element && n.localName == "s" -> run(" ".repeat(n.a(TEXT, "c")?.toIntOrNull() ?: 1), span, link)
+                        n is Element && n.localName == "tab" -> run("\t", span, link)
+                        n is Element && n.localName == "line-break" -> run(LINE_BREAK.toString(), span, link)
+                        n is Element && n.localName == "a" -> for (i in 0 until n.childNodes.length) walk(n.childNodes.item(i), span, n.getAttributeNS("http://www.w3.org/1999/xlink", "href").takeIf { it.isNotEmpty() })
+                        n is Element && n.localName in setOf("page-number", "date", "time") -> for (i in 0 until n.childNodes.length) walk(n.childNodes.item(i), span, link)
                     }
                 }
                 for (i in 0 until p.childNodes.length) walk(p.childNodes.item(i), null)
                 if (runs.isEmpty()) run("", null)
                 val bullet = list?.let { lists[it]?.get(level) }
                 fun pProp(key: String) = prop("paragraph", pStyle, "p.$key") ?: levelStyle?.let { prop("presentation", it, "p.$key") } ?: shapeProp("p.$key")
-                val align = when (pProp("text-align")) { "center" -> 'c'; "end", "right" -> 'r'; "justify" -> 'j'; else -> 'l' }
+                val align = when (pProp("text-align")) { "center" -> DocAlign.Center; "end", "right" -> DocAlign.End; "justify" -> DocAlign.Justify; else -> DocAlign.Start }
                 val marL = (bullet?.let { it.before + it.label } ?: 0f) + (pt(pProp("margin-left")) ?: 0f)
-                SlidePara(runs, align, level, bullet?.char, bullet?.color, marL, -(bullet?.label ?: 0f) + (pt(pProp("text-indent")) ?: 0f),
-                    pt(pProp("margin-top")) ?: 0f, pt(pProp("margin-bottom")) ?: 0f, pProp("line-height")?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
-                    bullet?.size ?: 1f, bullet?.font).let { paras += it }
+                // a line height in points: exact; a percentage: proportional
+                val height = pProp("line-height")
+                paras += SlidePara(DocPara(runs, list = DocList(bullet?.char?.firstOrNull()?.isDigit() == true, level), align = align),
+                    ParaLook(before = pt(pProp("margin-top")) ?: 0f, after = pt(pProp("margin-bottom")) ?: 0f, lineMultiple = height?.takeIf { it.endsWith("%") }?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
+                        lineExact = height?.takeIf { !it.endsWith("%") }?.let(::pt), left = marL, firstLine = -(bullet?.label ?: 0f) + (pt(pProp("text-indent")) ?: 0f), listIndented = true),
+                    bullet?.char?.let { SlideBullet(it, bullet.color, bullet.size, bullet.font) })
             }
             // a list's items sit one level in each time a list is inside an item
             fun walkList(list: Element, level: Int, name: String?) {
@@ -291,9 +306,9 @@ internal object SlidesOdp {
                     // the layout's own boxes (a PowerPoint layout's, moved by it) before LibreOffice's generic placeholder
                     listOfNotNull(f.firstOrNull { it.a(PRES, "class") == "title" }) + rest.filter { it.a(PRES, "placeholder") != "true" }.ifEmpty { rest }.take(2) }
             val items = ArrayList<SlideItem>().also { shapes(m, it, true) }
-            fun hint(words: String, size: Float, align: Char) = SlideText(listOf(SlidePara(listOf(SlideRun(words, size, false, false, false, 0xFF888888.toInt(), null)), align, 0, null, null, 0f, 0f, 0f, 0f, 1f)), 'm', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
+            fun hint(words: String, size: Float, align: DocAlign) = SlideText(listOf(SlidePara.plain(words, size, 0x888888, align = align)), 'm', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
             boxes.forEachIndexed { k, f -> val b = box(f); val title = f.a(PRES, "class") == "title"
-                items += SlideItem.Shape(b[0], b[1], b[2], b[3], 0f, null, hint(if (title) "Title" else "Text", if (title) 32f else 20f, if (title) 'c' else 'l'), id = "o$k", hint = true).also { it.anim = "o$k" } }
+                items += SlideItem.Shape(b[0], b[1], b[2], b[3], 0f, null, hint(if (title) "Title" else "Text", if (title) 32f else 20f, if (title) DocAlign.Center else DocAlign.Start), id = "o$k", hint = true).also { it.anim = "o$k" } }
             // the page saved: these boxes empty, in the master's places and styles
             val frames = boxes.joinToString("") { f ->
                 val cls = f.a(PRES, "class") ?: "outline"

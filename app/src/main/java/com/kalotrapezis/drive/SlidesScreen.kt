@@ -533,6 +533,24 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             message = result.fold({ "Saved ${it.name} beside the presentation" }, { WriterLog.e("Slides: PDF", it); "Could not make the PDF." })
         }
     }
+    /** File › Export pictures (PowerPoint's Export › PNG): each slide shown (hidden ones left out, as the PDF) a PNG 1920 wide, in a folder beside the deck. */
+    fun exportPictures() {
+        val f = file ?: return; val d = view ?: return
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val dir = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "${f.nameWithoutExtension} slides" else "${f.nameWithoutExtension} slides ($it)") }.first { !it.exists() }.apply { mkdirs() }
+                val k = 1920f / d.width
+                d.slides.filter { !it.hidden }.forEachIndexed { n, sl ->
+                    val bmp = android.graphics.Bitmap.createBitmap(1920, Math.round(d.height * k).coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                    Slides.draw(android.graphics.Canvas(bmp), d, sl, k)
+                    File(dir, "Slide ${n + 1}.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    bmp.recycle()
+                }
+                WriterLog.i("Slides: ${dir.list()?.size} pictures exported"); dir
+            } }
+            message = result.fold({ "Saved the slides as pictures in “${it.name}” beside the presentation" }, { WriterLog.e("Slides: pictures", it); "Could not make the pictures." })
+        }
+    }
     fun printIt() {
         val title = file?.nameWithoutExtension ?: "Presentation"
         scope.launch {
@@ -776,6 +794,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                 RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
+                RibbonButton("Export pictures", w, R.drawable.ic_gallery, enabled = file != null) { exportPictures() }
                 RibbonButton("Print", w, R.drawable.ic_print) { printIt() }
                 file?.let { f ->
                     RibbonDivider(w)

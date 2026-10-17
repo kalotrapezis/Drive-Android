@@ -388,6 +388,8 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       as before — checked on the emulator, 1/3 found) and Slides' top bar has it (the search button while editing, Ctrl+F as A planned):
       every slide's words, any case, ‹ › choosing the box a find is in on its slide; Replace and All as one step of Undo, each line
       kept over its paragraph. Emulator: "slides" → "decks" on slides 1 and 2, "Replaced 2". Versions were done in A.
+      Export pictures (office-C session, 17 Oct): File › Export pictures — each slide shown (hidden ones left out, as the PDF) a PNG
+      1920 px wide, drawn as the slides are, in a folder "<name> slides" beside the deck. Emulator: 4 PNGs, as the slides show.
 - [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).
 - [ ] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx

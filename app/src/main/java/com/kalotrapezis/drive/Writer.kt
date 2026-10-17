@@ -4996,7 +4996,7 @@ private fun placeholderPicture(): DocImage {
     val bytes = java.io.ByteArrayOutputStream().also { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     return DocImage("n" + java.util.UUID.randomUUID(), null, 108f, 108f, null, bytes, "png")
 }
-private fun preparePicture(context: Context, uri: Uri): DocImage {
+internal fun preparePicture(context: Context, uri: Uri): DocImage {
     val raw = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)

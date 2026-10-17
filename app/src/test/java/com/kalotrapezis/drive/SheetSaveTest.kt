@@ -473,6 +473,32 @@ class SheetSaveTest {
         }
     }
 
+    /** Insert › Picture and Text box: Excel's picture and text box shapes, LibreOffice's frame and rectangle — read back, and by LibreOffice. */
+    @Test fun `a picture and a text box put on a sheet`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("picture").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(op: (File, File) -> Unit) { val next = File(dir, "${System.nanoTime()}.${f.extension}"); op(f, next); f = next }
+            step { a, b -> if (name.endsWith("xlsx")) SheetChart.pictureXlsx(a, b, parts.getValue("0"), 6, 1, 120f, 90f, png, "png") else SheetChart.pictureOds(a, b, 0, 6, 1, 120f, 90f, png, "png") }
+            step { a, b -> if (name.endsWith("xlsx")) SheetChart.textBoxXlsx(a, b, parts.getValue("0"), 6, 4, 144f, 60f, "Hello\nthere") else SheetChart.textBoxOds(a, b, 0, 6, 4, 144f, 60f, "Hello\nthere") }
+            fun check(file: File, how: String) { val s = Sheets.read(file, ',', '.').sheet(0)
+                val pic = s.drawings.firstOrNull { it.image != null }; assertTrue("$how: ${s.drawings.size}", pic != null)
+                assertEquals(how, 6, pic!!.row); assertEquals(how, 1, pic.col); assertTrue(how, pic.image!!.invoke()?.isNotEmpty() == true)
+                val box = s.drawings.firstOrNull { it.text?.contains("Hello") == true }; assertTrue("$how: ${s.drawings.map { it.text }}", box != null)
+                assertEquals(how, 6, box!!.row); assertEquals(how, 4, box.col)
+                assertEquals(how, "Alpha", s[1, 0]?.text) }
+            check(f, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

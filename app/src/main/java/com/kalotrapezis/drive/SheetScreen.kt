@@ -187,6 +187,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
+    var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -809,6 +810,17 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         history.apply(b, index, changes); version++; view.range = null
         WriterLog.i("Sheets: cells ${if (insert) "inserted" else "deleted"}, shifted ${if (rows) (if (insert) "down" else "up") else (if (insert) "right" else "left")}")
     }
+    /** Insert › Picture: the picked one (Words' preparing: a phone-sized copy) on the sheet at the chosen cell, at most 300 pt wide. */
+    val pickPicture = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { picked -> picked ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
+            val bytes = img?.bytes ?: run { message = "Could not add that picture."; return@launch }
+            val s = sheet ?: return@launch; val (r, c) = chosen(s); val i = index
+            val k = (300f / img.widthPt).coerceAtMost(1f)
+            fileStep("picture put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.pictureXlsx(baked, next, bb.parts.getValue("$i"), r, c, img.widthPt * k, img.heightPt * k, bytes, img.extension)
+                else SheetChart.pictureOds(baked, next, i, r, c, img.widthPt * k, img.heightPt * k, bytes, img.extension) })
+        }
+    }
     /** Excel's Clear ▾ on the chosen cells: [what] "contents", "formats", "all" (both), "notes" or "links" (changes to the file). */
     fun clearCells(what: String = "contents") {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
@@ -1087,6 +1099,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
                             RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
                             RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
+                            // Excel's Insert › Pictures (Words' picker) and Text Box: on the sheet at the chosen cell
+                            if (b.kind != "csv") RibbonButton("Picture", w, R.drawable.ic_gallery) { pickPicture.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                            if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
                             // Excel's notes (LibreOffice's comments): made or changed in Words' comment dialog; taken away
                             val hasNote = s[cr, cc]?.note != null
                             RibbonButton(if (hasNote) "Edit note" else "Note", w, R.drawable.ic_comment) { noting = true }
@@ -1604,6 +1619,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = unprotect && password.isNotEmpty() || !unprotect && (password.isEmpty() || again == password), onClick = { protecting = false
                 protectSheet(!unprotect, password) }) { Text(if (unprotect) "Unprotect" else "Protect") } },
             dismissButton = { TextButton(onClick = { protecting = false }) { Text("Cancel") } }) }
+    // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
+    if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },
+            text = { OutlinedTextField(words, { words = it }, label = { Text("Words") }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(enabled = words.isNotBlank(), onClick = { boxing = false; val (r, c) = chosen(s); val i = index; val t = words.trim()
+                fileStep("text box put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.textBoxXlsx(baked, next, bb.parts.getValue("$i"), r, c, 144f, 60f, t)
+                    else SheetChart.textBoxOds(baked, next, i, r, c, 144f, 60f, t) }) }) { Text("Put in") } },
+            dismissButton = { TextButton(onClick = { boxing = false }) { Text("Cancel") } }) }
     // Home › Conditional formatting: Excel's dialog — the value(s) and the look
     ruling?.let { (kind, d) ->
         val count = when (kind) { "between" -> 2; "duplicate", "aboveAverage" -> 0; else -> 1 }

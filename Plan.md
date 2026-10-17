@@ -72,10 +72,11 @@ How to write here:
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
       Print titles (420575e), Header and footer (b66a9cb),
       engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸ (e6b8549), sheet copy
-      and tab colour (a7f9980), cells shifted. Checks at a925139: unit
+      and tab colour (a7f9980), cells shifted (ce1b197),
+      Picture and Text box. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -771,6 +772,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       label of its own: "Note") — saved as Excel's comments part with the VML note shape Excel draws it by (both made when the sheet has
       none) and LibreOffice's office:annotation in the cell (`SheetNotes`, a change to the file). `notes made and taken away` (both
       formats, LibreOffice's conversions; a sheet with notes and one without); emulator: a note on C3. Not yet: threaded comments.
+      Picture and Text box done (office-F session, 18 Oct): Insert › Picture (Words' picker and `preparePicture`, now shared; at most
+      300 pt wide) and Text box (its words asked; 2 × 0.8 in) at the chosen cell — Excel's pic and txBox shapes in the sheet's drawing,
+      LibreOffice's frame with its image (Pictures/, in the manifest) and rectangle shape with its words. `SheetChart`'s drawing code
+      shared by chart, picture and text box (`anchored`). `a picture and a text box put on a sheet` (both formats, LibreOffice's
+      conversions); emulator: a text box at B7, a picture at C14. Not yet: moving, resizing or deleting drawings on the sheet; shapes.
 - [~] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.

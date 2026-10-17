@@ -1271,6 +1271,7 @@ internal object Sheets {
                     "style" -> current = Raw(at.a("family") ?: "", at.a("parent-style-name")).also { s ->
                         at.a("name")?.let { raw[it] = s; at.a("display-name")?.let { d -> shown[d] = it } }
                         at.a("data-style-name")?.let { s.props["data-style"] = it }
+                        at.a("master-page-name")?.let { s.props["master-page"] = it }
                     }
                     "number-style", "currency-style", "percentage-style", "date-style", "time-style", "boolean-style", "text-style" ->
                         if (uri == "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0") data = DataStyle(kind = local).also { d -> at.a("name")?.let { dataStyles[it] = d } }
@@ -1409,7 +1410,7 @@ internal object Sheets {
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
                 var inStyles = false
-                var name = ""; var tableStyle: String? = null; var tableProtected = false
+                var name = ""; var tableStyle: String? = null; var tableProtected = false; var printRanges: String? = null
                 var cells = CellMap()
                 var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
                 var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
@@ -1453,7 +1454,7 @@ internal object Sheets {
                         "table" -> {
                             tableIndex++
                             if (tableIndex != target) { skip = 1; return }
-                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name"); tableProtected = at.a("protected") == "true"
+                            name = at.a("name") ?: "Sheet"; tableStyle = at.a("style-name"); tableProtected = at.a("protected") == "true"; printRanges = at.a("print-ranges")
                             cells = CellMap(); colWidths = HashMap(); hiddenCols = HashSet(); colDefaults = HashMap()
                             rowRuns = ArrayList(); hiddenRuns = ArrayList(); merges = ArrayList()
                             col = 0; row = 0; maxRow = -1; maxCol = -1; boxed = Extent(); drawings = ArrayList(); rules = ArrayList()
@@ -1683,6 +1684,7 @@ internal object Sheets {
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
+                        print = runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint(),
                     ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read

@@ -733,7 +733,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> null }
         // Selection first, as in Words: Cut, Copy, Paste and Clear out of the crowded Home (asked 16 Oct); a cell is
         // always chosen while editing, so it is always there then, but Home stays the tab in use
-        val base = listOf("Selection", "File", "Home", "Insert", "Formulas", "Data", "View")
+        val base = listOf("Selection", "File", "Home", "Insert", "Page layout", "Formulas", "Data", "View")
         val tabs = (if (editing) base else listOfNotNull("Selection".takeIf { g != null })) + listOfNotNull(ctx)
         if (tabs.isEmpty()) return
         LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in base } ?: "Home" }
@@ -910,6 +910,30 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 val rows = (d.r1..d.r2).map { r -> DocRow("", (d.c1..d.c2).map { c -> DocCell("", listOf(DocPara(listOf(DocRun(s[l.rows[r], l.cols[c]]?.text.orEmpty()))))) }) }
                                 OfficeCharts.fromTable(DocTable("", "", rows))?.let { charting = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2]) to it } ?: run { message = "The chosen cells have no numbers to chart." }
                             }
+                        }
+                        shown == "Page layout" -> {
+                            // Excel's Page Layout: how the sheet prints (Export PDF and Print use it), kept in the file
+                            val p = s.print
+                            fun setPrint(change: (SheetPrint) -> SheetPrint) { if (b.kind == "csv") { message = "A CSV file keeps no page settings: save it as a workbook first."; return }
+                                val i = index; val next = change(p)
+                                fileStep("page layout", { baked, out, bb -> if (bb.kind == "xlsx") SheetPageSetup.xlsx(baked, out, bb.parts.getValue("$i"), i, bb.tabs[i].name, next)
+                                    else SheetPageSetup.ods(baked, out, i, bb.tabs[i].name, next) }) }
+                            @Composable fun menu(label: String, icon: Int, choices: List<Pair<String, Boolean>>, pick: (Int) -> Unit) = Box {
+                                var open by remember { mutableStateOf(false) }
+                                RibbonButton(label, w, icon) { open = true }
+                                DropdownMenu(open, { open = false }) { choices.forEachIndexed { k, (name, on) -> DropdownMenuItem(text = { Text(name) }, onClick = { open = false; pick(k) },
+                                    trailingIcon = { if (on) Icon(painterResource(R.drawable.ic_check), null) }) } }
+                            }
+                            menu("Orientation", if (p.landscape) R.drawable.ic_crop_landscape else R.drawable.ic_crop_portrait, listOf("Portrait" to !p.landscape, "Landscape" to p.landscape)) { k -> setPrint { it.copy(landscape = k == 1) } }
+                            menu("Size", R.drawable.ic_fit_page, listOf("A4" to !p.letter, "Letter" to p.letter)) { k -> setPrint { it.copy(letter = k == 1) } }
+                            val marginSets = listOf("Normal" to listOf(0.7f, 0.7f, 0.75f, 0.75f), "Wide" to listOf(1f, 1f, 1f, 1f), "Narrow" to listOf(0.25f, 0.25f, 0.75f, 0.75f))
+                            menu("Margins", R.drawable.ic_margin, marginSets.map { (n, m) -> n to (p.margins.zip(m).all { (a, c) -> Math.abs(a - c) < 0.01f }) }) { k -> setPrint { it.copy(margins = marginSets[k].second) } }
+                            menu("Scale", R.drawable.ic_aspect_ratio, listOf("Actual size" to (p.fitWidth == null && p.scale == 100), "All columns on one page" to (p.fitWidth == 1 && (p.fitHeight ?: 0) == 0), "Sheet on one page" to (p.fitWidth == 1 && p.fitHeight == 1))) { k ->
+                                setPrint { when (k) { 0 -> it.copy(scale = 100, fitWidth = null, fitHeight = null); 1 -> it.copy(fitWidth = 1, fitHeight = 0); else -> it.copy(fitWidth = 1, fitHeight = 1) } } }
+                            RibbonButton("Print gridlines", w, R.drawable.ic_view_grid, on = p.grid) { setPrint { it.copy(grid = !p.grid) } }
+                            RibbonDivider(w)
+                            RibbonButton("Set print area", w, R.drawable.ic_print, enabled = g != null) { g?.let { d -> setPrint { it.copy(area = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2])) } } }
+                            if (p.area != null) RibbonButton("Clear print area", w, R.drawable.ic_close) { setPrint { it.copy(area = null) } }
                         }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }

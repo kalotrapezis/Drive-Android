@@ -755,8 +755,15 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Text to columns done (office-F session, 17 Oct): Data › Text to columns — a column's words cut at a comma, semicolon, tab, space,
       slash or dash (not inside quotes; spaces: runs as one) into the cells to its right, each typed as if there (numbers stay numbers):
       `SheetInput.split`, one step of Undo. `text cut into columns`; emulator: Crete/Rhodes/Corfu into three cells.
-- [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
+- [~] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
+      Done (office-F session, 17 Oct): a Page layout tab (Excel's place, after Insert) — Orientation, Size (A4, Letter), Margins (Excel's
+      Normal, Wide, Narrow), Scale (actual size, all columns on one page, sheet on one page), Print gridlines, Set / Clear print area —
+      each a change to the file (`SheetPageSetup`: Excel's pageSetup, pageMargins, printOptions, sheetPr's fitToPage, _xlnm.Print_Area;
+      LibreOffice's page layout on a master page of the sheet's own, its print ranges), and what Export PDF and Print use. LibreOffice's
+      page settings are now read too (an .ods printed with Excel's defaults before): its top and bottom count the header's and footer's
+      room, as Excel's margins do. `page layout saved` (both formats, LibreOffice's conversions); emulator: page.ods made landscape.
+      Not yet: rows repeated on every page, header and footer.
 - [~] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
       Respecting a protected sheet done (office-F session, 17 Oct): Excel's sheetProtection and LibreOffice's table:protected read
       (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);

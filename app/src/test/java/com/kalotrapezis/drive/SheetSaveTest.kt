@@ -253,6 +253,32 @@ class SheetSaveTest {
         oh.apply(ob, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("2000", os[1, 1], os[1, 1]!!.style, "General", ob.format))); assertEquals("LibreOffice's ods", 1, no)
     }
 
+    /** Page layout: landscape, Letter, wide margins, all columns on one page, gridlines printed, a print area — Excel's and LibreOffice's. */
+    @Test fun `page layout saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val want = SheetPrint(landscape = true, letter = true, margins = listOf(1f, 1f, 1f, 1f), fitWidth = 1, fitHeight = 0, grid = true, area = SheetRange(0, 0, 4, 3))
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("page").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.'); val out = File(dir, "page.${f.extension}")
+            if (name.endsWith("xlsx")) SheetPageSetup.xlsx(f, out, b0.parts.getValue("0"), 0, b0.tabs[0].name, want) else SheetPageSetup.ods(f, out, 0, b0.tabs[0].name, want)
+            fun check(file: File, how: String) {
+                val b = Sheets.read(file, ',', '.'); val p = b.sheet(0).print
+                assertTrue(how, p.landscape); assertTrue(how, p.letter); assertTrue(how, p.grid); assertEquals(how, SheetRange(0, 0, 4, 3), p.area)
+                assertEquals(how, 1, p.fitWidth); assertEquals(how, 0, p.fitHeight ?: 0)
+                // LibreOffice turns a page's header room into Excel's margins its own way (a few hundredths of an inch off)
+                p.margins.forEach { assertEquals(how, 1f, it, if (how.startsWith("LibreOffice")) 0.1f else 0.02f) }
+                assertEquals(how, "Alpha", b.sheet(0)[1, 0]?.text); assertEquals(how, false, b.sheet(1).print.landscape)
+            }
+            check(out, "set in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "page.$other"), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

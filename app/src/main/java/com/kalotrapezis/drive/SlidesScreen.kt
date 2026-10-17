@@ -200,6 +200,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
     var resizing by remember { mutableStateOf<Float?>(null) } // Design › Slide size: the width (pt) asked about, Maximize or Ensure fit
+    var paragraphing by remember { mutableStateOf<ParaLook?>(null) } // Home › Paragraph: Words' page open on the box's first paragraph's look
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
     var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
@@ -876,8 +877,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         Tool(R.drawable.ic_format_clear, "Clear formatting", w) { restyle { SlidesEdit.Look(fill = it.fill, line = it.line, anchor = it.anchor, autofit = it.autofit, cleared = true) } }
         RibbonDivider(w)
         val numbered = p?.bullet?.text?.firstOrNull()?.isDigit() == true
-        Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = p?.bullet != null && !numbered) { restyle { it.copy(list = if (p?.bullet != null && !numbered) 'n' else 'b') } }
-        Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = numbered) { restyle { it.copy(list = if (numbered) 'n' else '1') } }
+        Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = p?.bullet != null && !numbered) { restyle { it.copy(list = if (p?.bullet != null && !numbered) 'n' else 'b', scheme = null) } }
+        Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = numbered) { restyle { it.copy(list = if (numbered) 'n' else '1', scheme = null) } }
+        // Words' Multilevel list strip: each paragraph numbered in its level's form (1. a. i. …)
+        RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { strip = DesignGallery.Lists }
         RibbonDivider(w)
         listOf(DocAlign.Start to R.drawable.ic_align_left, DocAlign.Center to R.drawable.ic_align_center, DocAlign.End to R.drawable.ic_align_right, DocAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
             Tool(icon, "Align ${a.name.lowercase().replace("start", "left").replace("end", "right")}", w, on = (p?.para?.align ?: DocAlign.Start) == a) { restyle { it.copy(align = a) } }
@@ -886,6 +889,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         // line spacing as Words' (a share of the single line: PowerPoint's 1.2 × the letters' size)
         Icon(painterResource(R.drawable.ic_format_line_spacing), "Line spacing", tint = w, modifier = Modifier.padding(horizontal = 4.dp).size(20.dp))
         LINE_SPACINGS.forEach { m -> RibbonButton(plain(m), w, on = p != null && p.look.lineExact == null && kotlin.math.abs(p.look.lineMultiple - m) < 0.01f) { restyle { it.copy(spacing = m) } } }
+        // Words' paragraph page (its ⋯): before and after, line spacing exactly, indents — on all the box's paragraphs
+        RibbonButton("Paragraph", w, R.drawable.ic_more_horiz) { paragraphing = p?.look ?: ParaLook() }
         RibbonDivider(w)
         // where the words stand in the box, and how the box takes too many (PowerPoint's Align Text and Autofit)
         listOf('t' to (R.drawable.ic_vertical_align_top to "Top"), 'c' to (R.drawable.ic_vertical_align_center to "Middle"), 'b' to (R.drawable.ic_vertical_align_bottom to "Bottom")).forEach { (a, d) ->
@@ -1893,6 +1898,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             stripBefore = b; stripPicked = ch
                             edit = if (ch == DropKind.Dropped) dropped(b, cc, id, dropLines) ?: b else b.copy(looks = b.looks + (k to when (ch) {
                                 is FontChoice -> l.copy(font = ch.name)
+                                is ListScheme -> l.copy(scheme = LIST_SCHEMES.indexOf(ch), list = null)
                                 DropKind.Raised -> l.copy(raise = size * dropLines)
                                 else -> l.copy(raise = 0f) // None
                             }))
@@ -1925,6 +1931,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
+                    paragraphing?.let { q -> ParagraphDialog(q, { paragraphing = null }) { n -> paragraphing = null; restyle { it.copy(para = n) }; WriterLog.i("Slides: paragraph page") } }
                     // Slide size: PowerPoint's question — the things made as big as the new size allows, or fitted into it
                     resizing?.let { sw -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
                         text = { Text("Make the things on the slides as big as the new size allows (some may be cut at its sides), or smaller so they all fit?") },

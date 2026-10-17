@@ -164,14 +164,14 @@ internal object SlidesOdpEdit {
             return name
         }
         /** A list style of LibreOffice's for Home's Bullets ('b') or Numbering ('1'): its first levels hanging as PowerPoint's (0.95 cm). */
-        fun listStyle(kind: Char): String = made.getOrPut("list $kind") {
+        fun listStyle(kind: Char, scheme: Int? = null): String = made.getOrPut("list $kind $scheme") {
             val nm = fresh("LT")
             autos.appendChild(doc.importNode(OfficeFormats.parse(buildString {
                 append("""<text:list-style xmlns:text="$TEXT" xmlns:style="$STYLE" xmlns:fo="$FO" style:name="$nm">""")
                 for (lv in 1..9) {
                     val props = """<style:list-level-properties text:space-before="${String.format(Locale.ROOT, "%.2f", (lv - 1) * 0.95)}cm" text:min-label-width="0.95cm"/>"""
                     append(if (kind == 'b') """<text:list-level-style-bullet text:level="$lv" text:bullet-char="•">$props<style:text-properties fo:font-family="Arial" style:use-window-font-color="true" fo:font-size="100%"/></text:list-level-style-bullet>"""
-                        else """<text:list-level-style-number text:level="$lv" style:num-format="1" style:num-suffix=".">$props<style:text-properties fo:font-size="100%" style:use-window-font-color="true"/></text:list-level-style-number>""")
+                        else """<text:list-level-style-number text:level="$lv" style:num-format="${scheme?.let { SlideBullet.form(LIST_SCHEMES[it].levels[lv - 1].first) } ?: '1'}" style:num-suffix=".">$props<style:text-properties fo:font-size="100%" style:use-window-font-color="true"/></text:list-level-style-number>""")
                 }
                 append("</text:list-style>")
             }.toByteArray()).documentElement, true))
@@ -218,7 +218,7 @@ internal object SlidesOdpEdit {
                 }
                 val first = paras(h).indexOfFirst { it.textContent.isNotBlank() }
                 val dropped = l.drop?.takeIf { first >= 0 }?.let { paras(h).indexOf(p) - first }?.takeIf { it == 0 || it == 1 && l.dropRest }
-                if (l.align != null || l.spacing != null || dropped != null) p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", p.a(TEXT, "style-name"), "$key $dropped") { st ->
+                if (l.align != null || l.spacing != null || l.para != null || dropped != null) p.setAttributeNS(TEXT, "text:style-name", derive("paragraph", p.a(TEXT, "style-name"), "$key $dropped") { st ->
                     val pp = props(st, "paragraph-properties")
                     // dropped: the lines beside the letter stand in, with no space under them; the rest goes on under them
                     if (dropped != null) { pp.setAttributeNS(FO, "fo:text-indent", "0cm")
@@ -226,6 +226,11 @@ internal object SlidesOdpEdit {
                         else pp.setAttributeNS(FO, "fo:margin-top", "0cm") }
                     l.align?.let { pp.setAttributeNS(FO, "fo:text-align", when (it) { DocAlign.Center -> "center"; DocAlign.End -> "end"; DocAlign.Justify -> "justify"; else -> "start" }) }
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
+                    // Words' paragraph page, as LibreOffice keeps a paragraph's: margins above and below, line height, indents
+                    l.para?.let { q -> fun pt(v: Float) = String.format(Locale.ROOT, "%.2fpt", v)
+                        pp.setAttributeNS(FO, "fo:margin-top", pt(q.before)); pp.setAttributeNS(FO, "fo:margin-bottom", pt(q.after))
+                        pp.setAttributeNS(FO, "fo:line-height", q.lineExact?.let(::pt) ?: "${Math.round(q.lineMultiple * 100)}%")
+                        pp.setAttributeNS(FO, "fo:margin-left", pt(q.left)); pp.setAttributeNS(FO, "fo:margin-right", pt(q.right)); pp.setAttributeNS(FO, "fo:text-indent", pt(q.firstLine)) }
                 })
             }
             // WordArt's bend on a shape: LibreOffice's fontwork geometry (straight: a rectangle again); a frame keeps its words in lines
@@ -272,14 +277,14 @@ internal object SlidesOdpEdit {
                     else (holder.nextSibling as? Element)?.takeIf { it.localName == "span" }?.a(TEXT, "style-name")?.let { holder.setAttributeNS(TEXT, "text:style-name", it) }
                 }
             } }
-            when (l.list) {
+            when (if (l.scheme != null) '1' else l.list) {
                 // none: the list's paragraphs taken out of it, in their place
                 'n' -> for (list in h.kids().filter { it.localName == "list" && it.namespaceURI == TEXT }) {
                     for (p in paras(list)) h.insertBefore(p, list)
                     h.removeChild(list)
                 }
                 'b', '1' -> {
-                    val style = listStyle(l.list)
+                    val style = listStyle(if (l.scheme != null) '1' else l.list!!, l.scheme)
                     h.kids().filter { it.localName == "list" && it.namespaceURI == TEXT }.forEach { it.setAttributeNS(TEXT, "text:style-name", style) }
                     // paragraphs outside a list: each an item of one
                     for (p in h.kids().filter { it.namespaceURI == TEXT && it.localName in setOf("p", "h") }) {

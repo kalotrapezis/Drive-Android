@@ -12,7 +12,28 @@ import kotlin.math.sign
  * outlines, pictures, charts, tables, groups, backgrounds — and each slide's speaker notes. Sizes in points.
  */
 /** A slide's bullet: its character or number, its colour (0xAARRGGBB), its size a share of its letters' (buSzPct), its own face (buFont). */
-internal class SlideBullet(val text: String, val color: Int? = null, val size: Float = 1f, val font: String? = null)
+internal class SlideBullet(val text: String, val color: Int? = null, val size: Float = 1f, val font: String? = null,
+    /** a number's form ('1', 'a', 'A', 'i', 'I'), counted by [SlidePara.numbered]; null: a character (or "1." as read before forms) */ val num: Char? = null) {
+    companion object {
+        /** PowerPoint's buAutoNum type, LibreOffice's num-format or Word's numFmt as a number's form. */
+        fun form(kind: String?): Char = when {
+            kind == null -> '1'
+            kind.startsWith("alphaLc") || kind == "a" || kind == "lowerLetter" -> 'a'; kind.startsWith("alphaUc") || kind == "A" || kind == "upperLetter" -> 'A'
+            kind.startsWith("romanLc") || kind == "i" || kind == "lowerRoman" -> 'i'; kind.startsWith("romanUc") || kind == "I" || kind == "upperRoman" -> 'I'
+            else -> '1'
+        }
+        /** The [n]th number in [form]: 3., c., C., iii., III. */
+        fun text(form: Char, n: Int): String = when (form) {
+            'a', 'A' -> { var k = n; val sb = StringBuilder(); while (k > 0) { k--; sb.insert(0, 'a' + k % 26); k /= 26 }; if (form == 'A') sb.toString().uppercase() else sb.toString() }
+            'i', 'I' -> { var k = n; val sb = StringBuilder()
+                for ((v, s) in listOf(1000 to "M", 900 to "CM", 500 to "D", 400 to "CD", 100 to "C", 90 to "XC", 50 to "L", 40 to "XL", 10 to "X", 9 to "IX", 5 to "V", 4 to "IV", 1 to "I")) while (k >= v) { sb.append(s); k -= v }
+                if (form == 'i') sb.toString().lowercase() else sb.toString() }
+            else -> "$n"
+        } + "."
+        /** PowerPoint's buAutoNum type for a form. */
+        fun pptx(form: Char) = when (form) { 'a' -> "alphaLcPeriod"; 'A' -> "alphaUcPeriod"; 'i' -> "romanLcPeriod"; 'I' -> "romanUcPeriod"; else -> "arabicPeriod" }
+    }
+}
 /**
  * A slide's paragraph (the Office engine, step 3): Words' paragraph and runs — [para]'s level in its list, its alignment,
  * its runs with every look Words draws (a run's face and letter looks in Word's form, in [DocRun.font]) — with its
@@ -33,8 +54,9 @@ internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIn
             return paras.map { p ->
                 val l = p.level.coerceIn(0, 9)
                 if (p.runs.any { it.text.isNotEmpty() }) for (k in l + 1..9) counts[k] = 0
-                val b = p.bullet?.takeIf { it.text.firstOrNull()?.isDigit() == true && p.runs.any { r -> r.text.isNotEmpty() } } ?: return@map p
-                SlidePara(p.para, p.look, SlideBullet("${++counts[l]}.", b.color, b.size, b.font), p.base)
+                val b = p.bullet?.takeIf { (it.num != null || it.text.firstOrNull()?.isDigit() == true) && p.runs.any { r -> r.text.isNotEmpty() } } ?: return@map p
+                val form = b.num ?: '1'
+                SlidePara(p.para, p.look, SlideBullet(SlideBullet.text(form, ++counts[l]), b.color, b.size, b.font, form), p.base)
             }
         }
         /** Words in one look ([size] pt, [color] 0xRRGGBB, [face]), aligned [align]: a hint, a new table's cell. */
@@ -300,8 +322,10 @@ internal object Slides {
             val backPicture = listOf(s to path, layout to layoutPath, master to masterPath).firstOrNull { (e, _) -> e?.kid("cSld")?.kid("bg") != null }?.let { (e, p) ->
                 e!!.kid("cSld")!!.kid("bg")!!.kid("bgPr")?.kid("blipFill")?.kid("blip")?.rid("embed")?.let { id -> p?.let { rels(xml, it)[id] } } }?.let { pic -> { part(pic) } }
             // a gradient background: the nearest's own, or its theme's (bgRef 1001 on: the theme's background fills)
-            val backGradient = listOfNotNull(s, layout, master).firstNotNullOfOrNull { e -> e.kid("cSld")?.kid("bg") }?.let { b -> b.kid("bgPr")?.kid("gradFill")?.let { gradient(it) }
-                ?: b.kid("bgRef")?.let { r -> r.attr("idx")?.toIntOrNull()?.takeIf { it > 1000 }?.let { bgFillStyles.getOrNull(it - 1001) }?.takeIf { it.localName == "gradFill" }?.let { g -> gradient(g, color(r)) } } }
+            // (one that cannot be read leaves the slide its colour: never the slide gone)
+            val backGradient = runCatching { listOfNotNull(s, layout, master).firstNotNullOfOrNull { e -> e.kid("cSld")?.kid("bg") }?.let { b -> b.kid("bgPr")?.kid("gradFill")?.let { gradient(it) }
+                ?: b.kid("bgRef")?.let { r -> r.attr("idx")?.toIntOrNull()?.takeIf { it > 1000 }?.let { bgFillStyles.getOrNull(it - 1001) }?.takeIf { it.localName == "gradFill" }?.let { g -> gradient(g, color(r)) } } } }
+                .onFailure { WriterLog.w("Slides: $path's background gradient", it) }.getOrNull()
             val context = Placeholders(layout, master, defaults)
             val items = ArrayList<SlideItem>()
             fun tree(e: Element?, from: String, ctx: Placeholders?) = e?.kid("cSld")?.kid("spTree")?.let { shapes(it, rels(xml, from), ctx, items, null) }
@@ -640,6 +664,7 @@ internal object Slides {
                 // the nearest that says (the paragraph's own before its level's and the master's): none, a character or a number
                 val bu = looks.firstNotNullOfOrNull { l -> l.kids().firstOrNull { it.localName in setOf("buNone", "buChar", "buAutoNum", "buBlip") } }
                 val bullet = when (bu?.localName) { "buChar" -> bu.attr("char"); "buAutoNum" -> "${paras.indexOf(p) + 1}."; else -> null }
+                val num = bu?.takeIf { it.localName == "buAutoNum" }?.let { SlideBullet.form(it.attr("type")) }
                 fun pt(a: String) = pAttr(a)?.toFloatOrNull()?.div(EMU) ?: 0f
                 fun spacing(n: String) = pKid(n)?.let { s -> s.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f) ?: s.kid("spcPct")?.attr("val")?.toFloatOrNull()?.let { it / 100_000f * (runs.firstOrNull()?.sizePt ?: defaultSize) } } ?: 0f
                 val line = pKid("lnSpc")?.kid("spcPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f
@@ -649,7 +674,7 @@ internal object Slides {
                 SlidePara(DocPara(runs, list = DocList(bullet?.firstOrNull()?.isDigit() == true, lvl), align = when (pAttr("algn")) { "ctr" -> DocAlign.Center; "r" -> DocAlign.End; "just" -> DocAlign.Justify; else -> DocAlign.Start }),
                     ParaLook(before = spacing("spcBef") * scale, after = spacing("spcAft") * scale, lineMultiple = (line - reduce).coerceAtLeast(0.5f), lineExact = exact,
                         left = pt("marL"), firstLine = pt("indent"), listIndented = true, tabs = tabs),
-                    bullet?.let { SlideBullet(it, pKid("buClr")?.let(::color), pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface")) },
+                    bullet?.let { SlideBullet(it, pKid("buClr")?.let(::color), pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface"), num) },
                     runOf(null, ""))
             }
             return SlideText(SlidePara.numbered(out), anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",

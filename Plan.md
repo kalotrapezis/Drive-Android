@@ -59,8 +59,8 @@ How to write here:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables. Unit suite 439, 0 failing; sweep 349 + 29,
-      none failing (21:45).
+      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph. Unit suite 442, 0 failing; sweep 349 + 29,
+      none failing (22:15).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -407,6 +407,9 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       the shapes' gradient drawing shared: `Slides.shader`); made in Design › Gradient (a colour: its light tint at the top to it at the foot;
       `Back.to`), saved as PowerPoint's gradFill (lin 90°) and LibreOffice's linear draw:gradient in styles.xml. `a gradient background saved`
       (both formats, LibreOffice's conversions read back as gradients); emulator: the title slide blue, top light. Not: radial gradients made.
+      Fixed after (office-F session): a background gradient that cannot be read no longer drops its slide (the sweep found three of the
+      user's jamovi decks read as no slides in the JVM, where Android's colours are stubs); on the emulator the jamovi deck's theme gradient
+      (Wisp: white to blue-grey) is drawn — before it was not.
 - [x] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
       Done 17 Oct (office-C session): a Draw tab (PowerPoint's place, after Insert) › Draw on slide opens Words' `DrawDialog` with the slide
       under the pens (it now takes a slide as it takes a page: `slide = width, height, drawing`) — pens, highlighter, eraser, move, undo,
@@ -593,7 +596,18 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       `WriterBridge.inCase`, the four cases) on the box's lines, each letter keeping its look as typed words do (one step of Undo); copied
       looks carry X²/X₂ too. Smaller / Bigger: Words has none beyond its − size + stepper, which Slides already has. **Shared piece:**
       Words' X²/X₂ and Aa (`WriterBridge.Case`, `inCase`). `Home's looks on a box saved` (superscript added); emulator: a title made
-      UPPERCASE and raised. Not yet: multilevel lists, Words' paragraph page, a text box's borders and shading.
+      UPPERCASE and raised. Not yet: a text box's borders and shading.
+      Multilevel list and Paragraph (office-F session, 17 Oct): Home › Multilevel opens Words' Multilevel list strip (`DesignGalleryStrip`
+      › Lists, `LIST_SCHEMES`) — each paragraph numbered in its level's form (1. a. i., I. A. 1., i. a. 1.; Word's "1. 1.1." shows each
+      level's own 1. 2., as PowerPoint has no such numbers) — and Home › Paragraph opens Words' paragraph page (`ParagraphDialog`: before
+      and after, line spacing or exactly, indents) on all the box's paragraphs. `Look.scheme`/`Look.para`; numbers' forms read from
+      PowerPoint's buAutoNum type and LibreOffice's num-format and counted per level (`SlideBullet.num`, `SlideBullet.form/text`: a b … aa,
+      i ii iii iv …); saved as PowerPoint's buAutoNum per paragraph's lvl and pPr lnSpc/spcBef/spcAft/marL/marR/indent, and LibreOffice's
+      list style's num-format per level and paragraph style fo:margin-*/line-height/text-indent (in an .odp a list paragraph's margin is
+      on top of its list's indent, LibreOffice's way). **Shared pieces:** Words' Lists strip and `ParagraphDialog`. `a multilevel list and a
+      paragraph look saved` (both formats, LibreOffice's conversions); emulator: Plan's body I. A. B. II. A. Seen in passing (Words' engine,
+      not this item): a number wider than its hang goes to the next half-inch stop (PowerPoint's default tab is the master's defTabSz, 1 in).
+      List level in and out per paragraph: still with the rich typing editor (later).
 - [~] **Insert**: **Drop cap** — (office-engine session, 17 Oct: the strip and Raised done, Slides' Dropped next) PowerPoint and Impress have none, so it is either a raised cap (the first letter a
       bigger run of its own, which every app shows) or a dropped one (the letter in its own box, the paragraph's first
       lines indented beside it: looks right everywhere but doesn't reflow). **The user, 17 Oct:** "these are options,

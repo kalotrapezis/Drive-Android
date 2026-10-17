@@ -92,7 +92,7 @@ internal object SlidesOdp {
                 lists[s.a(STYLE, "name") ?: continue] = s.kids().associate { lv ->
                     val lp = lv.kids().firstOrNull { it.localName == "list-level-properties" }
                     val tp = lv.kids().firstOrNull { it.localName == "text-properties" }
-                    (lv.a(TEXT, "level")?.toIntOrNull() ?: 1) - 1 to Bullet(if (lv.localName == "list-level-style-bullet") lv.a(TEXT, "bullet-char") else if (lv.localName == "list-level-style-number") "1." else null,
+                    (lv.a(TEXT, "level")?.toIntOrNull() ?: 1) - 1 to Bullet(if (lv.localName == "list-level-style-bullet") lv.a(TEXT, "bullet-char") else if (lv.localName == "list-level-style-number") SlideBullet.text(SlideBullet.form(lv.a(STYLE, "num-format")), 1) else null,
                         pt(lp?.a(TEXT, "space-before")) ?: 0f, pt(lp?.a(TEXT, "min-label-width")) ?: 0f, hex(tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "color")),
                         tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "font-size")?.takeIf { it.endsWith("%") }?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
                         tp?.a(STYLE, "font-name") ?: tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "font-family")?.takeIf { it.isNotEmpty() })
@@ -187,7 +187,7 @@ internal object SlidesOdp {
                 paras += SlidePara(DocPara(runs, list = DocList(bullet?.char?.firstOrNull()?.isDigit() == true, level), align = align),
                     ParaLook(before = pt(pProp("margin-top")) ?: 0f, after = pt(pProp("margin-bottom")) ?: 0f, lineMultiple = height?.takeIf { it.endsWith("%") }?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
                         lineExact = height?.takeIf { !it.endsWith("%") }?.let(::pt), left = marL, firstLine = -(bullet?.label ?: 0f) + (pt(pProp("text-indent")) ?: 0f), listIndented = true),
-                    bullet?.char?.let { SlideBullet(it, bullet.color, bullet.size, bullet.font) }, look("", null))
+                    bullet?.char?.let { SlideBullet(it, bullet.color, bullet.size, bullet.font, it.takeIf { c -> c.length > 1 && c.endsWith(".") }?.let { c -> SlideBullet.form(c.dropLast(1)) }) }, look("", null))
             }
             // a list's items sit one level in each time a list is inside an item
             fun walkList(list: Element, level: Int, name: String?) {

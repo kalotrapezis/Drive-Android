@@ -712,6 +712,32 @@ class SlidesTest {
         assertEquals(SlidesEdit.rowTaken(t, 0).let { it.rows to it.cells }, 1 to listOf("c", "d"))
     }
 
+    /** Home › Multilevel list (Words' schemes) and Paragraph (Words' page) on a box with two levels: 1. a. b. 2. a., space before and after, line spacing exactly. */
+    @Test fun `a multilevel list and a paragraph look saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val body = deck.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read the slides") == true }
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((1 to body.anim!!) to SlidesEdit.Look(scheme = 1, para = ParaLook(before = 6f, after = 3f, lineExact = 26f, left = 36f, firstLine = -18f))))
+            fun check(d: Deck, how: String, lo: Boolean = false) {
+                val b = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read the slides") == true }
+                assertEquals(how, listOf("1.", "a.", "b.", "2.", "a."), b.text!!.paras.map { it.bullet?.text })
+                val q = b.text!!.paras[0].look
+                assertEquals(how, 6f, q.before, 0.6f); assertEquals(how, 3f, q.after, 0.6f); assertEquals(how, 26f, q.lineExact ?: 0f, 0.6f)
+                if (!lo && !how.endsWith("odp")) { assertEquals(how, 36f, q.left, 0.6f); assertEquals(how, -18f, q.firstLine, 0.6f) } // an .odp list paragraph's margin is on top of its list's indent
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("multilevel-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
+            }
+        }
+    }
+
     /** The Table tab on a deck's own table (one saved here, then read as the file's): a row and a column added, another row taken — in the XML, the frame grown. */
     @Test fun `a deck's own table's rows and columns saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

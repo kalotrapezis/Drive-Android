@@ -55,6 +55,34 @@ internal class SheetDrawing(
     /** A picture's crop (a:srcRect), as [Slides.crop] takes it. */ val crop: FloatArray? = null,
 )
 
+/**
+ * A drop-down list on cells (Excel's Data Validation › List, LibreOffice's Validity › Cell range or list): its values, or
+ * where they are ([source], Excel's "Sheet!A1:A5" form) when another sheet holds them.
+ */
+internal class SheetList(val ranges: List<SheetRange>, val items: List<String>, val source: String? = null) {
+    companion object {
+        /** LibreOffice's list validity (of:cell-content-is-in-list("a";"b") or a range) in Excel's formula1 form; null for any other. */
+        fun odsList(condition: String): String? {
+            val inner = Regex("cell-content-is-in-list\\((.*)\\)").find(condition)?.groupValues?.get(1)?.trim() ?: return null
+            if (inner.startsWith("\"")) return "\"" + Regex("\"((?:[^\"]|\"\")*)\"").findAll(inner).joinToString(",") { it.groupValues[1] } + "\""
+            val parts = inner.trim('[', ']').split(':').map { it.replace("$", "") }
+            val sheet = parts[0].substringBeforeLast('.', "").trim('\'')
+            return (if (sheet.isNotEmpty()) "'$sheet'!" else "") + parts.joinToString(":") { it.substringAfterLast('.') }
+        }
+
+        /** Excel's formula1 ("\"Yes,No\"", or a range) as values, the range's read from [cells] when it is this sheet's ([own] its name). */
+        fun of(ranges: List<SheetRange>, formula: String, own: String, cells: (Int, Int) -> String?): SheetList? {
+            val f = formula.trim().removePrefix("=")
+            if (f.startsWith("\"")) return SheetList(ranges, f.removePrefix("\"").removeSuffix("\"").split(',').map { it.trim().replace("\"\"", "\"") }.filter { it.isNotEmpty() })
+            val sheet = f.substringBefore('!', "").trim('\'').replace("''", "'")
+            val g = Sheets.rangeRef(f.substringAfter('!').replace("$", "")) ?: return null
+            // shortcut: another sheet's values are not looked up (no chips, nothing refused); upgrade if such lists are met
+            if (sheet.isNotEmpty() && !sheet.equals(own, true)) return SheetList(ranges, emptyList(), f)
+            return SheetList(ranges, (g.r1..minOf(g.r2, g.r1 + 999)).flatMap { r -> (g.c1..g.c2).mapNotNull { c -> cells(r, c)?.takeIf { it.isNotBlank() } } }, f)
+        }
+    }
+}
+
 /** A cell's border edge: colour, width in pixels, double or dashed. */
 internal data class SheetLine(val color: Int, val width: Float, val double: Boolean = false, val dashed: Boolean = false, val dots: Boolean = false)
 
@@ -163,6 +191,9 @@ internal class Sheet(
 ) {
     /** Review › Protect Sheet (Excel's sheetProtection, LibreOffice's table:protected): its locked cells are not to be changed. */
     var protected = false
+    /** Its drop-down lists (data validation). */
+    var lists: List<SheetList> = emptyList()
+    fun listAt(r: Int, c: Int) = lists.firstOrNull { l -> l.ranges.any { (r to c) in it } }
     /** Its conditional formatting, and the looks its rules covered (to lay them again after an edit). */
     var rules: List<SheetRule> = emptyList()
     val ruleBase = HashMap<Long, Int>()
@@ -767,6 +798,7 @@ internal object Sheets {
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false
+            val dvs = ArrayList<Pair<List<SheetRange>, String>>() // data validation lists: their cells and formula
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
@@ -779,6 +811,8 @@ internal object Sheets {
                 val rich = RichRuns(inline)
                 // conditional formatting: the ranges, the rule being read, its formulas and its scale's or bar's points
                 var ext = 0; var cfRanges = emptyList<SheetRange>(); var rule: Map<String, String>? = null
+                // data validation lists: their cells and formula
+                var dvRanges: List<SheetRange>? = null; val dvFormula = StringBuilder()
                 val formula = StringBuilder(); val formulas = ArrayList<String>(); val cfvos = ArrayList<SheetCfvo>(); val colors = ArrayList<Int>()
                 fun color(at: Attributes): Int? {
                     val base = at.a("rgb")?.let { (it.takeLast(6).toLongOrNull(16)?.toInt() ?: return null) or 0xFF000000.toInt() }
@@ -790,6 +824,8 @@ internal object Sheets {
                     if (ext > 0) return // Excel 2010's copies of rules (and other extensions) are left out
                     when (local) {
                         "conditionalFormatting" -> cfRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef)
+                        "dataValidation" -> dvRanges = at.a("sqref").orEmpty().split(' ').mapNotNull(::rangeRef).takeIf { at.a("type") == "list" }?.also { dvFormula.setLength(0) }
+                        "formula1" -> if (dvRanges != null) into = dvFormula
                         "pageSetup", "pageSetUpPr", "printOptions", "pageMargins" -> for (i in 0 until at.length) page["$local.${at.getLocalName(i)}"] = at.getValue(i)
                         "cfRule" -> { rule = (0 until at.length).associate { at.getLocalName(it) to at.getValue(it) }; formulas.clear(); cfvos.clear(); colors.clear() }
                         "formula" -> if (rule != null) { formula.setLength(0); into = formula }
@@ -869,7 +905,8 @@ internal object Sheets {
                                 showValue = a["showValue"] != "0" && a["showValue"] != "false", reverse = a["reverse"] == "1" || a["reverse"] == "true")
                             rule = null
                         }
-                        "v", "f", "t" -> into = null
+                        "v", "f", "t", "formula1" -> into = null
+                        "dataValidation" -> { dvRanges?.let { dvs += it to dvFormula.toString() }; dvRanges = null }
                         "is" -> inIs = false
                         "r" -> if (inIs && phonetic == 0) rich.close()
                         "rPr" -> rich.inPr = false
@@ -925,7 +962,8 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet }
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet
+                    it.lists = dvs.mapNotNull { (ranges, f) -> SheetList.of(ranges, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } }
         }
 
         /** Excel's page setup and the sheet's print names as a [SheetPrint]. */
@@ -1433,6 +1471,8 @@ internal object Sheets {
                 // LibreOffice's conditional formats (calcext:), in the order they come: the first wins
                 var rules = ArrayList<SheetRule>(); var cfRanges = emptyList<SheetRange>(); val entries = ArrayList<Pair<SheetCfvo, Int?>>(); var barColor: Int? = null
                 var iconSet: String? = null; var iconShow = true
+                // LibreOffice's validities (before the tables) and the cells that take each: drop-down lists
+                val validities = HashMap<String, String>(); val validCells = HashMap<String, ArrayList<SheetRange>>()
                 fun ranges(address: String?) = address.orEmpty().split(' ').mapNotNull { a -> rangeRef(a.split(':').joinToString(":") { it.substringAfterLast('.').replace("$", "") }) }
 
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
@@ -1451,6 +1491,7 @@ internal object Sheets {
                         return
                     }
                     when (local) {
+                        "content-validation" -> { val n = at.a("name"); val c = at.a("condition"); if (n != null && c != null) validities[n] = c }
                         "table" -> {
                             tableIndex++
                             if (tableIndex != target) { skip = 1; return }
@@ -1645,6 +1686,7 @@ internal object Sheets {
                     }
                     val rs = a["number-rows-spanned"]?.toIntOrNull() ?: 1; val cs = a["number-columns-spanned"]?.toIntOrNull() ?: 1
                     if (rs > 1 || cs > 1) merges += SheetRange(row, col, row + rs - 1, col + cs - 1)
+                    a["content-validation-name"]?.let { validCells.getOrPut(it) { ArrayList() } += SheetRange(row, col, row + min(rowRepeat, 1000) - 1, col + n - 1) }
                     col += cellRepeat
                 }
 
@@ -1685,7 +1727,8 @@ internal object Sheets {
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
                         print = runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint(),
-                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected }
+                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected
+                        it.lists = validCells.mapNotNull { (v, at) -> validities[v]?.let { SheetList.odsList(it) }?.let { f -> SheetList.of(at, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } } }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read
                 }

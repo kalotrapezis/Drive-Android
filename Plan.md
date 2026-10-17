@@ -759,6 +759,12 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Text to columns done (office-F session, 17 Oct): Data › Text to columns — a column's words cut at a comma, semicolon, tab, space,
       slash or dash (not inside quotes; spaces: runs as one) into the cells to its right, each typed as if there (numbers stay numbers):
       `SheetInput.split`, one step of Undo. `text cut into columns`; emulator: Crete/Rhodes/Corfu into three cells.
+      Drop-down lists done (office-F session, 18 Oct): Data › Drop-down list on the chosen cells — the values typed, comma-separated
+      (Excel's Source box), Take away; Excel's list dataValidation and LibreOffice's table:content-validation (`SheetLists`, a change to
+      the file), both read (`Sheet.lists`/`listAt`, `SheetList`: a quoted list, or this sheet's cells). While editing, the chosen
+      cell's values show as a row under the ribbon to tap; a value typed that is not one of them is refused (Excel's stop).
+      `drop-down lists made and taken away` (both formats, LibreOffice's conversions); emulator: E2:E4 Yes/No/Maybe, "No" tapped into
+      E3, "Hello" refused, saved and read by LibreOffice. shortcut: a list from another sheet's cells is kept but not looked up.
 - [~] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
       Done (office-F session, 17 Oct): a Page layout tab (Excel's place, after Insert) — Orientation, Size (A4, Letter), Margins (Excel's

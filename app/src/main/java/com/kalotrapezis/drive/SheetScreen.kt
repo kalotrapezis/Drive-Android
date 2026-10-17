@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -178,6 +179,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
+    var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
@@ -355,6 +357,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val (r, c) = chosen(s)
         val (look, format) = lookAt(s, r, c)
         if (d.text != SheetInput.text(s[r, c], format, b.format)) {
+            // a drop-down list's cell takes only its values (Excel's stop)
+            val list = s.listAt(r, c)?.items.orEmpty()
+            if (d.text.isNotEmpty() && list.isNotEmpty() && list.none { it.equals(d.text.trim(), true) }) {
+                message = "This cell takes one of its list's values: ${list.joinToString(", ")}"; draft = null; WriterLog.i("Sheets: a value not in the list refused"); return }
             history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(d.text, s[r, c], look, format, b.format)))
             version++
         }
@@ -559,6 +565,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         fileStep(if (text == null) "note taken away" else "note put on", { baked, next, b -> when (b.kind) {
             "xlsx" -> SheetNotes.xlsx(baked, next, b.parts.getValue("$i"), r, c, author, text); "ods" -> SheetNotes.ods(baked, next, i, r, c, author, text)
             else -> error("A CSV file keeps no notes: save it as a workbook first.") } })
+    }
+    /** A drop-down list on cells [d] (the sheet's): [items] its values, null takes it away. */
+    fun putList(d: SheetRange, items: List<String>?) { val i = index
+        fileStep(if (items == null) "drop-down list taken away" else "drop-down list made", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetLists.xlsx(baked, next, b.parts.getValue("$i"), d, items); "ods" -> SheetLists.ods(baked, next, i, d, items)
+            else -> error("A CSV file keeps no lists: save it as a workbook first.") } })
     }
     /** Hide (a sheet's tab, Excel's) or Unhide sheet [at]: the file's; hidden, the next shown sheet opened. */
     fun showSheet(at: Int, hidden: Boolean) {
@@ -967,7 +979,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 // Excel's Text to columns: one column's words cut at a separator into the columns beside it
                                 RibbonButton("Text to columns", w, R.drawable.ic_view_column) {
                                     val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c1]) } ?: SheetRange(cr, cc, cr, cc)
-                                    splitting = d } }
+                                    splitting = d }
+                                // Excel's Data Validation › List: the cells take one of the values given
+                                if (b.kind != "csv") RibbonButton("Drop-down list", w, R.drawable.ic_checklist) {
+                                    listing = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) } }
                         }
                         shown == "View" -> {
                             RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
@@ -1184,6 +1199,21 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         // The ribbon slides down and up, as Writer's; Home › Font's gallery takes its place (asked 16 Oct, as Page numbers).
         androidx.compose.animation.AnimatedVisibility(!OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
             enter = SLIDE_IN, exit = SLIDE_OUT) { if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl) }
+        // A drop-down list's cell: its values to tap, as Excel's arrow on the cell opens them
+        val listed = rs?.takeIf { editing && !searching }?.let { s -> chosen(s).let { (r, c) -> s.listAt(r, c) } }?.items.orEmpty()
+        androidx.compose.animation.AnimatedVisibility(listed.isNotEmpty() && draft?.text.orEmpty().startsWith("=").not(), enter = SLIDE_IN, exit = SLIDE_OUT) {
+            val w = islandContentColor()
+            Surface(color = islandColor(), contentColor = w, modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(listed.size) { k -> val v = listed[k]
+                        Text(v, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(w.copy(alpha = 0.08f)).clickable {
+                            val s = sheet ?: return@clickable; val b = book ?: return@clickable; val (r, c) = chosen(s); val (look, format) = lookAt(s, r, c)
+                            draft = null; history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(v, s[r, c], look, format, b.format))); version++
+                            WriterLog.i("Sheets: a value from the drop-down list")
+                        }.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 16.dp)) }
+                }
+            }
+        }
         // Typing in the cell bar: the functions for the letters typed (asked 16 Oct), or what the one the cursor is in takes.
         val d = draft
         val fns = remember(d?.text, d?.selection) { d?.let { SheetFunctions.matching(it.text, it.selection.min) }.orEmpty() }
@@ -1328,6 +1358,18 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 history.apply(b, index, changes); version++; message = "Removed ${rows.size - kept.size} duplicates, ${kept.size - (if (headers) 1 else 0)} left"
                 WriterLog.i("Sheets: ${rows.size - kept.size} duplicates removed") }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { deduping = null }) { Text("Cancel") } }) }
+    // Data › Drop-down list: the values, comma-separated (Excel's Source box); Take away when the cells have one
+    listing?.let { d -> val was = sheet?.listAt(d.r1, d.c1)
+        var typed by remember(d) { mutableStateOf(was?.items?.joinToString(", ").orEmpty()) }
+        AlertDialog(onDismissRequest = { listing = null }, title = { Text("Drop-down list") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Cells ${Sheets.colName(d.c1)}${d.r1 + 1}" + (if (d.r2 > d.r1 || d.c2 > d.c1) ":${Sheets.colName(d.c2)}${d.r2 + 1}" else "") + " take one of these values.")
+                if (was?.source != null && was.items.isEmpty()) Text("Now: the values in ${was.source}")
+                OutlinedTextField(typed, { typed = it }, label = { Text("Values, separated by commas") }, singleLine = true) } },
+            confirmButton = { TextButton(enabled = typed.isNotBlank(), onClick = { listing = null
+                putList(d, typed.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()) }) { Text("Done") } },
+            dismissButton = { Row { if (was != null) TextButton(onClick = { listing = null; putList(d, null) }) { Text("Take away") }
+                TextButton(onClick = { listing = null }) { Text("Cancel") } } }) }
     // Insert › Note: Words' comment dialog (its remembered name), on the chosen cell
     if (noting) sheet?.let { s -> val (r, c) = chosen(s); val was = s[r, c]?.note
         val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE)

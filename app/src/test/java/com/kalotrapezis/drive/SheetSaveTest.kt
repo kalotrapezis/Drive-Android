@@ -305,6 +305,37 @@ class SheetSaveTest {
         }
     }
 
+    /** Drop-down lists (Excel's list validation, LibreOffice's content-validation): made, read back and by LibreOffice, taken away. */
+    @Test fun `drop-down lists made and taken away`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val values = listOf("Yes", "No", "Say \"maybe\"")
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("lists").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(sheet: Int, g: SheetRange, items: List<String>?) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetLists.xlsx(f, next, parts.getValue("$sheet"), g, items) else SheetLists.ods(f, next, sheet, g, items); f = next }
+            step(0, SheetRange(1, 3, 3, 3), values); step(1, SheetRange(0, 2, 0, 2), listOf("A", "B"))
+            fun check(file: File, how: String) { val b = Sheets.read(file, ',', '.'); val s = b.sheet(0)
+                assertEquals(how, values, s.listAt(2, 3)?.items); assertEquals(how, values, s.listAt(3, 3)?.items)
+                assertEquals(how, null, s.listAt(4, 3)); assertEquals(how, null, s.listAt(2, 2))
+                assertEquals(how, listOf("A", "B"), b.sheet(1).listAt(0, 2)?.items)
+                assertEquals(how, "15/03/2023", s[1, 2]?.text) }
+            check(f, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+            step(0, SheetRange(2, 3, 2, 3), null)
+            Sheets.read(f, ',', '.').let { b -> assertEquals(name, null, b.sheet(0).listAt(2, 3)); assertEquals(name, listOf("A", "B"), b.sheet(1).listAt(0, 2)?.items) }
+        }
+        // a list from cells of the sheet: their words; LibreOffice's conditions in Excel's form
+        assertEquals(listOf("Alpha", "Beta"), SheetList.of(listOf(SheetRange(0, 5, 0, 5)), "\$A\$2:\$A\$3", "Sheet1") { r, c -> mapOf((1 to 0) to "Alpha", (2 to 0) to "Beta")[r to c] }?.items)
+        assertEquals("\"a,b\"\"c\"", SheetList.odsList("of:cell-content-is-in-list(\"a\";\"b\"\"c\")"))
+        assertEquals("'Lists'!A1:A4", SheetList.odsList("of:cell-content-is-in-list([\$Lists.\$A\$1:.\$A\$4])"))
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

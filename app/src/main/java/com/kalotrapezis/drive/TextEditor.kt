@@ -189,6 +189,9 @@ internal class TextEditorStore(context: Context) {
     var opensSlides: Boolean
         get() = prefs.getBoolean("opens_slides", opensOffice)
         set(on) { prefs.edit().putBoolean("opens_slides", on).apply() }
+    var opensPdfs: Boolean
+        get() = prefs.getBoolean("opens_pdfs", opensOffice)
+        set(on) { prefs.edit().putBoolean("opens_pdfs", on).apply() }
     /** Writer saves over the file by itself after a pause (Word's AutoSave), when it can save over it at all. */
     var autoSave: Boolean
         get() = prefs.getBoolean("office_autosave", true)

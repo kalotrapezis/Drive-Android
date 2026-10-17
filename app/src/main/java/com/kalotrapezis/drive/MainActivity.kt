@@ -309,6 +309,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
     var slidesOpen by remember { mutableStateOf<String?>(null) } // the presentation PowerPoint's viewer shows (its back: writerBack)
+    var pdfOpen by remember { mutableStateOf<String?>(null) } // the PDF the viewer shows (its back: writerBack)
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -523,6 +524,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             slidesOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Slides
             return@runCatching
         }
+        // A PDF opens in Office's viewer (its own switch): the scanner's too, as they are saved into Files.
+        if (!forceChooser && Pdf.isPdf(file.name) && TextEditorStore(context).opensPdfs) {
+            WriterLog.i("open from Files: a PDF")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            pdfOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Pdf
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -571,7 +579,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
         else { unlockScannerOrientation(); screen = Screen.Home }
     }
-    // a file another app opened here: in Words, Tables or Slides, its back to Office
+    // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
     LaunchedEffect(office) {
         val o = office ?: return@LaunchedEffect
         val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, o.uri, Environment.getExternalStorageDirectory(), File(driveRoot(), "Documents/From other apps"), o.mimeType) }
@@ -582,6 +590,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         when {
             Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
             Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
+            Pdf.isPdf(f.name) -> { pdfOpen = at; screen = Screen.Pdf }
             else -> { writerOpen = at; screen = Screen.Writer }
         }
     }
@@ -627,6 +636,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Writer -> Unit
                 Screen.Sheet -> Unit
                 Screen.Slides -> Unit
+                Screen.Pdf -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -708,11 +718,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                     }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer },
                     openSheet = { sheetOpen = it; writerBack = Screen.Office; screen = Screen.Sheet },
-                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides })
+                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides },
+                    openPdf = { pdfOpen = it; writerBack = Screen.Office; screen = Screen.Pdf })
                 }
                 Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -782,7 +794,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -1550,9 +1562,10 @@ private fun SettingsTab(
             var opens by remember { mutableStateOf(office.opensOffice) }
             var sheets by remember { mutableStateOf(office.opensSheets) }
             var slides by remember { mutableStateOf(office.opensSlides) }
+            var pdfs by remember { mutableStateOf(office.opensPdfs) }
             SettingsCard("Office", Category.Office) {
                 // Tetra in other apps' Open with (asked 16 Oct): Android's own Always there makes it the default
-                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets and presentations; choose Always there to open them here every time.",
+                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets, presentations and PDFs; choose Always there to open them here every time.",
                     style = MaterialTheme.typography.bodySmall)
                 @Composable fun OpensHere(title: String, on: Boolean, here: String, elsewhere: String, set: (Boolean) -> Unit) =
                     Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
@@ -1573,6 +1586,8 @@ private fun SettingsTab(
                     "Files opens a spreadsheet in the app you chose for it.") { sheets = it; office.opensSheets = it }
                 OpensHere("Open presentations here", slides, "Files opens a .pptx or .odp in Slides. Open with… still offers other apps.",
                     "Files opens a presentation in the app you chose for it.") { slides = it; office.opensSlides = it }
+                OpensHere("Open PDFs here", pdfs, "Files opens a .pdf in Office's PDF viewer. Open with… still offers other apps.",
+                    "Files opens a PDF in the app you chose for it.") { pdfs = it; office.opensPdfs = it }
                 var auto by remember { mutableStateOf(office.autoSave) }
                 Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -2665,7 +2680,7 @@ private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "
         "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
         "xls", "xlsx", "xlsm", "ods", "csv" -> Color(0xFF55A96B)
         "ppt", "pptx", "ppsx", "odp" -> Color(0xFFE0784F) // PowerPoint's orange, light enough for the dark list
-        "pdf" -> Color(0xFFE3685F)
+        "pdf" -> PDF_RED
         "txt", "md" -> Color(0xFF9AA3A4)
         "excalidraw" -> Color(0xFFAD68CF)
         "jpg", "jpeg", "png", "webp", "gif", "heic", "heif" -> Color(0xFF88BA6A)

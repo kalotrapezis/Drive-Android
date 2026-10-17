@@ -1010,27 +1010,37 @@ internal object WriterBridge {
 internal data class OfficeFile(val file: File, val relative: String)
 
 /** How many documents the Office home lists: the newest. */
-private const val OFFICE_RECENT = 20 // of each kind (asked 16 Oct): 20 Word, 20 Excel, 20 PowerPoint, newest first
+private const val OFFICE_RECENT = 20 // of each kind (asked 16 Oct): 20 Word, 20 Excel, 20 PowerPoint, 20 PDF, newest first
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
-    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name) || Sheets.isSheet(it.name) || Slides.isSlides(it.name)) && !it.name.startsWith("~$") }
+    .filter { it.isFile && (OfficeKind.of(it.name) != null || LegacyDocs.isLegacy(it.name) || Sheets.isSheet(it.name) || Slides.isSlides(it.name) || Pdf.isPdf(it.name)) && !it.name.startsWith("~$") }
     .map { OfficeFile(it, it.relativeTo(root).path) }
     .sortedByDescending { it.file.lastModified() }
     .toList()
 
 @Composable
-internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit, openSheet: (String) -> Unit, openSlides: (String) -> Unit) {
+internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, open: (String?) -> Unit, openSheet: (String) -> Unit, openSlides: (String) -> Unit, openPdf: (String) -> Unit) {
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
     LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { all -> total = all.size
         // the newest of each kind, one list again by date (the list is newest first)
-        files = all.groupBy { if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.file.lastModified() } } }
+        files = all.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.file.lastModified() } } }
     BackHandler { back() }
     var choosingTemplate by remember { mutableStateOf(false) }
+    // the PDF card: Android's picker, any PDF on the phone or in a cloud app; one it gives by address only is read from a
+    // copy in the app's cache (only looked at, so not kept in Files as Open with's are)
+    val pickPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, uri, Environment.getExternalStorageDirectory(), File(context.cacheDir, "pdf").apply { deleteRecursively() }, "application/pdf") }
+                .onFailure { WriterLog.e("PDF: the chosen file could not be read", it) }.getOrNull() }?.let { openPdf(Uri.fromFile(it).toString()) }
+        }
+    }
     /** A new presentation in Documents, opened editing: the app's empty deck (a title slide), or one of [template]. */
     fun newPresentation(template: File?) {
         runCatching {
@@ -1061,20 +1071,27 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NewDocCard("Words", "New document", WORD_BLUE, true, Modifier.weight(1f)) { open(null) }
-                    NewDocCard("Tables", "New spreadsheet", EXCEL_GREEN, true, Modifier.weight(1f)) { openSheet(NEW_SHEET) }
+                // a phone: two by two (four in a row left no room for their names); a tablet: one row
+                val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+                // (plain rows: a FlowRow asks the cards' BoxWithConstraints for intrinsic sizes, which crashes)
+                val cards = listOf<@Composable (Modifier) -> Unit>(
+                    { m -> NewDocCard("Words", "New document", WORD_BLUE, true, m) { open(null) } },
+                    { m -> NewDocCard("Tables", "New spreadsheet", EXCEL_GREEN, true, m) { openSheet(NEW_SHEET) } },
                     // a new presentation: the app's empty deck (a title slide) in Documents, opened editing
                     // with templates in Documents/Templates: which to start from first (asked 16 Oct: a school's, a company's)
-                    NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, true, Modifier.weight(1f)) {
+                    { m -> NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, true, m) {
                         if (SlidesTemplates.files().isNotEmpty()) choosingTemplate = true else newPresentation(null)
-                    }
+                    } },
+                    { m -> NewDocCard("PDF", "Open a PDF", PDF_RED, true, m, R.drawable.ic_open_with) { pickPdf.launch(arrayOf("application/pdf")) } },
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    cards.chunked(if (narrow) 2 else 4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { it(Modifier.weight(1f)) } } }
                 }
             }
             item {
                 Column(Modifier.padding(top = 14.dp, bottom = 2.dp)) {
                     Text("Recent documents", style = MaterialTheme.typography.titleMedium)
-                    if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest documents, spreadsheets and presentations of $total — the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+                    if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest documents, spreadsheets, presentations and PDFs of $total — the rest are in Files.", style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (!hasAccess) item {
@@ -1084,13 +1101,13 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }
             } else when (val list = files) {
                 null -> item { Text("Looking…", style = MaterialTheme.typography.bodyMedium) }
-                else -> if (list.isEmpty()) item { Text("No documents, spreadsheets or presentations in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
+                else -> if (list.isEmpty()) item { Text("No documents, spreadsheets, presentations or PDFs in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium) }
                 else items(list, key = { it.relative }) { f ->
-                    val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name)
-                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {
+                    val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name); val pdf = Pdf.isPdf(f.file.name)
+                    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (pdf) openPdf(it) else if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             Icon(painterResource(if (deck) R.drawable.ic_play else if (sheet) R.drawable.ic_table else R.drawable.ic_file_text), contentDescription = null,
-                                tint = if (deck) POWERPOINT_ORANGE else if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
+                                tint = if (pdf) PDF_RED else if (deck) POWERPOINT_ORANGE else if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.file.lastModified())),
@@ -1105,7 +1122,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     }
 }
 
-@Composable private fun NewDocCard(app: String, label: String, color: Color, enabled: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
+@Composable private fun NewDocCard(app: String, label: String, color: Color, enabled: Boolean, modifier: Modifier, icon: Int = R.drawable.ic_note_add, click: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = color,
     contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.7f),
     modifier = modifier.height(104.dp).then(if (enabled) Modifier.clickable(onClick = click) else Modifier),
@@ -1114,11 +1131,11 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     BoxWithConstraints {
         val wide = maxWidth >= 200.dp
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Icon(painterResource(if (enabled) R.drawable.ic_note_add else R.drawable.ic_office), contentDescription = null, modifier = Modifier.size(24.dp))
+            Icon(painterResource(if (enabled) icon else R.drawable.ic_office), contentDescription = null, modifier = Modifier.size(24.dp))
             Column {
                 Text(app, style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1)
                 Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; else -> "PowerPoint and LibreOffice presentations" },
+                if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; "PDF" -> "View, share and print"; else -> "PowerPoint and LibreOffice presentations" },
                     style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

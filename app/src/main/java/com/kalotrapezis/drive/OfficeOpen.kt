@@ -6,13 +6,13 @@ import android.provider.OpenableColumns
 import java.io.File
 
 /**
- * A document, spreadsheet or presentation another app opens in Tetra (Open with › Tetra Office, asked 16 Oct): the file
+ * A document, spreadsheet, presentation or PDF another app opens in Tetra (Open with › Tetra Office, asked 16 Oct): the file
  * itself when it is on the phone's storage (edited and saved where it is), else a copy in Documents/From other apps
  * (an email's attachment, a cloud app's file), which Tetra then keeps like any other.
  */
 internal object OfficeOpen {
-    /** Words', Tables' and Slides' kinds, by name. */
-    fun isOffice(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("docx", "odt", "doc", "rtf") || Sheets.isSheet(name) || Slides.isSlides(name)
+    /** Words', Tables', Slides' and the PDF viewer's kinds, by name. */
+    fun isOffice(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("docx", "odt", "doc", "rtf") || Sheets.isSheet(name) || Slides.isSlides(name) || Pdf.isPdf(name)
 
     /** An address's file on the phone's storage, when it names one: file://, a Files app's (primary:…), Downloads' raw: one. */
     fun localPath(uri: Uri, storage: File): File? = when {
@@ -53,6 +53,7 @@ internal object OfficeOpen {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx"
         "application/vnd.openxmlformats-officedocument.presentationml.slideshow" -> "ppsx"
         "application/vnd.oasis.opendocument.presentation" -> "odp"
+        "application/pdf" -> "pdf"
         else -> null
     }
 }

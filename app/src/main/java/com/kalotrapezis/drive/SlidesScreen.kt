@@ -107,6 +107,7 @@ import java.io.File
 @Composable
 internal fun SlidesScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
+    remember { WriterUnits.load(context) } // Size and position in Words' unit, cm or inches
     remember { OfficeFonts.assets = context.applicationContext.assets } // the fonts with Word's letter widths, as Words' and Tables'
 
     val scope = rememberCoroutineScope()
@@ -217,6 +218,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     /** The ids on slide [c] now (its own items', a group's shapes'), which a new item's must not be. */
     fun taken(e: SlidesEdit.Edit, c: Int): List<String> = base?.let { d -> SlidesEdit.slide(d, e, e.order[c]).items.flatMap { listOfNotNull(it.anim, (it as? SlideItem.Shape)?.id) } }.orEmpty()
+    /** Arrange › Rotate and Flip: the chosen item's turn changed by [f] (its place written with it, so a placeholder gets one of its own). */
+    fun turn(f: (SlidesEdit.Turn) -> SlidesEdit.Turn) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
+        val now = current(e, c, id) ?: return
+        if (now.grouped) { message = "A group cannot be turned yet: ungroup it first"; return }
+        val t0 = e.turns[uid to id] ?: SlidesEdit.Turn(now.rotation, (now as? SlideItem.Shape)?.flipH ?: (now as? SlideItem.Picture)?.flipH ?: false,
+            (now as? SlideItem.Shape)?.flipV ?: (now as? SlideItem.Picture)?.flipV ?: false)
+        val framed = SlidesEdit.framed(e, uid, id, now.x, now.y, now.w, now.h)
+        change(framed.copy(turns = framed.turns + ((uid to id) to f(t0)))); WriterLog.i("Slides: turned")
+    }
+    /** Arrange's order: the chosen item to the front ('f'), the back ('b'), one forward ('+') or one backward ('-'). */
+    fun restack(how: Char) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val d = base ?: return; val uid = e.order[c].uid
+        val ids = SlidesEdit.slide(d, e, e.order[c]).items.mapNotNull { it.anim }.distinct().toMutableList()
+        val i = ids.indexOf(id).takeIf { it >= 0 } ?: return
+        ids.removeAt(i)
+        ids.add(when (how) { 'f' -> ids.size; 'b' -> 0; '+' -> minOf(i + 1, ids.size); else -> maxOf(i - 1, 0) }, id)
+        change(e.copy(stack = e.stack + (uid to ids))); WriterLog.i("Slides: order $how")
+    }
     /** The chosen item's looks changed by [f] (fill, border, words' colour), saved with the slide. */
     fun restyle(f: (SlidesEdit.Look) -> SlidesEdit.Look) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val k = e.order[c].uid to id
@@ -338,6 +358,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var commentsOn by remember { mutableStateOf(false) } // Review › Comments: the chosen slide's comments beside it (over it on a phone)
     var commentAsk by remember { mutableStateOf<Pair<Char, DocComment?>?>(null) } // Words' comment dialog: 'n' new, 'e' edit, 'r' reply (to the comment)
     var hereComment by remember { mutableStateOf<String?>(null) } // the comment tapped (its marker or card)
+    var rotating by remember { mutableStateOf(false) } // Arrange › Rotate: Words' rotate dialog
+    var sizing by remember { mutableStateOf(false) } // Arrange › Size and position: the numbers
     /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
     fun recomment(f: (List<SlideComment>) -> List<SlideComment>) {
         val e = edit ?: return; val c = chosen ?: return
@@ -567,6 +589,33 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonDivider(w)
                     RibbonButton("Bigger", w, R.drawable.ic_add) { reframe { val k = 1.15f; listOf(it.x - it.w * (k - 1) / 2, it.y - it.h * (k - 1) / 2, it.w * k, it.h * k) } }
                     RibbonButton("Smaller", w, R.drawable.ic_remove) { reframe { val k = 1 / 1.15f; listOf(it.x + it.w * (1 - k) / 2, it.y + it.h * (1 - k) / 2, it.w * k, it.h * k) } }
+                }
+                // Arrange (PowerPoint's): over or under the others, lined up on the slide, turned and mirrored, its exact size and place
+                if (it0 != null) {
+                    RibbonDivider(w)
+                    RibbonButton("Bring forward", w, R.drawable.ic_flip_to_front) { restack('+') }
+                    RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front) { restack('f') }
+                    RibbonButton("Send backward", w, R.drawable.ic_flip_to_back) { restack('-') }
+                    RibbonButton("Send to back", w, R.drawable.ic_flip_to_back) { restack('b') }
+                    Box {
+                        var aligning by remember { mutableStateOf(false) }
+                        RibbonButton("Align", w, R.drawable.ic_align_horizontal_center) { aligning = true }
+                        DropdownMenu(aligning, { aligning = false }) {
+                            val dw = deck?.width ?: 720f; val dh = deck?.height ?: 540f
+                            listOf("Align left" to { i: SlideItem -> listOf(0f, i.y, i.w, i.h) }, "Align centre" to { i: SlideItem -> listOf((dw - i.w) / 2, i.y, i.w, i.h) },
+                                "Align right" to { i: SlideItem -> listOf(dw - i.w, i.y, i.w, i.h) }, "Align top" to { i: SlideItem -> listOf(i.x, 0f, i.w, i.h) },
+                                "Align middle" to { i: SlideItem -> listOf(i.x, (dh - i.h) / 2, i.w, i.h) }, "Align bottom" to { i: SlideItem -> listOf(i.x, dh - i.h, i.w, i.h) })
+                                .forEach { (label, to) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; reframe(to); WriterLog.i("Slides: $label") }) }
+                        }
+                    }
+                    if (it0 is SlideItem.Shape || it0 is SlideItem.Picture) {
+                        RibbonButton("Rotate", w, R.drawable.ic_rotate_right) { rotating = true }
+                        RibbonButton("Turn left", w, R.drawable.ic_rotate_left) { turn { it.copy(deg = (it.deg + 270f) % 360f) } }
+                        RibbonButton("Turn right", w, R.drawable.ic_rotate_right) { turn { it.copy(deg = (it.deg + 90f) % 360f) } }
+                        RibbonButton("Flip across", w, R.drawable.ic_flip) { turn { it.copy(flipH = !it.flipH) } }
+                        RibbonButton("Flip up and down", w, R.drawable.ic_flip) { turn { it.copy(flipV = !it.flipV) } }
+                    }
+                    RibbonButton("Size and position", w, R.drawable.ic_aspect_ratio) { sizing = true }
                 }
                 if (it0 != null) RibbonDivider(w)
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
@@ -1164,6 +1213,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
+                    val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
+                    if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }
+                    if (sizing && arranged != null) SizeAndPosition(arranged, { sizing = false }) { x, y, ww, hh -> sizing = false; reframe { listOf(x, y, ww, hh) } }
                     commentAsk?.let { (how, of) ->
                         val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) // the name Words' comments use
                         NewCommentDialog(if (how == 'e') of?.author.orEmpty() else remember { prefs.getString("author", "") ?: "" }, { commentAsk = null },
@@ -1853,3 +1905,26 @@ internal fun ThemeCard(t: SlideTheme, chosen: Boolean, modifier: Modifier = Modi
 /** Changes not yet saved, kept when the app went to the background: one per presentation (by its path), in the app's storage. */
 private fun slideDraft(context: android.content.Context, file: File) =
     File(File(context.filesDir, "slide-drafts"), "${file.absolutePath.hashCode().toUInt()}.${file.extension}")
+
+/** Arrange › Size and position (PowerPoint's): [item]'s width, height and place from the slide's top left, in Words' unit (cm or inches); the proportions kept or not. */
+@Composable
+private fun SizeAndPosition(item: SlideItem, dismiss: () -> Unit, set: (Float, Float, Float, Float) -> Unit) {
+    var w by remember { mutableStateOf(WriterUnits.text(item.w)) }; var h by remember { mutableStateOf(WriterUnits.text(item.h)) }
+    var x by remember { mutableStateOf(WriterUnits.text(item.x)) }; var y by remember { mutableStateOf(WriterUnits.text(item.y)) }
+    var kept by remember { mutableStateOf(true) }
+    val ratio = if (item.w > 0f) item.h / item.w else 1f
+    fun num(t: String) = t.replace(',', '.').toFloatOrNull()
+    val ok = listOf(w, h).all { (num(it) ?: 0f) > 0f } && listOf(x, y).all { num(it) != null }
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Size and position") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            @Composable fun field(label: String, v: String, change: (String) -> Unit) = androidx.compose.material3.OutlinedTextField(v, change, label = { Text("$label (${WriterUnits.name})") }, singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+            field("Width", w) { t -> w = t; if (kept) num(t)?.let { h = String.format(java.util.Locale.ROOT, "%.2f", it * ratio) } }
+            field("Height", h) { t -> h = t; if (kept && ratio > 0f) num(t)?.let { w = String.format(java.util.Locale.ROOT, "%.2f", it / ratio) } }
+            Row(verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Checkbox(kept, { kept = it }); Text("Keep its proportions") }
+            field("From the left", x) { x = it }
+            field("From the top", y) { y = it }
+        } },
+        confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { set(WriterUnits.toPt(num(x)!!), WriterUnits.toPt(num(y)!!), WriterUnits.toPt(num(w)!!), WriterUnits.toPt(num(h)!!)) }) { Text("OK") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
+}

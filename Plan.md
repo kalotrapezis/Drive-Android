@@ -299,10 +299,21 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       failing; Words' fingerprint unchanged (emulator; the tablet not connected). Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
-- [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /
+- [~] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /
       to back; align (left, centre, right, top, middle, bottom, to the slide); distribute; group and ungroup; rotate and
       flip; exact size and position; a picture's **crop** (drawn since 780a88d), replace, reset, border; a shape's
       outline width and dash, shadow; Shape styles (Words').
+      Done 17 Oct (office-C session), on the chosen item's own tab: Bring forward, Bring to front, Send backward, Send to back
+      (`Edit.stack`, a slide's ids from the back: the tree's order in .pptx, the page's in .odp); Align ▾ left/centre/right/top/
+      middle/bottom to the slide (Words' Align list); Rotate (Words' `RotateDialog`), Turn left/right, Flip across / up and down
+      (`Edit.turns`: xfrm rot/flipH/flipV; .odp: Words' `Arrange.odtTurned` draw:transform, a shape's geometry mirror, a picture's
+      style:mirror — a shape mirrored one way turned the other way round in ODF, as LibreOffice converts PowerPoint's); Size and
+      position (its own small dialog, in Words' unit cm/inches: Words' size dialog is the picture's in pixels with handles). Found on
+      the way: the .odp reader put a turned item at the slide's corner (it ignored draw:transform) and moving a turned one was not
+      saved; pictures can now be mirrored (read and drawn); Android's DOM miscounts a child moved within its own parent (taken out
+      first). `items turned and reordered saved` (both, LibreOffice's conversions); emulator: a picture turned 30° and saved —
+      LibreOffice turns it the same. Not yet: distribute (needs several chosen), group/ungroup, a group turned, the chosen frame
+      drawn turned; crop/replace/reset/border; outline width/dash, shadow, Shape styles. Unit 418/0/7; sweep 349 + 29, none failing.
 - [ ] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
       reorder, many at once); copy slides between decks.
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour

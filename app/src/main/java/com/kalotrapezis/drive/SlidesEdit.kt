@@ -105,13 +105,26 @@ internal object SlidesEdit {
         /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null,
         /** a slide's speaker notes as typed (asked 17 Oct), a line a paragraph */ val notes: Map<Int, String> = emptyMap(),
         /** a slide's date, number and footer as chosen (Insert › Header & footer) — its own ones replaced */ val footers: Map<Int, Footers> = emptyMap(),
-        /** a slide's comments as they are now (Review › Comments: added, edited, answered, deleted), the whole list */ val comments: Map<Int, List<SlideComment>> = emptyMap()) {
+        /** a slide's comments as they are now (Review › Comments: added, edited, answered, deleted), the whole list */ val comments: Map<Int, List<SlideComment>> = emptyMap(),
+        /** (slide uid, item id) → Arrange's rotation and flips */ val turns: Map<Pair<Int, String>, Turn> = emptyMap(),
+        /** a slide's items from the back to the front as arranged (Bring forward, Send backward…), by id */ val stack: Map<Int, List<String>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
         fun newId(uid: Int, taken: Collection<String> = emptyList()) =
             ((taken + added.values.flatten().map { it.id }).mapNotNull { it.toIntOrNull() }.filter { it >= 9000 }.maxOrNull()?.plus(1) ?: (9000 + added.values.sumOf { it.size })).toString()
     }
+    /** Arrange › Rotate and Flip: degrees clockwise about its middle, mirrored across or up and down. */
+    data class Turn(val deg: Float = 0f, val flipH: Boolean = false, val flipV: Boolean = false)
+    /** [item] turned as [t] says (a shape or picture; others as they are). */
+    private fun turned(item: SlideItem, t: Turn?): SlideItem = if (t == null) item else when (item) {
+        is SlideItem.Shape -> SlideItem.Shape(item.x, item.y, item.w, item.h, t.deg, item.shape, item.text, item.paths, t.flipH, t.flipV, item.gradient, item.id, item.hint)
+        is SlideItem.Picture -> SlideItem.Picture(item.x, item.y, item.w, item.h, t.deg, item.crop, item.math, t.flipH, t.flipV, item.bytes)
+        else -> item
+    }.also { it.anim = item.anim; it.grouped = item.grouped }
+    /** [items] in [stack]'s order from the back (the layout's and master's under them all, one not in it on top). */
+    fun stacked(items: List<SlideItem>, stack: List<String>?): List<SlideItem> = if (stack == null) items else
+        items.sortedBy { i -> i.anim?.let { a -> stack.indexOf(a).let { if (it < 0) Int.MAX_VALUE else it } } ?: -1 }
     fun start(deck: Deck) = Edit(deck.slides.indices.map { Entry(it, it) })
     /** [edit] with item [id] of slide [uid] at [x], [y], [w] × [h]: one put on it here, or the file's own. */
     fun framed(edit: Edit, uid: Int, id: String, x: Float, y: Float, w: Float, h: Float): Edit {
@@ -136,7 +149,7 @@ internal object SlidesEdit {
         val kx = if (item.w > 0) w / item.w else 1f; val ky = if (item.h > 0) h / item.h else 1f
         return when (item) {
             is SlideItem.Shape -> SlideItem.Shape(x, y, w, h, item.rotation, item.shape, item.text, item.paths, item.flipH, item.flipV, item.gradient, item.id, item.hint)
-            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.bytes)
+            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.flipH, item.flipV, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
         }.also { it.anim = item.anim; it.grouped = item.grouped }
@@ -178,7 +191,8 @@ internal object SlidesEdit {
             s.footers["ftr"]?.takeIf { f.text != null }?.let { worded(it, f.text!!) },
             s.footers["sldNum"]?.takeIf { f.number }?.let { worded(it, "${edit.order.indexOf(e) + 1}") }) }.orEmpty()
         val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
-        val all = (items.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) } + footed
+        val all = (items.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
+            .map { if (it.grouped) it else turned(it, it.anim?.let { id -> edit.turns[e.uid to id] }) }.let { stacked(it, edit.stack[e.uid]) } + footed
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
         return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide, edit.comments[e.uid] ?: s.comments)
@@ -382,7 +396,8 @@ internal object SlidesEdit {
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
         looks: Map<String, Look> = emptyMap(), transition: SlideTransition? = null, anims: List<SlideEffect>? = null, frames: Map<String, List<Float>> = emptyMap(),
-        removed: Set<String> = emptySet(), footers: Footers? = null, number: Int = 0, layoutPhs: List<Triple<String, String?, String?>> = emptyList()): ByteArray {
+        removed: Set<String> = emptySet(), footers: Footers? = null, number: Int = 0, layoutPhs: List<Triple<String, String?, String?>> = emptyList(),
+        turns: Map<String, Turn> = emptyMap(), stack: List<String>? = null): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
@@ -515,6 +530,22 @@ internal object SlidesEdit {
                 n.setAttribute(a, "${emu(av)}"); n.setAttribute(b, "${emu(bv)}")
             }
             put("off", "x", f[0], "y", f[1]); put("ext", "cx", f[2], "cy", f[3])
+        }
+        // Arrange › Rotate and Flip: the item's xfrm says them (its place is in frames, written above)
+        for ((id, t) in turns) {
+            val el = named.firstOrNull { it.getAttribute("id") == id }?.parentNode?.parentNode as? Element ?: continue
+            val xfrm = el.kids().firstOrNull { it.localName == "spPr" }?.kids()?.firstOrNull { it.localName == "xfrm" } ?: continue
+            if (t.deg == 0f) xfrm.removeAttribute("rot") else xfrm.setAttribute("rot", "${Math.round(t.deg * 60000)}")
+            if (t.flipH) xfrm.setAttribute("flipH", "1") else xfrm.removeAttribute("flipH")
+            if (t.flipV) xfrm.setAttribute("flipV", "1") else xfrm.removeAttribute("flipV")
+        }
+        // Arrange's order: the tree's items from the back as arranged (one not named keeps its place before them)
+        if (stack != null && tree != null) {
+            val items = tree.kids().filter { it.localName !in setOf("nvGrpSpPr", "grpSpPr", "extLst") }
+            fun idOf(e: Element) = e.getElementsByTagNameNS(P, "cNvPr").item(0)?.let { (it as Element).getAttribute("id") }
+            val end = tree.kids().firstOrNull { it.localName == "extLst" }
+            // taken out first: Android's DOM miscounts a child moved within its own parent
+            items.sortedBy { e -> idOf(e)?.let { stack.indexOf(it) } ?: -1 }.forEach { tree.removeChild(it); tree.insertBefore(it, end) }
         }
         fun place(el: Element, before: Set<String>) { root.insertBefore(doc.importNode(el, true), root.kids().firstOrNull { it.localName in before }) }
         if (transition != null) {
@@ -805,6 +836,7 @@ internal object SlidesEdit {
             val transition = edit.transitions[e.uid]; val anims = edit.anims[e.uid]
             val frames = edit.frames.filterKeys { it.first == e.uid }.mapKeys { it.key.second } + grown(deck, edit, e)
             val removed = edit.removed.filter { it.first == e.uid }.map { it.second }.toSet()
+            val turns = edit.turns.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val hide = edit.hidden[e.uid]
             val added = edit.added[e.uid].orEmpty()
             val source = if (e.layout >= 0) null else deck.slides[e.src]
@@ -831,11 +863,11 @@ internal object SlidesEdit {
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
-                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
-                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
+                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || turns.isNotEmpty() || e.uid in edit.stack || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
+                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid])
                 if (ids.isNotEmpty() || noted || commented) out[relsPath(part)] = xml(relsXml)
             } else {
-                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
+                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid])
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }

@@ -203,6 +203,37 @@ class SlidesTest {
         }
     }
 
+    /** Arrange: a shape turned 30°, mirrored and sent to the back, the red words brought to the front; kept where they were. */
+    @Test fun `items turned and reordered saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val shapes = deck.slides[2].items.filterIsInstance<SlideItem.Shape>()
+            val box = shapes.first { words(it) == "A rounded box" }; val red = shapes.first { words(it) == "Bold red words, 28 pt" }
+            val ids = deck.slides[2].items.mapNotNull { it.anim }.distinct()
+            val stack = listOf(box.anim!!) + ids.filter { it != box.anim && it != red.anim } + red.anim!!
+            val e = SlidesEdit.start(deck).copy(turns = mapOf((2 to box.anim!!) to SlidesEdit.Turn(30f, flipH = true)), stack = mapOf(2 to stack),
+                frames = mapOf((2 to box.anim!!) to listOf(box.x, box.y, box.w, box.h)))
+            fun check(d: Deck, how: String) {
+                val items = d.slides[2].items.filter { it.anim != null || it is SlideItem.Shape && it.id != null }
+                val b = items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+                assertEquals(how, 30f, b.rotation, 0.5f); assertTrue(how, b.flipH)
+                assertEquals(how, box.x, b.x, 1f); assertEquals(how, box.y, b.y, 1f); assertEquals(how, box.w, b.w, 1f)
+                val order = items.filterIsInstance<SlideItem.Shape>().mapNotNull { words(it) }
+                assertEquals(how, "A rounded box", order.first()); assertEquals(how, "Bold red words, 28 pt", order.last())
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("arrange-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

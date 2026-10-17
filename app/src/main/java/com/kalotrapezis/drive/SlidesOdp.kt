@@ -102,7 +102,12 @@ internal object SlidesOdp {
         val fo = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
         val width = pt(layout?.getAttributeNS(fo, "page-width")) ?: 720f; val height = pt(layout?.getAttributeNS(fo, "page-height")) ?: 540f
 
-        fun box(e: Element) = floatArrayOf(pt(e.a(SVG, "x")) ?: 0f, pt(e.a(SVG, "y")) ?: 0f, pt(e.a(SVG, "width")) ?: 0f, pt(e.a(SVG, "height")) ?: 0f)
+        fun box(e: Element): FloatArray {
+            val w = pt(e.a(SVG, "width")) ?: 0f; val h = pt(e.a(SVG, "height")) ?: 0f
+            // turned: its unturned corner from its draw:transform (Words' reading of one)
+            val turned = e.a(DRAW, "transform")?.let { t -> Arrange.odtTransform(""" svg:width="${e.a(SVG, "width")}" svg:height="${e.a(SVG, "height")}" draw:transform="$t"""")?.second }
+            return floatArrayOf(turned?.first ?: pt(e.a(SVG, "x")) ?: 0f, turned?.second ?: pt(e.a(SVG, "y")) ?: 0f, w, h)
+        }
         fun rotation(e: Element) = e.a(DRAW, "transform")?.let { Regex("""rotate\s*\(\s*(-?[0-9.eE]+)""").find(it)?.groupValues?.get(1)?.toDoubleOrNull() }?.let { (-Math.toDegrees(it)).toFloat() } ?: 0f
 
         /** The words of a frame or shape: its paragraphs, a list's items a level each, with their looks. */
@@ -229,7 +234,8 @@ internal object SlidesOdp {
                                 val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
-                            "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) }) { part(p) } }
+                            "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) },
+                                flipH = g("mirror")?.contains("horizontal") == true, flipV = g("mirror")?.contains("vertical") == true) { part(p) } }
                             "table" -> out += table(inner, b)
                             "object" -> {
                                 val c = inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }
@@ -255,7 +261,11 @@ internal object SlidesOdp {
                         val words = text(e, null, gr)
                         if (warp != null && words != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, null, SlideText(words.paras.map { p ->
                             SlidePara(p.para.copy(runs = p.runs.map { r -> r.copy(color = f?.and(0xFFFFFF) ?: r.color) }), p.look, p.bullet, p.base) }, words.anchor, words.insets, warp = warp), id = path)
-                        else out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, words, gradient = gradient(), id = path)
+                        else {
+                            // mirrored one way: ODF turns before it mirrors, PowerPoint (and the drawing here) after — the same look is the other way round
+                            val fh = geo?.a(DRAW, "mirror-horizontal") == "true"; val fv = geo?.a(DRAW, "mirror-vertical") == "true"
+                            out += SlideItem.Shape(b[0], b[1], b[2], b[3], if (fh != fv) (360f - rot) % 360f else rot, shape, words, flipH = fh, flipV = fv, gradient = gradient(), id = path)
+                        }
                     }
                     "g" -> shapes(e, out, master, path, top ?: path)
                 }

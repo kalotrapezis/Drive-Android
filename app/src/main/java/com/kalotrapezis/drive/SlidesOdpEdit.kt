@@ -321,13 +321,23 @@ internal object SlidesOdpEdit {
                 if (l.words) words(s, l)
             }
         }
+        /** [el] at [x], [y], [w] × [h] (points), turned [deg] clockwise about its middle (Words' draw:transform; 0: plain svg:x and svg:y). */
+        fun turnTo(el: Element, x: Float, y: Float, w: Float, h: Float, deg: Float) {
+            listOf("x", "y").forEach { el.removeAttributeNS(SVG, it) }; el.removeAttributeNS(DRAW, "transform")
+            el.setAttributeNS(SVG, "svg:width", cm(w)); el.setAttributeNS(SVG, "svg:height", cm(h))
+            val placed = Arrange.odtTurned("<x svg:x=\"${cm(x)}\" svg:y=\"${cm(y)}\" svg:width=\"${cm(w)}\" svg:height=\"${cm(h)}\">", deg, w, h)
+            Regex("""\s(svg:x|svg:y|draw:transform)="([^"]*)"""").findAll(placed).forEach { m ->
+                if (m.groupValues[1] == "draw:transform") el.setAttributeNS(DRAW, "draw:transform", m.groupValues[2]) else el.setAttributeNS(SVG, m.groupValues[1], m.groupValues[2]) }
+        }
         /** [el] (or, a group, each item in it as the group's [box] moves to [f]) at its new place. */
         fun place(el: Element, f: List<Float>, box: SlideItem?) {
             fun len(e: Element, n: String) = odfLength(e.a(SVG, n))
             val items = if (el.localName == "g") el.all().filter { it.a(SVG, "x") != null && it.a(SVG, "width") != null } else listOf(el)
             for (e in items) {
-                // shortcut: a turned item keeps its place (its place is in its draw:transform), until turning is edited here
-                if (e.a(DRAW, "transform") != null) continue
+                // turned: placed again with its turn (a group's pieces keep theirs)
+                val turned = e.a(DRAW, "transform")?.takeIf { el.localName != "g" }?.let { t -> Arrange.odtTransform(""" svg:width="${e.a(SVG, "width")}" svg:height="${e.a(SVG, "height")}" draw:transform="$t"""")?.first }
+                if (e.a(DRAW, "transform") != null && turned == null) continue
+                if (turned != null) { turnTo(e, f[0], f[1], f[2], f[3], turned); continue }
                 val x = len(e, "x") ?: 0f; val y = len(e, "y") ?: 0f; val w = len(e, "width") ?: 0f; val h = len(e, "height") ?: 0f
                 val n = if (box == null || el.localName != "g") f else {
                     val kx = if (box.w > 0) f[2] / box.w else 1f; val ky = if (box.h > 0) f[3] / box.h else 1f
@@ -474,6 +484,9 @@ internal object SlidesOdpEdit {
             val frames = (edit.frames.filterKeys { it.first == uid }.mapKeys { it.key.second } + SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid }))
                 .mapNotNull { (id, v) -> at(id)?.let { Triple(it, v, SlidesEdit.box(slide, id)) } }
             val removed = edit.removed.filter { it.first == uid }.mapNotNull { at(it.second) }
+            // Arrange: the page's own items turned, and the order from the back
+            val turnsOwn = edit.turns.filterKeys { it.first == uid && it.second.startsWith("o") }.mapNotNull { (k, t) -> at(k.second)?.let { Triple(k.second, it, t) } }
+            val stackEls = edit.stack[uid]?.map { id -> id to (if (id.startsWith("o")) at(id) else null) }
             val anims = edit.anims[uid]?.mapNotNull { fx -> (if (fx.target.startsWith("o")) at(fx.target) else null).let { fx to it } }
             texts.forEach { (el, lines) -> type(el, lines) }
             looks.forEach { (el, l) -> restyle(el, l) }
@@ -518,6 +531,23 @@ internal object SlidesOdpEdit {
             for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
             // the words typed into what was put on, and Home's looks on them, as on the page's own
             for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) } }
+            // Arrange › Rotate and Flip: turned about its middle (Words' draw:transform), mirrored as LibreOffice says it (a shape's geometry, a picture's style)
+            if (edit.turns.keys.any { it.first == uid }) {
+                val shown = SlidesEdit.slide(deck, edit, edit.order.first { it.uid == uid })
+                fun turn(el: Element, id: String, t: SlidesEdit.Turn) {
+                    val b = SlidesEdit.box(shown, id) ?: return
+                    val geo = el.kids().firstOrNull { it.localName == "enhanced-geometry" }
+                    // a shape mirrored one way: ODF turns it before mirroring, so the other way round (as LibreOffice converts PowerPoint's)
+                    turnTo(el, b.x, b.y, b.w, b.h, if (geo != null && t.flipH != t.flipV) (360f - t.deg) % 360f else t.deg)
+                    geo?.let { g -> g.setAttributeNS(DRAW, "draw:mirror-horizontal", "${t.flipH}"); g.setAttributeNS(DRAW, "draw:mirror-vertical", "${t.flipV}") }
+                    if (el.kids().any { it.localName == "image" }) el.a(DRAW, "style-name").let { n -> el.setAttributeNS(DRAW, "draw:style-name", derive("graphic", n, "mirror ${t.flipH} ${t.flipV}") { st ->
+                        props(st, "graphic-properties").setAttributeNS(STYLE, "style:mirror", listOfNotNull("horizontal".takeIf { t.flipH }, "vertical".takeIf { t.flipV }).joinToString(" ").ifEmpty { "none" }) }) }
+                }
+                turnsOwn.forEach { (id, el, t) -> turn(el, id, t) }
+                edit.turns.filterKeys { it.first == uid && !it.second.startsWith("o") }.forEach { (k, t) -> put[k.second]?.let { turn(it, k.second, t) } }
+            }
+            // Arrange's order: each named item moved, from the back, to the end of the page's items
+            stackEls?.forEach { (id, el) -> (el ?: put[id])?.let { it.parentNode?.removeChild(it); page.insertBefore(it, before) } }
             // the transition: in the page's style and the timing's own filter, as LibreOffice writes it
             edit.transitions[uid]?.let { t ->
                 val smil = t.kind.takeIf { it.isNotEmpty() }?.let { OdpEffects.smil(it, t.dir) }

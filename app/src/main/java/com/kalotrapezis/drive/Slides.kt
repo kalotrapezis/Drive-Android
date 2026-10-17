@@ -67,6 +67,7 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     /** [crop]: the part of the picture shown (a:srcRect) — how much is cut from its left, top, right and bottom, 0–1 of its size. */
     class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val crop: FloatArray? = null,
         /** An equation shown as this picture (PowerPoint's fallback, LibreOffice Math's replacement): Edit equation opens it */ val math: MathNode? = null,
+        /** mirrored (Arrange › Flip) */ val flipH: Boolean = false, val flipV: Boolean = false,
         val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
@@ -434,7 +435,8 @@ internal object Slides {
                     }
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p ->
                         val crop = srcRect(e.kid("blipFill")?.let(OfficeFormats::xml))
-                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop) { part(p) }
+                        val flips = e.kid("spPr")?.kid("xfrm")
+                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }
                     }
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
@@ -458,7 +460,7 @@ internal object Slides {
                         if (math != null && off?.size == 4 && group == null) {
                             val fell = out.subList(before, out.size).toList(); fell.forEach { out.remove(it) }
                             val p = fell.firstOrNull() as? SlideItem.Picture
-                            out += SlideItem.Picture(off[0], off[1], off[2], off[3], 0f, null, math, p?.bytes ?: { null }).also { if (ctx != null) it.anim = groupId ?: sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id") }
+                            out += SlideItem.Picture(off[0], off[1], off[2], off[3], 0f, null, math, bytes = p?.bytes ?: { null }).also { if (ctx != null) it.anim = groupId ?: sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id") }
                         }
                     }
                 }
@@ -641,6 +643,7 @@ internal object Slides {
                 if (state[0] < 1f) c.saveLayerAlpha(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4, (state[0] * 255).toInt().coerceIn(0, 255))
             }
             if (item.rotation != 0f) c.rotate(item.rotation, item.x + item.w / 2, item.y + item.h / 2)
+            if (item is SlideItem.Picture && (item.flipH || item.flipV)) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2)
             when (item) {
                 is SlideItem.Shape -> {
                     if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2)

@@ -69,9 +69,10 @@ How to write here:
       function, sheet Hide, Gridlines, a protected sheet; Words › Shape options Dash/Shadow. And the touch-target script on the tablet.
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
-      formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings. Checks at a925139: unit
+      formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
+      Print titles. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -792,7 +793,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       LibreOffice's page layout on a master page of the sheet's own, its print ranges), and what Export PDF and Print use. LibreOffice's
       page settings are now read too (an .ods printed with Excel's defaults before): its top and bottom count the header's and footer's
       room, as Excel's margins do. `page layout saved` (both formats, LibreOffice's conversions); emulator: page.ods made landscape.
-      Not yet: rows repeated on every page, header and footer.
+      Rows repeated on every page done (office-F session, 18 Oct): Page layout › Print titles with rows chosen, Clear print titles —
+      Excel's _xlnm.Print_Titles (read and printed before), LibreOffice's table:table-header-rows round the rows, now read too (an .ods
+      printed without them before). In `page layout saved` (both formats, LibreOffice's conversions); emulator: an .ods's rows 1–2.
+      shortcut: columns printed on every page not kept; rows in a row group not wrapped. Not yet: header and footer.
 - [~] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
       Respecting a protected sheet done (office-F session, 17 Oct): Excel's sheetProtection and LibreOffice's table:protected read
       (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);

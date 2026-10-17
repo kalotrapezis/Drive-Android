@@ -42,9 +42,12 @@ internal object SheetPageSetup {
             }
             // the print area: the workbook's defined name for this sheet
             var wb = read("xl/workbook.xml") ?: error("Not a workbook.")
-            wb = wb.replace(Regex("""<definedName\b[^>]*name="_xlnm\.Print_Area"[^>]*localSheetId="$index"[^>]*>[^<]*</definedName>"""), "")
-                .replace(Regex("""<definedName\b[^>]*localSheetId="$index"[^>]*name="_xlnm\.Print_Area"[^>]*>[^<]*</definedName>"""), "")
-            p.area?.let { g -> val d = """<definedName name="_xlnm.Print_Area" localSheetId="$index">'${OfficeFormats.esc(name.replace("'", "''"))}'!${ref(g)}</definedName>"""
+            // and the rows printed on every page (shortcut: columns printed on every page are not kept; upgrade if a file has them)
+            for (n in listOf("Print_Area", "Print_Titles")) wb = wb.replace(Regex("""<definedName\b[^>]*name="_xlnm\.$n"[^>]*localSheetId="$index"[^>]*>[^<]*</definedName>"""), "")
+                .replace(Regex("""<definedName\b[^>]*localSheetId="$index"[^>]*name="_xlnm\.$n"[^>]*>[^<]*</definedName>"""), "")
+            val quoted = "'${OfficeFormats.esc(name.replace("'", "''"))}'"
+            listOfNotNull(p.area?.let { g -> """<definedName name="_xlnm.Print_Area" localSheetId="$index">$quoted!${ref(g)}</definedName>""" },
+                p.titles?.let { t -> """<definedName name="_xlnm.Print_Titles" localSheetId="$index">$quoted!${'$'}${t.first + 1}:${'$'}${t.last + 1}</definedName>""" }).forEach { d ->
                 wb = if ("</definedNames>" in wb) wb.replace("</definedNames>", "$d</definedNames>") else wb.replace("</sheets>", "</sheets><definedNames>$d</definedNames>") }
             wb = wb.replace(Regex("""<definedNames>\s*</definedNames>"""), "")
             SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray(), "xl/workbook.xml" to wb.toByteArray()), null)
@@ -128,6 +131,19 @@ internal object SheetPageSetup {
             table.setAttributeNS(SheetMerge.T, "table:style-name", stName)
             p.area?.let { g -> table.setAttributeNS(SheetMerge.T, "table:print-ranges", "'${name.replace("'", "''")}'.${Sheets.colName(g.c1)}${g.r1 + 1}:'${name.replace("'", "''")}'.${Sheets.colName(g.c2)}${g.r2 + 1}") }
                 ?: table.removeAttributeNS(SheetMerge.T, "print-ranges")
+            // the rows printed on every page: LibreOffice's header rows round them (the old ones' rows put back first)
+            SheetMerge.kids(table, "table-header-rows").forEach { h -> while (h.firstChild != null) table.insertBefore(h.firstChild, h); table.removeChild(h) }
+            p.titles?.let { t ->
+                fun make() = content.createElementNS(SheetMerge.T, "table:table-row").also { table.appendChild(it) }
+                SheetMerge.at({ SheetMerge.rowsOf(table) }, t.first, "number-rows-repeated", ::make); SheetMerge.at({ SheetMerge.rowsOf(table) }, t.last, "number-rows-repeated", ::make)
+                var n = 0
+                val rows = SheetMerge.rowsOf(table).filter { e -> val at = n; n += e.getAttributeNS(SheetMerge.T, "number-rows-repeated").toIntOrNull() ?: 1; at in t }
+                // shortcut: rows in a row group are not wrapped; upgrade if grouped sheets want print titles
+                if (rows.isNotEmpty() && rows.all { it.parentNode === table }) {
+                    val h = content.createElementNS(SheetMerge.T, "table:table-header-rows"); table.insertBefore(h, rows.first())
+                    rows.forEach { h.appendChild(it) }
+                }
+            }
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(content), "styles.xml" to SlidesEdit.domXml(styles)), "mimetype")
         }
     }

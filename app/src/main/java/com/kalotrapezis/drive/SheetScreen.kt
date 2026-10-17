@@ -1062,6 +1062,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Set print area", w, R.drawable.ic_print, enabled = g != null) { g?.let { d -> setPrint { it.copy(area = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2])) } } }
                             if (p.area != null) RibbonButton("Clear print area", w, R.drawable.ic_close) { setPrint { it.copy(area = null) } }
+                            // Excel's Print Titles: the chosen rows printed at the top of every page
+                            RibbonButton("Print titles", w, R.drawable.ic_title, enabled = g != null, on = p.titles != null) { g?.let { d -> setPrint { it.copy(titles = l.rows[d.r1]..l.rows[d.r2]) } } }
+                            if (p.titles != null) RibbonButton("Clear print titles", w, R.drawable.ic_close) { setPrint { it.copy(titles = null) } }
                         }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }

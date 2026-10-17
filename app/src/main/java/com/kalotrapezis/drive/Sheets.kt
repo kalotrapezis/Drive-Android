@@ -1394,7 +1394,7 @@ internal object Sheets {
             var tableIndex = -1
             sax(content, object : DefaultHandler() {
                 var inStyles = false
-                var name = ""; var tableStyle: String? = null; var tableProtected = false; var tableGuarded = false; var printRanges: String? = null
+                var name = ""; var tableStyle: String? = null; var tableProtected = false; var tableGuarded = false; var titlesFrom = -1; var titlesTo = -1; var printRanges: String? = null
                 var cells = CellMap()
                 var colWidths = HashMap<Int, Float>(); var hiddenCols = HashSet<Int>(); var colDefaults = HashMap<Int, String>()
                 var rowRuns = ArrayList<Triple<Int, Int, Float>>(); var hiddenRuns = ArrayList<Pair<Int, Int>>()
@@ -1459,6 +1459,7 @@ internal object Sheets {
                             }
                             col += n
                         }
+                        "table-header-rows" -> titlesFrom = row // rows printed on every page
                         "table-row" -> {
                             rowRepeat = at.a("number-rows-repeated")?.toIntOrNull() ?: 1
                             rowDefault = at.a("default-cell-style-name")
@@ -1522,6 +1523,7 @@ internal object Sheets {
                         "creator" -> inCreator = false
                         "table-cell" -> { endCell(); inCell = false }
                         "table-row" -> endRow()
+                        "table-header-rows" -> if (titlesFrom >= 0) titlesTo = row - 1
                         "table" -> endTable()
                     }
                 }
@@ -1672,7 +1674,8 @@ internal object Sheets {
                         grid = (view["ShowGrid"] ?: settings.showGrid) != "false",
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
-                        print = runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint(),
+                        print = (runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint())
+                            .let { if (titlesFrom in 0..titlesTo) it.copy(titles = titlesFrom..titlesTo) else it },
                     ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded; it.headings = settings.headings != "false"
                         it.lists = validCells.mapNotNull { (v, at) -> validities[v]?.let { SheetList.odsList(it) }?.let { f -> SheetList.of(at, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } } }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")

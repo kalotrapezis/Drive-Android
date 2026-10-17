@@ -70,12 +70,11 @@ internal object SlidesEdit {
             // a new slide's placeholder typed into is no longer a hint
             val lines = (item as? SlideItem.Shape)?.id?.let { edit.texts[e.uid to it] }?.takeIf { l -> l.any { it.isNotBlank() } || !(item as SlideItem.Shape).hint } ?: return@map item
             val old = item.text
-            val paras = lines.mapIndexed { i, line ->
-                val p = old?.paras?.getOrNull(i) ?: old?.paras?.lastOrNull()
-                val look = p?.runs?.firstOrNull { it.text.isNotBlank() } ?: p?.runs?.firstOrNull()
+            // each line over the paragraph it came from, each letter in its run's look, as the file is saved
+            val paras = PictureXml.relaid<SlidePara?, DocRun>(old?.paras.orEmpty().map { p -> p to p.runs.map { it to it.text } }, lines, null, null).map { (p, runs) ->
                 // a hint's grey is not the words' colour: those take the theme's text colour
-                if (p == null || look == null) SlidePara.plain(line, 18f, 0)
-                else SlidePara(p.para.copy(runs = listOf(look.copy(text = line, color = if (item.hint) 0 else look.color))), p.look, p.bullet)
+                val rs = runs.map { (r, t) -> (r ?: DocRun("", sizePt = 18f)).copy(text = t).let { if (item.hint) it.copy(color = 0) else it } }
+                if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink) }
                 ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped }
@@ -151,7 +150,7 @@ internal object SlidesEdit {
     fun view(deck: Deck, edit: Edit) = Deck(deck.width, deck.height, edit.order.map { slide(deck, edit, it) })
 
     /** The words of a text box as lines, for editing: one a paragraph. */
-    fun lines(item: SlideItem.Shape): List<String> = item.text?.paras?.map { p -> p.runs.joinToString("") { it.text }.replace(LINE_BREAK, ' ') } ?: listOf("")
+    fun lines(item: SlideItem.Shape): List<String> = item.text?.paras?.map { p -> p.runs.joinToString("") { it.text } } ?: listOf("") // a line break kept (LINE_BREAK)
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
     private const val A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -199,23 +198,43 @@ internal object SlidesEdit {
         for ((id, lines) in texts) {
             val sp = shapes.firstOrNull { s -> s.getElementsByTagNameNS(P, "cNvPr").item(0)?.let { (it as Element).getAttribute("id") } == id } ?: continue
             val body = sp.kids().firstOrNull { it.localName == "txBody" } ?: continue
-            val paras = body.kids().filter { it.localName == "p" }
-            val template = paras.lastOrNull() ?: continue
-            lines.forEachIndexed { i, line ->
-                val p = paras.getOrNull(i) ?: (template.cloneNode(true) as Element).also { body.appendChild(it) }
-                val runs = p.kids().filter { it.localName in setOf("r", "br", "fld") }
-                val keep = runs.firstOrNull { it.localName == "r" }
-                // the first run keeps its look and takes the line; the others go (a line break, a field, other runs)
-                val r = keep ?: doc.createElementNS(A, "a:r").also { nr ->
-                    p.kids().firstOrNull { it.localName == "endParaRPr" }?.let { e -> nr.appendChild(doc.createElementNS(A, "a:rPr").also { rp -> for (k in 0 until e.attributes.length) e.attributes.item(k).let { a -> rp.setAttribute(a.nodeName, a.nodeValue) } }) }
-                    nr.appendChild(doc.createElementNS(A, "a:t"))
-                    p.insertBefore(nr, p.kids().firstOrNull { it.localName == "endParaRPr" })
-                }
-                runs.filter { it !== r }.forEach { p.removeChild(it) }
-                val t = r.kids().firstOrNull { it.localName == "t" } ?: doc.createElementNS(A, "a:t").also { r.appendChild(it) }
-                t.textContent = line
+            val paras = body.kids().filter { it.localName == "p" }.ifEmpty { continue }
+            // each line over the paragraph it came from, each letter in its run's look (Words' text boxes' way): a bold
+            // word stays bold, a field kept whole stays a field, a line break stays one
+            val parts = setOf("r", "br", "fld")
+            fun letters(r: Element) = if (r.localName == "br") LINE_BREAK.toString() else r.kids().firstOrNull { it.localName == "t" }?.textContent.orEmpty()
+            val old = paras.map { p -> p to p.kids().filter { it.localName in parts }.map { it to letters(it) }.filter { it.second.isNotEmpty() } }
+            fun rPr(of: Element?) = doc.createElementNS(A, "a:rPr").also { rp ->
+                // a run's look: its own, else (a new paragraph's first words) its paragraph mark's
+                val from = (if (of?.localName == "endParaRPr") of else of?.kids()?.firstOrNull { it.localName == "rPr" }) ?: return@also
+                for (k in 0 until from.attributes.length) from.attributes.item(k).let { at -> rp.setAttribute(at.nodeName, at.nodeValue) }
+                from.kids().forEach { rp.appendChild(it.cloneNode(true)) }
             }
-            paras.drop(lines.size).forEach { body.removeChild(it) }
+            fun run(look: Element?, words: String) = doc.createElementNS(A, "a:r").also { r ->
+                r.appendChild(rPr(look)); r.appendChild(doc.createElementNS(A, "a:t").also { it.textContent = words })
+            }
+            val made = PictureXml.relaid<Element, Element>(old, lines, paras.last(), null).map { (from, runs) ->
+                val p = from.cloneNode(true) as Element
+                p.kids().filter { it.localName in parts }.forEach { p.removeChild(it) }
+                val end = p.kids().firstOrNull { it.localName == "endParaRPr" }
+                fun put(e: Element) { p.insertBefore(e, end) }
+                for ((look, words) in runs) {
+                    val field = look?.takeIf { it.localName == "fld" }
+                    val whole = field?.let(::letters)?.takeIf { it.isNotEmpty() && it in words }
+                    // a field's letters left as they were stay the field (null here); letters typed beside it take its look
+                    val pieces = if (whole == null) listOf(words) else words.indexOf(whole).let { i -> listOf(words.substring(0, i), null, words.substring(i + whole.length)) }
+                    for (piece in pieces) {
+                        if (piece == null) { put(field!!.cloneNode(true) as Element); continue }
+                        piece.split(LINE_BREAK).forEachIndexed { k, w ->
+                            if (k > 0) put(doc.createElementNS(A, "a:br").also { it.appendChild(rPr(look ?: end)) })
+                            if (w.isNotEmpty()) put(if (look?.localName == "r") (look.cloneNode(true) as Element).also { r -> r.kids().first { it.localName == "t" }.textContent = w } else run(look ?: end, w))
+                        }
+                    }
+                }
+                p
+            }
+            paras.forEach { body.removeChild(it) }
+            made.forEach { body.appendChild(it) }
         }
         fun idOf(e: Element) = e.kids().firstOrNull { it.localName.startsWith("nv") }?.kids()?.firstOrNull { it.localName == "cNvPr" }?.getAttribute("id")
         val fills = setOf("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")

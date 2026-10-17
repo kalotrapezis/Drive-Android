@@ -45,6 +45,35 @@ class SlidesTest {
         assertEquals(30f, p.look.lineExact!!, 0.01f); assertEquals(listOf(TabStop(288f, 'r')), p.look.tabs)
     }
 
+    /**
+     * A slide's words edited (the Office engine, step 4, "a slide's words as runs"): each letter keeps its run's look, a
+     * typed one the look of the one before; a slide number left as it was stays a field, a line break stays one.
+     */
+    @Test fun `an edited paragraph keeps each letter's look`() {
+        val xml = """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>""" +
+            """<p:sp><p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:rPr b="1"/><a:t>Bold</a:t></a:r>""" +
+            """<a:r><a:rPr/><a:t> and </a:t></a:r><a:r><a:rPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:rPr><a:t>red</a:t></a:r><a:br><a:rPr/></a:br>""" +
+            """<a:fld id="{1}" type="slidenum"><a:rPr/><a:t>3</a:t></a:fld><a:endParaRPr sz="2000"/></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"""
+        val out = String(SlidesEdit.withTexts(xml.toByteArray(), mapOf("2" to listOf("Bold and very red${LINE_BREAK}3", "")), null))
+        assertTrue(out, out.contains("""<a:rPr b="1"/><a:t>Bold</a:t>"""))
+        assertTrue(out, out.contains("""<a:t> and very </a:t>"""))
+        assertTrue(out, Regex("""val="FF0000"/></a:solidFill></a:rPr><a:t>red</a:t></a:r><a:br>""").containsMatchIn(out))
+        assertTrue(out, out.contains("""<a:fld id="{1}" type="slidenum">"""))
+        assertTrue(out, out.contains("""<a:p><a:endParaRPr sz="2000"/></a:p>""")) // the empty second line: a paragraph of its own
+        // LibreOffice's text-looks.odp (its conversion of text-looks.pptx): words typed after the small capitals take their look
+        val src = File("src/test/resources/text-looks.odp")
+        val deck = Slides.read(src)
+        val id = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.text?.paras?.any { p -> p.runs.size == 4 } == true }.id!!
+        val e = SlidesEdit.start(deck).let { it.copy(texts = mapOf((2 to id) to listOf("struckupsmall caps and  more\tlink"))) }
+        val saved = File.createTempFile("looks", ".odp"); SlidesOdpEdit.save(src, deck, e, saved)
+        val (struck, up, caps, link) = Slides.read(saved).slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.id == id }.text!!.paras.single().runs.let(OfficeFormats::tidy) // a run a text node, as read
+        assertTrue(struck.strike); assertEquals(1, up.script); assertEquals("small caps and  more", caps.text); assertTrue(LetterLooks.of(caps.font).smallCaps)
+        assertEquals("https://example.com/", link.link)
+        // the same as it shows while editing
+        val shown = SlidesEdit.view(deck, e).slides[2].items.filterIsInstance<SlideItem.Shape>().first { it.id == id }.text!!.paras.single().runs
+        assertEquals(listOf("struck", "up", "small caps and  more", "\tlink"), shown.map { it.text }); assertTrue(shown[0].strike)
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

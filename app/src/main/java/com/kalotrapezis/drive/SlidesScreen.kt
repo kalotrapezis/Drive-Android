@@ -107,6 +107,8 @@ import java.io.File
 @Composable
 internal fun SlidesScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
+    remember { OfficeFonts.assets = context.applicationContext.assets } // the fonts with Word's letter widths, as Words' and Tables'
+
     val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
     val odp = file?.extension.equals("odp", true)

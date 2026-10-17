@@ -67,11 +67,58 @@ internal object SlidesOdpEdit {
         /** The words' holder of a frame (its text box) or shape (itself). */
         fun holder(el: Element) = if (el.localName == "frame") el.kids().firstOrNull { it.localName == "text-box" } else el
         fun paras(h: Element) = h.all().filter { it.namespaceURI == TEXT && (it.localName == "p" || it.localName == "h") }
-        fun words(p: Element, line: String) {
-            val span = p.all().firstOrNull { it.localName == "span" && it.namespaceURI == TEXT }?.a(TEXT, "style-name")
+        /** Where some letters stood: the spans and links round them (copies, outermost first), or a [field] (a copy) they were. */
+        class Look(val chain: List<Element>, val field: Element? = null)
+        /** A paragraph's letters, each in its look (one [Look] per span or link, so letters of one stay together). */
+        fun letters(p: Element): List<Pair<Look?, String>> {
+            val out = ArrayList<Pair<Look?, String>>(); val looks = HashMap<Element, Look>()
+            fun look(chain: List<Element>) = looks.getOrPut(chain.lastOrNull() ?: p) { Look(chain.map { it.cloneNode(false) as Element }) }
+            fun walk(n: org.w3c.dom.Node, chain: List<Element>) {
+                val e = n as? Element
+                when {
+                    n is org.w3c.dom.Text -> if (n.data.isNotEmpty()) out += look(chain) to n.data.replace('\n', ' ')
+                    e == null || e.namespaceURI != TEXT -> Unit
+                    e.localName == "s" -> out += look(chain) to " ".repeat(e.a(TEXT, "c")?.toIntOrNull() ?: 1)
+                    e.localName == "tab" -> out += look(chain) to "\t"
+                    e.localName == "line-break" -> out += look(chain) to LINE_BREAK.toString()
+                    e.localName == "span" || e.localName == "a" -> for (i in 0 until e.childNodes.length) walk(e.childNodes.item(i), chain + e)
+                    e.textContent.isNotEmpty() -> out += Look(chain.map { it.cloneNode(false) as Element }, e.cloneNode(true) as Element) to e.textContent // a field: slide number, date…
+                }
+            }
+            for (i in 0 until p.childNodes.length) walk(p.childNodes.item(i), emptyList())
+            return out
+        }
+        /** [p]'s words made [runs]: each in its spans and links again, a field kept whole stays the field; spaces, tabs and line breaks as ODF writes them. */
+        fun words(p: Element, runs: List<Pair<Look?, String>>) {
             while (p.firstChild != null) p.removeChild(p.firstChild)
-            if (line.isEmpty()) return
-            p.appendChild(if (span != null) doc.createElementNS(TEXT, "text:span").also { it.setAttributeNS(TEXT, "text:style-name", span); it.textContent = line } else doc.createTextNode(line))
+            fun into(look: Look?): Element = (look?.chain ?: emptyList()).fold(p) { parent, c -> (c.cloneNode(false) as Element).also { parent.appendChild(it) } }
+            fun write(to: Element, w: String) {
+                val plain = StringBuilder()
+                fun flush() { if (plain.isNotEmpty()) to.appendChild(doc.createTextNode(plain.toString())); plain.clear() }
+                var k = 0
+                while (k < w.length) {
+                    val c = w[k]
+                    when {
+                        c == '\t' -> { flush(); to.appendChild(doc.createElementNS(TEXT, "text:tab")) }
+                        c == LINE_BREAK -> { flush(); to.appendChild(doc.createElementNS(TEXT, "text:line-break")) }
+                        // spaces after the first (or at the start) would fold into one: written as text:s
+                        c == ' ' && (k == 0 || w[k - 1] == ' ') -> { var n = 1; while (k + n < w.length && w[k + n] == ' ') n++
+                            flush(); to.appendChild(doc.createElementNS(TEXT, "text:s").also { if (n > 1) it.setAttributeNS(TEXT, "text:c", "$n") }); k += n; continue }
+                        else -> plain.append(c)
+                    }
+                    k++
+                }
+                flush()
+            }
+            for ((look, w) in runs) {
+                if (w.isEmpty()) continue
+                val whole = look?.field?.textContent?.takeIf { it.isNotEmpty() && it in w }
+                if (whole == null) { write(into(look), w); continue }
+                val i = w.indexOf(whole)
+                if (i > 0) write(into(Look(look.chain)), w.substring(0, i))
+                into(Look(look.chain)).appendChild(look.field.cloneNode(true))
+                if (i + whole.length < w.length) write(into(Look(look.chain)), w.substring(i + whole.length))
+            }
         }
         fun type(el: Element, lines: List<String>) {
             val h = holder(el) ?: return
@@ -82,6 +129,9 @@ internal object SlidesOdpEdit {
                 val unit = if (el.a(PRES, "class") == "outline") doc.createElementNS(TEXT, "text:list").also { l -> l.appendChild(doc.createElementNS(TEXT, "text:list-item").also { it.appendChild(p) }) } else p
                 h.insertBefore(unit, h.kids().firstOrNull { it.localName == "enhanced-geometry" }); ps = paras(h)
             }
+            // each line's letters in the looks of the paragraph it came from (Words' text boxes' way)
+            // shortcut: a line keeps the paragraph (and list level) at its place, not the one it came from; matters only when lines move
+            val laid = PictureXml.relaid<Element, Look>(ps.map { it to letters(it) }, lines, ps.last(), null).map { it.second }
             lines.forEachIndexed { i, line ->
                 val p = ps.getOrNull(i) ?: run {
                     // another paragraph: a copy of the last (in a list, its list item)
@@ -91,7 +141,7 @@ internal object SlidesOdpEdit {
                     unit.parentNode.insertBefore(copy, unit.nextSibling)
                     (if (item != null) paras(copy).first() else copy).also { ps = ps + it }
                 }
-                words(p, line)
+                words(p, laid[i])
             }
             for (p in ps.drop(lines.size)) {
                 val item = (p.parentNode as? Element)?.takeIf { it.localName == "list-item" && paras(it).size == 1 }

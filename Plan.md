@@ -174,9 +174,20 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       line-height in points. `letter looks read from a pptx` (text-looks.pptx). Of the 11 decks only the three that
       use these changed (cronbach's small-caps title, counseling's 19ου superscripts, jamovi's link colour), as
       LibreOffice shows them. Unit suite green; sweep 349 + 29, none failing; Words' fingerprint unchanged.
-- [ ] 4. Words kept per letter when a slide's text is edited (Words' `PictureXml.relaid`/`relook`, already used for
+- [x] 4. Words kept per letter when a slide's text is edited (Words' `PictureXml.relaid`/`relook`, already used for
       a document's text boxes): an edited paragraph keeps its bold word and its red word; slide-number and date fields
       and line breaks kept. ~50 lines. This is "a slide's words as runs".
+      Done (office-engine session, 17 Oct): saving (.pptx `SlidesEdit.withTexts`, .odp `SlidesOdpEdit` type/words) lays
+      the lines over the paragraphs they came from with `PictureXml.relaid`, each letter in its run (a:r's rPr; an
+      .odp's spans and links), a typed one in the look of the one before; a field left whole (a:fld, text:page-number,
+      date…) stays the field, a:br/text:line-break stay (the typing field holds them as LINE_BREAK); several spaces as
+      text:s. The slide shown while editing does the same (`SlidesEdit.slide`). Also: Slides now loads Tetra's fonts
+      with Word's letter widths itself (only Words and Tables did: a deck opened first drew in the phone's fonts), and a
+      font asked for before they are known is no longer remembered as missing. `an edited paragraph keeps each letter's
+      look` (.pptx XML; LibreOffice's text-looks.odp). Emulator: cronbach slide 2 edited inside a bold word — the
+      paragraph kept its bold, plain and italic words; saved, LibreOffice shows the same.
+      After (17 Oct, steps 0–4): unit suite 405 tests, 0 failing, 7 skipped; sweep 349 documents and 29 decks, none
+      failing; Words' fingerprint unchanged at every step (emulator-5554). Tablet walk: not yet — the user was using it.
 - [ ] 5. The engine moved into its own file (`OfficeText.kt`): a pure move, nothing changed.
 - [ ] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,

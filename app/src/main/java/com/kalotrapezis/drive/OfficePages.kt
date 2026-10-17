@@ -1798,7 +1798,7 @@ internal object OfficeFonts {
 
     private fun load(name: String, fallback: String): Typeface? = synchronized(families) {
         families.getOrPut(name) {
-            val a = assets ?: return@getOrPut null
+            val a = assets ?: return null // not known yet: asked again later, not remembered as missing
             runCatching {
                 fun font(style: String, weight: Int, italic: Boolean) = android.graphics.fonts.Font.Builder(a, "fonts/$name-$style.ttf").setWeight(weight)
                     .setSlant(if (italic) android.graphics.fonts.FontStyle.FONT_SLANT_ITALIC else android.graphics.fonts.FontStyle.FONT_SLANT_UPRIGHT).build()

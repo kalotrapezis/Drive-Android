@@ -717,11 +717,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     }
                     @Composable fun sortFilter(col: Int) {
                         RibbonButton(if (col in view.filters) "Change filter" else "Filter", w, R.drawable.ic_filter) { filtering = col }
-                        if (col in view.filters) RibbonButton("Clear filter", w) { view.filters.remove(col) }
+                        if (col in view.filters) RibbonButton("Clear filter", w, R.drawable.ic_filter_off) { view.filters.remove(col) }
                         RibbonDivider(w)
                         RibbonButton("A → Z", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, true) }
                         RibbonButton("Z → A", w, R.drawable.ic_sort_name) { view.sort = SheetSort(col, false) }
-                        if (view.sort != null) RibbonButton("Clear sort", w) { view.sort = null }
+                        if (view.sort != null) RibbonButton("Clear sort", w, R.drawable.ic_cancel) { view.sort = null }
                         RibbonDivider(w)
                         if (col in view.pins) RibbonButton("Unpin", w, R.drawable.ic_push_pin) { view.pins.remove(col) }
                         else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
@@ -731,8 +731,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             Text(b.tabs[index].name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
                             RibbonButton("Rename", w, R.drawable.ic_edit) { renamingSheet = true }
                             RibbonDivider(w)
-                            RibbonButton("Move left", w, enabled = index > 0) { sheetStep(to = index - 1) }
-                            RibbonButton("Move right", w, enabled = index < b.tabs.lastIndex) { sheetStep(to = index + 1) }
+                            RibbonButton("Move left", w, R.drawable.ic_chevron_left, enabled = index > 0) { sheetStep(to = index - 1) }
+                            RibbonButton("Move right", w, R.drawable.ic_chevron_right, enabled = index < b.tabs.lastIndex) { sheetStep(to = index + 1) }
                             RibbonDivider(w)
                             RibbonButton("Delete", w, R.drawable.ic_delete, enabled = b.tabs.count { !it.hidden } > 1) { deletingSheet = true }
                         }
@@ -743,8 +743,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             sortFilter(col)
                             if (editing) {
                                 RibbonDivider(w)
-                                RibbonButton("Insert left", w) { header = null; shift(false, col, 1) }
-                                RibbonButton("Insert right", w) { header = null; shift(false, col + 1, 1) }
+                                RibbonButton("Insert left", w, R.drawable.ic_add_column_left) { header = null; shift(false, col, 1) }
+                                RibbonButton("Insert right", w, R.drawable.ic_add_column_right) { header = null; shift(false, col + 1, 1) }
                                 RibbonButton("Delete", w, R.drawable.ic_delete_column) { header = null; shift(false, col, -1) }
                             }
                         }
@@ -753,11 +753,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Select", w, R.drawable.ic_check_box_outline_blank) { view.range = SheetRange(row, 0, row, l.cols.lastIndex); header = null }
                             RibbonDivider(w)
                             RibbonButton("Keep at the top", w, R.drawable.ic_push_pin) { view.freeze = row + 1; view.y = 0f }
-                            if (l.frozenRows > 0) RibbonButton("Let scroll", w) { view.freeze = 0 }
+                            if (l.frozenRows > 0) RibbonButton("Let scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
                             if (editing) {
                                 RibbonDivider(w)
-                                RibbonButton("Insert above", w) { header = null; shift(true, sheetRow, 1) }
-                                RibbonButton("Insert below", w) { header = null; shift(true, sheetRow + 1, 1) }
+                                RibbonButton("Insert above", w, R.drawable.ic_add_row_above) { header = null; shift(true, sheetRow, 1) }
+                                RibbonButton("Insert below", w, R.drawable.ic_add_row_below) { header = null; shift(true, sheetRow + 1, 1) }
                                 RibbonButton("Delete", w, R.drawable.ic_delete_row) { header = null; shift(true, sheetRow, -1) }
                             }
                         }
@@ -776,12 +776,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             // whole rows or columns chosen: put in or taken out together
                             if (g != null && editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
                                 RibbonDivider(w)
-                                RibbonButton("Insert ${g.r2 - g.r1 + 1} rows", w) { shift(true, l.rows[g.r1], g.r2 - g.r1 + 1) }
+                                RibbonButton("Insert ${g.r2 - g.r1 + 1} rows", w, R.drawable.ic_add_row_below) { shift(true, l.rows[g.r1], g.r2 - g.r1 + 1) }
                                 RibbonButton("Delete rows", w, R.drawable.ic_delete_row) { shift(true, l.rows[g.r1], -(g.r2 - g.r1 + 1)) }
                             }
                             if (g != null && editing && g.r1 == 0 && g.r2 == l.rows.lastIndex && view.pins.isEmpty()) {
                                 RibbonDivider(w)
-                                RibbonButton("Insert ${g.c2 - g.c1 + 1} columns", w) { shift(false, l.cols[g.c1], g.c2 - g.c1 + 1) }
+                                RibbonButton("Insert ${g.c2 - g.c1 + 1} columns", w, R.drawable.ic_add_column_right) { shift(false, l.cols[g.c1], g.c2 - g.c1 + 1) }
                                 RibbonButton("Delete columns", w, R.drawable.ic_delete_column) { shift(false, l.cols[g.c1], -(g.c2 - g.c1 + 1)) }
                             }
                         }
@@ -804,34 +804,34 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
                         }
                         shown == "Insert" -> {
-                            RibbonButton("Row above", w) { shift(true, cr, 1) }
-                            RibbonButton("Row below", w) { shift(true, cr + 1, 1) }
+                            RibbonButton("Row above", w, R.drawable.ic_add_row_above) { shift(true, cr, 1) }
+                            RibbonButton("Row below", w, R.drawable.ic_add_row_below) { shift(true, cr + 1, 1) }
                             RibbonDivider(w)
-                            RibbonButton("Column left", w) { shift(false, cc, 1) }
-                            RibbonButton("Column right", w) { shift(false, cc + 1, 1) }
+                            RibbonButton("Column left", w, R.drawable.ic_add_column_left) { shift(false, cc, 1) }
+                            RibbonButton("Column right", w, R.drawable.ic_add_column_right) { shift(false, cc + 1, 1) }
                             RibbonDivider(w)
-                            if (b.kind != "csv") RibbonButton("Sheet", w) {
+                            if (b.kind != "csv") RibbonButton("Sheet", w, R.drawable.ic_note_add) {
                                 sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } })
                             }
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
                         }
                         shown == "Formulas" -> {
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
-                            RibbonButton("Average", w) { autoFunction("AVERAGE") }
-                            RibbonButton("Count", w) { autoFunction("COUNT") }
-                            RibbonButton("Max", w) { autoFunction("MAX") }
-                            RibbonButton("Min", w) { autoFunction("MIN") }
+                            RibbonButton("Average", w, R.drawable.ic_functions) { autoFunction("AVERAGE") }
+                            RibbonButton("Count", w, R.drawable.ic_numbers) { autoFunction("COUNT") }
+                            RibbonButton("Max", w, R.drawable.ic_keyboard_arrow_up) { autoFunction("MAX") }
+                            RibbonButton("Min", w, R.drawable.ic_keyboard_arrow_down) { autoFunction("MIN") }
                             RibbonDivider(w)
-                            RibbonButton("Show formulas", w, on = formulas) { formulas = !formulas }
+                            RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
                         }
                         shown == "Data" -> sortFilter(cc)
                         shown == "View" -> {
                             RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
-                            if (l.frozenRows > 0) RibbonButton("Let them scroll", w) { view.freeze = 0 }
+                            if (l.frozenRows > 0) RibbonButton("Let them scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
                             RibbonDivider(w)
-                            RibbonButton("Show formulas", w, on = formulas) { formulas = !formulas }
+                            RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
                             RibbonDivider(w)
-                            RibbonButton("100%", w) { view.zoom = 1f }
+                            RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
                             RibbonButton("Search", w, R.drawable.ic_search) { searching = true }
                         }
                         else -> {
@@ -856,12 +856,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
                                 RibbonDivider(w)
                                 opener("Number", R.drawable.ic_functions)
-                                RibbonButton(".0−", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
-                                RibbonButton(".0+", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
+                                Tool(R.drawable.ic_decimal_decrease, "Fewer decimals", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, -1)) } }
+                                Tool(R.drawable.ic_decimal_increase, "More decimals", w) { look { st, _ -> st.copy(format = SheetLook.decimals(st.format, 1)) } }
                                 RibbonDivider(w)
-                                RibbonButton("A−", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
+                                Tool(R.drawable.ic_remove, "Smaller text", w) { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }
                                 Text(now.size.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }, style = MaterialTheme.typography.labelLarge)
-                                RibbonButton("A+", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
+                                Tool(R.drawable.ic_add, "Bigger text", w) { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } }
                                 RibbonButton(now.font ?: "Font", w, R.drawable.ic_text_box) { group = null; fontChosen = null; fontStrip = now.font.orEmpty() }
                                 RibbonDivider(w)
                                 RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }

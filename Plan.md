@@ -15,7 +15,8 @@ How to write here:
 - [x] (813e7c4, 18c031f) Office: one tab row for Words, Slides and Tables; Settings › Tab marker: Bubble / Dash; the
       bubble in each app's colour (office tab-marker session, 17 Oct).
 - [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).
-- [x] (next commit) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
+- [x] (4a6d7b1) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
+- [x] (next commit) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -63,8 +64,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       deck's size, hidden slides left out; Versions opens one unsaved, Save puts it over the file), one shared
       `VersionsDialog` for Tables and Slides (Words keeps its page previews), the same order in all three, Words gains
       Open in another app. Tablet 17 Oct: PDF of 4 slides; a version opened and saved, LibreOffice opens it.
-- [ ] Every button has an icon (memory: ribbon icons); the everyday tools on the ribbon and the rest under ⋯ on a
+- [x] Every button has an icon (memory: ribbon icons); the everyday tools on the ribbon and the rest under ⋯ on a
       full page (memory: ribbon ⋯ button) — in Slides and Tables too.
+      Done: every action in Tables and Slides has one (new: filter off, fewer/more decimals; A−/A+ as Words' − size +);
+      choices stay words as Words' style names do (speeds, sides, transition kinds, number formats, table sizes). No
+      Tables or Slides tab overflows yet, so nothing is behind ⋯ — B and C add tools under that rule. Tablet 17 Oct.
 - [ ] Strips (Words' Page numbers, Tables' Borders and Number) open the same way: ‹ back, a title, sliding in.
 - [ ] One colour picker (Words' swatches; Slides has its own `SLIDE_COLOURS`), one font picker, one size picker.
 - [ ] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded

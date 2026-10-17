@@ -409,7 +409,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
                 RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
                 Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
-                if (e.theme != null) RibbonButton("As the file was", w) { change(e.copy(theme = null)) }
+                if (e.theme != null) RibbonButton("As the file was", w, R.drawable.ic_restore) { change(e.copy(theme = null)) }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
@@ -434,7 +434,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonDivider(w)
                     RibbonButton("Options", w, R.drawable.ic_tune) { effectOptions = true }
                     // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
-                    RibbonButton("Apply to all", w, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
+                    RibbonButton("Apply to all", w, R.drawable.ic_done_all, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
                     RibbonDivider(w)
                     RibbonButton("Play", w, R.drawable.ic_play) { presenting = (c - 1).coerceAtLeast(0) }
                 }

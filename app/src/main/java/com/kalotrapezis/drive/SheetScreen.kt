@@ -176,6 +176,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var inserted by remember { mutableStateOf<String?>(null) } // the function chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
+    var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
@@ -553,6 +554,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
+    /** A note on cell [r], [c] (the sheet's) by [author]: made or changed; [text] null takes it away. */
+    fun putNote(r: Int, c: Int, author: String, text: String?) { val i = index
+        fileStep(if (text == null) "note taken away" else "note put on", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetNotes.xlsx(baked, next, b.parts.getValue("$i"), r, c, author, text); "ods" -> SheetNotes.ods(baked, next, i, r, c, author, text)
+            else -> error("A CSV file keeps no notes: save it as a workbook first.") } })
+    }
     /** Hide (a sheet's tab, Excel's) or Unhide sheet [at]: the file's; hidden, the next shown sheet opened. */
     fun showSheet(at: Int, hidden: Boolean) {
         fileStep(if (hidden) "sheet hidden" else "sheet shown", { baked, next, b -> when (b.kind) {
@@ -904,6 +911,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
                             RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
                             RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
+                            // Excel's notes (LibreOffice's comments): made or changed in Words' comment dialog; taken away
+                            val hasNote = s[cr, cc]?.note != null
+                            RibbonButton(if (hasNote) "Edit note" else "Note", w, R.drawable.ic_comment) { noting = true }
+                            if (hasNote) RibbonButton("Delete note", w, R.drawable.ic_delete) { putNote(cr, cc, "", null) }
                             // Excel's Insert › Chart: the chosen cells into Words' chart editor (its series from them), then on the sheet beside them
                             RibbonButton("Chart", w, R.drawable.ic_bar_chart) {
                                 val d = g ?: run { message = "Choose the cells to chart first (a long press, then drag)"; return@RibbonButton }
@@ -1317,6 +1328,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 history.apply(b, index, changes); version++; message = "Removed ${rows.size - kept.size} duplicates, ${kept.size - (if (headers) 1 else 0)} left"
                 WriterLog.i("Sheets: ${rows.size - kept.size} duplicates removed") }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { deduping = null }) { Text("Cancel") } }) }
+    // Insert › Note: Words' comment dialog (its remembered name), on the chosen cell
+    if (noting) sheet?.let { s -> val (r, c) = chosen(s); val was = s[r, c]?.note
+        val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE)
+        NewCommentDialog(remember { prefs.getString("author", "") ?: "" }, { noting = false }, title = if (was != null) "Edit note" else "Note",
+            start = was?.substringAfter(":", was)?.trim().orEmpty(), confirm = if (was != null) "Done" else "Add", label = "Note") { author, text ->
+            noting = false; prefs.edit().putString("author", author).apply(); if (text.isNotBlank()) putNote(r, c, author.ifBlank { "Tetra" }, text.trim()) } }
     // a column's Width or a row's Height, typed in Words' unit (cm or inches)
     sizing?.let { (cols, at) -> val s = sheet
         val now = s?.let { if (cols) it.width(at) else it.height(at) } ?: 0f

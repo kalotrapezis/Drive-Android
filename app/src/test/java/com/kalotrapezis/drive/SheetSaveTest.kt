@@ -279,6 +279,32 @@ class SheetSaveTest {
         }
     }
 
+    /** Notes on cells (Excel's comments and VML note shapes, LibreOffice's annotations): made where there were some and where none, one taken away. */
+    @Test fun `notes made and taken away`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("notes").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(sheet: Int, r: Int, c: Int, text: String?) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetNotes.xlsx(f, next, parts.getValue("$sheet"), r, c, "Teo", text) else SheetNotes.ods(f, next, sheet, r, c, "Teo", text); f = next }
+            step(0, 2, 2, "Check the date"); step(1, 0, 1, "Second sheet's note")
+            fun check(file: File, how: String) { val b = Sheets.read(file, ',', '.')
+                assertTrue(how + ": " + b.sheet(0)[2, 2]?.note, b.sheet(0)[2, 2]?.note?.contains("Check the date") == true && b.sheet(0)[2, 2]!!.note!!.contains("Teo"))
+                assertTrue(how, b.sheet(0)[1, 0]?.note?.contains("Check this") == true) // the file's own kept
+                assertTrue(how + ": " + b.sheet(1)[0, 1]?.note, b.sheet(1)[0, 1]?.note?.contains("Second sheet's note") == true)
+                assertEquals(how, "15/03/2023", b.sheet(0)[1, 2]?.text) }
+            check(f, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+            step(0, 2, 2, null)
+            Sheets.read(f, ',', '.').let { b -> assertEquals(name, null, b.sheet(0)[2, 2]?.note); assertTrue(name, b.sheet(0)[1, 0]?.note != null) }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

@@ -740,6 +740,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       a web page or another sheet's A1, the words to show typed into the cell; Excel's hyperlink (an outside relationship, or a location)
       or LibreOffice's text:a round the cell's words (`SheetLinks`, a change to the file); Remove link. `links on cells saved` (both
       formats, LibreOffice's conversions, one taken away); emulator: A2 linked to the second sheet.
+      Notes done (office-F session, 17 Oct): Insert › Note / Edit note / Delete note — Words' `NewCommentDialog` (its remembered name; a
+      label of its own: "Note") — saved as Excel's comments part with the VML note shape Excel draws it by (both made when the sheet has
+      none) and LibreOffice's office:annotation in the cell (`SheetNotes`, a change to the file). `notes made and taken away` (both
+      formats, LibreOffice's conversions; a sheet with notes and one without); emulator: a note on C3. Not yet: threaded comments.
 - [~] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.

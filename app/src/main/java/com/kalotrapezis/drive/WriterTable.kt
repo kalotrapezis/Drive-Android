@@ -741,13 +741,13 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", label: String = "Comment", add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
     var text by remember { mutableStateOf(start) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(text, { text = it }, label = { Text(label) }, minLines = 3, modifier = Modifier.fillMaxWidth())
         } },
         confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })

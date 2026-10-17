@@ -172,6 +172,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var copiedLook by remember { mutableStateOf<SheetStyle?>(null) } // Copy formatting (Words' pair): the look Paste formatting puts on
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
+    var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) } // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     val history = remember { SheetHistory() }
@@ -839,6 +840,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
                             RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
+                            // Excel's Insert › Chart: the chosen cells into Words' chart editor (its series from them), then on the sheet beside them
+                            RibbonButton("Chart", w, R.drawable.ic_bar_chart) {
+                                val d = g ?: run { message = "Choose the cells to chart first (a long press, then drag)"; return@RibbonButton }
+                                val rows = (d.r1..d.r2).map { r -> DocRow("", (d.c1..d.c2).map { c -> DocCell("", listOf(DocPara(listOf(DocRun(s[l.rows[r], l.cols[c]]?.text.orEmpty()))))) }) }
+                                OfficeCharts.fromTable(DocTable("", "", rows))?.let { charting = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2]) to it } ?: run { message = "The chosen cells have no numbers to chart." }
+                            }
                         }
                         shown == "Formulas" -> {
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
@@ -1163,6 +1170,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
             }
         })
+    // Insert › Chart: Words' chart editor; done, the chart on the sheet to the right of the cells (Excel's default size, 8 × 15 cells)
+    charting?.let { (g, start) -> ChartDialog(start, false, { charting = null }) { ch -> charting = null; val i = index
+        fileStep("chart put on", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetChart.xlsx(baked, next, b.parts.getValue("$i"), g.r1, g.c2 + 2, 15, 8, ch)
+            "ods" -> SheetChart.ods(baked, next, i, g.r1, g.c2 + 2, 360f, 216f, ch)
+            else -> error("A CSV file cannot hold a chart: save it as a workbook first.") } }) } }
     // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
     if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
     LaunchedEffect(symbol) { val sym = symbol ?: return@LaunchedEffect

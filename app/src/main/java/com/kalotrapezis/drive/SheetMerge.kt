@@ -40,39 +40,44 @@ internal object SheetMerge {
         }
     }
 
+    private const val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    private fun kids(e: Element, vararg names: String) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }.filter { it.namespaceURI == T && it.localName in names }
+    private fun rowsOf(e: Element): List<Element> = kids(e, "table-row", "table-header-rows", "table-row-group", "table-rows").flatMap { if (it.localName == "table-row") listOf(it) else rowsOf(it) }
+    /** A run of repeated rows or cells cut so place [i] is an element of its own; that element (made, past the end). */
+    private fun at(list: () -> List<Element>, i: Int, attr: String, make: () -> Element): Element {
+        var n0 = 0
+        for (e in list()) {
+            val n = e.getAttributeNS(T, attr).toIntOrNull() ?: 1
+            if (i < n0 + n) {
+                if (i > n0) { val first = e.cloneNode(true) as Element; if (i - n0 > 1) first.setAttributeNS(T, "table:$attr", "${i - n0}") else first.removeAttributeNS(T, attr)
+                    e.parentNode.insertBefore(first, e); if (n - (i - n0) > 1) e.setAttributeNS(T, "table:$attr", "${n - (i - n0)}") else e.removeAttributeNS(T, attr) }
+                if ((e.getAttributeNS(T, attr).toIntOrNull() ?: 1) > 1) { val rest = e.cloneNode(true) as Element
+                    val m = e.getAttributeNS(T, attr).toInt(); if (m - 1 > 1) rest.setAttributeNS(T, "table:$attr", "${m - 1}") else rest.removeAttributeNS(T, attr)
+                    e.removeAttributeNS(T, attr); e.parentNode.insertBefore(rest, e.nextSibling) }
+                return e
+            }
+            n0 += n
+        }
+        var last: Element? = null
+        while (n0 <= i) { last = make(); n0++ }
+        return last!!
+    }
+    /** LibreOffice: [table]'s cell [r], [c] as an element of its own (repeated rows and cells cut; made when past the end). */
+    fun odsCell(doc: org.w3c.dom.Document, table: Element, r: Int, c: Int): Element {
+        val row = at({ rowsOf(table) }, r, "number-rows-repeated") { doc.createElementNS(T, "table:table-row").also { table.appendChild(it) } }
+        return at({ kids(row, "table-cell", "covered-table-cell") }, c, "number-columns-repeated") { doc.createElementNS(T, "table:table-cell").also { row.appendChild(it) } }
+    }
+
     /** LibreOffice: sheet [index] with [range] as one spanned cell over covered ones ([merge]), or its cells again. */
     fun ods(source: File, target: File, index: Int, range: SheetRange, merge: Boolean) {
         ZipFile(source).use { zip ->
             val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
-            val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
             val O = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
-            fun kids(e: Element, vararg names: String) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }.filter { it.namespaceURI == T && it.localName in names }
-            fun rowsOf(e: Element): List<Element> = kids(e, "table-row", "table-header-rows", "table-row-group", "table-rows").flatMap { if (it.localName == "table-row") listOf(it) else rowsOf(it) }
-            // a run of repeated rows or cells cut so place [i] starts an element of its own; the element there (one is made past the end)
-            fun at(list: () -> List<Element>, i: Int, attr: String, make: () -> Element): Element {
-                var n0 = 0
-                for (e in list()) {
-                    val n = e.getAttributeNS(T, attr).toIntOrNull() ?: 1
-                    if (i < n0 + n) {
-                        if (i > n0) { val first = e.cloneNode(true) as Element; if (i - n0 > 1) first.setAttributeNS(T, "table:$attr", "${i - n0}") else first.removeAttributeNS(T, attr)
-                            e.parentNode.insertBefore(first, e); if (n - (i - n0) > 1) e.setAttributeNS(T, "table:$attr", "${n - (i - n0)}") else e.removeAttributeNS(T, attr) }
-                        if ((e.getAttributeNS(T, attr).toIntOrNull() ?: 1) > 1) { val rest = e.cloneNode(true) as Element
-                            val m = e.getAttributeNS(T, attr).toInt(); if (m - 1 > 1) rest.setAttributeNS(T, "table:$attr", "${m - 1}") else rest.removeAttributeNS(T, attr)
-                            e.removeAttributeNS(T, attr); e.parentNode.insertBefore(rest, e.nextSibling) }
-                        return e
-                    }
-                    n0 += n
-                }
-                var last: Element? = null
-                while (n0 <= i) { last = make(); n0++ }
-                return last!!
-            }
             for (r in range.r1..range.r2) {
-                val row = at({ rowsOf(table) }, r, "number-rows-repeated") { doc.createElementNS(T, "table:table-row").also { table.appendChild(it) } }
                 for (c in range.c1..range.c2) {
-                    val cell = at({ kids(row, "table-cell", "covered-table-cell") }, c, "number-columns-repeated") { doc.createElementNS(T, "table:table-cell").also { row.appendChild(it) } }
+                    val cell = odsCell(doc, table, r, c)
                     val top = r == range.r1 && c == range.c1
                     val now = if (merge && !top && cell.localName == "table-cell") doc.renameNode(cell, T, "table:covered-table-cell") as Element
                         else if (!merge && cell.localName == "covered-table-cell") doc.renameNode(cell, T, "table:table-cell") as Element else cell

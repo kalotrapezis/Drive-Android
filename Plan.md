@@ -704,9 +704,14 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       with several rows or columns chosen (the fill handle's own `fillCells`: series and formulas carried as the handle carries them).
       Insert › Symbol: Words' `SymbolDialog`, put in where one types in the cell (typing begun with its words). Emulator: A1's yellow on
       A7:B7; € in C9.
-- [ ] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
+- [~] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).
+      Chart done (office-F session, 17 Oct): Insert › Chart with cells chosen — Words' `OfficeCharts.fromTable` makes the series from them,
+      Words' `ChartDialog` edits it, then it goes on the sheet to the right of the cells, Excel's default 8 × 15 cells (`SheetChart`:
+      Words' `ChartWriter` part in the sheet's drawing, a two-cell anchor — a new drawing made when the sheet has none —, or LibreOffice's
+      chart object in the cell). shortcut: the chart holds its own numbers (not linked to the cells). `a chart put on a sheet` (both
+      formats, LibreOffice's conversions); emulator: A1:B3 charted.
 - [ ] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.

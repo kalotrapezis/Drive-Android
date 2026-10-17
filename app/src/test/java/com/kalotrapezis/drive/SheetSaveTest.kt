@@ -106,6 +106,32 @@ class SheetSaveTest {
         }
     }
 
+    /** Insert › Chart (Words' chart editor): a chart on the sheet beside the cells — Excel's chart in the sheet's drawing, LibreOffice's object in a cell. */
+    @Test fun `a chart put on a sheet`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val ch = DocChart(ChartKind.Column, "Olives", listOf("2025", "2026"), listOf(ChartSeries("Kilos", listOf(120.0, 150.0)), ChartSeries("Trees", listOf(30.0, 32.0))))
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("chart").toFile()
+            val file = File(dir, name).apply { writeBytes(resource(name)) }
+            val book = Sheets.read(file, ',', '.')
+            val out = File(dir, "chart.${file.extension}")
+            if (name.endsWith("xlsx")) SheetChart.xlsx(file, out, book.parts.getValue("0"), 1, 5, 15, 8, ch) else SheetChart.ods(file, out, 0, 1, 5, 360f, 216f, ch)
+            fun check(f: File, how: String) {
+                val s = Sheets.read(f, ',', '.').sheet(0)
+                val c = s.drawings.mapNotNull { it.chart }.singleOrNull(); assertTrue("$how: ${s.drawings.size} drawings", c != null)
+                assertEquals(how, listOf("Kilos", "Trees"), c!!.series.map { it.name }); assertEquals(how, listOf(120.0, 150.0), c.series[0].values)
+                assertEquals(how, 1, s.drawings.first { it.chart != null }.row); assertEquals(how, 5, s.drawings.first { it.chart != null }.col)
+                assertEquals(how, "Alpha", s[1, 0]?.text)
+            }
+            check(out, "put on $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "chart.$other"), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

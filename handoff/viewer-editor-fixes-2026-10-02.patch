@@ -1,0 +1,907 @@
+diff --git a/app/src/main/java/com/kalotrapezis/drive/OfficeFormats.kt b/app/src/main/java/com/kalotrapezis/drive/OfficeFormats.kt
+index fb760d3..1810c6d 100644
+--- a/app/src/main/java/com/kalotrapezis/drive/OfficeFormats.kt
++++ b/app/src/main/java/com/kalotrapezis/drive/OfficeFormats.kt
+@@ -97,7 +97,7 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float,
+     val box: List<DocPara>? = null /* a text box's words, as read from [raw] (drawn on the pages; the file keeps [raw]) */,
+     val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */) {
+     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
+-        table: DocTable? = this.table, box: List<DocPara>? = this.box) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart)
++        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart)
+     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
+     override fun hashCode() = key.hashCode()
+     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
+diff --git a/app/src/main/java/com/kalotrapezis/drive/OfficePages.kt b/app/src/main/java/com/kalotrapezis/drive/OfficePages.kt
+index bab5be0..dba13a9 100644
+--- a/app/src/main/java/com/kalotrapezis/drive/OfficePages.kt
++++ b/app/src/main/java/com/kalotrapezis/drive/OfficePages.kt
+@@ -72,6 +72,13 @@ private fun StaticLayout.bottomPt(line: Int) = getLineBottom(line) / U
+ /** A tab stop: where (pt from the text's left edge), how the text after it lines up ('l', 'r', 'c'), what fills the gap. */
+ internal data class TabStop(val pos: Float, val type: Char, val leader: Char? = null)
+ 
++/** The same left/right/centre tab geometry for the pages and the editable text (points). */
++internal fun tabGap(x: Float, followingWidth: Float, stops: List<TabStop>): Pair<TabStop, Float> {
++    val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / 36f) + 1) * 36f, 'l')
++    val gap = stop.pos - x - when (stop.type) { 'r' -> followingWidth; 'c' -> followingWidth / 2; else -> 0f }
++    return stop to gap.coerceAtLeast(0f)
++}
++
+ /** A tab laid out: a gap of its own width, filled with its leader (the dots of a table of contents). */
+ private class TabSpan(val width: Float, val leader: Char?) : android.text.style.ReplacementSpan() {
+     override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = Math.round(width)
+@@ -1499,10 +1506,9 @@ internal object OfficePages {
+         for (k in text.indices.filter { text[it] == '\t' }) {
+             val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
+             // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
+-            val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / TAB) + 1) * TAB, 'l')
+             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length
+             val after = Layout.getDesiredWidth(text, k + 1, end, paint) / U
+-            val gap = when (stop.type) { 'r' -> stop.pos - x - after; 'c' -> stop.pos - x - after / 2; else -> stop.pos - x }
++            val (stop, gap) = tabGap(x, after, stops)
+             text.setSpan(TabSpan(gap.coerceAtLeast(0f) * U, stop.leader), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+         }
+         var laid = build()
+diff --git a/app/src/main/java/com/kalotrapezis/drive/Writer.kt b/app/src/main/java/com/kalotrapezis/drive/Writer.kt
+index c41ab9f..d235093 100644
+--- a/app/src/main/java/com/kalotrapezis/drive/Writer.kt
++++ b/app/src/main/java/com/kalotrapezis/drive/Writer.kt
+@@ -115,6 +115,11 @@ import androidx.compose.ui.text.SpanStyle
+ import androidx.compose.ui.text.TextStyle
+ import androidx.compose.ui.text.font.FontStyle
+ import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.font.FontFamily
++import androidx.compose.ui.text.AnnotatedString
++import androidx.compose.ui.text.input.VisualTransformation
++import androidx.compose.ui.text.input.TransformedText
++import androidx.compose.ui.text.input.OffsetMapping
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.text.style.TextDecoration
+ import androidx.compose.ui.text.style.TextOverflow
+@@ -140,6 +145,8 @@ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.flow.drop
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
++import kotlinx.coroutines.sync.Mutex
++import kotlinx.coroutines.sync.withLock
+ import java.io.File
+ import java.util.Locale
+ import kotlin.math.roundToInt
+@@ -255,12 +262,90 @@ internal object WriterBridge {
+         // A table's line: exactly the table (on a phone a one-row table is shorter than a line of the editor's own text,
+         // which a line never goes below — a gap under each small table, the user's CV).
+         runs.firstOrNull { it.image?.table != null }?.image?.let { return shownSize(it, scale).second.sp }
+-        if ((p.heading > 0 && runs.isNotEmpty()) || p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
++        if (p.table != null || runs.any { it.image != null }) return androidx.compose.ui.unit.TextUnit.Unspecified
+         look.lineExact?.takeIf { !look.lineAtLeast }?.let { return (it * scale).sp }
+         val mark = if (runs.isEmpty()) OfficeFormats.markSize(p) else null
+-        if (look.lineMultiple == 1f && mark == null) return androidx.compose.ui.unit.TextUnit.Unspecified
++        if (look.lineMultiple == 1f && mark == null && look.lineExact == null) return androidx.compose.ui.unit.TextUnit.Unspecified
+         val size = mark ?: (runs.maxOfOrNull { it.sizePt ?: look.sizePt ?: basePt } ?: look.sizePt ?: basePt)
+-        return (size * scale * lineRatio * look.lineMultiple).sp
++        return maxOf(size * scale * lineRatio * look.lineMultiple, (look.lineExact ?: 0f) * scale).sp
++    }
++
++    /** Visual font and separator styles never enter the editable document or its saved runs. */
++    fun displayText(shown: AnnotatedString, rich: RichTextDocument, doc: OfficeDoc, styles: DocStyles,
++        fontFamily: (String?) -> FontFamily? = { name -> OfficeFonts.typeface(name)?.let { FontFamily(it) } }): AnnotatedString {
++        val places = blockPlaces(shown.text, rich)
++        val fonts = AnnotatedString.Builder(shown).apply {
++            doc.paras.forEachIndexed { para, p ->
++                val look = styles.look(p)
++                var at = 0
++                p.runs.forEach { run ->
++                    if (run.image == null) (styles.fontName(run.font)?.let(fontFamily) ?: fontFamily(look.font))?.let { family ->
++                        editorSpans(places, para, at, at + run.text.length).forEach { range ->
++                            addStyle(SpanStyle(fontFamily = family), range.first, range.last + 1)
++                        }
++                    }
++                    at += run.text.length
++                }
++            }
++            places.forEach { b ->
++                // The library appends an unstyled space to each block. Its default 16 sp font used to keep
++                // a small table taller than the table itself, even with an exact paragraph line height.
++                if (doc.paras.getOrNull(b.para)?.table != null && b.to < shown.length)
++                    addStyle(SpanStyle(fontSize = 0.5.sp, letterSpacing = 0.sp), b.to, b.to + 1)
++            }
++        }.toAnnotatedString()
++        // The library already owns one separator character between blocks. Give it a separate visual
++        // paragraph for the gap, keeping text length and every cursor/selection offset unchanged.
++        val gaps = paragraphGaps(doc, styles, places)
++        if (gaps.isEmpty()) return fonts
++        return AnnotatedString.Builder().apply {
++            var from = 0
++            gaps.forEach { (at, gap) ->
++                append(fonts.subSequence(from, at))
++                pushStyle(ParagraphStyle(lineHeight = (gap * BASE_SP / doc.basePt).sp,
++                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None)))
++                pushStyle(SpanStyle(fontSize = 0.5.sp, color = Color.Transparent))
++                append(fonts.text[at])
++                pop(); pop()
++                from = at + 1
++            }
++            append(fonts.subSequence(from, fonts.length))
++        }.toAnnotatedString()
++    }
++
++    /** Space after one paragraph and before the next, never between two lines of the same paragraph. */
++    fun paragraphGaps(doc: OfficeDoc, styles: DocStyles, places: List<BlockPlace>): List<Pair<Int, Float>> =
++        places.zipWithNext().mapNotNull { (a, b) ->
++            if (a.para == b.para) return@mapNotNull null
++            val p = doc.paras.getOrNull(a.para) ?: return@mapNotNull null
++            val next = doc.paras.getOrNull(b.para) ?: return@mapNotNull null
++            val look = if (p.table == null) styles.look(p) else ParaLook()
++            val after = if (next.table == null) styles.look(next) else ParaLook()
++            if (after.pageBreakBefore) return@mapNotNull null
++            val contextual = look.contextual && after.contextual && p.keep?.style == next.keep?.style && p.heading == next.heading
++            val gap = if (contextual) 0f else look.after + after.before
++            (a.to to gap).takeIf { gap > 0f }
++        }
++
++    fun displayText(state: RichTextState, shown: AnnotatedString) {
++        runCatching {
++            state.javaClass.getMethod("setVisualTransformation\$com_mohamedrejeb_richeditor_richeditor_compose", VisualTransformation::class.java)
++                .invoke(state, VisualTransformation { typed ->
++                    // An IME update can precede the display effect. Always keep the input's length/offsets valid.
++                    TransformedText(if (typed.text.replace('\n', ' ').replace('\t', EDITOR_TAB_SPACE) == shown.text.replace('\t', EDITOR_TAB_SPACE)) shown else typed, OffsetMapping.Identity)
++                })
++        }.onFailure { WriterLog.w("editor display", it) }
++    }
++
++    /** Replace only the displayed geometry; setRichTextDocument also clears typing Undo/Redo. */
++    fun reflow(state: RichTextState, doc: OfficeDoc, pictures: MutableMap<String, DocImage>, styles: DocStyles) {
++        val rich = toEditor(doc, pictures, styles)
++        runCatching {
++            val decoder = Class.forName("com.mohamedrejeb.richeditor.document.RichTextDocumentDecoder")
++            val paragraphs = decoder.getMethod("decode", RichTextDocument::class.java).invoke(decoder.getField("INSTANCE").get(null), rich)
++            state.javaClass.getMethod("updateRichParagraphList-psREZIo\$com_mohamedrejeb_richeditor_richeditor_compose", List::class.java,
++                androidx.compose.ui.text.TextRange::class.java).invoke(state, paragraphs, state.selection)
++        }.onFailure { WriterLog.w("editor reflow", it) }
+     }
+ 
+     /** The letters [spans] (paragraph, from, to) given [look]'s letter formatting, their words and marks kept (Format painter). */
+@@ -401,33 +486,26 @@ internal object WriterBridge {
+     private fun lineMarkSize(p: DocPara) = OfficeFormats.markSize(p)
+ 
+     /**
+-     * Paragraph spacing in the editor (asked 2026-10-01: Edit's text packed tighter than the pages'). Compose has none: a
+-     * one-line paragraph gets it as its line's height, the extra split above and below as before : after (Word's exact
+-     * spacing); a longer one would have it on every line, so it goes without. Laid out again when a line count changes.
++     * Exact line heights in the editor, including the table's stand-in. Paragraph gaps are visual separator
++     * paragraphs in [displayText], so they apply once even when the text wraps over several lines.
+      * Returns whether anything changed.
+      */
+     fun spaceParagraphs(state: RichTextState, layout: TextLayoutResult): Boolean {
+         val list = runCatching { state.javaClass.getMethod("getRichParagraphList\$com_mohamedrejeb_richeditor_richeditor_compose").invoke(state) as List<*> }.getOrNull() ?: return false
+         val spacing = blockSpacing
+         if (list.size != spacing.size) return false
+-        val text = layout.layoutInput.text.text
++        if (layout.layoutInput.text.length != state.annotatedString.length) return false
+         val blocks = state.toRichTextDocument().blocks
+         if (blocks.size != list.size) return false
+         val cls = list.firstOrNull()?.javaClass ?: return false
+         val getStyle = cls.getMethod("getParagraphStyle"); val setStyle = cls.getMethod("setParagraphStyle", ParagraphStyle::class.java)
+-        var at = 0
+         var changed = false
+         for ((k, para) in list.withIndex()) {
+-            val length = blocks[k].text.length
+             val sp = spacing[k]
+-            val end = (at + length).coerceAtMost(text.length)
+-            val oneLine = end <= at || layout.getLineForOffset(at) == layout.getLineForOffset((end - 1).coerceAtLeast(at))
+             val style = getStyle.invoke(para) as ParagraphStyle
+-            val want = if (sp != null && oneLine) style.copy(lineHeight = (sp.line + sp.before + sp.after).sp,
+-                lineHeightStyle = LineHeightStyle(if (sp.before + sp.after > 0f) LineHeightStyle.Alignment(sp.before / (sp.before + sp.after)) else LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None))
+-                else if (style.lineHeightStyle?.trim == LineHeightStyle.Trim.None) style.copy(lineHeight = sp?.line?.sp ?: style.lineHeight, lineHeightStyle = null) else style
++            val want = if (sp != null) style.copy(lineHeight = sp.line.sp,
++                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None)) else style
+             if (want != style) { setStyle.invoke(para, want); changed = true }
+-            at += length + 1 // the editor's space between paragraphs
+         }
+         // Shown again (the library's own refresh, with its current text and selection: its default argument).
+         if (changed) runCatching { state.javaClass.getMethod("updateAnnotatedString\$com_mohamedrejeb_richeditor_richeditor_compose\$default", state.javaClass,
+@@ -634,7 +712,9 @@ internal object WriterBridge {
+         var pos = 0
+         rich.blocks.forEachIndexed { k, b ->
+             // A picture or table is one character in the block and another on the screen.
+-            val from = text.indexOf(b.text.replace(OBJECT_MARK, EDITOR_PICTURE_CHAR), pos).takeIf { it >= 0 } ?: return
++            val needle = b.text.replace(OBJECT_MARK, EDITOR_PICTURE_CHAR)
++            val from = text.indexOf(needle, pos).takeIf { it >= 0 }
++                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return
+             each(k, from, from + b.text.length)
+             pos = from + b.text.length + 1
+         }
+@@ -825,6 +905,13 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
+ private fun draftFile(context: Context, key: String, kind: OfficeKind) =
+     File(File(context.filesDir, "writer-drafts"), "${key.hashCode().toUInt()}.${kind.extension}")
+ 
++internal fun writeWriterDraft(file: File, bytes: ByteArray) {
++    check(file.parentFile?.let { it.isDirectory || it.mkdirs() } == true) { "Could not make the draft folder." }
++    val temp = File(file.parentFile, ".${file.name}.saving")
++    temp.writeBytes(bytes)
++    check(temp.renameTo(file)) { "Could not replace the recovery draft." }
++}
++
+ /** A document's earlier versions: a folder per document (by its path), a file per version named by its time. */
+ private fun versionsDir(context: Context, file: File) = File(File(context.filesDir, "writer-history"), file.absolutePath.hashCode().toUInt().toString())
+ 
+@@ -858,7 +945,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
+     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
+     var original by remember { mutableStateOf<ByteArray?>(null) }
+-    var remeasured by remember { mutableStateOf(false) } // the text shown again with tables' true height (not an edit)
+     var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style (or a picture: its wrap, size, place) changes
+     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
+     var loaded by remember { mutableStateOf(false) }
+@@ -880,7 +966,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+     var query by remember { mutableStateOf("") }
+     var replacement by remember { mutableStateOf("") }
+     var replacing by remember { mutableStateOf(false) }
+-    val draftKey = open ?: "new"
++    val draftKey = uri ?: "new"
++    var saving by remember { mutableStateOf(false) }
++    val draftMutex = remember { Mutex() }
++    var cleanDoc by remember { mutableStateOf<OfficeDoc?>(null) }
++    var cleanStyleEdits by remember { mutableIntStateOf(0) }
+     var reload by remember { mutableIntStateOf(0) } // a restored version is read in again
+     var showVersions by remember { mutableStateOf(false) }
+     val pictures = remember { HashMap<String, DocImage>() } // every picture in the editor, by its key
+@@ -954,8 +1044,37 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+     }
+ 
+     // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
+-    fun current() = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
+-        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt, pictures)))))
++    fun current(shownPictures: Map<String, DocImage> = pictures) = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
++        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt, shownPictures)))))
++    // Recovery includes the active cell without committing it or changing the editor's Undo history.
++    fun recoverable(): OfficeDoc {
++        val edit = cellEdit ?: return current()
++        val img = pictures[edit.ref.key] ?: return current()
++        val table = img.table ?: return current()
++        val typed = WriterBridge.withCellText(edit.cell, edit.value.text)
++        val pending = TableEdit.withCells(table, setOf(edit.ref.row to edit.ref.cell)) { typed }
++        return current(pictures + (img.key to img.with(table = pending)))
++    }
++    fun editable() = recoverable().copy(unsupported = emptySet())
++    LaunchedEffect(loaded, onPage, WriterBridge.editorWidthSp) {
++        if (!loaded) return@LaunchedEffect
++        WriterBridge.reflow(state, current(), pictures, documentStyles)
++    }
++    val editorMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
++    val editorDensity = LocalDensity.current
++    var editorTextWidth by remember { mutableIntStateOf(0) }
++    var shownTabs by remember { mutableStateOf<List<EditorTab>>(emptyList()) }
++    LaunchedEffect(loaded, state.annotatedString, documentStyles, styleEdits, onPage, WriterBridge.editorWidthSp, editorTextWidth, shownZoom) {
++        if (!loaded) return@LaunchedEffect
++        val doc = current()
++        val rich = state.toRichTextDocument()
++        val shown = WriterBridge.displayText(state.annotatedString, rich, doc, documentStyles)
++        val (displayed, tabs) = editorTabs(shown, rich, doc, documentStyles, editorMeasurer,
++            TextStyle(fontSize = (BASE_SP * shownZoom / 100).sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.None)),
++            editorTextWidth.takeIf { it > 0 } ?: with(editorDensity) { WriterBridge.editorWidthSp.sp.roundToPx() }, with(editorDensity) { 1.sp.toPx() }, BASE_SP * shownZoom / 100f / meta.basePt)
++        shownTabs = tabs
++        WriterBridge.displayText(state, displayed)
++    }
+ 
+     // Undo for what Writer changes itself (a style, spacing, a picture, a table, the header…): the editor's own undo
+     // knows only typing, and forgets it whenever the document is shown again. Each such change keeps the whole
+@@ -984,13 +1103,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+     }
+     fun undo() {
+         WriterLog.i("undo")
+-        if (state.history.canUndo) { state.history.undo(); return }
++        if (state.history.canUndo) { state.history.undo(); WriterBridge.reflow(state, current(), pictures, documentStyles); return }
+         val s = undone.removeLastOrNull() ?: return
+         redone.add(snapshot()); show(s)
+     }
+     fun redo() {
+         WriterLog.i("redo")
+-        if (state.history.canRedo) { state.history.redo(); return }
++        if (state.history.canRedo) { state.history.redo(); WriterBridge.reflow(state, current(), pictures, documentStyles); return }
+         val s = redone.removeLastOrNull() ?: return
+         undone.add(snapshot()); show(s)
+     }
+@@ -1008,21 +1127,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                 var draftPackage: ByteArray? = null
+                 val draft = draftFile(context, draftKey, kind).takeIf { it.isFile }?.let { d -> runCatching {
+                     val draftBytes = d.readBytes()
+-                    val draftParts = OfficeFormats.unzip(draftBytes)
+                     draftPackage = draftBytes // its styles, header and footer, as changed before it closed
+-                    val originalParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
+-                    // A picture added before the app closed lives only in the draft: it is new again, with its bytes.
+-                    OfficeFormats.read(draftBytes, kind).let { dd -> dd.copy(paras = dd.paras.map { p -> p.copy(runs = p.runs.map { r ->
+-                        val img = r.image
+-                        // Its wrapping and its place on the page (Draw on page) kept.
+-                        val place = PictureXml.placeOf(img ?: return@map r)?.takeIf { it.fromH == "page" && it.fromV == "page" && it.x != null && it.y != null }
+-                        if (img.part != null && img.part !in originalParts) r.copy(image = DocImage("d" + img.key, null, img.widthPt, img.heightPt, null, draftParts[img.part],
+-                            img.part.substringAfterLast('.'), PictureXml.wrapOf(img)?.takeIf { it != PictureWrap.InLine }, onPage = place?.let { it.x!! to it.y!! })) else r
+-                    }) }) }
++                    OfficeFormats.read(draftBytes, kind)
+                 }.getOrNull() }
+-                packageParts = bytes?.let { OfficeFormats.unzip(it) }.orEmpty()
+                 // With a draft, the file as it will be written starts from the draft (styles, header and footer as changed).
+                 val start = draftPackage ?: bytes
++                packageParts = start?.let { OfficeFormats.unzip(it) }.orEmpty()
+                 Triple(start, doc, draft)
+             }
+         }
+@@ -1040,6 +1150,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+             WriterLog.i("read: ${doc.paras.size} paragraphs, ${doc.paras.count { it.table != null }} tables, ${doc.paras.sumOf { p -> p.runs.count { it.image != null } }} pictures, " +
+                 "${doc.comments.size} comments; not kept: ${meta.unsupported.ifEmpty { setOf("—") }.joinToString()}" + if (meta.blocking.isNotEmpty()) " (saves as a copy)" else "")
+             dirty = false
++            cleanDoc = editable()
++            cleanStyleEdits = styleEdits
+             if (draft != null) {
+                 state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
+                 meta = meta.copy(paras = draft.paras, comments = draft.comments, sources = draft.sources) // the draft's paragraph formatting, comments and sources, not the file's
+@@ -1064,14 +1176,29 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+         // The editor lays a list item's indent out again once it is drawn (its bullet measured): only its look, so the
+         // indents are left out of what counts as a change (01_Text_and_Paragraphs opened as changed). Likewise it joins
+         // neighbouring letters that look the same (runs the file kept apart — fonts it does not show): compared joined.
+-        snapshotFlow { Triple(state.annotatedString.let { a -> Triple(a.text, joinedSpans(a.spanStyles), a.paragraphStyles.map { it.item.copy(textIndent = null, lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified, lineHeightStyle = null) to it.start }) }, meta.paras, styleEdits) }
++        snapshotFlow {
++            // The document decoder reads the editor's ordinary lists. Observe its Compose text
++            // explicitly so typing (not only changes to Writer's metadata) refreshes this snapshot.
++            state.annotatedString
++            editable() to styleEdits
++        }
+             .drop(1).collectLatest { // meta: a paragraph's spacing set; a style changed
+-            if (remeasured) { remeasured = false; return@collectLatest } // tables shown again at their true height: no change
+-
+-            dirty = true
++            dirty = it.first != cleanDoc || it.second != cleanStyleEdits
++            if (!dirty) {
++                val key = uri ?: "new"
++                withContext(Dispatchers.IO) { draftMutex.withLock {
++                    if (!dirty && key == (uri ?: "new")) draftFile(context, key, kind).delete()
++                } }
++                return@collectLatest
++            }
+             delay(1500)
+-            val doc = current()
+-            withContext(Dispatchers.IO) { runCatching { draftFile(context, draftKey, kind).apply { parentFile?.mkdirs() }.writeBytes(OfficeFormats.write(doc, kind, original)) }.onFailure { WriterLog.e("draft", it) } }
++            val doc = recoverable()
++            // Read the current URI here: this long-lived effect also survives Save a copy/first Save.
++            val key = uri ?: "new"
++            val source = original
++            withContext(Dispatchers.IO) { draftMutex.withLock {
++                if (dirty && key == (uri ?: "new")) runCatching { writeWriterDraft(draftFile(context, key, kind), OfficeFormats.write(doc, kind, source)) }.onFailure { WriterLog.e("draft", it) }
++            } }
+         }
+     }
+     // The pages, laid out again whenever they are shown (after editing, they show the edits).
+@@ -1101,31 +1228,59 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+         }
+     }
+ 
+-    fun finishSave(target: File, bytes: ByteArray, saved: OfficeDoc) {
+-        draftFile(context, draftKey, kind).delete()
+-        original = bytes
++    suspend fun finishSave(target: File, bytes: ByteArray, saved: OfficeDoc, savedStyleEdits: Int, oldDraftKey: String) {
++        val newer = editable() != saved.copy(unsupported = emptySet()) || styleEdits != savedStyleEdits
+         uri = Uri.fromFile(target).toString()
+         name = target.name
+         val back = OfficeFormats.read(bytes, kind)
+         // A picture added in Writer is in the file now: from here on it goes back as the file has it, not added again.
+         val before = saved.paras.flatMap { it.runs }.mapNotNull { it.image }
+         val after = back.paras.flatMap { it.runs }.mapNotNull { it.image }
+-        if (before.size == after.size) before.zip(after).forEach { (b, a) -> if (b.raw == null) pictures[b.key] = DocImage(b.key, a.part, a.widthPt, a.heightPt, a.raw) }
+-        packageParts = OfficeFormats.unzip(bytes)
+-        documentStyles = DocStyles.of(kind, bytes)
+-        meta = meta.copy(unsupported = back.unsupported)
+-        dirty = false
++        if (!newer && before.size == after.size) before.zip(after).forEach { (b, a) ->
++            if (pictures[b.key] === b) pictures[b.key] = a.with(key = b.key)
++        }
++        if (!newer) {
++            original = bytes
++            packageParts = OfficeFormats.unzip(bytes)
++            documentStyles = DocStyles.of(kind, bytes)
++            meta = meta.copy(unsupported = back.unsupported)
++        }
++        // The target now holds the captured snapshot, even if the user has since typed or undone it.
++        cleanDoc = if (newer) saved.copy(unsupported = emptySet()) else editable()
++        cleanStyleEdits = savedStyleEdits
++        dirty = newer
++        // A copy/new document owns its subsequent draft. Keep newer typing before removing the old draft.
++        val key = Uri.fromFile(target).toString()
++        // Typing may continue during the draft write as well as the file write. Recheck after IO and
++        // flush again when necessary instead of waiting for the normal typing debounce.
++        do {
++            val captured = editable() to styleEdits
++            dirty = captured.first != cleanDoc || captured.second != cleanStyleEdits
++            val latest = if (dirty) recoverable() else null
++            val latestSource = original
++            withContext(Dispatchers.IO) { draftMutex.withLock {
++                if (latest != null) writeWriterDraft(draftFile(context, key, kind), OfficeFormats.write(latest, kind, latestSource))
++                else draftFile(context, key, kind).delete()
++                if (oldDraftKey != key || latest == null) draftFile(context, oldDraftKey, kind).delete()
++            } }
++        } while ((editable() to styleEdits) != captured)
+     }
+     /** Save over the file — only when nothing in it would be lost; otherwise a copy beside it. */
+     fun save(asCopy: Boolean = false, then: () -> Unit = {}) {
++        if (saving) return
+         val f = file
+         if (f == null) { naming = true; return }
++        saving = true
+         scope.launch {
++            try {
+             val doc = current()
++            val savedStyleEdits = styleEdits
++            val oldDraftKey = draftKey
++            val source = original
+             val copy = asCopy || meta.blocking.isNotEmpty()
+             val result = withContext(Dispatchers.IO) {
+                 runCatching {
+-                    val bytes = WriterLog.timed("wrote the file") { OfficeFormats.write(doc, kind, original) }
++                    val bytes = WriterLog.timed("wrote the file") { OfficeFormats.write(doc, kind, source) }
+                     val target = if (copy) freeCopyName(f.parentFile!!, f.nameWithoutExtension, kind.extension) else f
+                     // Written beside it, then renamed over it: the file is either the old one or the new one, never half.
+                     val temp = File(target.parentFile, ".${target.name}.tetra-saving")
+@@ -1139,28 +1294,42 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+             }
+             result.onSuccess { (target, bytes) ->
+                 WriterLog.i("saved ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
+-                finishSave(target, bytes, doc)
+-                message = if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
+-                then()
++                finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey)
++                message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
++                if (!dirty) then()
+             }.onFailure { WriterLog.e("could not save", it); message = it.message ?: "Could not save." }
++            } catch (error: Exception) { WriterLog.e("finish save", error); message = error.message ?: "Could not finish saving." }
++            finally { saving = false }
+         }
+     }
+     fun saveNew(typed: String) {
++        if (saving) return
+         val clean = typed.trim().removeSuffix(".${kind.extension}")
+         if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
++        saving = true
+         scope.launch {
++            try {
+             val dir = TextEditorStore(context).saveDirectory()
+             val target = File(dir, "$clean.${kind.extension}")
+             val doc = current()
++            val savedStyleEdits = styleEdits
++            val oldDraftKey = draftKey
++            val source = original
+             val result = withContext(Dispatchers.IO) {
+                 runCatching {
+                     check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
+                     check(!target.exists()) { "${target.name} is already there. Choose another name." }
+-                    OfficeFormats.write(doc, kind).also { target.writeBytes(it) }
++                    OfficeFormats.write(doc, kind, source).also { bytes ->
++                        val temp = File(target.parentFile, ".${target.name}.tetra-saving")
++                        temp.writeBytes(bytes)
++                        check(temp.renameTo(target)) { "Could not save ${target.name}." }
++                    }
+                 }
+             }
+-            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; draftFile(context, draftKey, kind).delete(); finishSave(target, bytes, doc); message = "Saved in ${TextEditorStore(context).saveFolder}" }
++            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved in ${TextEditorStore(context).saveFolder}" }
+                 .onFailure { WriterLog.e("could not save new", it); message = it.message }
++            } catch (error: Exception) { WriterLog.e("finish save new", error); message = error.message ?: "Could not finish saving." }
++            finally { saving = false }
+         }
+     }
+     /** Export › PDF: beside the document (or in the save folder for a new one), never over another file. */
+@@ -1978,7 +2147,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
+                     RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
+                 } else {
+-                Tool(R.drawable.ic_visibility, "Pages", w, enabled = loaded) { viewing = true }
++                Tool(R.drawable.ic_visibility, "Pages", w, enabled = loaded) { commitCell(); viewing = true }
+                 Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
+                 Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }
+                 Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo || redone.isNotEmpty()) { redo() }
+@@ -2001,8 +2170,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+             } else
+             // The page: white, as the document will print — its own colours must show as they are.
+             Column(Modifier.weight(1f).fillMaxWidth()) {
+-            val margins = if (onPage) androidx.compose.foundation.layout.PaddingValues(start = sheet.left * perPt, end = sheet.right * perPt, top = sheet.top * perPt, bottom = 180.dp)
+-                else androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 180.dp)
++            val firstBefore = meta.paras.firstOrNull()?.takeIf { it.table == null }?.let { documentStyles.look(it).before } ?: 0f
++            val leadingSpace = firstBefore * perPt
++            val margins = if (onPage) androidx.compose.foundation.layout.PaddingValues(start = sheet.left * perPt, end = sheet.right * perPt, top = sheet.top * perPt + leadingSpace, bottom = 180.dp)
++                else androidx.compose.foundation.layout.PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp + leadingSpace, bottom = 180.dp)
+             // With the comments' pane, page and pane are centred together.
+             val shift = if (paneOn && onPage) (COMMENT_PANE + 12.dp) / 2 else 0.dp
+             if (onPage && loaded && !printPhone) BoxWithConstraints(Modifier.fillMaxWidth()) {
+@@ -2048,7 +2219,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                             // one too) never got its height (asked 2026-10-01: Edit's empty lines unlike the pages').
+                             BasicRichTextEditor(state, textStyle = TextStyle(color = ink, fontSize = (BASE_SP * shownZoom / 100).sp,
+                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Proportional, androidx.compose.ui.text.style.LineHeightStyle.Trim.None)),
+-                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it; WriterBridge.spaceParagraphs(state, it) },
++                                cursorBrush = SolidColor(Color(0xFF1A73E8)), onTextLayout = { layout = it; editorLayout = it; editorTextWidth = it.size.width; WriterBridge.spaceParagraphs(state, it) },
+                                 modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp).padding(margins))
+                             }
+                             // The pictures, drawn where their character sits: its left, standing on its line's bottom.
+@@ -2060,19 +2231,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                                 val placed = text.indices.filter { text[it] == EDITOR_PICTURE_CHAR }.mapIndexedNotNull { n, i ->
+                                     keys.getOrNull(n)?.let { pictures[it] }?.let { img -> Triple(i, img, l.getBoundingBox(i).left to l.getLineBaseline(l.getLineForOffset(i))) }
+                                 }
+-                                // A table's line must be exactly its height: the editor's line for its letter came out 0.77 of what the
+-                                // font's measures promise (the user's CV, 2026-09-30 — each table's last line cut off by the next).
+-                                // Learnt from the first table laid out, and the text shown again once with the real measure.
+-                                LaunchedEffect(l) {
+-                                    val (i, img) = placed.firstOrNull { it.second.table != null }?.let { it.first to it.second } ?: return@LaunchedEffect
+-                                    val (_, h) = WriterBridge.shownSize(img, scale)
+-                                    val line = l.getLineBottom(l.getLineForOffset(i)) - l.getLineTop(l.getLineForOffset(i))
+-                                    val real = WriterBridge.lineRatio * line / with(density) { h.sp.toPx() }
+-                                    if (kotlin.math.abs(real - WriterBridge.lineRatio) > 0.01f) {
+-                                        WriterBridge.lineRatio = real
+-                                        remeasured = true // not an edit
+-                                        val sel = state.selection
+-                                        state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), sel)
++                                if (shownTabs.any { it.leader != null }) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
++                                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = (BASE_SP * shownZoom / 100f).sp.toPx() }
++                                    val canvas = drawContext.canvas.nativeCanvas
++                                    shownTabs.forEach { tab ->
++                                        val leader = tab.leader ?: return@forEach
++                                        if (tab.at + 1 >= text.length) return@forEach
++                                        val line = l.getLineForOffset(tab.at)
++                                        if (l.getLineForOffset(tab.at + 1) != line) return@forEach
++                                        val a = l.getHorizontalPosition(tab.at, true)
++                                        val z = l.getHorizontalPosition(tab.at + 1, true)
++                                        val dot = paint.measureText(leader.toString()).coerceAtLeast(1f)
++                                        var x = a + dot
++                                        while (x + dot < z) { canvas.drawText(leader.toString(), x, l.getLineBaseline(line), paint); x += dot }
+                                     }
+                                 }
+                                 var drag by remember { mutableStateOf(Offset.Zero) } // how far the selected picture is being dragged
+@@ -2168,7 +2339,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                                 // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
+                                 headPage?.let { hp -> androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) { drawIntoCanvas { c ->
+                                     val n = c.nativeCanvas; val k = scale.sp.toPx()
+-                                    n.save(); n.scale(k, k); n.translate(-hp.page.left, -hp.page.top)
++                                    n.save(); n.scale(k, k); n.translate(-hp.page.left, -hp.page.top - firstBefore)
+                                     n.clipRect(0f, 0f, hp.page.width, hp.page.top)
+                                     n.saveLayerAlpha(0f, 0f, hp.page.width, hp.page.top, 110)
+                                     hp.draw(n); n.restore(); n.restore()
+@@ -2865,7 +3036,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
+                     RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
+                         if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
+                     }
+-                    Divider(w)
++                }, {
+                     if (printPhone) {
+                         // The page: its width on the screen, larger (two fingers do the same).
+                         Tool(R.drawable.ic_remove, "Zoom out", w, enabled = pageZoom > 1f) { pageZoom = (pageZoom - 0.25f).coerceAtLeast(1f) }
+diff --git a/app/src/test/java/com/kalotrapezis/drive/ChartsTest.kt b/app/src/test/java/com/kalotrapezis/drive/ChartsTest.kt
+index 748dc29..9d3d09d 100644
+--- a/app/src/test/java/com/kalotrapezis/drive/ChartsTest.kt
++++ b/app/src/test/java/com/kalotrapezis/drive/ChartsTest.kt
+@@ -40,4 +40,23 @@ class ChartsTest {
+             assertEquals("$kind $chartKind", if (stacked) PictureWrap.Square else PictureWrap.InLine, PictureXml.wrapOf(back))
+         }
+     }
++    @Test fun `saving a new chart twice keeps its editable data and floating placement`() {
++        for (kind in OfficeKind.entries) {
++            val chart = DocChart(ChartKind.Column, "Still editable", listOf("A", "B"), listOf(ChartSeries("Values", listOf(2.0, 5.0))))
++            val image = DocImage("inserted", null, 200f, 120f, wrap = PictureWrap.InFront, onPage = 30f to 50f, chart = chart)
++            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = image)))))
++            val first = OfficeFormats.write(doc, kind)
++            val reread = OfficeFormats.read(first, kind).paras.single().runs.single().image!!
++            val bound = reread.with(key = image.key)
++            assertEquals(image.key, bound.key)
++            assertEquals(reread.chart, bound.chart)
++            assertEquals(PictureXml.wrapOf(reread), PictureXml.wrapOf(bound))
++            assertEquals(PictureXml.placeOf(reread), PictureXml.placeOf(bound))
++            val second = OfficeFormats.write(doc.copy(paras = listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = bound))))), kind, first)
++            val again = OfficeFormats.read(second, kind).paras.single().runs.single().image!!
++            assertEquals(reread.chart, again.chart)
++            assertEquals(PictureXml.placeOf(reread), PictureXml.placeOf(again))
++        }
++    }
++
+ }
+diff --git a/app/src/test/java/com/kalotrapezis/drive/WriterBridgeTest.kt b/app/src/test/java/com/kalotrapezis/drive/WriterBridgeTest.kt
+index dd104dc..0f4126d 100644
+--- a/app/src/test/java/com/kalotrapezis/drive/WriterBridgeTest.kt
++++ b/app/src/test/java/com/kalotrapezis/drive/WriterBridgeTest.kt
+@@ -203,4 +203,80 @@ class WriterBridgeTest {
+         assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.FontSize && 0 in it.range })
+         assertEquals(true, shown.any { it is com.mohamedrejeb.richeditor.document.RichTextSpanMark.Italic && 0 in it.range })
+     }
++    @Test fun `editor fonts follow run overrides and paragraph styles without changing editable text`() {
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = ParaLook(font = "Times New Roman")
++        }
++        val doc = OfficeDoc(listOf(
++            DocPara(listOf(DocRun("style "), DocRun("linked", font = "<w:rFonts w:ascii=\"Arial\"/>", link = "https://example.com"), DocRun("${LINE_BREAK}second")), list = DocList(false, 0)),
++            DocPara(listOf(DocRun("plain")))))
++        val state = com.mohamedrejeb.richeditor.model.RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++        val before = state.toRichTextDocument()
++        val seen = mutableListOf<String?>()
++        val shown = WriterBridge.displayText(state.annotatedString, before, doc, styles) { name ->
++            seen += name
++            if (name == "Arial") androidx.compose.ui.text.font.FontFamily.SansSerif else androidx.compose.ui.text.font.FontFamily.Serif
++        }
++        assertEquals(listOf("Times New Roman", "Arial", "Times New Roman", "Times New Roman"), seen)
++        assertEquals(state.annotatedString.text, shown.text)
++        val at = shown.text.indexOf("linked")
++        assertEquals(true, shown.spanStyles.any { it.start == at && it.end == at + 6 && it.item.fontFamily == androidx.compose.ui.text.font.FontFamily.SansSerif })
++        assertEquals(before, state.toRichTextDocument())
++        assertEquals(doc.paras.map { it.copy(keep = null, runs = it.runs.map { r -> r.copy(font = null) }) }, WriterBridge.fromEditor(before, doc.basePt))
++    }
++
++    @Test fun `heading and at least line spacing follow the same paragraph rules as body text`() {
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = if (p.heading > 0) ParaLook(sizePt = 24f, lineExact = 36f)
++                else ParaLook(lineExact = 24f, lineAtLeast = true)
++        }
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Heading")), heading = 1),
++            DocPara(listOf(DocRun("small", sizePt = 10f))), DocPara(listOf(DocRun("large", sizePt = 40f)))), basePt = 16f)
++        val blocks = WriterBridge.toEditor(doc, styles = styles).blocks
++        assertEquals(36f, blocks[0].lineHeight.value, 0.001f)
++        assertEquals(24f, blocks[1].lineHeight.value, 0.001f)
++        assertEquals(40f * WriterBridge.lineRatio, blocks[2].lineHeight.value, 0.001f)
++    }
++
++    @Test fun `layout reflow preserves typing undo and redo`() {
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Original")))))
++        val state = com.mohamedrejeb.richeditor.model.RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc))
++        state.history.clear()
++        state.selection = androidx.compose.ui.text.TextRange(0)
++        state.replaceTextRange(androidx.compose.ui.text.TextRange(0, 0), "Typed ")
++        assertEquals(true, state.history.canUndo)
++        val typed = doc.copy(paras = WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
++        WriterBridge.reflow(state, typed, HashMap(), DocStyles.Plain)
++        assertEquals("Typed Original", state.annotatedString.text)
++        assertEquals(true, state.history.undo())
++        assertEquals("Original", state.annotatedString.text)
++        WriterBridge.reflow(state, doc, HashMap(), DocStyles.Plain)
++        assertEquals(true, state.history.redo())
++        assertEquals("Typed Original", state.annotatedString.text)
++    }
++
++    @Test fun `contextual spacing and hard line breaks do not add extra paragraph gaps`() {
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = ParaLook(before = 6f, after = 12f, contextual = p.keep?.style == "Same")
++        }
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("one${LINE_BREAK}two")), keep = DocKeep(style = "Same")),
++            DocPara(emptyList(), keep = DocKeep(style = "Same")), DocPara(listOf(DocRun("new style")), keep = DocKeep(style = "Other"))))
++        val state = com.mohamedrejeb.richeditor.model.RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++        val places = WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())
++        assertEquals(listOf(places[2].to to 18f), WriterBridge.paragraphGaps(doc, styles, places))
++    }
++
++    @Test fun `a hard page break suppresses the ordinary boundary spacing`() {
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("page one"))), DocPara(listOf(DocRun("page two")), heading = 1)))
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = ParaLook(before = 18f, after = 12f, pageBreakBefore = p.heading == 1)
++        }
++        val state = com.mohamedrejeb.richeditor.model.RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++        assertEquals(emptyList<Pair<Int, Float>>(), WriterBridge.paragraphGaps(doc, styles, WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument())))
++    }
++
+ }
+diff --git a/app/src/main/java/com/kalotrapezis/drive/WriterTabs.kt b/app/src/main/java/com/kalotrapezis/drive/WriterTabs.kt
+new file mode 100644
+index 0000000..fbd5583
+--- /dev/null
++++ b/app/src/main/java/com/kalotrapezis/drive/WriterTabs.kt
+@@ -0,0 +1,51 @@
++package com.kalotrapezis.drive
++
++import androidx.compose.ui.text.AnnotatedString
++import androidx.compose.ui.text.SpanStyle
++import androidx.compose.ui.text.TextMeasurer
++import androidx.compose.ui.text.TextStyle
++import androidx.compose.ui.unit.Constraints
++import androidx.compose.ui.unit.sp
++import com.mohamedrejeb.richeditor.document.RichTextDocument
++
++internal const val EDITOR_TAB_SPACE = '\u200A'
++internal data class EditorTab(val at: Int, val leader: Char?)
++
++/** A tab is a sized space only in the visual text. The editable text and the saved file keep the tab. */
++internal fun editorTabs(shown: AnnotatedString, rich: RichTextDocument, doc: OfficeDoc, styles: DocStyles,
++    measurer: TextMeasurer, textStyle: TextStyle, widthPx: Int, pxPerSp: Float, spPerPt: Float): Pair<AnnotatedString, List<EditorTab>> {
++    if ('\t' !in shown.text) return shown to emptyList()
++    val builder = AnnotatedString.Builder(shown.text.replace('\t', EDITOR_TAB_SPACE)).apply {
++        shown.spanStyles.forEach { addStyle(it.item, it.start, it.end) }
++        shown.paragraphStyles.forEach { addStyle(it.item, it.start, it.end) }
++        shown.getStringAnnotations(0, shown.length).forEach { addStringAnnotation(it.tag, it.item, it.start, it.end) }
++    }
++    val places = WriterBridge.blockPlaces(shown.text, rich)
++    val tabs = ArrayList<EditorTab>()
++    val pxPerPt = pxPerSp * spPerPt
++    val widthPt = widthPx / pxPerPt
++    places.forEach { b ->
++        val p = doc.paras.getOrNull(b.para) ?: return@forEach
++        val look = styles.look(p)
++        val stops = (look.tabs.map { stop ->
++            // Mobile view reflows to the screen; a contents line's right edge follows that width.
++            if (WriterBridge.pageWidthPt == null && stop.type == 'r') stop.copy(pos = minOf(stop.pos, widthPt - 1f / pxPerPt)) else stop
++        } + if (look.firstLine < 0f) listOf(TabStop(look.left, 'l')) else emptyList()).sortedBy { it.pos }
++        for (at in b.from until b.to) {
++            if (shown.text[at] != '\t') continue
++            builder.addStyle(SpanStyle(fontSize = 0.5.sp, letterSpacing = 0.sp), at, at + 1)
++            val current = builder.toAnnotatedString()
++            val laid = measurer.measure(current, textStyle, constraints = Constraints(maxWidth = widthPx))
++            val x = laid.getHorizontalPosition(at, true) / pxPerPt
++            val end = (at + 1 until b.to).firstOrNull { shown.text[it] == '\t' } ?: b.to
++            val following = if (end == at + 1) 0f else measurer.measure(current.subSequence(at + 1, end), textStyle,
++                softWrap = false).multiParagraph.maxIntrinsicWidth / pxPerPt
++            val (stop, gap) = tabGap(x, following, stops)
++            val glyph = measurer.measure(AnnotatedString(EDITOR_TAB_SPACE.toString()), textStyle.copy(fontSize = 0.5.sp), softWrap = false)
++                .multiParagraph.maxIntrinsicWidth / pxPerSp
++            builder.addStyle(SpanStyle(fontSize = 0.5.sp, letterSpacing = (gap * spPerPt - glyph).sp), at, at + 1)
++            tabs += EditorTab(at, stop.leader)
++        }
++    }
++    return builder.toAnnotatedString() to tabs
++}
+diff --git a/app/src/test/java/com/kalotrapezis/drive/WriterDraftTest.kt b/app/src/test/java/com/kalotrapezis/drive/WriterDraftTest.kt
+new file mode 100644
+index 0000000..aa8468c
+--- /dev/null
++++ b/app/src/test/java/com/kalotrapezis/drive/WriterDraftTest.kt
+@@ -0,0 +1,18 @@
++package com.kalotrapezis.drive
++
++import org.junit.Assert.*
++import org.junit.Test
++import java.nio.file.Files
++
++class WriterDraftTest {
++    @Test fun `a failed draft write leaves the last complete recovery file intact`() {
++        val dir = Files.createTempDirectory("writer-draft-test").toFile()
++        try {
++            val file = dir.resolve("recovery.docx")
++            writeWriterDraft(file, "complete original".toByteArray())
++            dir.resolve(".recovery.docx.saving").mkdir()
++            assertTrue(runCatching { writeWriterDraft(file, "new".toByteArray()) }.isFailure)
++            assertEquals("complete original", file.readText())
++        } finally { dir.deleteRecursively() }
++    }
++}
+diff --git a/app/src/androidTest/java/com/kalotrapezis/drive/WriterLayoutDeviceTest.kt b/app/src/androidTest/java/com/kalotrapezis/drive/WriterLayoutDeviceTest.kt
+new file mode 100644
+index 0000000..1052b1e
+--- /dev/null
++++ b/app/src/androidTest/java/com/kalotrapezis/drive/WriterLayoutDeviceTest.kt
+@@ -0,0 +1,136 @@
++package com.kalotrapezis.drive
++
++import androidx.compose.ui.text.TextMeasurer
++import androidx.compose.ui.text.TextStyle
++import androidx.compose.ui.text.font.createFontFamilyResolver
++import androidx.compose.ui.text.style.LineHeightStyle
++import androidx.compose.ui.unit.Constraints
++import androidx.compose.ui.unit.Density
++import androidx.compose.ui.unit.LayoutDirection
++import androidx.compose.ui.unit.sp
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import com.mohamedrejeb.richeditor.model.RichTextState
++import org.junit.Assert.*
++import org.junit.Test
++import org.junit.runner.RunWith
++
++@RunWith(AndroidJUnit4::class)
++class WriterLayoutDeviceTest {
++    @Test fun mobileTableDoesNotInheritTheSeparatorFontHeight() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        OfficeFonts.assets = context.assets
++        val width = WriterBridge.editorWidthSp
++        val page = WriterBridge.pageWidthPt
++        try {
++            WriterBridge.pageWidthPt = null
++            WriterBridge.editorWidthSp = 160f
++            val table = DocTable("", "", listOf(DocRow("", listOf(DocCell("", listOf(DocPara(listOf(DocRun("tiny", sizePt = 8f)))))))))
++            val doc = OfficeDoc(listOf(tablePara(table), DocPara(listOf(DocRun("After table")))), basePt = 12f)
++            val state = RichTextState()
++            val pictures = HashMap<String, DocImage>()
++            state.setRichTextDocument(WriterBridge.toEditor(doc, pictures))
++            val measurer = TextMeasurer(createFontFamilyResolver(context), Density(1f), LayoutDirection.Ltr)
++            val textStyle = TextStyle(fontSize = 16.sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None))
++            val before = measurer.measure(state.annotatedString, textStyle, constraints = Constraints(maxWidth = 160))
++            WriterBridge.spaceParagraphs(state, before)
++            val expected = WriterBridge.shownSize(pictures.values.single(), 16f / 12f).second
++            val shown = WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, DocStyles.Plain)
++            val after = measurer.measure(shown, textStyle, constraints = Constraints(maxWidth = 160))
++            assertEquals(state.annotatedString.text, shown.text)
++            assertTrue("Expected a table smaller than a text line: $expected", expected < 16f)
++            assertEquals("Table should occupy exactly its own height", expected, after.getLineBottom(0) - after.getLineTop(0), 1.1f)
++            assertEquals("After table", WriterBridge.fromEditor(state.toRichTextDocument(), 12f, pictures)[1].text)
++        } finally {
++            WriterBridge.editorWidthSp = width
++            WriterBridge.pageWidthPt = page
++        }
++    }
++
++    @Test fun editorUsesTheViewersBundledFontsIncludingLinkedText() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        OfficeFonts.assets = context.assets
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = ParaLook(font = "Times New Roman")
++        }
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Serif text "), DocRun("linked Arial", font = "<w:rFonts w:ascii=\"Arial\"/>", link = "https://example.com")))))
++        val state = RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++        val shown = WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, styles)
++        assertNotNull(OfficeFonts.typeface("Times New Roman"))
++        assertNotNull(OfficeFonts.typeface("Arial"))
++        assertTrue(shown.spanStyles.any { it.item.fontFamily != null && it.start == 0 && it.end == 11 })
++        assertTrue(shown.spanStyles.any { it.item.fontFamily != null && it.start == 11 && it.end == 23 })
++        assertEquals("https://example.com", WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt).single().runs.last().link)
++    }
++    @Test fun multilineParagraphSpacingIsAddedOnceWithoutMovingTextOffsets() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val styles = object : DocStyles() {
++            override fun look(p: DocPara) = ParaLook(before = 6f, after = 12f)
++        }
++        val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("A long paragraph that wraps onto several lines in a narrow editor"))),
++            DocPara(listOf(DocRun("Next paragraph")))), basePt = 16f)
++        val state = RichTextState()
++        state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++        val measurer = TextMeasurer(createFontFamilyResolver(context), Density(1f), LayoutDirection.Ltr)
++        val style = TextStyle(fontSize = 16.sp, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None))
++        val before = measurer.measure(state.annotatedString, style, constraints = Constraints(maxWidth = 150))
++        WriterBridge.spaceParagraphs(state, before)
++        val baseline = measurer.measure(state.annotatedString, style, constraints = Constraints(maxWidth = 150))
++        val shown = WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, styles) { null }
++        val spaced = measurer.measure(shown, style, constraints = Constraints(maxWidth = 150))
++        assertEquals(state.annotatedString.text, shown.text)
++        val at = shown.text.indexOf("Next")
++        val difference = spaced.getLineTop(spaced.getLineForOffset(at)) - baseline.getLineTop(baseline.getLineForOffset(at))
++        assertEquals("Spacing belongs only at the paragraph boundary", 18f, difference, 1.1f)
++        assertEquals(doc.paras, WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt))
++    }
++
++    @Test fun contentsTabAlignsItsNumberAndKeepsTheEditableTab() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val oldWidth = WriterBridge.pageWidthPt
++        WriterBridge.pageWidthPt = 300f
++        try {
++            val styles = object : DocStyles() {
++                override fun look(p: DocPara) = ParaLook(tabs = listOf(TabStop(250f, 'r', '.')))
++            }
++            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Contents\t12")))), basePt = 16f)
++            val state = RichTextState()
++            state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++            val measurer = TextMeasurer(createFontFamilyResolver(context), Density(1f), LayoutDirection.Ltr)
++            val style = TextStyle(fontSize = 16.sp)
++            val plain = WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, styles) { null }
++            val (shown, tabs) = editorTabs(plain, state.toRichTextDocument(), doc, styles, measurer, style, 300, 1f, 1f)
++            val laid = measurer.measure(shown, style, constraints = Constraints(maxWidth = 300))
++            assertEquals(plain.length, shown.length)
++            assertEquals(listOf(EditorTab(8, '.')), tabs)
++            assertEquals("Right-aligned number must end at the tab stop", 250f, laid.getHorizontalPosition(shown.length, true), 2f)
++            assertEquals("Contents\t12", WriterBridge.fromEditor(state.toRichTextDocument(), doc.basePt).single().text)
++            assertEquals(listOf(0), WriterBridge.paragraphStarts(shown.text, state.toRichTextDocument()))
++        } finally { WriterBridge.pageWidthPt = oldWidth }
++    }
++
++    @Test fun contentsTabScalesWithEditorZoom() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val oldWidth = WriterBridge.pageWidthPt
++        WriterBridge.pageWidthPt = 300f
++        try {
++            val styles = object : DocStyles() {
++                override fun look(p: DocPara) = ParaLook(tabs = listOf(TabStop(250f, 'r', '.')))
++            }
++            val doc = OfficeDoc(listOf(DocPara(listOf(DocRun("Contents\t12")))), basePt = 16f)
++            val state = RichTextState()
++            state.setRichTextDocument(WriterBridge.toEditor(doc, styles = styles))
++            val measurer = TextMeasurer(createFontFamilyResolver(context), Density(1f), LayoutDirection.Ltr)
++            val plain = WriterBridge.displayText(state.annotatedString, state.toRichTextDocument(), doc, styles) { null }
++            for (zoom in listOf(0.7f, 2f)) {
++                val style = TextStyle(fontSize = (16f * zoom).sp)
++                val width = (300f * zoom).toInt()
++                val (shown, _) = editorTabs(plain, state.toRichTextDocument(), doc, styles, measurer, style, width, 1f, zoom)
++                val laid = measurer.measure(shown, style, constraints = Constraints(maxWidth = width))
++                assertEquals("Tab stop must follow the editor's zoom", 250f * zoom, laid.getHorizontalPosition(shown.length, true), 2f)
++            }
++        } finally { WriterBridge.pageWidthPt = oldWidth }
++    }
++
++}

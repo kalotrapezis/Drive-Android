@@ -353,7 +353,14 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       backgrounds (PowerPoint's on a slide, layout or master; LibreOffice's bitmap fill) — before, only colours were drawn.
       `backgrounds saved` (both, LibreOffice's conversions); LibreOffice draws Tetra's .odp's colour and picture. Not yet: gradient
       backgrounds (read or made), slide size. Unit 424/0/7; sweep 349 + 29, none failing.
-- [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
+- [x] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
+      Done 17 Oct (office-C session): a Draw tab (PowerPoint's place, after Insert) › Draw on slide opens Words' `DrawDialog` with the slide
+      under the pens (it now takes a slide as it takes a page: `slide = width, height, drawing`) — pens, highlighter, eraser, move, undo,
+      two fingers to zoom — and the drawing is put on where it was drawn, cut to what was drawn. Saved as Words saves one: a PNG with its
+      strokes inside (Word, PowerPoint and LibreOffice show the picture; PowerPoint's own ink part is not written), so the picture's tab
+      has Edit drawing (the strokes back in Words' dialog), even after saving and opening again (seen on the emulator with an .odp).
+      Also on a picture's tab: Replace (the phone's photo picker; a file's own picture gets a part of its own: `Look.image`).
+      `a picture replaced saved` (both formats).
 - [~] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
       Comments done 17 Oct (office-C session), with Insert › Comment: Words' `NewCommentDialog` (its remembered name), Words'
       `CommentCard`s with their replies (Edit, Reply, Delete — no Resolve: `CommentActions.resolve` now optional, as neither

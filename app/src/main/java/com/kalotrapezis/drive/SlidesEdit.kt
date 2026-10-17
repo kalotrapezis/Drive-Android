@@ -38,7 +38,8 @@ internal object SlidesEdit {
         /** Insert › WordArt (Words' looks and bends): every letter's outline, shadow and glow; the words' bend ("" straight, else PowerPoint's prstTxWarp name) */
         val effects: TextEffects? = null, val warp: String? = null,
         /** Shape options (Words'): the outline's width (pt); its words for screen readers ("" none) */ val lineWidth: Float? = null, val alt: String? = null,
-        /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null) {
+        /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
+        /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
             align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null
@@ -242,8 +243,9 @@ internal object SlidesEdit {
     /** [item] in the looks chosen for it (a shape: its fill, border, words' colour; anything else as it is). */
     private fun styled(item: SlideItem, l: Look?): SlideItem {
         l?.alt?.let { item.alt = it.ifEmpty { null } }
-        if (l?.crop != null && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation, l.crop.toFloatArray().takeIf { c -> c.any { it != 0f } },
-            item.math, item.flipH, item.flipV, item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+        if ((l?.crop != null || l?.image != null) && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation,
+            l.crop?.toFloatArray()?.takeIf { c -> c.any { it != 0f } } ?: item.crop.takeIf { l.crop == null },
+            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
@@ -535,6 +537,8 @@ internal object SlidesEdit {
             if (c.any { it != 0f }) fill.insertBefore(doc.createElementNS(A, "a:srcRect").also { r -> listOf("l", "t", "r", "b").zip(c).forEach { (k, v) -> if (v != 0f) r.setAttribute(k, "${Math.round(v * 100_000)}") } },
                 fill.kids().firstOrNull { it.localName != "blip" })
         } }
+        // Replace picture, Edit drawing: the picture's blip names its new media part
+        for ((id, l) in looks) l.image?.let { rels["image $id"]?.let { rid -> named(id)?.takeIf { it.localName == "pic" }?.getElementsByTagNameNS(A, "blip")?.item(0)?.let { (it as Element).setAttributeNS(R, "r:embed", rid) } } }
         // Shape options' alt text: the item's own description (a picture's too)
         for ((id, l) in looks) l.alt?.let { alt -> root.getElementsByTagNameNS(P, "cNvPr").let { n -> (0 until n.length).map { n.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
             ?.let { if (alt.isEmpty()) it.removeAttribute("descr") else it.setAttribute("descr", alt) } }
@@ -724,7 +728,9 @@ internal object SlidesEdit {
         /** The pictures and charts put on slide [uid] into the file: each a part and a relationship in [relsXml] (the slide's); their ids → rIds. */
         fun media(uid: Int, relsXml: org.w3c.dom.Document): Map<String, String> = (edit.added[uid].orEmpty().filter { it.image != null } +
             // a picture background: a media part as a picture put on is (named "background")
-            listOfNotNull(edit.backgrounds[uid]?.picture?.let { Added("background", 0f, 0f, 0f, 0f, image = it, ext = edit.backgrounds[uid]!!.ext) })).associate { a ->
+            listOfNotNull(edit.backgrounds[uid]?.picture?.let { Added("background", 0f, 0f, 0f, 0f, image = it, ext = edit.backgrounds[uid]!!.ext) }) +
+            // a picture of the slide's own replaced: a media part of its own (named "image" and its id)
+            edit.looks.filter { (k, l) -> k.first == uid && l.image != null }.map { (k, l) -> Added("image ${k.second}", 0f, 0f, 0f, 0f, image = l.image, ext = l.image!!.substringAfterLast('.')) }).associate { a ->
             val ext = when (a.ext) { "jpeg", "jpg" -> "jpeg"; "gif" -> "gif"; else -> "png" }
             val name = "tetra${nextMedia++}.$ext"
             out["ppt/media/$name"] = File(a.image!!).readBytes()

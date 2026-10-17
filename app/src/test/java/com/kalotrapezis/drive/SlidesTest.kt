@@ -384,6 +384,26 @@ class SlidesTest {
         }
     }
 
+    /** Replace picture (and Edit drawing, which replaces it with the drawing again): the file's own picture swapped for another, in its frame. */
+    @Test fun `a picture replaced saved`() {
+        val png = File(scratchDir("pic"), "red.png").apply {
+            val img = java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB).also { i -> for (x in 0 until 8) for (y in 0 until 6) i.setRGB(x, y, 0xCC0000) }
+            javax.imageio.ImageIO.write(img, "png", this) }
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to pic.anim!!) to SlidesEdit.Look(image = png.path)))
+            fun check(d: Deck, how: String) {
+                val p = d.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+                assertTrue(how, p.bytes()!!.contentEquals(png.readBytes())); assertEquals(how, pic.w, p.w, 0.5f); assertEquals(how, pic.x, p.x, 0.5f)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("replaced-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

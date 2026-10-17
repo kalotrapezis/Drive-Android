@@ -285,19 +285,32 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::putPicture) }
-    // Design › Background › Picture: the photo copied as Insert › Picture's are (PNG or JPEG), the chosen slide's background
+    /** A photo copied for a slide (a background, a picture replaced): PNG or JPEG as it is, another kind made a JPEG, as PowerPoint can show it. */
+    fun copied(uri: android.net.Uri): Pair<File, String>? = runCatching {
+        val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+        val png = bytes.size > 4 && bytes[1] == 'P'.code.toByte() && bytes[2] == 'N'.code.toByte()
+        val data = if (png || (bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte())) bytes
+            else java.io.ByteArrayOutputStream().also { out -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }.toByteArray()
+        File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.${if (png) "png" else "jpeg"}").apply { writeBytes(data) } to if (png) "png" else "jpeg"
+    }.getOrNull()
+    // Design › Background › Picture: the chosen slide's background
     val pickBack = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val made = withContext(Dispatchers.IO) { runCatching {
-                val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                val png = bytes.size > 4 && bytes[1] == 'P'.code.toByte() && bytes[2] == 'N'.code.toByte()
-                val data = if (png || (bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte())) bytes
-                    else java.io.ByteArrayOutputStream().also { out -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }.toByteArray()
-                File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.${if (png) "png" else "jpeg"}").apply { writeBytes(data) } to if (png) "png" else "jpeg"
-            }.getOrNull() } ?: run { message = "That picture could not be read"; return@launch }
+            val made = withContext(Dispatchers.IO) { copied(uri) } ?: run { message = "That picture could not be read"; return@launch }
             val e = edit ?: return@launch; val c = chosen ?: return@launch
             change(e.copy(backgrounds = e.backgrounds + (e.order[c].uid to SlidesEdit.Back(picture = made.first.path, ext = made.second)))); WriterLog.i("Slides: a picture background")
         }
+    }
+    /** The chosen picture made [f] (Replace, Edit drawing), in its frame: one put on here takes it as its own, the file's own in its looks. */
+    fun repicture(f: File) {
+        val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
+        if (e.added[uid]?.any { it.id == id } == true) alter { it.copy(image = f.path, ext = f.extension) }
+        else restyle { it.copy(image = f.path) }
+        WriterLog.i("Slides: a picture replaced")
+    }
+    // Replace picture (PowerPoint's Change Picture)
+    val pickReplace = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri ?: return@rememberLauncherForActivityResult
+        scope.launch { withContext(Dispatchers.IO) { copied(uri) }?.let { repicture(it.first) } ?: run { message = "That picture could not be read" } }
     }
     fun leave() { if (changed) leaving = true else { file?.let { slideDraft(context, it).delete() }; back() } }
     // The app sent to the background with changes not saved (Android may close it then): kept as a draft, as Words' and Tables'.
@@ -394,6 +407,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sizing by remember { mutableStateOf(false) } // Arrange › Size and position: the numbers
     var shaping by remember { mutableStateOf(false) } // Shape options: Words' page of a shape's styles, fill, outline, size, angle and alt text
     var alting by remember { mutableStateOf(false) } // Alt text of what is not a shape (a picture, a chart, a table, a text box)
+    var drawing by remember { mutableStateOf(false) } // Draw › Draw on slide: Words' drawing page over the chosen slide
+    var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
@@ -667,6 +682,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             if (cropping == null) message = "This picture cannot be cropped here"
                         } }
                         if (it0.crop != null) RibbonButton("Reset picture", w, R.drawable.ic_undo) { recrop(listOf(0f, 0f, 0f, 0f)) }
+                        RibbonButton("Replace", w, R.drawable.ic_gallery) { pickReplace.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        // a drawing (Words' or Draw on slide's: its strokes ride in its picture) drawn on again
+                        val strokes = remember(it0) { it0.bytes()?.let { InkPicture.strokesOf(it) } }
+                        if (strokes != null) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { redrawing = it0 to strokes.first }
                     }
                     // Words' Shape options for a shape; for the rest its alt text (what it shows, for screen readers)
                     if ((it0 as? SlideItem.Shape)?.shape != null && !it0.grouped) RibbonButton("Shape options", w, R.drawable.ic_tune) { shaping = true }
@@ -750,6 +769,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
                 RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
+            }
+            "Draw" -> {
+                // Words' Draw (PowerPoint's Draw tab): pens and a highlighter on the slide itself, the drawing put on where it was drawn
+                RibbonButton("Draw on slide", w, R.drawable.ic_draw) { drawing = true }
             }
             "View" -> {
                 // PowerPoint's Presentation Views: the slide (Normal) or every slide in a grid (Slide sorter), where several are moved at once
@@ -1249,7 +1272,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter })
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
@@ -1397,6 +1420,21 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (sizing && arranged != null) SizeAndPosition(arranged, { sizing = false }) { x, y, ww, hh -> sizing = false; reframe { listOf(x, y, ww, hh) } }
+                    if (drawing) base?.let { d -> view?.slides?.getOrNull(chosen ?: -1)?.let { sl ->
+                        DrawDialog(d.width, { drawing = false }, slide = Triple(d.width, d.height) { c -> Slides.draw(c, d, sl, 1f) }) { png, ww, hh, at, _ ->
+                            drawing = false
+                            val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.png").apply { writeBytes(png) }
+                            val ee = edit ?: return@DrawDialog; val cc = chosen ?: return@DrawDialog
+                            put(SlidesEdit.Added(ee.newId(ee.order[cc].uid, taken(ee, cc)), at?.first ?: 0f, at?.second ?: 0f, ww, hh, image = f.path, ext = "png"))
+                            WriterLog.i("Slides: a drawing put on")
+                        }
+                    } }
+                    redrawing?.let { (p, strokes) ->
+                        DrawDialog(p.w, { redrawing = null }, boxAspect = p.h / p.w.coerceAtLeast(1f), initial = strokes) { png, _, _, _, _ ->
+                            redrawing = null
+                            repicture(File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.png").apply { writeBytes(png) })
+                        }
+                    }
                     if (sectioning) edit?.let { ee -> base?.let { d -> chosen?.let { cc ->
                         val uid = ee.order[cc].uid; val now = ee.sectionsNow(d); val here = now.firstOrNull { it.second == uid }
                         var typed by remember { mutableStateOf(here?.first ?: "Section ${now.size + 1}") }

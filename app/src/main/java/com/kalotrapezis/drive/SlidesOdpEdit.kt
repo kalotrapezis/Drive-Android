@@ -298,6 +298,17 @@ internal object SlidesOdpEdit {
                 if (pr != null) s.setAttributeNS(PRES, "presentation:style-name", nm) else s.setAttributeNS(DRAW, "draw:style-name", nm)
             }
         }
+        // pictures put on: each a part of its own, listed in the manifest
+        val manifest = read("META-INF/manifest.xml")?.let(OfficeFormats::parse)
+        var nextPicture = (zip.entries().asSequence().mapNotNull { Regex("""^Pictures/tetra(\d+)\.""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        fun picture(a: SlidesEdit.Added): String {
+            val ext = when (a.ext) { "jpeg", "jpg" -> "jpg"; "gif" -> "gif"; else -> "png" }
+            val path = "Pictures/tetra${nextPicture++}.$ext"
+            out[path] = File(a.image!!).readBytes()
+            manifest?.documentElement?.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply {
+                setAttributeNS(MANIFEST, "manifest:full-path", path); setAttributeNS(MANIFEST, "manifest:media-type", if (ext == "jpg") "image/jpeg" else "image/$ext") })
+            return path
+        }
         /** Shape options' alt text: the item's svg:desc ("" none). */
         fun alt(el: Element, words: String) {
             el.kids().filter { it.localName == "desc" && it.namespaceURI == SVG }.forEach { el.removeChild(it) }
@@ -339,6 +350,8 @@ internal object SlidesOdpEdit {
                 if (l.words) words(s, l)
             }
             l.alt?.let { alt(el, it) }
+            // Replace picture, Edit drawing: the frame's picture a new one in the package
+            l.image?.let { p -> el.kids().firstOrNull { it.localName == "image" }?.setAttributeNS(XLINK, "xlink:href", picture(SlidesEdit.Added("image", 0f, 0f, 0f, 0f, image = p, ext = p.substringAfterLast('.')))) }
             l.crop?.let { crop(el, it) }
         }
         /** [el] at [x], [y], [w] × [h] (points), turned [deg] clockwise about its middle (Words' draw:transform; 0: plain svg:x and svg:y). */
@@ -367,17 +380,6 @@ internal object SlidesOdpEdit {
             }
         }
 
-        // pictures put on: each a part of its own, listed in the manifest
-        val manifest = read("META-INF/manifest.xml")?.let(OfficeFormats::parse)
-        var nextPicture = (zip.entries().asSequence().mapNotNull { Regex("""^Pictures/tetra(\d+)\.""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
-        fun picture(a: SlidesEdit.Added): String {
-            val ext = when (a.ext) { "jpeg", "jpg" -> "jpg"; "gif" -> "gif"; else -> "png" }
-            val path = "Pictures/tetra${nextPicture++}.$ext"
-            out[path] = File(a.image!!).readBytes()
-            manifest?.documentElement?.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply {
-                setAttributeNS(MANIFEST, "manifest:full-path", path); setAttributeNS(MANIFEST, "manifest:media-type", if (ext == "jpg") "image/jpeg" else "image/$ext") })
-            return path
-        }
         val ns = """xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:text="$TEXT" xmlns:xlink="$XLINK""""
         fun added(a: SlidesEdit.Added, look: SlidesEdit.Look?): Element? {
             val box = """svg:x="${cm(a.x)}" svg:y="${cm(a.y)}" svg:width="${cm(a.w)}" svg:height="${cm(a.h)}""""

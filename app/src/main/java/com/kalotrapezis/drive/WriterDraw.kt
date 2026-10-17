@@ -143,11 +143,14 @@ private enum class Tool { Pen, Pen2, Highlighter, Eraser, Move }
  */
 @Composable
 internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage> = emptyList(), startPage: Int = 0, boxAspect: Float = 0.6f,
-    initial: List<InkStroke> = emptyList(), insert: (ByteArray, Float, Float, Pair<Float, Float>?, Int) -> Unit) {
+    initial: List<InkStroke> = emptyList(),
+    /** Slides (17 Oct): a slide to draw on as a page is — its width, height (points) and drawing */ slide: Triple<Float, Float, (android.graphics.Canvas) -> Unit>? = null,
+    insert: (ByteArray, Float, Float, Pair<Float, Float>?, Int) -> Unit) {
     var pageAt by remember { mutableIntStateOf(startPage) }
     val page = pages.getOrNull(pageAt)
-    val widthPt = page?.page?.width ?: boxPt
-    val aspect = page?.let { it.page.height / it.page.width } ?: boxAspect
+    val onPage = page != null || slide != null
+    val widthPt = page?.page?.width ?: slide?.first ?: boxPt
+    val aspect = page?.let { it.page.height / it.page.width } ?: slide?.let { it.second / it.first } ?: boxAspect
     val strokes = remember { mutableStateListOf<InkStroke>().apply { addAll(initial) } }
     var current by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -166,7 +169,7 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (page == null) Text("Draw", style = MaterialTheme.typography.titleLarge)
+                if (!onPage) Text("Draw", style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Choice("Pen", tool == Tool.Pen) { tool = Tool.Pen }
                     Choice("Pen 2", tool == Tool.Pen2) { tool = Tool.Pen2 }
@@ -190,9 +193,9 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                     Choice("+", false) { widths[slot] = (widths[slot] + if (widths[slot] < 1f) 0.25f else 1f).coerceAtMost(12f) }
                 }
                 // As big as fits with the tools and the buttons (a landscape tablet is short).
-                val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - if (page == null) 360.dp else 280.dp).coerceAtLeast(160.dp)
+                val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - if (!onPage) 360.dp else 280.dp).coerceAtLeast(160.dp)
                 // On a page: the page across the whole width, two fingers to zoom and move it, one (or the pen) to draw.
-                val area = if (page == null) Modifier.widthIn(max = room / aspect).fillMaxWidth().aspectRatio(1 / aspect).background(Color.White)
+                val area = if (!onPage) Modifier.widthIn(max = room / aspect).fillMaxWidth().aspectRatio(1 / aspect).background(Color.White)
                     else Modifier.fillMaxWidth().height(room).background(Color(0xFF5F6368))
                 Box(Modifier.align(Alignment.CenterHorizontally).then(area).clip(RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFDADCE0), RoundedCornerShape(8.dp))) {
                     Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(tool, pageAt) {
@@ -210,7 +213,7 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                                 } },
                             end = { if (tool != Tool.Eraser && tool != Tool.Move && current.isNotEmpty()) strokes += InkStroke(current, colors[slot], widths[slot], tool == Tool.Highlighter); current = emptyList() },
                             cancel = { current = emptyList() },
-                            transform = if (page == null) null else { centre, move, by ->
+                            transform = if (!onPage) null else { centre, move, by ->
                                 val z = (zoom * by).coerceIn(1f, 6f)
                                 val w = size.width * z
                                 val p = centre - (centre - pan) * (z / zoom) + move
@@ -224,6 +227,7 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                             n.save(); n.translate(pan.x, pan.y); n.scale(k, k)
                             n.drawRect(0f, 0f, laid.page.width, laid.page.height, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
                             laid.draw(n); n.restore() } }
+                        slide?.let { (sw, _, draw) -> drawIntoCanvas { c -> val n = c.nativeCanvas; n.save(); n.translate(pan.x, pan.y); n.scale(across / sw, across / sw); draw(n); n.restore() } }
                         val perMm = across / (widthPt / 72f * 25.4f)
                         fun draw(points: List<Offset>, color: Int, mm: Float, highlighter: Boolean) {
                             if (points.isEmpty()) return
@@ -241,7 +245,7 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = dismiss) { Text("Cancel") }
                     TextButton(enabled = strokes.isNotEmpty(), onClick = {
-                        if (page == null) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null, 0)
+                        if (!onPage) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null, 0)
                         else { val (cut, box) = InkPicture.cut(strokes, aspect, widthPt)
                             val w = box.width * widthPt
                             insert(InkPicture.png(cut, box.height / box.width, w, (w * 4).toInt().coerceIn(64, 2400)), w, box.height * widthPt, box.left * widthPt to box.top * widthPt, pageAt) }

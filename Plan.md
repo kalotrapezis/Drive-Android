@@ -55,13 +55,18 @@ How to write here:
       Slides' Selection tab, X²/X₂ and Aa, Table tab, a text box's Layout, Animation pane and painter, show taps while a video plays;
       then (21:00) the Selection pane and Picture styles / Transparency. Unit 435/0/7, sweep 349 + 29 none failing (20:56, after d782c1e).
       Handing on (notes: office-D-17oct.md in the group's folder): the leftovers next touch Words' shared dialogs and drawing.
-- [~] (office-F session, 17 Oct evening, the only writer in this checkout; took over the stopped office-E's half-done dash/shadow) B's leftovers:
-      outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
-      backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
-      Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph (ba2ea50); engine step 5 (103a2b8); step 6
-      for .xlsx (7ad47c7); C: Replace, Merge & centre, Copy/Paste formatting, Fill, Symbol, Chart from cells, widths/heights/Hide, Link,
-      Remove duplicates, Text to columns, Insert function (71c2da6…489fc21). Unit suite 451, 0 failing; sweep 349 + 29, none failing (23:20).
+- [x] (office-F session, 17 Oct evening → 23:40, the only writer in this checkout; took over the stopped office-E's half-done dash/shadow)
+      B's leftovers all done: outline dash/shadow (19f4206); several chosen, Select all, Group / Ungroup, Distribute, Reset slide
+      (4847685); slide size (396a8f8); gradient backgrounds (1be3318); a deck's own tables (1a9db80); multilevel list and Paragraph
+      (ba2ea50). Engine step 5 (103a2b8) and step 6 for .xlsx (7ad47c7). C: Replace, Merge & centre, Copy/Paste formatting, Fill, Symbol,
+      Chart from cells, widths/heights/Hide, Link, Remove duplicates, Text to columns, Insert function, sheet Hide/Unhide, Gridlines,
+      a protected sheet respected (71c2da6 … f0e7d60). A: the touch-target script and its findings (0fca8e1; a question for the user).
+      Final checks (23:40): unit suite 454, 0 failing, 7 skipped; sweep 349 + 29, none failing; Words' fingerprint unchanged (emulator).
+      All checked on emulator-5554 only — the tablet was not touched (the user asleep). Hand-over: office-F-17oct.md in the group's notes.
+      **For the tablet in the morning (971f6b37), each opened once:** Slides › Shape options Dash/Shadow on a shape; Select all → Group →
+      drag → Ungroup; Distribute; Home › Reset; Design › Slide size and Gradient; a deck's own table's Row below; Home › Multilevel and
+      Paragraph; Tables › a rich-text cell, Replace, Merge & centre, Chart, Width/Hide, Link, Remove duplicates, Text to columns, Insert
+      function, sheet Hide, Gridlines, a protected sheet; Words › Shape options Dash/Shadow. And the touch-target script on the tablet.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

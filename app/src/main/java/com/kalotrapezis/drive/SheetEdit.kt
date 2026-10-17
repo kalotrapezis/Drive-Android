@@ -783,3 +783,32 @@ internal object SheetSpelling {
     /** Cell [cell]'s words with [r] made [with] (its rich text's looks given up: one look, the cell's). */
     fun changed(cell: SheetCell, r: IntRange, with: String) = cell.copy(text = cell.text.replaceRange(r, with), runs = null)
 }
+
+/**
+ * Data › What-If › Goal Seek (Excel's): the value of cell [by] that makes formula cell [set] give [to] — tried as the
+ * sheet works it out (each try the cell changed, its formulas worked out again, then put back), by the secant method
+ * from its own value; null when no value is found (a hundred tries).
+ */
+internal object SheetGoalSeek {
+    fun solve(book: Workbook, index: Int, set: Long, to: Double, by: Long): Double? {
+        val sheet = book.sheet(index)
+        val was = sheet.cells[by] ?: SheetCell("", SheetKind.Empty)
+        fun f(x: Double): Double? {
+            book.edit(index, by, was.copy(text = SheetFormat().general(x), kind = SheetKind.Number, value = x, formula = null))
+            val out = SheetRecalc.run(book, index, sheet, listOf(by))
+            return (out[set] ?: sheet.cells[set])?.value?.minus(to)
+        }
+        try {
+            var x0 = was.value ?: 0.0; var x1 = if (x0 == 0.0) 1.0 else x0 * 1.1
+            var f0 = f(x0) ?: return null; var f1 = f(x1) ?: return null
+            repeat(100) {
+                if (kotlin.math.abs(f1) <= 1e-9 * maxOf(1.0, kotlin.math.abs(to))) return x1
+                if (f1 == f0) return null
+                val x2 = x1 - f1 * (x1 - x0) / (f1 - f0)
+                if (x2.isNaN() || x2.isInfinite()) return null
+                x0 = x1; f0 = f1; x1 = x2; f1 = f(x1) ?: return null
+            }
+            return null
+        } finally { book.edit(index, by, was) } // the cell as it was: the found value goes in as one change of its own
+    }
+}

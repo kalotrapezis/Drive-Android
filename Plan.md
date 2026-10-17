@@ -79,7 +79,8 @@ How to write here:
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
       Sources sheet (116c4d6), Review tab (b39004e),
-      freeze panes (e621ff6), zoom to selection and the bar/tabs. Checks at a925139: unit
+      freeze panes (e621ff6), zoom to selection and the bar/tabs (0d32d4e),
+      Goal seek and CSV import. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
@@ -963,8 +964,13 @@ what is not already above:
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
       Calculate now and automatic / manual; trace precedents and dependents as arrows; evaluate a formula step by step.
-- [ ] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
+- [~] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
+      Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers
+      and dates read as typing reads them, one step of Undo) and Goal seek (Excel's dialog; `SheetGoalSeek`: the sheet's own
+      working-out tried by the secant method, then put back; the found value one change). `goal sought`; emulator: B3 made 765.5 so
+      B5 is 2000; sort.csv imported at F8. Clear filter was there (a column's tab, its chip); the filter is worked out again as cells
+      change, so no Reapply is needed.
 - [ ] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
 - [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and

@@ -203,6 +203,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // View › Formula bar and Sheet tabs: shown or not (the viewer's, as Excel's View options)
     var showBar by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     var showTabs by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    var seeking by remember { mutableStateOf(false) } // Data › Goal seek: its three boxes asked
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -879,6 +880,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 else SheetChart.pictureOds(baked, next, i, r, c, img.widthPt * k, img.heightPt * k, bytes, img.extension) })
         }
     }
+    /** Data › From text/CSV: the file's table typed into the sheet from the chosen cell (numbers and dates read as typing reads them), one step of Undo. */
+    val importCsv = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { picked -> picked ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val s = sheet ?: return@launch; val b = book ?: return@launch; val (r0, c0) = chosen(s)
+            val table = withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(picked)?.use { it.readBytes() }?.let { DecimalFormatSymbols.getInstance().let { sym -> Sheets.csv(it, sym.decimalSeparator, sym.groupingSeparator).sheet(0) } } }.getOrNull() }
+                ?: run { message = "That file could not be read"; return@launch }
+            val changes = LinkedHashMap<Long, SheetCell>()
+            table.cells.forEach { k, c -> if (c.text.isNotEmpty()) { val r = r0 + Sheet.row(k); val col = c0 + Sheet.col(k); val (look, format) = lookAt(s, r, col)
+                changes[Sheet.key(r, col)] = SheetInput.cell(c.text, s[r, col], look, format, b.format) } }
+            if (changes.isEmpty()) { message = "Nothing in that file"; return@launch }
+            history.apply(b, index, changes); version++; message = "Imported ${table.rows} rows"; WriterLog.i("Sheets: a CSV of ${changes.size} cells imported")
+        }
+    }
     /** Excel's Clear ▾ on the chosen cells: [what] "contents", "formats", "all" (both), "notes" or "links" (changes to the file). */
     fun clearCells(what: String = "contents") {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
@@ -1254,6 +1268,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     if ((rows.first..rows.last).any { (s.rowLevels[it] ?: 0) > 0 }) RibbonButton("Ungroup", w, R.drawable.ic_unfold_more) { outlineStep(rows, -1, null) }
                                     if (group != null) { val shut = group.all { it in s.hiddenRows }
                                         RibbonButton(if (shut) "Expand" else "Collapse", w, if (shut) R.drawable.ic_add else R.drawable.ic_remove) { outlineStep(group, 0, !shut) } } }
+                                // Excel's What-If › Goal Seek, and Get Data › From Text/CSV (into the sheet at the chosen cell)
+                                RibbonButton("Goal seek", w, R.drawable.ic_functions) { seeking = true }
+                                RibbonButton("From text/CSV", w, R.drawable.ic_note_add) { importCsv.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "text/tab-separated-values")) }
                                 // Excel's Subtotal: a total row after each group of rows alike in a column, a Grand Total, the groups outlined
                                 if (b.kind != "csv") RibbonButton("Subtotal", w, R.drawable.ic_functions) {
                                     totalling = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
@@ -1873,6 +1890,27 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 Text("Notes: $notes"); Text("Pictures, charts and shapes: ${s.drawings.size}")
                 Text("Used range: A1:${Sheets.colName(maxOf(0, s.cols - 1))}${maxOf(1, s.rows)}") } },
             confirmButton = { TextButton(onClick = { counting = false }) { Text("Close") } }) } }
+    // Data › Goal seek: Excel's dialog — the formula cell, the value it should give, the cell to change
+    if (seeking) sheet?.let { s -> val b = book; val (r0, c0) = chosen(s)
+        var setRef by remember { mutableStateOf("${Sheets.colName(c0)}${r0 + 1}") }; var toValue by remember { mutableStateOf("") }; var byRef by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { seeking = false }, title = { Text("Goal seek") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(setRef, { setRef = it }, label = { Text("Set cell (a formula)") }, singleLine = true)
+                OutlinedTextField(toValue, { toValue = it }, label = { Text("To value") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                OutlinedTextField(byRef, { byRef = it }, label = { Text("By changing cell") }, singleLine = true) } },
+            confirmButton = { TextButton(onClick = { seeking = false; if (b == null) return@TextButton
+                val set = Sheets.cellRef(setRef.trim().uppercase().replace("$", "")); val by = Sheets.cellRef(byRef.trim().uppercase().replace("$", "")); val to = toValue.trim().replace(',', '.').toDoubleOrNull()
+                when {
+                    set == null || by == null || to == null -> message = "Give two cells and a number"
+                    s[set.first, set.second]?.formula == null -> message = "${setRef.uppercase()} has no formula"
+                    s[by.first, by.second]?.formula != null -> message = "${byRef.uppercase()} holds a formula: choose a cell with a value"
+                    else -> { val x = SheetGoalSeek.solve(b, index, Sheet.key(set.first, set.second), to, Sheet.key(by.first, by.second))
+                        if (x == null) message = "Goal seek found no value"
+                        else { val k = Sheet.key(by.first, by.second); val old = s.cells[k] ?: SheetCell("", SheetKind.Empty); val code = lookAt(s, by.first, by.second).second
+                            history.apply(b, index, mapOf(k to b.format.format(x, code).let { old.copy(text = it.text, kind = SheetKind.Number, value = x, formula = null, color = it.color) })); version++
+                            message = "${byRef.uppercase()} set to ${b.format.general(x)}"; WriterLog.i("Sheets: goal sought") } }
+                } }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { seeking = false }) { Text("Cancel") } }) }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

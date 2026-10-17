@@ -242,6 +242,18 @@ class SheetEditTest {
         assertEquals("Olive harvest", SheetSpelling.changed(s.cells[k]!!, r, "harvest").text)
     }
 
+    /** Data › Goal Seek: the input that makes a formula reach a value (straight and curved), none for a formula that does not read it; the sheet left as it was. */
+    @Test fun `goal sought`() {
+        val b = Sheets.csv("2,0,0".toByteArray()); val s = b.sheet(0); val h = SheetHistory()
+        h.apply(b, 0, mapOf(Sheet.key(0, 1) to SheetInput.cell("=A1*3+1", null, 0, "General", b.format), Sheet.key(0, 2) to SheetInput.cell("=A1^2", null, 0, "General", b.format)))
+        assertEquals(7.0, s[0, 1]?.value)
+        assertEquals(3.0, SheetGoalSeek.solve(b, 0, Sheet.key(0, 1), 10.0, Sheet.key(0, 0))!!, 1e-6)
+        assertEquals(4.0, SheetGoalSeek.solve(b, 0, Sheet.key(0, 2), 16.0, Sheet.key(0, 0))!!, 1e-6)
+        h.apply(b, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("=5", null, 0, "General", b.format)))
+        assertEquals(null, SheetGoalSeek.solve(b, 0, Sheet.key(1, 1), 9.0, Sheet.key(0, 0)))
+        assertEquals(2.0, s[0, 0]?.value); assertEquals(7.0, s[0, 1]?.value) // tried, then put back
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

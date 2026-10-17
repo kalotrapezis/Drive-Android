@@ -271,7 +271,16 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       (`dateForms`); saved as PowerPoint's dt/ftr/sldNum placeholders (slidenum and datetime1 fields) and as LibreOffice
       keeps them (footer-decl, date-time-decl, the page style's display flags; the .odp reader now shows the master's
       boxes so). `header and footer saved` (both, LibreOffice's conversions both ways); emulator: on all but the title slide,
-      saved, LibreOffice draws them. Seen: the footer's words in LibreOffice's default face (the layout names none). Link (to a web page or to a
+      saved, LibreOffice draws them. Seen: the footer's words in LibreOffice's default face (the layout names none). Symbol, Date, Line break —
+      done 17 Oct (office-B session): Words' `SymbolDialog` and `DateDialog` (its forms, `dateForms`), and Words' Line break
+      (LINE_BREAK, saved as a:br / text:line-break), each put where the typing cursor is — the chosen box's words opened at
+      their end, else a new text box; the typing bar has a Line break button. Equation (Words') — done 17 Oct: Words'
+      `EquationDialog`; drawn by Words' `MathDrawable` on the slide (sharp at any size); saved as PowerPoint writes one (a14:m
+      OMML in a text box, over a picture of it — which is what LibreOffice shows) and as a LibreOffice Math object (MathML,
+      `OfficeMath.mathml`) with the picture as its replacement; read back from either with the equation kept (also
+      LibreOffice's own a14:m with an EMF fallback), so Edit equation works on a deck's own ones too; the tab is "Equation".
+      `an equation put on saved`, `a line break typed saved` (both formats, LibreOffice's conversions); emulator: x²+1=√y put on,
+      saved — LibreOffice draws its picture; a date put in Plan's words. Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

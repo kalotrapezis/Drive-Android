@@ -15,7 +15,8 @@ internal object SlidesEdit {
     data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
         /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList(),
-        /** a chart (Insert › Chart, Words' chart editor): its kind, numbers and looks */ val chart: DocChart? = null)
+        /** a chart (Insert › Chart, Words' chart editor): its kind, numbers and looks */ val chart: DocChart? = null,
+        /** an equation (Insert › Equation, Words' editor): [image] is it drawn, PowerPoint's fallback and LibreOffice's replacement */ val math: MathNode? = null)
     /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
     data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null,
         /** Home (17 Oct, Words' tools): every letter's face, size, bold, italic, underline, strike-through, highlight ([NONE]: taken away) — null: as they are */
@@ -128,7 +129,7 @@ internal object SlidesEdit {
         val kx = if (item.w > 0) w / item.w else 1f; val ky = if (item.h > 0) h / item.h else 1f
         return when (item) {
             is SlideItem.Shape -> SlideItem.Shape(x, y, w, h, item.rotation, item.shape, item.text, item.paths, item.flipH, item.flipV, item.gradient, item.id, item.hint)
-            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.bytes)
+            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
         }.also { it.anim = item.anim; it.grouped = item.grouped }
@@ -152,7 +153,7 @@ internal object SlidesEdit {
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
-            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
+            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f, null, a.math) { runCatching { File(a.image).readBytes() }.getOrNull() }
             else {
                 // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
                 val box = a.prst == TEXT_BOX
@@ -405,7 +406,15 @@ internal object SlidesEdit {
                 // a text box as PowerPoint's Insert › Text Box makes it: no fill, words from the top left, the box fitting them
                 else if (a.prst == TEXT_BOX) """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="TextBox ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/><a:p><a:endParaRPr lang="el-GR" sz="1800"/></a:p></p:txBody></p:sp>"""
                 else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
-            tree?.appendChild(doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true))
+            // an equation as PowerPoint writes one: the equation in a text box (a14:m), its picture for those that cannot draw it (LibreOffice)
+            val y = a.math?.takeIf { a.image != null }?.let { m ->
+                val omml = OfficeMath.equation(m, true).replace(Regex("<w:rPr>.*?</w:rPr>"), """<a:rPr lang="en-US"><a:latin typeface="Cambria Math"/></a:rPr>""")
+                """<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" $ns><mc:Choice Requires="a14">""" +
+                    """<p:sp><p:nvSpPr><p:cNvPr id="${a.id}" name="Equation ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>""" +
+                    """<p:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/><a:p><a14:m>$omml</a14:m><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>""" +
+                    "</mc:Choice><mc:Fallback>$x</mc:Fallback></mc:AlternateContent>"
+            } ?: x
+            tree?.appendChild(doc.importNode(OfficeFormats.parse(y.toByteArray()).documentElement, true))
         }
         if (hidden != null) { if (hidden) root.setAttribute("show", "0") else root.removeAttribute("show") }
         val shapes = root.getElementsByTagNameNS(P, "sp").let { l -> (0 until l.length).map { l.item(it) as Element } }

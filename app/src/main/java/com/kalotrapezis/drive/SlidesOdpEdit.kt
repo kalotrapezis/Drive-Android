@@ -339,7 +339,15 @@ internal object SlidesOdpEdit {
         val ns = """xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:text="$TEXT" xmlns:xlink="$XLINK""""
         fun added(a: SlidesEdit.Added, look: SlidesEdit.Look?): Element? {
             val box = """svg:x="${cm(a.x)}" svg:y="${cm(a.y)}" svg:width="${cm(a.w)}" svg:height="${cm(a.h)}""""
-            val x = if (a.chart != null) {
+            val x = if (a.math != null && a.image != null) {
+                // an equation: LibreOffice Math's object (MathML, Words' writer), its picture as the object's replacement
+                val name = generateSequence(1) { it + 1 }.map { "Object tetra-math-$it" }.first { zip.getEntry("$it/content.xml") == null && "$it/content.xml" !in out }
+                out["$name/content.xml"] = OfficeMath.mathml(a.math, true).toByteArray()
+                manifest?.documentElement?.let { m ->
+                    m.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", "$name/"); setAttributeNS(MANIFEST, "manifest:version", "1.3"); setAttributeNS(MANIFEST, "manifest:media-type", "application/vnd.oasis.opendocument.formula") })
+                    m.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", "$name/content.xml"); setAttributeNS(MANIFEST, "manifest:media-type", "text/xml") }) }
+                """<draw:frame $ns draw:layer="layout" $box><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/><draw:image xlink:href="${picture(a)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+            } else if (a.chart != null) {
                 // a chart put on: an object of its own in the package, as LibreOffice keeps one (Words' ChartWriter)
                 val name = generateSequence(1) { it + 1 }.map { "Object tetra-$it" }.first { zip.getEntry("$it/content.xml") == null && "$it/content.xml" !in out }
                 out["$name/content.xml"] = ChartWriter.odf(a.chart, a.w, a.h).toByteArray()

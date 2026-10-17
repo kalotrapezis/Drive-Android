@@ -272,6 +272,32 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     /** Whether [hit]'s words can be typed: the file's own text boxes and shapes with words, and what was put on ([a]) but a picture or table. */
     fun typable(hit: SlideItem?, a: SlidesEdit.Added?) = hit is SlideItem.Shape && !hit.grouped && hit.id != null && (if (a == null) hit.text != null else a.image == null && a.prst != "table")
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
+    /** Words' equation [m] drawn as a picture (4 pixels a point, its letters 28 pt), kept on the phone until Save: its file and size (pt). */
+    fun mathPicture(m: MathNode): Triple<String, Float, Float>? = runCatching {
+        val dr = MathDrawable(m, 28f); val w = dr.widthPt.coerceAtLeast(1f); val h = dr.heightPt.coerceAtLeast(1f)
+        val bmp = android.graphics.Bitmap.createBitmap((w * 4).toInt().coerceAtLeast(1), (h * 4).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+        dr.setBounds(0, 0, bmp.width, bmp.height); dr.draw(android.graphics.Canvas(bmp))
+        val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.png")
+        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        Triple(f.path, w, h)
+    }.onFailure { WriterLog.e("Slides: an equation could not be drawn", it) }.getOrNull()
+    /** Insert › Text box (as PowerPoint's): a box of words alone across the slide's middle, typed into at once. */
+    fun newTextBox() {
+        val d = deck ?: return; val ee = edit ?: return; val c = chosen ?: return
+        val a = SlidesEdit.Added(ee.newId(ee.order[c].uid, taken(ee, c)), d.width * 0.2f, d.height * 0.42f, d.width * 0.6f, 40f, prst = SlidesEdit.TEXT_BOX)
+        put(a); typing = SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, null, null, id = a.id).also { it.anim = a.id } to androidx.compose.ui.text.input.TextFieldValue("")
+        WriterLog.i("Slides: a text box put on")
+    }
+    /** Insert › Symbol, Date, Line break (Words'): [words] where the typing cursor is — the chosen box opened to type in first (at its end), else a new text box. */
+    fun putWords(words: String) {
+        if (typing == null) {
+            val c = chosen ?: return; val ee = edit ?: return
+            val hit = base?.let { d -> SlidesEdit.slide(d, ee, ee.order[c]) }?.items?.lastOrNull { it.anim == item && item != null }
+            if (typable(hit, ee.added[ee.order[c].uid]?.firstOrNull { it.id == item })) typeInto(hit as SlideItem.Shape) else newTextBox()
+        }
+        val (box, v) = typing ?: return
+        typing = box to androidx.compose.ui.text.input.TextFieldValue(v.text.replaceRange(v.selection.min, v.selection.max, words), androidx.compose.ui.text.TextRange(v.selection.min + words.length))
+    }
     // a desktop's notes pane let go when a shape or another slide is clicked: the keys are the slide's again (Delete deletes the shape)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(item, chosen) { if (OfficeUi.top && notesTyping != null) focusManager.clearFocus() }
@@ -286,6 +312,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var dropOptions by remember { mutableStateOf(false) } // Drop cap › More…: Words' dialog, raised
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' link dialog
     var footing by remember { mutableStateOf(false) } // Insert › Header & footer
+    var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' symbol page
+    var dating by remember { mutableStateOf(false) } // Insert › Date: Words' date forms
+    var equating by remember { mutableStateOf<Pair<String?, MathNode?>?>(null) } // Insert › Equation, Edit equation: Words' editor (the item's id; null: a new one)
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) } // Insert › Chart, Edit data: Words' chart editor (the chart's id; null: a new one)
     var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
     /** The chosen box's words' size before a raised first letter: what Drop cap's lines are counted in. */
@@ -481,6 +510,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
+                // an equation (put on here, or the deck's own): Words' equation editor again
+                ((it0 as? SlideItem.Picture)?.math ?: a?.math)?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equating = item to m }; RibbonDivider(w) }
                 // a chart put on here: its numbers in Words' chart editor again
                 a?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = a.id to ch }; RibbonDivider(w) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
@@ -530,12 +561,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // Drop cap (asked 17 Oct): Words' strip of cards — PowerPoint and Impress have none, so a raised first letter
                 RibbonButton("Drop cap", w, R.drawable.ic_drop_cap) { if (chosenWords() != null) strip = DesignGallery.DropCap else message = "Choose a box with words first" }
                 // Text box (as PowerPoint's): a box of words alone across the slide's middle, typed into at once
-                RibbonButton("Text box", w, R.drawable.ic_text_box) {
-                    val d = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton
-                    val a = SlidesEdit.Added(ee.newId(ee.order[c].uid, taken(ee, c)), d.width * 0.2f, d.height * 0.42f, d.width * 0.6f, 40f, prst = SlidesEdit.TEXT_BOX)
-                    put(a); typing = SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, null, null, id = a.id).also { it.anim = a.id } to androidx.compose.ui.text.input.TextFieldValue("")
-                    WriterLog.i("Slides: a text box put on")
-                }
+                RibbonButton("Text box", w, R.drawable.ic_text_box) { newTextBox() }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                 // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
@@ -543,6 +569,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
                 // Header & footer (as PowerPoint's): the date, the slide's number and a footer, on this slide or all
                 RibbonButton("Header & footer", w, R.drawable.ic_page_header) { footing = true }
+                // Words' Symbol and Date, and a line break inside a paragraph: where the typing cursor is (the chosen box's words opened at their end)
+                RibbonDivider(w)
+                RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
+                RibbonButton("Date", w, R.drawable.ic_calendar_today) { dating = true }
+                RibbonButton("Line break", w, R.drawable.ic_wrap_text) { putWords(LINE_BREAK.toString()) }
+                RibbonButton("Equation", w, R.drawable.ic_functions) { equating = null to null }
             }
             "File" -> {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
@@ -960,7 +992,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
                             when (val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }) {
-                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> "Image"; is SlideItem.Chart -> "Chart"
+                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> if (it0.math != null) "Equation" else "Image"; is SlideItem.Chart -> "Chart"
                                 is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
                                 null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Image" else "Shape"
                             }
@@ -1022,6 +1054,26 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (stripPicked == DropKind.Dropped) dropped(b, cc, id, n)?.let { edit = it }
                             })
                     }
+                    equating?.let { (id, start) ->
+                        EquationDialog(start, { equating = null }) { m ->
+                            equating = null
+                            val (path, ew, eh) = mathPicture(m) ?: return@EquationDialog
+                            val ee = edit ?: return@EquationDialog; val cc = chosen ?: return@EquationDialog; val d = deck ?: return@EquationDialog
+                            val mine = id?.let { i -> ee.added[ee.order[cc].uid]?.firstOrNull { it.id == i } }
+                            val was = id?.let { i -> view?.slides?.getOrNull(cc)?.items?.lastOrNull { it.anim == i } }
+                            when {
+                                // put on here: drawn again, as tall as before (its width as the new one's)
+                                mine != null -> alter { it.copy(image = path, ext = "png", math = m, w = mine.h * ew / eh) }
+                                // the deck's own: in its place, put on anew (the old one gone)
+                                was != null -> { deleteItem(); val e2 = edit ?: return@EquationDialog
+                                    put(SlidesEdit.Added(e2.newId(e2.order[cc].uid, taken(e2, cc)), was.x, was.y, was.h * ew / eh, was.h, image = path, ext = "png", math = m)) }
+                                else -> put(SlidesEdit.Added(ee.newId(ee.order[cc].uid, taken(ee, cc)), (d.width - ew) / 2, (d.height - eh) / 2, ew, eh, image = path, ext = "png", math = m))
+                            }
+                            WriterLog.i("Slides: an equation put on")
+                        }
+                    }
+                    if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
+                    if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     if (footing) {
                         val ee = edit; val cc = chosen
                         if (ee == null || cc == null) footing = false else {
@@ -1164,6 +1216,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
+                                // a new line in the same paragraph (Enter makes a new paragraph), as Words' Line break
+                                IconButton(onClick = { putWords(LINE_BREAK.toString()) }) { Icon(painterResource(R.drawable.ic_wrap_text), contentDescription = "Line break") }
                                 val focus = remember { androidx.compose.ui.focus.FocusRequester() }
                                 LaunchedEffect(t?.first) { if (t != null) focus.requestFocus() }
                                 if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp).focusRequester(focus),

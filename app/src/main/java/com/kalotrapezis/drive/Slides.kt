@@ -64,7 +64,9 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
         /** An empty placeholder's grey hint (Title, Text): shown only while editing. */ val hint: Boolean = false) : SlideItem(x, y, w, h, rotation)
     /** [crop]: the part of the picture shown (a:srcRect) — how much is cut from its left, top, right and bottom, 0–1 of its size. */
-    class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val crop: FloatArray? = null, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
+    class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val crop: FloatArray? = null,
+        /** An equation shown as this picture (PowerPoint's fallback, LibreOffice Math's replacement): Edit equation opens it */ val math: MathNode? = null,
+        val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
     class Table(x: Float, y: Float, w: Float, h: Float, val cols: List<Float>, val rows: List<Float>, val cells: List<List<Pair<Int?, SlideText?>>>,
@@ -411,7 +413,19 @@ internal object Slides {
                         val g0 = box
                         shapes(e, rels, ctx, out, { b -> floatArrayOf(g0[0] + (b[0] - cx) * kx, g0[1] + (b[1] - cy) * ky, b[2] * kx, b[3] * ky) }, ownId)
                     }
-                    "AlternateContent" -> e.kid("Fallback")?.let { shapes(it, rels, ctx, out, group, groupId) }
+                    "AlternateContent" -> e.kid("Fallback")?.let { fb ->
+                        val before = out.size
+                        shapes(fb, rels, ctx, out, group, groupId)
+                        // an equation (PowerPoint's a14:m, a text box of one): drawn from the equation, its fallback picture kept for saving
+                        val sp = e.kid("Choice")?.kid("sp")
+                        val math = sp?.let { it.below("oMathPara").firstOrNull() ?: it.below("oMath").firstOrNull() }?.let { runCatching { OfficeMath.read(it) }.getOrNull() }
+                        val off = sp?.kid("spPr")?.kid("xfrm")?.let { x -> listOfNotNull(x.kid("off")?.attr("x"), x.kid("off")?.attr("y"), x.kid("ext")?.attr("cx"), x.kid("ext")?.attr("cy")).mapNotNull { it.toFloatOrNull()?.div(EMU) } }
+                        if (math != null && off?.size == 4 && group == null) {
+                            val fell = out.subList(before, out.size).toList(); fell.forEach { out.remove(it) }
+                            val p = fell.firstOrNull() as? SlideItem.Picture
+                            out += SlideItem.Picture(off[0], off[1], off[2], off[3], 0f, null, math, p?.bytes ?: { null }).also { if (ctx != null) it.anim = groupId ?: sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id") }
+                        }
+                    }
                 }
                 if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
@@ -553,6 +567,8 @@ internal object Slides {
     private val pictures = android.util.LruCache<Any, android.graphics.Bitmap>(24)
     /** Animated GIFs (asked 16 Oct, as Google Slides): played where they show; their frames drawn as time goes. */
     private val gifs = android.util.LruCache<Any, android.graphics.drawable.AnimatedImageDrawable>(8)
+    /** An equation's drawing (Words' MathDrawable), laid out once: slides are drawn often. */
+    private val maths = java.util.WeakHashMap<MathNode, MathDrawable>()
     private val kinds = java.util.WeakHashMap<SlideItem.Picture, Boolean>() // whether a picture is a GIF
     fun isGif(p: SlideItem.Picture): Boolean = synchronized(kinds) { kinds.getOrPut(p) { p.bytes()?.let { it.size > 6 && String(it, 0, 4, Charsets.ISO_8859_1) == "GIF8" } == true } }
     /** Whether [slide] has a GIF, so its view is drawn again each frame. */
@@ -596,7 +612,11 @@ internal object Slides {
                     if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2) // words not mirrored
                     item.text?.let { SlidesText.draw(c, it, item.x, item.y, item.w, item.h) }
                 }
-                is SlideItem.Picture -> {
+                // an equation: drawn by Words' engine, sharp at any size (its picture is for the apps that cannot draw one)
+                is SlideItem.Picture -> if (item.math != null) synchronized(maths) { maths.getOrPut(item.math) { MathDrawable(item.math, 28f) } }.let { m ->
+                    c.save(); c.translate(item.x, item.y); c.scale(item.w / m.widthPt.coerceAtLeast(0.1f), item.h / m.heightPt.coerceAtLeast(0.1f))
+                    m.setBounds(0, 0, Math.ceil(m.widthPt.toDouble()).toInt(), Math.ceil(m.heightPt.toDouble()).toInt()); m.draw(c); c.restore()
+                } else {
                     val gif = if (isGif(item)) gifs.get(item) ?: runCatching { item.bytes()?.let { b ->
                         android.graphics.ImageDecoder.decodeDrawable(android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(b))) as? android.graphics.drawable.AnimatedImageDrawable
                     } }.getOrNull()?.also { it.repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE; it.start(); gifs.put(item, it) } else null

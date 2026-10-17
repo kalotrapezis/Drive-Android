@@ -288,6 +288,45 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Equation: Words' equation as PowerPoint keeps one (a14:m over its picture) and LibreOffice (a Math object, its picture the replacement), read back with its equation. */
+    @Test fun `an equation put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val png = File.createTempFile("equation", ".png").also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(40, 20, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }
+        val m = OfficeMath.fromLinear("x^2+1")
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(added = mapOf(0 to listOf(SlidesEdit.Added("9600", 200f, 400f, 120f, 60f, image = png.path, ext = "png", math = m))))
+            fun eq(d: Deck) = d.slides[0].items.filterIsInstance<SlideItem.Picture>().single { kotlin.math.abs(it.x - 200f) < 2f && kotlin.math.abs(it.y - 400f) < 2f }
+            assertEquals("shown, $name", "x^2+1", OfficeMath.linear(eq(SlidesEdit.view(deck, e)).math!!))
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("equation-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val back = eq(Slides.read(out))
+            assertEquals("saved, $name", "x^2+1", OfficeMath.linear(back.math!!)); assertTrue(name, back.bytes()!!.isNotEmpty())
+            if (lo) {
+                // LibreOffice: a .pptx's equation as its picture (it draws no a14:m), an .odp's as its Math object
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                val d = Slides.read(dir.listFiles()!!.single { it.extension == other })
+                assertTrue("LibreOffice's $other of $name", d.slides[0].items.any { kotlin.math.abs(it.x - 200f) < 2f && kotlin.math.abs(it.y - 400f) < 2f })
+                // its .pptx keeps the equation (PowerPoint's a14:m), read as one here
+                if (other == "pptx") assertEquals("x^2+1", OfficeMath.linear(eq(d).math!!))
+            }
+        }
+    }
+
+    /** A line break typed in a paragraph (Insert › Line break): saved as PowerPoint's a:br and LibreOffice's text:line-break. */
+    @Test fun `a line break typed saved`() {
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val red = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }
+            val e = SlidesEdit.start(deck).copy(texts = mapOf((2 to red.anim!!) to listOf("Bold red${LINE_BREAK}words, 28 pt")))
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("linebreak-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val box = Slides.read(out).slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Bold red") == true }
+            assertEquals(name, 1, box.text!!.paras.size); assertEquals(name, "Bold red${LINE_BREAK}words, 28 pt", box.text.paras[0].runs.joinToString("") { it.text })
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

@@ -231,7 +231,14 @@ internal object SlidesOdp {
                             }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) }) { part(p) } }
                             "table" -> out += table(inner, b)
-                            "object" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }?.let(OfficeCharts::readOdf)?.let { out += SlideItem.Chart(b[0], b[1], b[2], b[3], it) }
+                            "object" -> {
+                                val c = inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }
+                                val chart = c?.let(OfficeCharts::readOdf)
+                                if (chart != null) out += SlideItem.Chart(b[0], b[1], b[2], b[3], chart)
+                                // a formula (LibreOffice Math): its replacement picture shown, its equation kept to edit
+                                else e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./")?.let { p ->
+                                    out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, null, c?.let(OfficeMath::fromMathML)) { part(p) } }
+                            }
                         }
                     }
                     "custom-shape", "rect", "ellipse" -> {

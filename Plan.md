@@ -99,6 +99,9 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       Tables; Slides gets it with B's Find and Replace. Right-click menus were already one component (`OfficeMenu`) with
       Cut, Copy, Paste first in Tables and Slides; Words' text uses Android's own menu (deliberate: the system's text
       selection). Emulator 17 Oct.
+- [x] (16 Oct, `RibbonRows`) A ribbon on rows on a big screen: with the ribbon at the top on a screen 840 dp or wider,
+      each tab's tools go on as many rows as they need, a whole group moving to the next row (never one tool). The
+      user, 17 Oct, shown it: **keep it in all three apps** — new tools in B and C go through `RibbonLine`, which does it.
 - [ ] Messages, empty states and dialogs in one style; English only (memory: UI English only).
 
 ### B. Slides — what PowerPoint and Impress have that Slides lacks

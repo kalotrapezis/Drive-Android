@@ -51,7 +51,9 @@ How to write here:
       References and Contents slides), Read aloud, File (Save a copy/as, Rename, AutoSave, template, Inspect), object links with zoom,
       Video — all on emulator-5554 (the tablet was not connected). Unit 430/0/7, sweep 349 + 29. Handing on (office-C-17oct.md).
 - [~] (office-D session, 17 Oct, from office-C's hand-over) Words' Online video, then B's two long lists, then C (Tables onto the engine),
-      then A's walk. Tablet: Firefox in front at 19:40 — emulator.
+      then A's walk. Tablet: Firefox in front at 19:40 — emulator. Done here (20:40): Words' video and in-frame playing (Words and Slides),
+      Slides' Selection tab, X²/X₂ and Aa, Table tab, a text box's Layout, Animation pane and painter, show taps while a video plays.
+      Unit 433/0/7 (after 328b855); sweep 349 + 29, none failing (after the show-taps commit). Handing on (notes: office-D-17oct.md in the group's folder).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -504,6 +506,9 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       Slides; `DocImage.film`, `PictureXml.video`; `LaidPage.videoAt`. `a video put in Words is saved` (both formats, LibreOffice's
       conversions); emulator: both kinds in a .docx and an .odt, saved, played on the pages and in Slides' show; LibreOffice draws them.
       LibreOffice limit: it writes its own media frame into a .docx as an empty shape. Not yet: the film on a show's second screen.
+      Show taps (the user, 17 Oct: a tap going forward "overlaps with actions like play video"; asked, chose "hold while playing"): a tap
+      still goes through the slide's clicks and then the next slide (PowerPoint's way), a tap on a video or link plays or follows it, and
+      now while a video plays a tap beside it only stops it — the next tap goes on; swipes and keys go on at once. Emulator: checked.
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
   (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 

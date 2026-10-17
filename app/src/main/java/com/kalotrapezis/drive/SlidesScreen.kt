@@ -2430,7 +2430,10 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
                         taps++
                     }
                     if (taps == 3) { black = !black; WriterLog.i("Slides: black $black") }
-                    else if (!black) { if (taps == 2) { if (tv == null) dock = true } else if (!follow(at.x, at.y, size.width.toFloat(), size.height.toFloat())) next() }
+                    else if (!black) { if (taps == 2) { if (tv == null) dock = true }
+                        // a video playing: a tap beside it only stops it, the next tap goes on (the user, 17 Oct); swipes and keys go on at once
+                        else if (filmPlaying != null) { filmPlaying = null; WriterLog.i("Slides: a video stopped by a tap") }
+                        else if (!follow(at.x, at.y, size.width.toFloat(), size.height.toFloat())) next() }
                 }
             }, contentAlignment = Alignment.Center) {
             // the whole slide in the window it is shown in, black bars on the sides that are left over (fillMaxSize first made it as tall as the window and cut its sides on a 3:2 tablet)

@@ -21,6 +21,12 @@ internal object SlidesOdp {
 
     private fun Element.kids(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
     private fun Element.a(ns: String, n: String): String? = getAttributeNS(ns, n).takeIf { it.isNotEmpty() }
+    /** A paragraph's words, its line breaks kept (textContent drops them). */
+    private fun plainText(n: org.w3c.dom.Node): String = when {
+        n is Element && n.localName == "line-break" -> "\n"
+        n.nodeType == org.w3c.dom.Node.TEXT_NODE -> n.nodeValue
+        else -> (0 until n.childNodes.length).joinToString("") { plainText(n.childNodes.item(it)) }
+    }
     private fun Element.attrs(): Map<String, String> = (0 until attributes.length).associate { attributes.item(it).let { a -> (a.localName ?: a.nodeName) to a.nodeValue } }
 
     /** A length ("2.5cm", "12pt", "0.5in") in points. */
@@ -234,7 +240,7 @@ internal object SlidesOdp {
             fun bg(style: String?) = if (prop("drawing-page", style, "d.fill") == "solid" || prop("drawing-page", style, "d.fill-color") != null) hex(prop("drawing-page", style, "d.fill-color")) else null
             val background = bg(dp) ?: bg(master?.a(DRAW, "style-name")) ?: 0xFFFFFFFF.toInt()
             val notes = page.kids().firstOrNull { it.localName == "notes" }?.kids()?.firstOrNull { it.a(PRES, "class") == "notes" }
-                ?.getElementsByTagNameNS(TEXT, "p")?.let { l -> (0 until l.length).joinToString("\n") { l.item(it).textContent } }?.trim().orEmpty()
+                ?.getElementsByTagNameNS(TEXT, "p")?.let { l -> (0 until l.length).joinToString("\n") { plainText(l.item(it)) } }?.trim().orEmpty()
             // the transition: the page style's (LibreOffice's names), its length from the timing's own filter
             val root = page.kids().firstOrNull { it.namespaceURI == ANIM && it.a(PRES, "node-type") == "timing-root" }
             fun secs(v: String?) = v?.let { if (it.endsWith("ms")) it.removeSuffix("ms").toFloatOrNull()?.div(1000) else it.removeSuffix("s").toFloatOrNull() }

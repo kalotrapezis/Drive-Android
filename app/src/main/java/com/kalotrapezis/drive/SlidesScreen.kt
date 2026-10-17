@@ -22,6 +22,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -30,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -83,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
@@ -525,7 +529,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 d == null -> Text("Opening…", color = Color.LightGray, modifier = Modifier.align(Alignment.Center))
                 else -> {
                     val list = rememberLazyListState()
-                    val at by remember { derivedStateOf { list.firstVisibleItemIndex + if (list.firstVisibleItemScrollOffset > 0 && list.layoutInfo.visibleItemsInfo.size > 1) 1 else 0 } }
+                    // the slide in the middle of the screen, where a swipe leaves it
+                    val at by remember { derivedStateOf { list.layoutInfo.let { l -> val mid = (l.viewportStartOffset + l.viewportEndOffset) / 2
+                        l.visibleItemsInfo.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - mid) }?.index ?: 0 } } }
                     // a wide screen (a tablet held sideways): each slide no wider than fits the screen's height, so a whole slide shows
                     val fit = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 200).coerceAtLeast(200).dp * (d.width / d.height)
                     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
@@ -661,8 +667,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = (chosen ?: 0).coerceIn(0, d.slides.lastIndex)
                             Column(Modifier.width(minOf(maxWidth, maxHeight * (d.width / d.height)))) { SlideBox(c, d.slides[c]) }
                         }
-                    } else
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 130.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    } else {
+                    // page by page (asked 17 Oct): a swipe ends with the next or the one before in the middle, however hard it is flung
+                    val oneAtATime = remember(list) {
+                        val base = androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider(list, androidx.compose.foundation.gestures.snapping.SnapPosition.Center)
+                        object : androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider by base {
+                            override fun calculateApproachOffset(velocity: Float, decayOffset: Float) = 0f
+                        }
+                    }
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize(), flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 130.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
                             Column(Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = fit)) {
                                 Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
@@ -672,6 +685,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp).background(Color(0xFF3A3A3A), RoundedCornerShape(6.dp)).padding(10.dp))
                             }
                         }
+                    }
                     }
                     if (!editing || chosen == null) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
                         modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp)) {
@@ -833,9 +847,10 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
 }
 
 /**
- * Present: the slides full screen and sideways on black, one at a time; a tap on the right or a swipe to the left goes on
- * (the next click's effects, else the next slide with its transition), on the left or the other way back (the slide
- * before, shown whole); the shown slides only (hidden ones skipped); back to the list with Back.
+ * Present: the slides full screen and sideways on black, one at a time; a tap or a swipe to the left goes on (the next
+ * click's effects, else the next slide with its transition), a swipe the other way back (the slide before, shown whole);
+ * two taps bring out the tools, three turn the screen black and back; the shown slides only (hidden ones skipped); back
+ * to the list with Back.
  */
 @Composable
 private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
@@ -872,9 +887,11 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
     fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
     // a slide that goes on by itself: its time once its effects are done (and its transition in), then the next
     // shortcut: PowerPoint counts the time from the slide's start; here it runs after its last effect, the same when it has none
-    LaunchedEffect(page, step, playing, from) {
+    // Pause (the presenter's notes, asked 17 Oct): a moment aside — slides that go on by themselves wait, the teleprompter stops
+    var paused by remember { mutableStateOf(false) }
+    LaunchedEffect(page, step, playing, from, paused) {
         val after = slide(page).transition?.after ?: return@LaunchedEffect
-        if (playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
+        if (paused || playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
         kotlinx.coroutines.delay(after.toLong()); next()
     }
     /**
@@ -1002,17 +1019,42 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
             }
             onDispose { }
         }
-        Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(tool) {
-            // a tap: on the right on, on the left back; a swipe: to the left on, to the right back
-            if (tool == null) awaitEachGesture {
-                val down = awaitFirstDown()
-                var moved = 0f; var end = down
-                while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; moved = ch.position.x - down.position.x; end = ch; if (!ch.pressed) break }
-                if (kotlin.math.abs(moved) > 60.dp.toPx()) { if (moved < 0) next() else back() } else if (end.position.x > size.width / 2) next() else back()
-            }
-        }, contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             val s = slide(page)
-            Box(Modifier.fillMaxSize().aspectRatio(deck.width / deck.height, matchHeightConstraintsFirst = true).pointerInput(page, tool) {
+            // on one screen the tools sit in a dock at the left edge that hides by itself a few seconds after its last use (asked 17 Oct)
+            var dock by remember { mutableStateOf(false) }
+            var dockUsed by remember { mutableStateOf(0) }
+            // it stays while the pen or laser is on (taps draw then, so two taps could not bring it back to turn them off)
+            LaunchedEffect(dock, dockUsed, tool) { if (dock && tool == null) { kotlinx.coroutines.delay(4000); dock = false } }
+            // the tools: Pen, Laser, and with a second screen Black screen (on one screen a triple tap does it: a button there has no use)
+            val toolButtons: @Composable () -> Unit = {
+                @Composable fun tool(name: String, icon: Int, on: Boolean, click: () -> Unit) = IconButton(onClick = { click(); dockUsed++ }) {
+                    Icon(painterResource(icon), contentDescription = name, tint = if (on) Color(0xFFFF5252) else Color.White.copy(alpha = 0.85f))
+                }
+                tool("Pen", R.drawable.ic_ink_pen, tool == "pen") { tool = if (tool == "pen") null else "pen"; WriterLog.i("Slides: pen ${tool != null}") }
+                tool("Laser", R.drawable.ic_highlighter, tool == "laser") { tool = if (tool == "laser") null else "laser" }
+                if (ink[page].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(page) }
+                if (tv != null) tool("Black screen", R.drawable.ic_visibility_off, black) { black = !black }
+            }
+            // with a second screen: the slide small to the side (half the width while pointing or drawing), the presenter's notes beside it
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f).fillMaxHeight().pointerInput(tool) {
+                // one tap: on; a swipe: to the left on, to the right back; two quick taps: the tools (one screen); three: the screen black, or back (asked 17 Oct)
+                // (a tap waits a quarter second for another, to tell it from a triple tap)
+                if (tool == null) awaitEachGesture {
+                    var taps = 0
+                    while (taps < 3) {
+                        val down = if (taps == 0) awaitFirstDown() else withTimeoutOrNull(250) { awaitFirstDown() } ?: break
+                        var moved = 0f; var end = down
+                        while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; moved = ch.position.x - down.position.x; end = ch; if (!ch.pressed) break }
+                        if (kotlin.math.abs(moved) > 60.dp.toPx()) { if (taps == 0 && !black) { if (moved < 0) next() else back() }; return@awaitEachGesture }
+                        taps++
+                    }
+                    if (taps == 3) { black = !black; WriterLog.i("Slides: black $black") }
+                    else if (!black) { if (taps == 2) { if (tv == null) dock = true } else next() }
+                }
+            }, contentAlignment = Alignment.Center) {
+            // the whole slide in the window it is shown in, black bars on the sides that are left over (fillMaxSize first made it as tall as the window and cut its sides on a 3:2 tablet)
+            Box(Modifier.aspectRatio(deck.width / deck.height).alpha(if (black && tv != null) 0.3f else 1f).pointerInput(page, tool) {
                 // the pen draws (points as parts of the slide, so the ink stays put); the laser follows the finger
                 if (tool != null) detectDragGestures(
                     onDragStart = { o -> if (tool == "pen") ink[page] = ink[page].orEmpty() + listOf(listOf(androidx.compose.ui.geometry.Offset(o.x / size.width, o.y / size.height)))
@@ -1034,28 +1076,87 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                         drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
                 }
             }
-            if ((notes || tv != null) && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = if (tv != null) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall,
-                maxLines = if (tv != null) 8 else 3, overflow = TextOverflow.Ellipsis,
+            }
+            if (tv != null) PresenterNotes(s.notes, page, paused, Modifier.weight(if (tool != null) 1f else 1.4f).fillMaxHeight()) {
+                toolButtons()
+                IconButton(onClick = { paused = !paused; WriterLog.i("Slides: paused $paused") }) {
+                    Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause), contentDescription = if (paused) "Go on" else "Pause", tint = if (paused) POWERPOINT_ORANGE else Color.White.copy(alpha = 0.85f))
+                }
+                Text(when { black -> "Second screen black"; paused -> "Paused"; else -> "On the second screen" }, color = if (black || paused) POWERPOINT_ORANGE else Color(0xFF6FCF97),
+                    style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f).padding(start = 8.dp), maxLines = 1)
+                Text("${page + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
+            }
+            }
+            if (notes && tv == null && s.notes.isNotEmpty()) Text(s.notes, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.6f)).padding(8.dp))
-            Text("${page + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
             // the TV shows what the phone does, frame by frame: the slide (black when the phone's is), its effects, ink and laser
             LaunchedEffect(tv) { tv?.render = { c, w, h -> if (!black) render(c, w, h) } }
             // the TV drawn again every frame (transitions and effects move there too), with the pen's ink and the laser
-            LaunchedEffect(tv) { if (tv != null) while (true) androidx.compose.runtime.withFrameNanos { tv.apply { strokes = ink[page].orEmpty(); dot = laser; update() } } }
-            if (tv != null) Text("On the second screen", color = Color(0xFF6FCF97), style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp))
-            // the tools, faint in a corner: Pen, Laser, Black screen (a tap on the black brings the slide back)
-            Row(Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                @Composable fun tool(name: String, icon: Int, on: Boolean, click: () -> Unit) = IconButton(onClick = click) {
-                    Icon(painterResource(icon), contentDescription = name, tint = if (on) Color(0xFFFF5252) else Color.White.copy(alpha = 0.45f))
+            LaunchedEffect(tv) { if (tv != null) while (true) androidx.compose.runtime.withFrameNanos { tv.apply { strokes = if (black) emptyList() else ink[page].orEmpty(); dot = laser.takeIf { !black }; update() } } }
+            // black on one screen: the slide covered, taps passing to it (three bring it back); with a second screen only that one goes black
+            if (black && tv == null) Box(Modifier.fillMaxSize().background(Color.Black))
+            // the dock at the left edge: the tools and the slide count, brought out by two taps; kept from Android's Back swipe there (asked 17 Oct: it conflicted)
+            if (tv == null) Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.animation.AnimatedVisibility(dock, enter = androidx.compose.animation.slideInHorizontally { -it }, exit = androidx.compose.animation.slideOutHorizontally { -it }) {
+                    Column(Modifier.systemGestureExclusion().padding(start = 4.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xE6202020)).padding(vertical = 8.dp, horizontal = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${page + 1} / ${shown.size}", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+                        toolButtons()
+                    }
                 }
-                tool("Pen", R.drawable.ic_ink_pen, tool == "pen") { tool = if (tool == "pen") null else "pen"; WriterLog.i("Slides: pen ${tool != null}") }
-                tool("Laser", R.drawable.ic_highlighter, tool == "laser") { tool = if (tool == "laser") null else "laser" }
-                if (ink[page].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(page) }
-                tool("Black screen", R.drawable.ic_visibility_off, black) { black = true }
             }
-            if (black) Box(Modifier.fillMaxSize().background(Color.Black).clickable { black = false })
+        }
+    }
+}
+
+/**
+ * The presenter's notes beside the slide while a second screen shows it (asked 17 Oct): Full — all of them, to read and
+ * scroll; Teleprompter — large, rolling up by themselves at the chosen speed, from the top again on each slide.
+ */
+@Composable
+private fun PresenterNotes(notes: String, page: Int, paused: Boolean, modifier: Modifier, header: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val context = LocalContext.current
+    var prompter by remember { mutableStateOf(false) }
+    var rolling by remember { mutableStateOf(true) }
+    // the teleprompter's speed (dp a second) and words' size (sp) kept for the next presentation; 13 the user's pick (17 Oct)
+    val prefs = remember { context.getSharedPreferences("slides", android.content.Context.MODE_PRIVATE) }
+    var speed by remember { mutableStateOf(prefs.getFloat("prompterSpeed", 13f)) }
+    var size by remember { mutableStateOf(prefs.getInt("prompterSize", 28)) }
+    val scroll = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    LaunchedEffect(page) { scroll.scrollTo(0) }
+    LaunchedEffect(prompter, rolling, speed, page, paused) {
+        if (!prompter || !rolling || paused) return@LaunchedEffect
+        var last = androidx.compose.runtime.withFrameNanos { it }
+        while (true) { val t = androidx.compose.runtime.withFrameNanos { it }; scroll.scrollBy(with(density) { speed.dp.toPx() } * (t - last) / 1e9f); last = t }
+    }
+    val chip = androidx.compose.material3.FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedContainerColor = POWERPOINT_ORANGE, selectedLabelColor = Color.White)
+    Column(modifier.padding(start = 8.dp, top = 8.dp, end = 12.dp, bottom = 12.dp)) {
+        // the presenting tools, Pause, where the slide is shown and the slide count
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, content = header)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.FilterChip(!prompter, { prompter = false }, { Text("Full") }, colors = chip)
+            androidx.compose.material3.FilterChip(prompter, { prompter = true; WriterLog.i("Slides: teleprompter") }, { Text("Teleprompter") }, colors = chip)
+            if (prompter) {
+                IconButton(onClick = { rolling = !rolling }) { Icon(painterResource(if (rolling) R.drawable.ic_pause else R.drawable.ic_play), contentDescription = if (rolling) "Pause" else "Roll", tint = Color.White) }
+                Text("Speed", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+                androidx.compose.material3.Slider(speed, { speed = it }, Modifier.weight(1f), valueRange = 5f..120f,
+                    onValueChangeFinished = { prefs.edit().putFloat("prompterSpeed", speed).apply() })
+                fun resize(by: Int) { size = (size + by).coerceIn(16, 72); prefs.edit().putInt("prompterSize", size).apply() }
+                IconButton(onClick = { resize(-4) }, enabled = size > 16) { Icon(painterResource(R.drawable.ic_remove), contentDescription = "Smaller text", tint = Color.White) }
+                Text("${size}", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+                IconButton(onClick = { resize(4) }, enabled = size < 72) { Icon(painterResource(R.drawable.ic_add), contentDescription = "Larger text", tint = Color.White) }
+            }
+        }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF1C1C1C))) {
+            val box = maxHeight
+            // the teleprompter's words start a third of the way down and roll on until the last line has gone off the top
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp)) {
+                if (prompter) androidx.compose.foundation.layout.Spacer(Modifier.height(box / 3))
+                Text(notes.ifEmpty { "No notes on this slide." }, color = if (notes.isEmpty()) Color.White.copy(alpha = 0.5f) else Color.White,
+                    style = if (prompter) MaterialTheme.typography.headlineMedium.copy(fontSize = size.sp, lineHeight = (size * 1.3f).sp) else MaterialTheme.typography.bodyLarge)
+                if (prompter) androidx.compose.foundation.layout.Spacer(Modifier.height(box))
+            }
         }
     }
 }

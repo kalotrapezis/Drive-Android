@@ -224,7 +224,7 @@ internal object Slides {
             if (s.attr("showMasterSp") != "0") tree(layout, layoutPath!!, null)
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
             val notes = (if (own != null) null else relType(xml, path, "notesSlide"))?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
-                ?.below("p")?.joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }?.trim().orEmpty()
+                ?.below("p")?.joinToString("\n") { p -> p.below("*").joinToString("") { if (it.localName == "br") "\n" else if (it.localName == "t") it.textContent else "" } }?.trim().orEmpty() // a line break inside a paragraph kept
             return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s))
         }
 

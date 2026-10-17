@@ -54,6 +54,8 @@ internal object SlidesEdit {
         }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink)
     }
     const val NONE = 0
+    /** An [Added]'s kind for Insert › Text box: a box of words alone (no fill, no border). */
+    const val TEXT_BOX = "textbox"
     data class Edit(val order: List<Entry>, val hidden: Map<Int, Boolean> = emptyMap(), val texts: Map<Pair<Int, String>, List<String>> = emptyMap(),
         val added: Map<Int, List<Added>> = emptyMap(),
         /** (slide uid, shape id) → its looks */ val looks: Map<Pair<Int, String>, Look> = emptyMap(),
@@ -118,7 +120,15 @@ internal object SlidesEdit {
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
             (if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
-            else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), null, id = a.id)).also { it.anim = a.id } // what it is chosen and animated by
+            else {
+                // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
+                val box = a.prst == TEXT_BOX
+                val text = edit.texts[e.uid to a.id]?.let { lines -> SlideText(lines.map { SlidePara.plain(it, 18f, 0, align = if (box) DocAlign.Start else DocAlign.Center) }, if (box) 't' else 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
+                // a text box: no fill, no border, as tall as its words (PowerPoint's "resize shape to fit text")
+                // shortcut: without Android's text layout (the JVM tests) a line a paragraph, 1.2 × 18 pt each
+                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
+                else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), text, id = a.id)
+            }).also { it.anim = a.id } // what it is chosen and animated by
         }
         val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
         val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
@@ -186,7 +196,8 @@ internal object SlidesEdit {
 
     /** The boxes on [e]'s slide that grow to their words (Home's autofit): where they stand now, their height as their words make it. */
     fun grown(deck: Deck, edit: Edit, e: Entry): Map<String, List<Float>> {
-        val ids = edit.looks.filter { (k, l) -> k.first == e.uid && l.autofit == 'g' }.keys.map { it.second }.ifEmpty { return emptyMap() }
+        val ids = (edit.looks.filter { (k, l) -> k.first == e.uid && l.autofit == 'g' }.keys.map { it.second } +
+            edit.added[e.uid].orEmpty().filter { it.prst == TEXT_BOX }.map { it.id }).ifEmpty { return emptyMap() }
         val shown = slide(deck, edit, e).items.filterIsInstance<SlideItem.Shape>()
         return ids.mapNotNull { id -> shown.firstOrNull { it.id == id || it.anim == id }?.let { id to listOf(it.x, it.y, it.w, it.h) } }.toMap()
     }
@@ -288,6 +299,8 @@ internal object SlidesEdit {
                             "</a:p></a:txBody><a:tcPr>${look?.fill?.takeIf { it != NONE }?.let { solid(cellFill(it, r)) }.orEmpty()}</a:tcPr></a:tc>"
                     } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
                 else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
+                // a text box as PowerPoint's Insert › Text Box makes it: no fill, words from the top left, the box fitting them
+                else if (a.prst == TEXT_BOX) """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="TextBox ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/><a:p><a:endParaRPr lang="el-GR" sz="1800"/></a:p></p:txBody></p:sp>"""
                 else """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="Shape ${a.id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="${a.prst ?: "rect"}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${"%06X".format(a.fill and 0xFFFFFF)}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${"%06X".format(darker(a.fill) and 0xFFFFFF)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr rtlCol="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>"""
             tree?.appendChild(doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true))
         }

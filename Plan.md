@@ -246,7 +246,10 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       direction (vertical text) not done. `Home's looks on a box saved` (.pptx and .odp, read back, LibreOffice's
       conversions read back). Unit suite 407/0/7; sweep 349 + 29, none failing; Words' fingerprint unchanged; emulator:
       slides.pptx's Plan bold, numbered, centred, 1.5, Times — saved, LibreOffice draws it the same. Tablet: not yet.
-- [ ] **Insert**: Text box (plain; today only shapes); Chart (Words' chart editor); Link (to a web page or to a
+- [~] **Insert**: Text box (plain; today only shapes) — done 17 Oct (office-engine session): Insert › Text box puts a box of
+      words alone (PowerPoint's txBox, no fill or line, growing to its words; LibreOffice's frame with auto-grow), typed
+      into at once; anything put on but a picture or table can now be typed into and takes Home's tools; `a text box
+      put on and typed into` (.pptx, .odp, LibreOffice's conversions); Chart (Words' chart editor); Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

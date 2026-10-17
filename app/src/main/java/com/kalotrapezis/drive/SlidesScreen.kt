@@ -269,6 +269,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
+    /** Whether [hit]'s words can be typed: the file's own text boxes and shapes with words, and what was put on ([a]) but a picture or table. */
+    fun typable(hit: SlideItem?, a: SlidesEdit.Added?) = hit is SlideItem.Shape && !hit.grouped && hit.id != null && (if (a == null) hit.text != null else a.image == null && a.prst != "table")
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
     // a desktop's notes pane let go when a shape or another slide is clicked: the keys are the slide's again (Delete deletes the shape)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -424,9 +426,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Item" -> {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
-                if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
+                if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
-                    if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonDivider(w)
+                    if (typable(it0, a)) RibbonDivider(w)
                     Swatches(w, R.drawable.ic_format_color_fill, "Fill", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if (it0 is SlideItem.Shape) Swatches(w, R.drawable.ic_border_outer, "Border", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(line = col?.toArgb() ?: SlidesEdit.NONE) } }
                     if ((it0 as? SlideItem.Shape)?.text != null || a?.prst == "table") Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
@@ -469,6 +471,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "Insert" -> {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 RibbonButton("Shape", w, R.drawable.ic_category) { shapes = true }
+                // Text box (as PowerPoint's): a box of words alone across the slide's middle, typed into at once
+                RibbonButton("Text box", w, R.drawable.ic_text_box) {
+                    val d = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton
+                    val a = SlidesEdit.Added(ee.newId(ee.order[c].uid, taken(ee, c)), d.width * 0.2f, d.height * 0.42f, d.width * 0.6f, 40f, prst = SlidesEdit.TEXT_BOX)
+                    put(a); typing = SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, null, null, id = a.id).also { it.anim = a.id } to androidx.compose.ui.text.input.TextFieldValue("")
+                    WriterLog.i("Slides: a text box put on")
+                }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
             }
             "File" -> {
@@ -776,7 +785,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
                                             cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
                                         }
-                                        a == null && item == hit.anim && hit is SlideItem.Shape && hit.id != null && hit.text != null -> typeInto(hit)
+                                        item == hit.anim && typable(hit, a) -> typeInto(hit as SlideItem.Shape)
                                         else -> { item = hit.anim; typing = null }
                                     }
                                 }
@@ -792,7 +801,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         slideMenu?.takeIf { !it.first && it.second == i }?.let { (_, _, at) -> OfficeMenu(at, { slideMenu = null }) {
                                 @Composable fun entry(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { slideMenu = null; WriterLog.i("Slides: menu › $label"); action() }
                                 val hit = item?.let { id -> s.items.lastOrNull { it.anim == id } }
-                                val ownWords = hit is SlideItem.Shape && !hit.grouped && hit.id != null && hit.text != null && edit?.let { ee -> ee.added[ee.order[i].uid]?.none { it.id == item } } != false
+                                val ownWords = typable(hit, edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == item } })
                                 if (ownWords) entry("Edit text", R.drawable.ic_edit) { typeInto(hit as SlideItem.Shape) }
                                 if (item != null) {
                                     entry("Cut", R.drawable.ic_content_cut) { if (copyItem()) deleteItem() }

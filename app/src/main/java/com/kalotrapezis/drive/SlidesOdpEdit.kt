@@ -302,6 +302,11 @@ internal object SlidesOdpEdit {
             val x = if (a.image != null) {
                 val st = derive("graphic", null, "picture") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none") } }
                 """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:image xlink:href="${picture(a)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"><text:p/></draw:image></draw:frame>"""
+            } else if (a.prst == SlidesEdit.TEXT_BOX) {
+                // LibreOffice's text box: a frame with no fill or line, growing to its words
+                val st = derive("graphic", null, "text box") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none")
+                    setAttributeNS(DRAW, "draw:auto-grow-height", "true"); setAttributeNS(DRAW, "draw:textarea-vertical-align", "top") } }
+                """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:text-box><text:p/></draw:text-box></draw:frame>"""
             } else if (a.prst != null && a.prst != "table") {
                 val fill = look?.fill ?: a.fill; val line = look?.line ?: darker(a.fill)
                 val st = derive("graphic", null, "shape $fill $line") { st -> props(st, "graphic-properties").apply {
@@ -402,7 +407,10 @@ internal object SlidesOdpEdit {
             // put on: over the page's own, before its notes and animations
             val before = page.kids().firstOrNull { it.localName in setOf("notes", "par", "seq", "animations") }
             val put = HashMap<String, Element>()
-            for (a in edit.added[uid].orEmpty()) added(a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
+            val grown = SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid })
+            for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
+            // the words typed into what was put on, and Home's looks on them, as on the page's own
+            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) } }
             // the transition: in the page's style and the timing's own filter, as LibreOffice writes it
             edit.transitions[uid]?.let { t ->
                 val smil = t.kind.takeIf { it.isNotEmpty() }?.let { OdpEffects.smil(it, t.dir) }

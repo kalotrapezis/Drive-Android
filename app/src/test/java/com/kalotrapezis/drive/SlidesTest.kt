@@ -113,6 +113,31 @@ class SlidesTest {
         assertTrue(!r.bold); assertEquals(18f, r.sizePt!!, 0.1f); assertEquals(0, r.color)
     }
 
+    /** Insert › Text box: a box of words alone, typed into, in Home's looks — saved in a .pptx and an .odp, read back here and by LibreOffice. */
+    @Test fun `a text box put on and typed into`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val a = SlidesEdit.Added("9200", 100f, 300f, 400f, 40f, prst = SlidesEdit.TEXT_BOX)
+            val e = SlidesEdit.start(deck).copy(added = mapOf(0 to listOf(a)), texts = mapOf((0 to "9200") to listOf("Hello there", "A second line")),
+                looks = mapOf((0 to "9200") to SlidesEdit.Look(bold = true)))
+            fun check(d: Deck, how: String) {
+                val box = d.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Hello") == true }
+                assertEquals(how, "Hello there\nA second line", words(box)); assertTrue(how, box.text!!.paras[0].runs[0].bold)
+                assertTrue(how, box.shape?.fill == null); assertEquals(how, 100f, box.x, 2f); assertTrue(how, box.h > 40f) // grown to its two lines
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("textbox-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

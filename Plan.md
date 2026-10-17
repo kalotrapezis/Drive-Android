@@ -69,9 +69,9 @@ How to write here:
       function, sheet Hide, Gridlines, a protected sheet; Words › Shape options Dash/Shadow. And the touch-target script on the tablet.
 - [~] (office-F session, carried on 18 Oct after midnight, still the only writer) C: Page layout (728b2a5), Notes (464a338), Drop-down
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
-      formatting (17b4bbf), Protect / Unprotect. Checks at a925139: unit
+      formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -810,7 +810,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
       view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes
       the view's own when a file has no Tables list). `gridlines off and on` (both formats; LibreOffice 26.2 carries them neither way).
-      Emulator: off. Not yet: headings on or off.
+      Emulator: off.
+      Headings done (office-F session, 18 Oct): View › Headings while editing — Excel's showRowColHeaders (a sheet's view), LibreOffice's
+      HasColumnRowHeaders (the whole file's: its headings are one setting); read too (`Sheet.headings`), and off the grid has no
+      letters and numbers, the cells from the edge, as Excel. `SheetVisibility.gridXlsx`/`gridOds` take the setting's name.
+      `headings off and on` (both formats; LibreOffice carries them both ways); emulator: an .ods's off and on.
 - [ ] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
       workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
       dialogs. In-text citations in cells: not planned unless asked.

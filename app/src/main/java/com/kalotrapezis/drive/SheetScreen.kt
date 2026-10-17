@@ -1099,6 +1099,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (editing && b.kind != "csv") RibbonButton("Gridlines", w, R.drawable.ic_view_grid, on = s.grid) { val i = index; val on = !s.grid
                                 fileStep(if (on) "gridlines shown" else "gridlines hidden", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.gridXlsx(baked, next, bb.parts.getValue("$i"), on)
                                     else SheetVisibility.gridOds(baked, next, bb.tabs[i].name, on) }) }
+                            // Excel's View › Headings: the column letters and row numbers (LibreOffice's are the whole file's)
+                            if (editing && b.kind != "csv") RibbonButton("Headings", w, R.drawable.ic_title, on = s.headings) { val i = index; val on = !s.headings
+                                fileStep(if (on) "headings shown" else "headings hidden", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.gridXlsx(baked, next, bb.parts.getValue("$i"), on, "showRowColHeaders")
+                                    else SheetVisibility.gridOds(baked, next, bb.tabs[i].name, on, "HasColumnRowHeaders", perSheet = false) }) }
                             RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
                             RibbonButton("Search", w, R.drawable.ic_search) { searching = true }
                         }
@@ -1994,10 +1998,11 @@ internal class SheetPainter(
     private val charts = HashMap<SheetDrawing, ChartDrawable>()
     private fun at(r: Int, c: Int) = sheet[rAt[r], cAt[c]]?.let { cell -> if (formulas && cell.formula != null) cell.copy(text = cell.formula, kind = SheetKind.Text) else cell }
 
-    private val headerH = 24 * density
+    // View › Headings off: no letters and numbers, the cells from the edge (as Excel)
+    private val headerH = if (sheet.headings) 24 * density else 0f
     // Not in apply: TextPaint has a density of its own (1), which `density` there would mean.
     private val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { it.textSize = 12 * density; it.color = 0xFF5F5F5F.toInt(); it.textAlign = Paint.Align.CENTER }
-    private val headerW = max(36 * density, headerPaint.measureText(((rAt.maxOrNull() ?: 0) + 1).toString()) + 14 * density)
+    private val headerW = if (!sheet.headings) 0f else max(36 * density, headerPaint.measureText(((rAt.maxOrNull() ?: 0) + 1).toString()) + 14 * density)
     private val fill = Paint()
     private val line = Paint().apply { style = Paint.Style.STROKE }
     private val grid = Paint().apply { color = 0xFFD9D9D9.toInt(); style = Paint.Style.STROKE }
@@ -2174,7 +2179,7 @@ internal class SheetPainter(
         if (fr > 0) pane(c, bx, headerH, w - bx, fh, colX[fc] + x, 0f, s, sel, marks, range != null)
         if (fc > 0) pane(c, headerW, by, fw, h - by, 0f, rowY[fr] + y, s, sel, marks, range != null)
         if (fr > 0 && fc > 0) pane(c, headerW, headerH, fw, fh, 0f, 0f, s, sel, marks, range != null)
-        headers(c, w, h, x, y, s, sel)
+        if (sheet.headings) headers(c, w, h, x, y, s, sel)
         // The frozen panes' edges, as Excel draws them (green when the viewer pinned the columns).
         line.strokeWidth = 1.5f * density; line.pathEffect = null
         line.color = 0xFFA0A0A0.toInt()

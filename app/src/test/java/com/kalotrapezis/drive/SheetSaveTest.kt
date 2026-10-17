@@ -227,6 +227,27 @@ class SheetSaveTest {
         }
     }
 
+    /** View › Headings: Excel's showRowColHeaders (a sheet's), LibreOffice's HasColumnRowHeaders (the file's) — off, by LibreOffice too, and on. */
+    @Test fun `headings off and on`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("headings").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.'); assertTrue(name, b0.sheet(0).headings)
+            fun step(from: File, to: File, on: Boolean) = if (name.endsWith("xlsx")) SheetVisibility.gridXlsx(from, to, b0.parts.getValue("0"), on, "showRowColHeaders")
+                else SheetVisibility.gridOds(from, to, b0.tabs[0].name, on, "HasColumnRowHeaders", perSheet = false)
+            val off = File(dir, "off.${f.extension}"); step(f, off, false)
+            Sheets.read(off, ',', '.').let { b -> assertTrue(name, !b.sheet(0).headings); assertTrue(name, b.sheet(0).grid); assertEquals(name, "Alpha", b.sheet(0)[1, 0]?.text) }
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, off.path).redirectErrorStream(true).start().waitFor()
+                assertTrue("LibreOffice's $other of $name", !Sheets.read(File(conv, "off.$other"), ',', '.').sheet(0).headings)
+            }
+            val on = File(dir, "on.${f.extension}"); step(off, on, true)
+            assertTrue(name, Sheets.read(on, ',', '.').sheet(0).headings)
+        }
+    }
+
     /** A protected sheet (Excel's sheetProtection): its locked cells refused, an unlocked one (its look's protection) typed in. */
     @Test fun `a protected sheet's locked cells kept`() {
         val parts = OfficeFormats.unzip(resource("sheet.xlsx"))

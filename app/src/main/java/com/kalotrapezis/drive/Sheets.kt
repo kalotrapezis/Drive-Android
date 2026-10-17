@@ -193,6 +193,8 @@ internal class Sheet(
     var protected = false
     /** Its protection has a password (asked for to unprotect it). */
     var guarded = false
+    /** View › Headings: its column letters and row numbers shown (Excel's showRowColHeaders, LibreOffice's HasColumnRowHeaders). */
+    var headings = true
     /** Its drop-down lists (data validation). */
     var lists: List<SheetList> = emptyList()
     fun listAt(r: Int, c: Int) = lists.firstOrNull { l -> l.ranges.any { (r to c) in it } }
@@ -801,7 +803,7 @@ internal object Sheets {
             val page = HashMap<String, String>() // pageSetup, pageSetUpPr, printOptions and pageMargins, as they are
             val shared = HashMap<String, Triple<String, Int, Int>>()
             var defaultCol = 64f; var defaultRow = 20f
-            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false; var guardedSheet = false
+            var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false; var guardedSheet = false; var headings = true
             val dvs = ArrayList<Pair<List<SheetRange>, String>>() // data validation lists: their cells and formula
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
@@ -836,7 +838,8 @@ internal object Sheets {
                         "cfvo" -> if (rule != null) cfvos += SheetCfvo(at.a("type") ?: "min", at.a("val"))
                         "iconSet" -> rule?.let { rule = it + mapOf("iconSet" to (at.a("iconSet") ?: "3TrafficLights1"), "showValue" to (at.a("showValue") ?: "1"), "reverse" to (at.a("reverse") ?: "0")) }
                         "color" -> if (rule != null) color(at)?.let { colors += it } else if (inIs && rich.inPr) rich.prop(local, at)
-                        "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false }
+                        "sheetView" -> { views++; if (views == 1 && at.a("showGridLines").let { it == "0" || it == "false" }) grid = false
+                            if (views == 1 && at.a("showRowColHeaders").let { it == "0" || it == "false" }) headings = false }
                         "pane" -> if (views == 1 && at.a("state")?.startsWith("frozen") == true) {
                             frozenCols = at.a("xSplit")?.toDoubleOrNull()?.toInt() ?: 0
                             frozenRows = at.a("ySplit")?.toDoubleOrNull()?.toInt() ?: 0
@@ -966,7 +969,7 @@ internal object Sheets {
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet; it.headings = headings
                     it.lists = dvs.mapNotNull { (ranges, f) -> SheetList.of(ranges, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } }
         }
 
@@ -1670,7 +1673,7 @@ internal object Sheets {
                         colStyles = colDefaults.mapValues { style(it.value) }.filterValues { styles[it].boxed },
                         tab = hex(tabProps["tab.tab-color"]), hidden = tabProps["tab.display"] == "false", drawings = drawings, looks = looks, bars = bars, icons = icons,
                         print = runCatching { SheetPageSetup.readOds(parts("styles.xml")?.let(OfficeFormats::parse), props(tableStyle)["master-page"], printRanges) }.getOrNull() ?: SheetPrint(),
-                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded
+                    ).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = tableProtected; it.guarded = tableGuarded; it.headings = settings.headings != "false"
                         it.lists = validCells.mapNotNull { (v, at) -> validities[v]?.let { SheetList.odsList(it) }?.let { f -> SheetList.of(at, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } } }
                     WriterLog.i("Sheets: ods sheet ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged")
                     throw Enough() // the sheets after it are not read
@@ -1679,7 +1682,7 @@ internal object Sheets {
             return result ?: error("No sheet ${target + 1}.")
         }
 
-        class Settings(val tables: Map<String, Map<String, String>>, val active: String?, val showGrid: String?)
+        class Settings(val tables: Map<String, Map<String, String>>, val active: String?, val showGrid: String?, val headings: String? = null)
 
         /** LibreOffice's view settings: each sheet's frozen rows and columns, the grid, the sheet it was left on. */
         fun readSettings(): Settings {
@@ -1687,7 +1690,7 @@ internal object Sheets {
             return runCatching {
                 val doc = OfficeFormats.parse(bytes)
                 val tables = HashMap<String, Map<String, String>>()
-                var active: String? = null; var grid: String? = null
+                var active: String? = null; var grid: String? = null; var headings: String? = null
                 val named = doc.getElementsByTagNameNS("*", "config-item-map-named")
                 for (i in 0 until named.length) {
                     val m = named.item(i) as Element
@@ -1698,13 +1701,15 @@ internal object Sheets {
                     }
                     // The view these tables belong to: its active table and grid.
                     (m.parentNode as? Element)?.kids("config-item")?.forEach {
-                        when (it.getAttribute("config:name")) { "ActiveTable" -> active = it.textContent; "ShowGrid" -> grid = it.textContent }
+                        when (it.getAttribute("config:name")) { "ActiveTable" -> active = it.textContent; "ShowGrid" -> grid = it.textContent; "HasColumnRowHeaders" -> headings = it.textContent }
                     }
                 }
                 // a view without a Tables list (a sheet's own settings): its own ShowGrid
                 if (grid == null) doc.getElementsByTagNameNS("*", "config-item").let { l -> (0 until l.length).map { l.item(it) as Element } }
                     .firstOrNull { it.getAttribute("config:name") == "ShowGrid" }?.let { grid = it.textContent }
-                Settings(tables, active, grid)
+                if (headings == null) doc.getElementsByTagNameNS("*", "config-item").let { l -> (0 until l.length).map { l.item(it) as Element } }
+                    .firstOrNull { it.getAttribute("config:name") == "HasColumnRowHeaders" }?.let { headings = it.textContent }
+                Settings(tables, active, grid, headings)
             }.getOrElse { Settings(emptyMap(), null, null) }
         }
     }

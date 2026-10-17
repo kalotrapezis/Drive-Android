@@ -136,8 +136,9 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
             val shade = with(LocalDensity.current) { 48.dp.toPx() }
             LaunchedEffect(on, wide) { if (on && wide > 0) seen.bringIntoView(Rect(-shade, 0f, wide + shade, 1f)) }
             val m = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }
-            if (bubble) Text(label(t), color = if (on) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge, maxLines = 1,
-                modifier = m.padding(2.dp).clip(CircleShape).background(if (!on) Color.Transparent else if (t == contextual) contextualColour else driveNavigationSelectedColor())
+            // the bubble in the app's colour, as its dash (asked 17 Oct); the light contextual colour takes dark letters
+            if (bubble) Text(label(t), color = if (!on) w else if (t == contextual) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                modifier = m.padding(2.dp).clip(CircleShape).background(if (on) mark else Color.Transparent)
                     .clickable { pick(t) }.padding(horizontal = 14.dp, vertical = 7.dp))
             else Column(m.clickable { pick(t) }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(label(t), style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)

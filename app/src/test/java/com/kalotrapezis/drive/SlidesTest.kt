@@ -262,6 +262,31 @@ class SlidesTest {
         }
     }
 
+    /** Design › Slide size: a 4:3 deck made 16:9 — fitted (as it was, in the middle) or maximized (bigger, its letters too, cut above and below). */
+    @Test fun `slide size changed`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) for (max in listOf(false, true)) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+            val size = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }.text!!.paras[0].runs[0].sizePt!!
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("size-${if (max) "max" else "fit"}-$name")
+            SlidesSize.resize(src, SlidesSize.Size(960f, 540f, max), out)
+            val (k, dx, dy) = SlidesSize.fit(deck.width, deck.height, 960f, 540f, max)
+            fun check(d: Deck, how: String) {
+                assertEquals(how, 960f, d.width, 1f); assertEquals(how, 540f, d.height, 1f)
+                val b = d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+                assertEquals(how, box.x * k + dx, b.x, 1f); assertEquals(how, box.y * k + dy, b.y, 1f); assertEquals(how, box.w * k, b.w, 1f)
+                assertEquals(how, size * k, d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "Bold red words, 28 pt" }.text!!.paras[0].runs[0].sizePt!!, 0.6f)
+            }
+            check(Slides.read(out), "$name ${if (max) "maximized" else "fitted"}")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name, ${if (max) "maximized" else "fitted"}")
+            }
+        }
+    }
+
     /** Home › Reset: a title moved and made bold, saved; read again and reset — back where and as its layout has it, shown and saved. */
     @Test fun `a slide reset saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -157,26 +157,29 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     val changed = edit != saved
     var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' setting, one for both
-    // Design › a theme: a copy of the file with it, read once (the deck shown and saved from it while it is chosen)
-    val themed = remember { androidx.compose.runtime.mutableStateMapOf<SlideTheme, Pair<File, Deck>>() }
-    val base: Deck? = edit?.theme?.let { themed[it]?.second } ?: deck
-    LaunchedEffect(edit?.theme) {
-        val t = edit?.theme ?: return@LaunchedEffect
+    // Design › a theme, or a slide size: a copy of the file with them, read once (the deck shown and saved from it while they are chosen)
+    val themed = remember { androidx.compose.runtime.mutableStateMapOf<Pair<SlideTheme?, SlidesSize.Size?>, Pair<File, Deck>>() }
+    fun copyKey(e: SlidesEdit.Edit?) = e?.let { it.theme to it.size }?.takeIf { it.first != null || it.second != null }
+    val base: Deck? = copyKey(edit)?.let { themed[it]?.second } ?: deck
+    LaunchedEffect(edit?.theme, edit?.size) {
+        val k = copyKey(edit) ?: return@LaunchedEffect
         val src = source ?: file ?: return@LaunchedEffect
-        if (t in themed) return@LaunchedEffect
+        if (k in themed) return@LaunchedEffect
         withContext(Dispatchers.IO) { runCatching {
-            val out = File(context.cacheDir, "theme-${System.nanoTime()}.${src.extension.lowercase()}")
-            SlidesThemes.apply(src, t, out); out to Slides.read(out)
-        }.onFailure { WriterLog.e("Slides: a theme could not be applied", it) }.getOrNull() }?.let { themed[t] = it; WriterLog.i("Slides: theme ${t.name}") }
-            ?: run { message = "That theme could not be applied." }
+            val ext = src.extension.lowercase()
+            val themedFile = k.first?.let { t -> File(context.cacheDir, "theme-${System.nanoTime()}.$ext").also { SlidesThemes.apply(src, t, it) } } ?: src
+            val out = k.second?.let { z -> File(context.cacheDir, "size-${System.nanoTime()}.$ext").also { SlidesSize.resize(themedFile, z, it) } } ?: themedFile
+            out to Slides.read(out)
+        }.onFailure { WriterLog.e("Slides: a theme or size could not be applied", it) }.getOrNull() }?.let { themed[k] = it; WriterLog.i("Slides: theme ${k.first?.name}, size ${k.second}") }
+            ?: run { message = "That could not be applied." }
     }
     fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; redos.clear(); edit = to }
     /** Save: the edits into the file — or into [to] (Save as: going on with it; [copy], Save a copy: the file and its edits left as they are). */
     fun save(to: File? = null, copy: Boolean = false, then: (() -> Unit)? = null) {
         val e = edit ?: return
         // with a theme chosen: saved from the themed copy, into the file
-        val f0 = file ?: return; val f = to ?: f0; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: source ?: f0
-        if (e.theme != null && e.theme !in themed) return
+        val f0 = file ?: return; val f = to ?: f0; val d = base ?: return; val from = copyKey(e)?.let { themed[it]?.first } ?: source ?: f0
+        if (copyKey(e) != null && copyKey(e) !in themed) return
         if (saving) return
         saving = true
         scope.launch {
@@ -196,6 +199,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
+    var resizing by remember { mutableStateOf<Float?>(null) } // Design › Slide size: the width (pt) asked about, Maximize or Ensure fit
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
     var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
@@ -360,8 +364,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             if (e == saved) { draft.delete(); return@LifecycleEventObserver }
             // AutoSave on: the file itself saved as the app goes away (saving re-reads the deck, so while one works Undo is kept)
             if (autoSave) { save(); WriterLog.i("Slides: AutoSave"); return@LifecycleEventObserver }
-            val d = e.theme?.let { themed[it]?.second } ?: deck ?: return@LifecycleEventObserver
-            val from = e.theme?.let { themed[it]?.first } ?: source ?: f
+            val d = copyKey(e)?.let { themed[it]?.second } ?: deck ?: return@LifecycleEventObserver
+            val from = copyKey(e)?.let { themed[it]?.first } ?: source ?: f
             scope.launch(Dispatchers.IO) { runCatching {
                 draft.parentFile?.mkdirs()
                 val temp = File(draft.parentFile, ".${draft.name}.saving")
@@ -1228,6 +1232,22 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 if (!odp) RibbonButton("Colours", w, R.drawable.ic_format_color_text) { strip = DesignGallery.Colours }
                 RibbonButton("Fonts", w, R.drawable.ic_style) { strip = DesignGallery.Fonts }
+                // Slide size (PowerPoint's): Widescreen or Standard, the things on the slides fitted in or made as big as it allows
+                RibbonDivider(w)
+                Box {
+                    var sizing by remember { mutableStateOf(false) }
+                    RibbonButton("Slide size", w, R.drawable.ic_aspect_ratio) { sizing = true }
+                    DropdownMenu(sizing, { sizing = false }) {
+                        listOf("Widescreen (16:9)" to SlidesSize.WIDE_W, "Standard (4:3)" to SlidesSize.STANDARD_W).forEach { (label, sw) ->
+                            val now = base?.let { Math.abs(it.width / it.height - sw / SlidesSize.HEIGHT) < 0.01f } == true
+                            DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (now) Icon(painterResource(R.drawable.ic_check), null) }, onClick = { sizing = false
+                                // everything on the slides is moved: only from a deck with nothing else changed (or the size undone)
+                                if (!now) { if (e.copy(theme = null, size = null) != SlidesEdit.start(deck ?: return@DropdownMenuItem)) message = "Save first: a new slide size moves everything on the slides"
+                                    else if (deck?.let { Math.abs(it.width / it.height - sw / SlidesSize.HEIGHT) < 0.01f } == true) change(e.copy(size = null)) // back to the file's own
+                                    else resizing = sw } })
+                        }
+                    }
+                }
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
@@ -1868,6 +1888,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
+                    // Slide size: PowerPoint's question — the things made as big as the new size allows, or fitted into it
+                    resizing?.let { sw -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
+                        text = { Text("Make the things on the slides as big as the new size allows (some may be cut at its sides), or smaller so they all fit?") },
+                        confirmButton = { Row {
+                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, SlidesSize.HEIGHT, true))) } }) { Text("Maximize") }
+                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, SlidesSize.HEIGHT, false))) } }) { Text("Ensure fit") } } },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { resizing = null }) { Text("Cancel") } }) }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
                     if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }

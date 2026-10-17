@@ -59,7 +59,7 @@ How to write here:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide (next commit). Unit suite 439, 0 failing; sweep 349 + 29, none failing (21:45).
+      Ungroup, Distribute, Reset slide 4847685. Unit suite 439, 0 failing; sweep 349 + 29, none failing (21:45).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -394,6 +394,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       backgrounds (PowerPoint's on a slide, layout or master; LibreOffice's bitmap fill) — before, only colours were drawn.
       `backgrounds saved` (both, LibreOffice's conversions); LibreOffice draws Tetra's .odp's colour and picture. Not yet: gradient
       backgrounds (read or made), slide size. Unit 424/0/7; sweep 349 + 29, none failing.
+      Slide size (office-F session, 17 Oct): Design › Slide size ▾ Widescreen (16:9) / Standard (4:3), then PowerPoint's question —
+      Maximize (as big as the new size allows, cut at its sides) or Ensure fit (smaller, in the middle, its letters too). `SlidesSize`: a
+      copy of the deck with every slide's, layout's and master's things scaled (PowerPoint: p:sldSz, each top-level xfrm, sz and spcPts;
+      LibreOffice: the master pages' page layout, every svg place and turn on pages and master pages, fo:font-size), shown and saved from
+      as a theme's copy is (`Edit.size`; the theme's and size's copies one, keyed by both). Only from a deck with nothing else changed
+      ("Save first": the size moves everything). **Shared piece:** Design › Themes' copy (`themed`). `slide size changed` (both formats,
+      both ways, LibreOffice's conversions); emulator: arrange.pptx made 16:9, saved — sldSz 12192000 × 6858000. Not: notes pages' size.
 - [x] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
       Done 17 Oct (office-C session): a Draw tab (PowerPoint's place, after Insert) › Draw on slide opens Words' `DrawDialog` with the slide
       under the pens (it now takes a slide as it takes a page: `slide = width, height, drawing`) — pens, highlighter, eraser, move, undo,

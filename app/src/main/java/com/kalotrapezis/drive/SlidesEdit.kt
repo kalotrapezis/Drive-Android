@@ -129,7 +129,8 @@ internal object SlidesEdit {
         /** References: the deck's sources and their style as now; null: as the file has them */ val sources: List<DocSource>? = null, val citeStyle: CiteStyle? = null,
         /** Group: a slide's groups made here, each its id and its things' ids (back to front) */ val groups: Map<Int, Map<String, List<String>>> = emptyMap(),
         /** Ungroup: (slide uid, group id) the file's own groups taken apart, their things each on its own (a group in one too) */ val ungrouped: Set<Pair<Int, String>> = emptySet(),
-        /** Home › Reset: the file's slides whose placeholders are back to their layout's place, size and look */ val reset: Set<Int> = emptySet()) {
+        /** Home › Reset: the file's slides whose placeholders are back to their layout's place, size and look */ val reset: Set<Int> = emptySet(),
+        /** Design › Slide size: the deck made another size (shown and saved from a copy, as a theme is) */ val size: SlidesSize.Size? = null) {
         /** The sections in the slides' order, each from the slide its first is (one whose first slide is gone, gone). */
         fun sectionsNow(deck: Deck): List<Pair<String, Int>> = (sections ?: deck.sections.orEmpty()).filter { (_, uid) -> order.any { it.uid == uid } }.sortedBy { (_, uid) -> order.indexOfFirst { it.uid == uid } }
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1

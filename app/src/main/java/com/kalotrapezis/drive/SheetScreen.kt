@@ -72,6 +72,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -188,6 +189,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
     var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
+    var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1158,6 +1160,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             sortFilter(cc)
                             // Excel's Remove duplicates: in the chosen cells (else the cell's whole table of filled cells), the rows alike after the first gone
                             if (editing) { RibbonDivider(w)
+                                // Excel's Sort dialog: the rows themselves reordered (the file changes), by one column then others
+                                RibbonButton("Sort", w, R.drawable.ic_sort_name) {
+                                    sortingRows = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
                                 RibbonButton("Remove duplicates", w, R.drawable.ic_filter_off) {
                                     val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
                                     if (d == null || d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d }
@@ -1619,6 +1624,33 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = unprotect && password.isNotEmpty() || !unprotect && (password.isEmpty() || again == password), onClick = { protecting = false
                 protectSheet(!unprotect, password) }) { Text(if (unprotect) "Unprotect" else "Protect") } },
             dismissButton = { TextButton(onClick = { protecting = false }) { Text("Cancel") } }) }
+    // Data › Sort: Excel's dialog — headers?, then each level's column and order (up to three)
+    sortingRows?.let { d -> sheet?.let { s -> val b = book
+        val guess = remember(d) { (d.c1..d.c2).all { s[d.r1, it]?.kind == SheetKind.Text } && (d.c1..d.c2).any { s[d.r1 + 1, it]?.kind == SheetKind.Number } }
+        var headers by remember(d) { mutableStateOf(guess) }
+        val levels = remember(d) { androidx.compose.runtime.mutableStateListOf(view.col.coerceIn(d.c1, d.c2) to true) }
+        fun named(c: Int) = if (headers) s[d.r1, c]?.text?.takeIf { it.isNotBlank() } ?: "Column ${Sheets.colName(c)}" else "Column ${Sheets.colName(c)}"
+        AlertDialog(onDismissRequest = { sortingRows = null }, title = { Text("Sort") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${Sheets.colName(d.c1)}${d.r1 + 1}:${Sheets.colName(d.c2)}${d.r2 + 1}")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { headers = !headers }) { Checkbox(headers, { headers = it }); Text("My data has headers") }
+                levels.forEachIndexed { k, (col, up) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (k == 0) "Sort by" else "Then by", modifier = Modifier.width(64.dp))
+                        Box { var open by remember { mutableStateOf(false) }
+                            OutlinedButton(onClick = { open = true }) { Text(named(col), maxLines = 1) }
+                            DropdownMenu(open, { open = false }) { (d.c1..d.c2).forEach { c -> DropdownMenuItem(text = { Text(named(c)) }, onClick = { open = false; levels[k] = c to up }) } } }
+                        androidx.compose.material3.FilterChip(up, { levels[k] = col to true }, { Text("A → Z") })
+                        androidx.compose.material3.FilterChip(!up, { levels[k] = col to false }, { Text("Z → A") })
+                        if (k > 0) IconButton(onClick = { levels.removeAt(k) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Remove level") }
+                    }
+                }
+                if (levels.size < 3) TextButton(onClick = { levels += d.c1 to true }) { Text("Add level") } } },
+            confirmButton = { TextButton(onClick = { sortingRows = null; if (b == null) return@TextButton
+                if (s.merges.any { m -> m.r1 <= d.r2 && d.r1 <= m.r2 && m.c1 <= d.c2 && d.c1 <= m.c2 }) { message = "Merged cells are in the way: unmerge them first"; return@TextButton }
+                val changes = SheetSortRows.changes(s, d, levels.toList(), headers)
+                if (changes.isEmpty()) message = "Already in that order" else { history.apply(b, index, changes); version++; view.sort = null; WriterLog.i("Sheets: sorted by ${levels.size} levels") } }) { Text("Sort") } },
+            dismissButton = { TextButton(onClick = { sortingRows = null }) { Text("Cancel") } }) } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

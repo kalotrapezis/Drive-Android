@@ -181,6 +181,20 @@ class SheetEditTest {
         assertEquals("", rgt(0, 1)?.text); assertEquals("x", rgt(0, 2)?.text); assertEquals("=SUM(A1:A5)", rgt(0, 3)?.formula); assertEquals("y", rgt(1, 1)?.text)
     }
 
+    /** Data › Sort: by a column then another, headers kept, blanks last either way, formulas following their row; the current region. */
+    @Test fun `rows sorted`() {
+        val s = Sheets.csv("Name,Score,Year\nbeta,3,2020\nAlpha,5,2021\ngamma,,2019\ndelta,3,2018\n\nlater,1,1".toByteArray()).sheet(0)
+        s.cells[Sheet.key(1, 3)] = SheetCell("", SheetKind.Empty, formula = "=B2*2")
+        val g = SheetSortRows.region(s, 1, 1, s.rows, 4); assertEquals(SheetRange(0, 0, 4, 3), g) // the empty row ends it
+        fun sorted(keys: List<Pair<Int, Boolean>>) = SheetSortRows.changes(s, g, keys, headers = true).let { ch -> (1..4).map { r -> (ch[Sheet.key(r, 0)] ?: s[r, 0])?.text } to ch }
+        assertEquals(listOf("Alpha", "beta", "delta", "gamma"), sorted(listOf(0 to true)).first)
+        val (byScore, ch) = sorted(listOf(1 to false, 2 to true))
+        assertEquals(listOf("Alpha", "delta", "beta", "gamma"), byScore) // 5, then the 3s by year up (2018 before 2020), the blank score last
+        assertEquals("=B4*2", ch[Sheet.key(3, 3)]?.formula) // beta's row went from 2 to 4: its formula follows
+        assertEquals("Name", (ch[Sheet.key(0, 0)] ?: s[0, 0])?.text)
+        assertEquals(listOf("gamma", "delta", "beta", "Alpha"), sorted(listOf(0 to false)).first)
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

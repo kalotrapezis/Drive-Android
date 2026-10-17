@@ -667,3 +667,46 @@ internal object SheetCellShift {
         return left.apply { putAll(placed) } // a moved cell lands where another left: it wins
     }
 }
+
+/**
+ * Data › Sort (Excel's dialog, changing the file): rows of cells [g] (after its first with [headers]) reordered by [keys]
+ * (a column, ascending or not), then by the next — Excel's order: numbers, words (any case), TRUE and FALSE, errors,
+ * and blanks last either way; rows alike keep their order. Formulas move as Excel's do when it sorts (references in
+ * their own row follow). The cell changes, for one step of Undo.
+ */
+internal object SheetSortRows {
+    fun changes(sheet: Sheet, g: SheetRange, keys: List<Pair<Int, Boolean>>, headers: Boolean): Map<Long, SheetCell> {
+        val rows = ((if (headers) g.r1 + 1 else g.r1)..g.r2).toList()
+        fun rank(c: SheetCell?) = when { c == null || c.kind == SheetKind.Empty -> 4; c.kind == SheetKind.Number -> 0; c.kind == SheetKind.Bool -> 2; c.kind == SheetKind.Error -> 3; else -> 1 }
+        val order = Comparator<Int> { a, b ->
+            for ((col, up) in keys) {
+                val x = sheet[a, col]; val y = sheet[b, col]; val rx = rank(x); val ry = rank(y)
+                if (rx == 4 || ry == 4) { if (rx != ry) return@Comparator rx.compareTo(ry) else continue } // blanks last, up or down
+                val d = if (rx != ry) rx.compareTo(ry) else when (rx) {
+                    0, 2 -> (x!!.value ?: 0.0).compareTo(y!!.value ?: 0.0)
+                    1 -> x!!.text.compareTo(y!!.text, ignoreCase = true)
+                    else -> 0
+                }
+                if (d != 0) return@Comparator if (up) d else -d
+            }
+            0
+        }
+        val out = LinkedHashMap<Long, SheetCell>()
+        rows.sortedWith(order).forEachIndexed { i, from -> val to = rows[i]
+            if (from != to) for (c in g.c1..g.c2) out[Sheet.key(to, c)] = sheet[from, c]?.let { if (it.formula != null) it.copy(formula = SheetFill.moved(it.formula, to - from, 0), text = "", kind = SheetKind.Empty, value = null) else it } ?: SheetCell("", SheetKind.Empty)
+        }
+        return out
+    }
+
+    /** Excel's current region: the block of filled cells round [r], [c] (no empty row or column through it), within [rows] × [cols]. */
+    fun region(sheet: Sheet, r: Int, c: Int, rows: Int, cols: Int): SheetRange {
+        var g = SheetRange(r, c, r, c)
+        fun filled(rr: Int, cc: Int) = rr in 0 until rows && cc in 0 until cols && sheet[rr, cc]?.let { it.kind != SheetKind.Empty || it.formula != null } == true
+        while (true) {
+            val up = (g.c1 - 1..g.c2 + 1).any { filled(g.r1 - 1, it) }; val down = (g.c1 - 1..g.c2 + 1).any { filled(g.r2 + 1, it) }
+            val left = (g.r1 - 1..g.r2 + 1).any { filled(it, g.c1 - 1) }; val right = (g.r1 - 1..g.r2 + 1).any { filled(it, g.c2 + 1) }
+            if (!up && !down && !left && !right) return g
+            g = SheetRange(if (up) g.r1 - 1 else g.r1, if (left) g.c1 - 1 else g.c1, if (down) g.r2 + 1 else g.r2, if (right) g.c2 + 1 else g.c2)
+        }
+    }
+}

@@ -73,10 +73,10 @@ How to write here:
       Print titles (420575e), Header and footer (b66a9cb),
       engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸ (e6b8549), sheet copy
       and tab colour (a7f9980), cells shifted (ce1b197),
-      Picture and Text box. Checks at a925139: unit
+      Picture and Text box (5001224), Sort. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -792,6 +792,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Text to columns done (office-F session, 17 Oct): Data › Text to columns — a column's words cut at a comma, semicolon, tab, space,
       slash or dash (not inside quotes; spaces: runs as one) into the cells to its right, each typed as if there (numbers stay numbers):
       `SheetInput.split`, one step of Undo. `text cut into columns`; emulator: Crete/Rhodes/Corfu into three cells.
+      Sort that changes the file done (office-F session, 18 Oct): Data › Sort while editing — Excel's dialog: the chosen cells, else
+      the current region round the cell (`SheetSortRows.region`); My data has headers (guessed as Excel does); Sort by and up to two
+      Then by, each a column (by its heading) and A → Z or Z → A. Excel's order (numbers, words in any case, TRUE/FALSE, errors, blanks
+      last either way; rows alike keep their order), formulas moving with their rows; cell changes, one step of Undo; merged cells
+      refused. The view's own sort (A → Z on a column's tab) stays as it was. `rows sorted`; emulator: a CSV by Score Z→A, Name A→Z.
       Drop-down lists done (office-F session, 18 Oct): Data › Drop-down list on the chosen cells — the values typed, comma-separated
       (Excel's Source box), Take away; Excel's list dataValidation and LibreOffice's table:content-validation (`SheetLists`, a change to
       the file), both read (`Sheet.lists`/`listAt`, `SheetList`: a quoted list, or this sheet's cells). While editing, the chosen

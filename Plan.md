@@ -24,8 +24,7 @@ How to write here:
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
-- Slides' drop cap: a raised cap (the first letter just bigger) or a dropped one (its own box, the lines indented
-  beside it)? PowerPoint has none of its own. (asked 17 Oct)
+- (none now — Slides' drop cap answered 17 Oct, see B › Insert)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
 
@@ -106,7 +105,15 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 
 ### B. Slides — what PowerPoint and Impress have that Slides lacks
 Foundation first: **a slide's words as runs** (today an edited paragraph is one line in its first run's look,
-`SlidesEdit.withTexts`) — needed by most of Home and by References.
+`SlidesEdit.withTexts`) — needed by most of Home and by References. **The user, 17 Oct, changed this into the shared
+engine** (below, "The Office engine"): no third text model — Words' paragraphs and runs, their layout, drawing and
+effects become one engine that lays text out in any frame (a page, a slide's box or shape, later a cell).
+
+**Rule for A, B and C (the user, 17 Oct: "We made so much work we should use it as much as possible"):** before
+writing anything for Slides or Tables, find Words' version (strips and card galleries, pickers, chart editor,
+equation, symbol, link, find/replace, versions, export PDF, print, sources and citations, drawing, comments,
+spelling, shapes and styles) and reuse it, moved into shared Office code where it is tied to Words. Each item says
+which shared piece it uses; a separate implementation only for a real reason, said in one line.
 - [ ] **Home**: font, size, bold, italic, underline, strike, colour, highlight; align left, centre, right, justify;
       bullets and numbering, list level in and out; line spacing; text direction and anchor (top, middle, bottom);
       autofit (shrink on overflow, the box grows to its words); Clear formatting; Format painter.
@@ -175,7 +182,12 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       border and shading (as Words' Borders, written as the shape's line and fill).
 - [ ] **Insert**: **Drop cap** — PowerPoint and Impress have none, so it is either a raised cap (the first letter a
       bigger run of its own, which every app shows) or a dropped one (the letter in its own box, the paragraph's first
-      lines indented beside it: looks right everywhere but doesn't reflow) — **the user to choose**; Date and time
+      lines indented beside it: looks right everywhere but doesn't reflow). **The user, 17 Oct:** "these are options,
+      not one choice: make a modal and add the options", then "it could also be a ribbon of cards with an example
+      each, like Words has for pages". So: a strip of cards in the ribbon's place (as Page numbers'), one per kind —
+      None, Dropped, Raised — each a small paragraph showing it; a More… card opening the dialog with the finer
+      settings (lines to drop, distance from the text, a preview). Words' own Drop cap made the same if it is not
+      already, so the two match (one shared piece). Date and time
       (fixed, or a field that updates, as PowerPoint's); line break inside a paragraph; Comment; a link's Edit
       (beside Link above). Slide numbers come with Header & footer.
 - [ ] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline

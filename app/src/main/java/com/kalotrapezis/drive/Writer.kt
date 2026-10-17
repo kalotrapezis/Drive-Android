@@ -1089,12 +1089,15 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         // Favourites beside Recents (asked 17 Oct): a tablet 60/40, a phone Favourites first. Files' own favourites, so a
         // heart here is one in Files and on the computer, and a moved file keeps it; a missing one is dropped by favorites()
         val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+        // each list's title apart from its rows, so on a tablet both titles share a row and both lists start level (asked 17 Oct)
+        val recentsTitle: @Composable (Modifier) -> Unit = { m ->
+            Column(m.padding(top = 14.dp, bottom = 2.dp)) {
+                Text("Recent documents", style = MaterialTheme.typography.titleMedium)
+                if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest of each kind — documents, spreadsheets, presentations, PDFs — of $total; the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
         val recents: @Composable (Modifier) -> Unit = { m ->
             Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(Modifier.padding(top = 14.dp, bottom = 2.dp)) {
-                    Text("Recent documents", style = MaterialTheme.typography.titleMedium)
-                    if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest of each kind — documents, spreadsheets, presentations, PDFs — of $total; the rest are in Files.", style = MaterialTheme.typography.bodySmall)
-                }
                 if (!hasAccess) {
                     Text("Tetra needs access to all files to list your documents.", style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = grant) { Text("Allow access") }
@@ -1105,12 +1108,14 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }
             }
         }
-        val favourites: @Composable (Modifier) -> Unit = { m ->
-            Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Favourites", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp))
+        val favouritesTitle: @Composable (Modifier) -> Unit = { m ->
+            Column(m.padding(top = 14.dp, bottom = 2.dp)) {
+                Text("Favourites", style = MaterialTheme.typography.titleMedium)
                 if (hasAccess && favs.isEmpty()) Text("Tap the heart beside a document to keep it here.", style = MaterialTheme.typography.bodySmall)
-                favs.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } }
             }
+        }
+        val favourites: @Composable (Modifier) -> Unit = { m ->
+            Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) { favs.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } } }
         }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1132,8 +1137,19 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     cards.chunked(if (narrow) 2 else 4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { it(Modifier.weight(1f)) } } }
                 }
             }
-            if (narrow) { item { favourites(Modifier) }; item { recents(Modifier) } }
-            else item { Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { recents(Modifier.weight(0.6f)); favourites(Modifier.weight(0.4f)) } }
+            // a white line between the two lists, short of their ends (asked 17 Oct), as the cards' New | Open line
+            if (narrow) {
+                item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { favouritesTitle(Modifier); favourites(Modifier) } }
+                item { Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { Box(Modifier.fillMaxWidth(0.6f).height(1.dp).background(Color.White.copy(alpha = 0.5f))) } }
+                item { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { recentsTitle(Modifier); recents(Modifier) } }
+            } else {
+                item { Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { recentsTitle(Modifier.weight(0.6f)); Spacer(Modifier.width(1.dp)); favouritesTitle(Modifier.weight(0.4f)) } }
+                item { Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    recents(Modifier.weight(0.6f))
+                    Box(Modifier.padding(top = 24.dp, bottom = 24.dp).width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.5f)))
+                    favourites(Modifier.weight(0.4f))
+                } }
+            }
         }
         ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter), art = R.drawable.office_art)
     }

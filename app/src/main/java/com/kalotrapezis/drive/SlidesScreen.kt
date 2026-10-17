@@ -413,6 +413,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    var sourcesOpen by remember { mutableStateOf(false) } // References › Sources: Words' list of them
+    var sourceEdit by remember { mutableStateOf<DocSource?>(null) }; var sourceNew by remember { mutableStateOf(false) } // …one in Words' source page
+    var citing by remember { mutableStateOf(false) } // References › Insert citation: Words' dialog
     var rehearsing by remember { mutableStateOf(false) } // Slide show › Rehearse timings: the show running with a timer
     var rehearsed by remember { mutableStateOf<Map<Int, Long>?>(null) } // …and the times it took, to keep or not
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
@@ -440,6 +443,35 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
         change(e.copy(texts = texts)); WriterLog.i("Slides: replaced ${ms.size}")
     }
+    // References (the user's choices, 17 Oct): the deck's sources and style; citations are words, found by the sources and the style
+    val sources = edit?.sources ?: deck?.sources.orEmpty()
+    val citeStyle = edit?.citeStyle ?: deck?.citeStyle ?: CiteStyle.APA
+    /** A source's citation as the slides show it (shortcut: one source and no page a citation; Words' fields carry more). */
+    fun cite(s: DocSource, st: CiteStyle) = st.parenthetical(listOf(s))
+    /** The tags cited in the slides' words now. */
+    fun cited(): Set<String> = view?.slides.orEmpty().flatMap { sl -> sl.items.filterIsInstance<SlideItem.Shape>().mapNotNull { it.text?.paras?.joinToString("\n") { p -> p.runs.joinToString("") { r -> r.text } } } }
+        .joinToString("\n").let { all -> sources.filter { cite(it, citeStyle) in all }.map { it.tag }.toSet() }
+    /** The sources made [list] and the style [st], as one step of Undo: every citation in the slides' words written again in its new form (live citations). */
+    fun resource(list: List<DocSource>, st: CiteStyle, note: String? = null) {
+        val e = edit ?: return
+        val swaps = sources.mapNotNull { s -> list.firstOrNull { it.tag == s.tag }?.let { n -> cite(s, citeStyle) to cite(n, st) } }.filter { it.first != it.second }
+        var texts = e.texts
+        if (swaps.isNotEmpty()) view?.slides?.forEachIndexed { i, sl -> sl.items.filterIsInstance<SlideItem.Shape>().filter { it.id != null && it.text != null && !it.hint && !it.grouped }.forEach { sh ->
+            val lines = SlidesEdit.lines(sh); val now = lines.map { l -> swaps.fold(l) { acc, (a, b) -> acc.replace(a, b) } }
+            if (now != lines) texts = texts + ((e.order[i].uid to sh.id!!) to now) } }
+        change(e.copy(sources = list, citeStyle = st, texts = texts)); note?.let { message = it }
+        WriterLog.i("Slides: sources ${list.size}, ${st.name}, ${swaps.size} citations rewritten")
+    }
+    /** Words' import (a Tetra sources file, or Claude's answer pasted): the new ones added, none twice. */
+    fun importSources(text: () -> String?) {
+        val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException("Nothing to import.") }
+        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: "That file could not be read."; return }
+        val added = ArrayList<DocSource>()
+        for (n in r.sources) if (!SourcesImport.same(n, sources + added)) added += n.copy(tag = Citations.tagFor(if (odp) OfficeKind.Odt else OfficeKind.Docx, n, (sources + added).map { it.tag }, citeStyle))
+        resource(sources + added, citeStyle, "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else ""))
+    }
+    val pickSources = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
+        u?.let { importSources { context.contentResolver.openInputStream(it)?.use { s -> String(s.readBytes(), Charsets.UTF_8) } } } }
     /** Gridlines' spacing (pt): half a centimetre, or a quarter inch in Words' inches. */
     fun gridStep() = if (WriterUnits.inches) 18f else 14.173f
     /** The name of the section slide [i] starts, if one does (Home › Section). */
@@ -858,6 +890,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 }
                 RibbonDivider(w)
                 RibbonButton("Comments", w, R.drawable.ic_comment, on = commentsOn) { commentsOn = !commentsOn }
+            }
+            "References" -> {
+                // Words' References for a deck (the user's choices, 17 Oct): its sources, their style, citations put in where one types
+                RibbonButton("Sources", w, R.drawable.ic_checklist) { sourcesOpen = true }
+                Box {
+                    var styling by remember { mutableStateOf(false) }
+                    RibbonButton("Style: ${citeStyle.label}", w, R.drawable.ic_style) { styling = true }
+                    DropdownMenu(styling, { styling = false }) {
+                        // shortcut: IEEE numbers its citations by their order, which words on slides cannot follow
+                        CiteStyle.entries.filter { it != CiteStyle.IEEE }.forEach { st -> DropdownMenuItem(text = { Text(st.label) }, onClick = { styling = false; resource(sources, st, "Citations in ${st.label}") }) }
+                    }
+                }
+                RibbonButton("Insert citation", w, R.drawable.ic_format_quote) { if (sources.isEmpty()) sourceNew = true else citing = true }
             }
             "Review" -> {
                 // Words' Comments group: a new one, the comments shown, the one before or after (on other slides too), and the one tapped
@@ -1399,7 +1444,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "Review", "View", "Item".takeIf { item != null && !sorter && !outline })
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide show", "References", "Review", "View", "Item".takeIf { item != null && !sorter && !outline })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
@@ -1562,6 +1607,22 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             repicture(File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.png").apply { writeBytes(png) })
                         }
                     }
+                    if (sourcesOpen) SourcesDialog(sources, remember(view, sources) { cited() }, { sourcesOpen = false }, { src -> if (src == null) sourceNew = true else sourceEdit = src },
+                        { sourcesOpen = false; pickSources.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+                        { sourcesOpen = false; importSources { context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+                            ?: throw IllegalArgumentException("Nothing copied: copy Claude's answer (the JSON) first.") } },
+                        { val topic = view?.slides?.firstOrNull()?.items?.filterIsInstance<SlideItem.Shape>()?.firstNotNullOfOrNull { it.text?.paras?.firstOrNull()?.runs?.joinToString("") { r -> r.text }?.takeIf { t -> t.isNotBlank() } }.orEmpty()
+                            val ask = "Using the tetra-sources skill, make a Tetra sources file (JSON) for my presentation \"${file?.nameWithoutExtension.orEmpty()}\"" + (if (topic.isNotEmpty()) " — its topic: $topic" else "") +
+                                ".\nOnly real, checked references with their DOIs. I will paste your JSON into Tetra." + (if (sources.isNotEmpty()) "\nIt already cites (leave these out):\n" + sources.joinToString("\n") { "- " + Apa.entry(it).joinToString("") { r -> r.text } } else "")
+                            context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), "Ask Claude for sources")) }
+                    ) { gone -> resource(sources.filter { it.tag != gone.tag }, citeStyle) }
+                    if (sourceNew || sourceEdit != null) SourceDialog(sourceEdit, { sourceNew = false; sourceEdit = null }) { src ->
+                        sourceNew = false; sourceEdit = null
+                        val tagged = if (src.tag.isBlank()) src.copy(tag = Citations.tagFor(if (odp) OfficeKind.Odt else OfficeKind.Docx, src, sources.map { it.tag }, citeStyle)) else src
+                        resource(if (sources.any { it.tag == tagged.tag }) sources.map { if (it.tag == tagged.tag) tagged else it } else sources + tagged, citeStyle)
+                    }
+                    if (citing) CitationDialog(sources, pages = false, multiple = false, { citing = false }, { sourceNew = true }) { list, _, _ ->
+                        citing = false; list.firstOrNull()?.let { putWords(cite(it, citeStyle)); WriterLog.i("Slides: a citation put in") } }
                     if (sectioning) edit?.let { ee -> base?.let { d -> chosen?.let { cc ->
                         val uid = ee.order[cc].uid; val now = ee.sectionsNow(d); val here = now.firstOrNull { it.second == uid }
                         var typed by remember { mutableStateOf(here?.first ?: "Section ${now.size + 1}") }

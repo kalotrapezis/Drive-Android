@@ -49,7 +49,9 @@ How to write here:
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
-- (none now — Slides' drop cap answered 17 Oct, see B › Insert)
+- (office-C session, 17 Oct) Slides › References in an .odp: the plan said "an .odp needs its own place: to decide". I chose the deck's
+  own properties (meta.xml user-defined "Tetra sources", in Word's bibliography form), which LibreOffice keeps when it saves the file
+  and which no one sees in the slides. The other way would be a hidden last slide holding them. Keep meta.xml?
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
 
@@ -401,13 +403,22 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       P ← ↑ Backspace Page Up back, B/W/. black, Home/End, a number and Enter to that slide, Esc ends (the plan's PowerPoint list).
       `loop until Esc saved` (both, LibreOffice's conversions); emulator: rehearsed 4 slides, 0:33, kept. Later as planned: custom shows,
       more animation kinds and an animation list. Unit 426/0/7; sweep 349 + 29, none failing.
-- [ ] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
+- [~] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
       in Word's bibliography part, which PowerPoint keeps (an .odp needs its own place: to decide); **live**
       citations, inserted from the typing bar and rewritten when the style or a source changes (PowerPoint has no
       citation fields, so they are found in the words by the deck's sources and style); References slide(s) at the end
       in the style (APA 7, MLA 9, Chicago, Harvard, IEEE), spread over more slides when long, with Update; a **Contents
       slide** after the title slide: each slide's title and number, and in a show a tap on a title goes there
       (`ppaction://hlinksldjump`); Update after slides move.
+      Sources and citations done 17 Oct (office-C session): a References tab (Words' place, before Review) — Sources (Words'
+      `SourcesDialog`/`SourceDialog`, Import a Tetra sources file, Paste Claude's answer, Ask Claude — `SourcesImport`, tags by
+      `Citations.tagFor`), Style ▾ (Words' `CiteStyle`: APA 7, MLA 9, Chicago, Harvard), Insert citation (Words' `CitationDialog`, put in
+      where one types). Kept in a .pptx in Word's bibliography part by Words' `WordSources` (customXml, as PowerPoint keeps it); in an
+      .odp in meta.xml's user-defined properties in Word's form ("Tetra sources", "Tetra citation style" — **my choice, see Waiting on
+      the user**), which LibreOffice keeps when it saves. Live: changing the style or a source writes every citation in the slides
+      again (found by the sources' citations in the old style). `sources saved` (both; LibreOffice's own save of the .odp keeps them);
+      emulator: "(Smith)" (MLA) became "(Smith, 2020)" when the style was made APA. Shortcuts: one source and no page a citation
+      (Words' fields hold more), IEEE not offered (its numbers follow the order of citing). Next: References slide(s), Contents slide.
 - [x] Accessibility: alt text for pictures (with Arrange's Shape options, office-C session 17 Oct).
 
 **From PowerPoint** (checked online 17 Oct: PowerPoint's ribbon — Home, Insert, Draw, Design, Transitions, Animations,

@@ -424,6 +424,28 @@ class SlidesTest {
         }
     }
 
+    /** References: the deck's sources and citation style kept (PowerPoint: Word's bibliography part; an .odp: its user-defined properties, which LibreOffice keeps). */
+    @Test fun `sources saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val src1 = DocSource("Smi20", DocSource.Type.Article, listOf(DocSource.Person("Smith", "Anna")), "2020", "Reading on screens", "Journal of Reading", volume = "12", pages = "3-9")
+        val src2 = DocSource("Παπ19", DocSource.Type.Book, listOf(DocSource.Person("Παπαδόπουλος", "Γιώργος")), "2019", "Η τάξη", publisher = "Gutenberg")
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            assertEquals(name, emptyList<DocSource>(), deck.sources)
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("sources-$name")
+            val e = SlidesEdit.start(deck).copy(sources = listOf(src1, src2), citeStyle = CiteStyle.MLA)
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val saved = Slides.read(out)
+            assertEquals(name, listOf("Smi20", "Παπ19"), saved.sources.map { it.tag }); assertEquals(name, "Παπαδόπουλος", saved.sources[1].authors[0].last)
+            assertEquals(name, CiteStyle.MLA, saved.citeStyle)
+            if (lo && name.endsWith("odp")) {
+                val dir = scratchDir("lo"); val copy = File(dir, "again.odp").also { out.copyTo(it) }
+                ProcessBuilder("soffice", "--headless", "--convert-to", "odp:impress8", "--outdir", File(dir, "out").path, copy.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("LibreOffice's own save", listOf("Smi20", "Παπ19"), Slides.read(File(dir, "out/again.odp")).sources.map { it.tag })
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

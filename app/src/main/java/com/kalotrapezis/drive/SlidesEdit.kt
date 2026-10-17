@@ -114,7 +114,8 @@ internal object SlidesEdit {
         /** Home › Layout: a slide of the file's put on another of the deck's layouts (its index) */ val relayout: Map<Int, Int> = emptyMap(),
         /** Home › Section: the sections as now, each its name and its first slide's uid; null: as the file has them */ val sections: List<Pair<String, Int>>? = null,
         /** Design › Format background: a slide's own, a colour or a picture */ val backgrounds: Map<Int, Back> = emptyMap(),
-        /** Slide show › Loop until Esc; null: as the file has it */ val loop: Boolean? = null) {
+        /** Slide show › Loop until Esc; null: as the file has it */ val loop: Boolean? = null,
+        /** References: the deck's sources and their style as now; null: as the file has them */ val sources: List<DocSource>? = null, val citeStyle: CiteStyle? = null) {
         /** The sections in the slides' order, each from the slide its first is (one whose first slide is gone, gone). */
         fun sectionsNow(deck: Deck): List<Pair<String, Int>> = (sections ?: deck.sections.orEmpty()).filter { (_, uid) -> order.any { it.uid == uid } }.sortedBy { (_, uid) -> order.indexOfFirst { it.uid == uid } }
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
@@ -962,6 +963,17 @@ internal object SlidesEdit {
             }
         }
         out[presPath] = xml(pres); out[presRels] = xml(rels)
+        // References: the sources in Word's bibliography part (PowerPoint keeps it), Words' writer making it and its relationship
+        if (edit.sources != null || edit.citeStyle != null) {
+            val parts = HashMap<String, ByteArray>()
+            zip.entries().asSequence().map { it.name }.filter { it.startsWith("customXml/") }.forEach { n -> read(n)?.let { parts[n] = it } }
+            parts["[Content_Types].xml"] = typesOut.toByteArray(); parts[presRels] = out[presRels]!!
+            read("_rels/.rels")?.let { parts["_rels/.rels"] = it }
+            val before = parts.toMap()
+            WordSources.write(parts, edit.sources ?: deck.sources, edit.citeStyle ?: deck.citeStyle)
+            typesOut = String(parts.getValue("[Content_Types].xml"))
+            parts.filter { (k, v) -> k != "[Content_Types].xml" && before[k]?.contentEquals(v) != true }.forEach { (k, v) -> out[k] = v }
+        }
         if (typesOut != types) out["[Content_Types].xml"] = typesOut.toByteArray()
         SheetSave.rezip(zip, target, out, stored = null)
         zip.close()

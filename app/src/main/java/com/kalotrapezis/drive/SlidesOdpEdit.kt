@@ -676,6 +676,16 @@ internal object SlidesOdpEdit {
         val after = pres.kids().firstOrNull { it.localName == "settings" }
         ordered.forEach { pres.insertBefore(it, after) }
         out["content.xml"] = xml(doc)
+        // References: the sources (Word's form) and their style in meta.xml's user-defined properties
+        if (edit.sources != null || edit.citeStyle != null) read("meta.xml")?.let { String(it) }?.let { m ->
+            fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            val style = edit.citeStyle ?: deck.citeStyle
+            val xml = """<b:Sources xmlns:b="http://schemas.openxmlformats.org/officeDocument/2006/bibliography" xmlns="http://schemas.openxmlformats.org/officeDocument/2006/bibliography" StyleName="${style.wordName}">""" +
+                (edit.sources ?: deck.sources).joinToString("") { WordSources.source(it) } + "</b:Sources>"
+            val mine = """<meta:user-defined meta:name="${SlidesOdp.SOURCES_NAME}">${esc(xml)}</meta:user-defined><meta:user-defined meta:name="${SlidesOdp.STYLE_NAME}">${style.name}</meta:user-defined>"""
+            val clean = m.replace(Regex("""<meta:user-defined meta:name="(${Regex.escape(SlidesOdp.SOURCES_NAME)}|${Regex.escape(SlidesOdp.STYLE_NAME)})"[^>]*>[\s\S]*?</meta:user-defined>"""), "")
+            out["meta.xml"] = (if ("</office:meta>" in clean) clean.replace("</office:meta>", "$mine</office:meta>") else clean.replace(Regex("""<office:meta\s*/>"""), "<office:meta>$mine</office:meta>")).toByteArray()
+        }
         if (fillImages.isNotEmpty()) read("styles.xml")?.let { String(it) }?.let { st ->
             val images = fillImages.values.withIndex().joinToString("") { (k, href) -> """<draw:fill-image draw:name="tetra-bg-${k + 1}" xlink:href="$href" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>""" }
             out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$images</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$images</office:styles><office:automatic-styles")).toByteArray()

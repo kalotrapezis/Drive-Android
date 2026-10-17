@@ -105,7 +105,8 @@ internal class Deck(val width: Float, val height: Float, val slides: List<Slide>
     /** Home › Layout: slide n read again on layout k (PowerPoint's layout, LibreOffice's master page); null: the file cannot say it */
     val relaid: ((Int, Int) -> Slide?)? = null,
     /** PowerPoint's sections: each one's name and its first slide; null: the file cannot hold them (an .odp) */ val sections: List<Pair<String, Int>>? = null,
-    /** Slide show › Loop until Esc (PowerPoint's showPr loop, LibreOffice's endless) */ val loop: Boolean = false)
+    /** Slide show › Loop until Esc (PowerPoint's showPr loop, LibreOffice's endless) */ val loop: Boolean = false,
+    /** References (Words' sources): the deck's sources and their citation style */ val sources: List<DocSource> = emptyList(), val citeStyle: CiteStyle = CiteStyle.APA)
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
 internal class SlideLayout(val name: String, val part: String, val preview: Slide, val xml: ByteArray)
@@ -178,7 +179,9 @@ internal object Slides {
             val sections = pres.below("section").filter { it.namespaceURI?.contains("powerpoint/2010") == true }.mapNotNull { sec ->
                 sec.below("sldId").firstOrNull()?.attr("id")?.let { sldIds.indexOf(it) }?.takeIf { it >= 0 }?.let { (sec.attr("name") ?: "") to it } }
             val loop = relType(xml, "ppt/presentation.xml", "presProps")?.let(xml)?.kid("showPr")?.attr("loop").let { it == "1" || it == "true" }
-            return Deck(w, h, read, kinds, sections = sections, loop = loop, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) {
+            // References: Word's bibliography part, which PowerPoint keeps too (customXml)
+            val custom = (1..24).mapNotNull { n -> "customXml/item$n.xml".let { p -> part(p)?.let { p to it } } }.toMap()
+            return Deck(w, h, read, kinds, sections = sections, loop = loop, sources = WordSources.read(custom), citeStyle = CiteStyle.ofWord(WordSources.styleName(custom)), relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) {
                 slides.getOrNull(n)?.let { path -> runCatching { slide(path, defaults, layoutOf = kinds[k].part) }.onFailure { WriterLog.w("Slides: $path on another layout", it) }.getOrNull() } } } })
         }
 

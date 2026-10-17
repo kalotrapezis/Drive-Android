@@ -11,6 +11,8 @@ import kotlin.math.sign
  */
 internal object SlidesOdp {
     private const val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+    /** meta.xml's user-defined properties an .odp keeps its sources and their style in (References). */
+    const val SOURCES_NAME = "Tetra sources"; const val STYLE_NAME = "Tetra citation style"
     private const val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
     private const val PRES = "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
     private const val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
@@ -384,7 +386,12 @@ internal object SlidesOdp {
         if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
         val again = HashMap<Pair<Int, Int>, Slide>()
         val endless = content.getElementsByTagNameNS(PRES, "settings").let { l -> (0 until l.length).any { (l.item(it) as Element).a(PRES, "endless") == "true" } }
-        Deck(width, height, slides, kinds, loop = endless, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } })
+        // References: Tetra's sources in the deck's own properties (meta.xml's user-defined, which LibreOffice keeps), in Word's form
+        val meta = part("meta.xml")?.let { runCatching { OfficeFormats.parse(it).documentElement }.getOrNull() }
+        fun userDefined(n: String) = meta?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "user-defined")?.let { l -> (0 until l.length).map { l.item(it) as Element } }
+            ?.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "name") == n }?.textContent
+        val sources = userDefined(SOURCES_NAME)?.let { WordSources.read(mapOf("customXml/item1.xml" to it.toByteArray())) }.orEmpty()
+        Deck(width, height, slides, kinds, loop = endless, sources = sources, citeStyle = userDefined(STYLE_NAME)?.let { n -> CiteStyle.entries.firstOrNull { it.name == n } } ?: CiteStyle.APA, relaid = { n, k -> synchronized(again) { again.getOrPut(n to k) { pageSlide(n, pages[n], kinds[k].part) } } })
     }
 }
 

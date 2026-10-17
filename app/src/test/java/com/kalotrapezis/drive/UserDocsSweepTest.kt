@@ -72,10 +72,11 @@ class UserDocsSweepTest {
                     // LibreOffice opens what was saved: as many pages as it makes of the file itself (hidden ones left out of both)
                     if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                         fun pages(file: File): Int {
-                            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                            val dir = scratchDir("lo")
                             val copy = File(dir, "deck." + f.extension.lowercase()).also { file.copyTo(it) }
                             ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, copy.path).redirectErrorStream(true).start().waitFor()
-                            return File(dir, "deck.pdf").takeIf { it.exists() }?.readBytes()?.let { Regex("/Type\\s*/Page[^s]").findAll(String(it, Charsets.ISO_8859_1)).count() } ?: -1
+                            return (File(dir, "deck.pdf").takeIf { it.exists() }?.readBytes()?.let { Regex("/Type\\s*/Page[^s]").findAll(String(it, Charsets.ISO_8859_1)).count() } ?: -1)
+                                .also { dir.deleteRecursively() } // a copy of the deck and its PDF: gone at once
                         }
                         val a = pages(f); val b = pages(out)
                         // a file LibreOffice itself cannot open (Google Slides' emoji halves, 17 Oct): the saved one must open

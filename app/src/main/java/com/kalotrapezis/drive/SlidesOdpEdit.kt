@@ -298,15 +298,33 @@ internal object SlidesOdpEdit {
                 if (pr != null) s.setAttributeNS(PRES, "presentation:style-name", nm) else s.setAttributeNS(DRAW, "draw:style-name", nm)
             }
         }
+        /** Shape options' alt text: the item's svg:desc ("" none). */
+        fun alt(el: Element, words: String) {
+            el.kids().filter { it.localName == "desc" && it.namespaceURI == SVG }.forEach { el.removeChild(it) }
+            if (words.isEmpty()) return
+            val d = doc.createElementNS(SVG, "svg:desc").also { it.textContent = words }
+            val title = el.kids().firstOrNull { it.localName == "title" && it.namespaceURI == SVG }
+            el.insertBefore(d, title?.nextSibling) // last, after its title, as LibreOffice writes them
+        }
+        /** A picture's crop as LibreOffice keeps it: its style's fo:clip, lengths of the picture at its own size (as Slides reads it). */
+        fun crop(el: Element, c: List<Float>) {
+            val href = el.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./") ?: return
+            val (w, h) = (out[href] ?: read(href))?.let { Slides.picturePt(it) } ?: return
+            val pr = el.a(PRES, "style-name")
+            val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: el.a(DRAW, "style-name"), "clip $c") { st ->
+                props(st, "graphic-properties").setAttributeNS(FO, "fo:clip", "rect(${cm(c[1] * h)}, ${cm(c[2] * w)}, ${cm(c[3] * h)}, ${cm(c[0] * w)})") }
+            if (pr != null) el.setAttributeNS(PRES, "presentation:style-name", nm) else el.setAttributeNS(DRAW, "draw:style-name", nm)
+        }
         fun restyle(el: Element, l: SlidesEdit.Look) {
             val shapes = if (el.localName == "g") el.all().filter { it.namespaceURI == DRAW && it.localName in setOf("frame", "custom-shape", "rect", "ellipse") } else listOf(el)
             for (s in shapes) {
-                if (l.fill != null || l.line != null) {
+                if (l.fill != null || l.line != null || l.lineWidth != null) {
                     val pr = s.a(PRES, "style-name")
-                    val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "fill ${l.fill} line ${l.line}") { st ->
+                    val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "fill ${l.fill} line ${l.line} ${l.lineWidth}") { st ->
                         val g = props(st, "graphic-properties")
                         l.fill?.let { g.removeAttributeNS(DRAW, "fill-gradient-name"); if (it == SlidesEdit.NONE) g.setAttributeNS(DRAW, "draw:fill", "none") else { g.setAttributeNS(DRAW, "draw:fill", "solid"); g.setAttributeNS(DRAW, "draw:fill-color", hex(it)) } }
                         l.line?.let { if (it == SlidesEdit.NONE) g.setAttributeNS(DRAW, "draw:stroke", "none") else { g.setAttributeNS(DRAW, "draw:stroke", "solid"); g.setAttributeNS(SVG, "svg:stroke-color", hex(it)) } }
+                        l.lineWidth?.let { g.setAttributeNS(SVG, "svg:stroke-width", cm(it)) }
                     }
                     if (pr != null) s.setAttributeNS(PRES, "presentation:style-name", nm) else s.setAttributeNS(DRAW, "draw:style-name", nm)
                     // LibreOffice keeps a copy of the fill in the shape's text style (loext:graphic-properties), and paints that one
@@ -320,6 +338,8 @@ internal object SlidesOdpEdit {
                 }
                 if (l.words) words(s, l)
             }
+            l.alt?.let { alt(el, it) }
+            l.crop?.let { crop(el, it) }
         }
         /** [el] at [x], [y], [w] × [h] (points), turned [deg] clockwise about its middle (Words' draw:transform; 0: plain svg:x and svg:y). */
         fun turnTo(el: Element, x: Float, y: Float, w: Float, h: Float, deg: Float) {
@@ -394,9 +414,9 @@ internal object SlidesOdpEdit {
                 """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:text-box><text:p/></draw:text-box></draw:frame>"""
             } else if (a.prst != null && a.prst != "table") {
                 val fill = look?.fill ?: a.fill; val line = look?.line ?: darker(a.fill)
-                val st = derive("graphic", null, "shape $fill $line") { st -> props(st, "graphic-properties").apply {
+                val st = derive("graphic", null, "shape $fill $line ${look?.lineWidth}") { st -> props(st, "graphic-properties").apply {
                     if (fill == SlidesEdit.NONE) setAttributeNS(DRAW, "draw:fill", "none") else { setAttributeNS(DRAW, "draw:fill", "solid"); setAttributeNS(DRAW, "draw:fill-color", hex(fill)) }
-                    if (line == SlidesEdit.NONE) setAttributeNS(DRAW, "draw:stroke", "none") else { setAttributeNS(DRAW, "draw:stroke", "solid"); setAttributeNS(SVG, "svg:stroke-color", hex(line)); setAttributeNS(SVG, "svg:stroke-width", "0.053cm") }
+                    if (line == SlidesEdit.NONE) setAttributeNS(DRAW, "draw:stroke", "none") else { setAttributeNS(DRAW, "draw:stroke", "solid"); setAttributeNS(SVG, "svg:stroke-color", hex(line)); setAttributeNS(SVG, "svg:stroke-width", look?.lineWidth?.let(::cm) ?: "0.053cm") }
                 } }
                 val geometry = ShapeGeometry.odfGeometry(a.prst, a.w, a.h) ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(a.prst)}"/>"""
                 """<draw:custom-shape $ns draw:style-name="$st" draw:layer="layout" $box><text:p/>$geometry</draw:custom-shape>"""
@@ -530,7 +550,7 @@ internal object SlidesOdpEdit {
             val grown = SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid })
             for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
             // the words typed into what was put on, and Home's looks on them, as on the page's own
-            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) } }
+            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) }; edit.looks[uid to a.id]?.alt?.let { alt(el, it) }; edit.looks[uid to a.id]?.crop?.let { crop(el, it) } }
             // Arrange › Rotate and Flip: turned about its middle (Words' draw:transform), mirrored as LibreOffice says it (a shape's geometry, a picture's style)
             if (edit.turns.keys.any { it.first == uid }) {
                 val shown = SlidesEdit.slide(deck, edit, edit.order.first { it.uid == uid })

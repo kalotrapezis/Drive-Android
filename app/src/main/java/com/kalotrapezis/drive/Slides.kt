@@ -60,6 +60,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var anim: String? = null
     /** In a group: it moves with the group (not chosen to move on its own). */
     var grouped = false
+    /** Its words for screen readers (alt text: PowerPoint's cNvPr descr, LibreOffice's svg:desc). */
+    var alt: String? = null
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -464,7 +466,8 @@ internal object Slides {
                         }
                     }
                 }
-                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true }
+                val descr = e.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("cNvPr")?.attr("descr")
+                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else out[k].alt = descr }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 

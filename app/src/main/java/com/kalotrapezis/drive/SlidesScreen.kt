@@ -228,6 +228,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val framed = SlidesEdit.framed(e, uid, id, now.x, now.y, now.w, now.h)
         change(framed.copy(turns = framed.turns + ((uid to id) to f(t0)))); WriterLog.i("Slides: turned")
     }
+    /**
+     * A picture's crop made [c] (left, top, right, bottom of the whole picture), its frame changed so what still shows stays where
+     * and as big as it was — as PowerPoint's Crop does; all 0 (Reset): the whole picture back round it.
+     */
+    fun recrop(c: List<Float>) {
+        val e = edit ?: return; val cc = chosen ?: return; val id = item ?: return; val uid = e.order[cc].uid
+        val p = current(e, cc, id) as? SlideItem.Picture ?: return
+        val o = p.crop?.toList() ?: listOf(0f, 0f, 0f, 0f)
+        val fw = p.w / (1 - o[0] - o[2]).coerceAtLeast(0.01f); val fh = p.h / (1 - o[1] - o[3]).coerceAtLeast(0.01f)
+        val fx = p.x - o[0] * fw; val fy = p.y - o[1] * fh
+        val framed = SlidesEdit.framed(e, uid, id, fx + c[0] * fw, fy + c[1] * fh, fw * (1 - c[0] - c[2]), fh * (1 - c[1] - c[3]))
+        change(framed.copy(looks = framed.looks + ((uid to id) to (framed.looks[uid to id] ?: SlidesEdit.Look()).copy(crop = c)))); WriterLog.i("Slides: crop $c")
+    }
     /** Arrange's order: the chosen item to the front ('f'), the back ('b'), one forward ('+') or one backward ('-'). */
     fun restack(how: Char) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val d = base ?: return; val uid = e.order[c].uid
@@ -360,6 +373,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var hereComment by remember { mutableStateOf<String?>(null) } // the comment tapped (its marker or card)
     var rotating by remember { mutableStateOf(false) } // Arrange › Rotate: Words' rotate dialog
     var sizing by remember { mutableStateOf(false) } // Arrange › Size and position: the numbers
+    var shaping by remember { mutableStateOf(false) } // Shape options: Words' page of a shape's styles, fill, outline, size, angle and alt text
+    var alting by remember { mutableStateOf(false) } // Alt text of what is not a shape (a picture, a chart, a table, a text box)
+    var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
     /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
     fun recomment(f: (List<SlideComment>) -> List<SlideComment>) {
         val e = edit ?: return; val c = chosen ?: return
@@ -616,6 +632,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         RibbonButton("Flip up and down", w, R.drawable.ic_flip) { turn { it.copy(flipV = !it.flipV) } }
                     }
                     RibbonButton("Size and position", w, R.drawable.ic_aspect_ratio) { sizing = true }
+                    // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
+                    if (it0 is SlideItem.Picture && it0.math == null) {
+                        RibbonButton("Crop", w, R.drawable.ic_crop) { scope.launch {
+                            cropping = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { it0.bytes()?.let { b ->
+                                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
+                                var k = 1; while (maxOf(o.outWidth, o.outHeight) / (k * 2) >= 2400) k *= 2
+                                android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = k }) } }
+                            if (cropping == null) message = "This picture cannot be cropped here"
+                        } }
+                        if (it0.crop != null) RibbonButton("Reset picture", w, R.drawable.ic_undo) { recrop(listOf(0f, 0f, 0f, 0f)) }
+                    }
+                    // Words' Shape options for a shape; for the rest its alt text (what it shows, for screen readers)
+                    if ((it0 as? SlideItem.Shape)?.shape != null && !it0.grouped) RibbonButton("Shape options", w, R.drawable.ic_tune) { shaping = true }
+                    else RibbonButton("Alt text", w, R.drawable.ic_label) { alting = true }
                 }
                 if (it0 != null) RibbonDivider(w)
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
@@ -1215,6 +1245,42 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
                     if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }
+                    if (shaping && arranged is SlideItem.Shape) arranged.shape?.let { sp ->
+                        ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, arranged.w, arranged.h, arranged.rotation, arranged.alt.orEmpty()), { shaping = false }) { o ->
+                            shaping = false
+                            // one step of Undo: its looks, its size (its top left kept), its angle
+                            val ee = edit ?: return@ShapeOptionsDialog; val cc = chosen ?: return@ShapeOptionsDialog; val id = item ?: return@ShapeOptionsDialog; val k = ee.order[cc].uid to id
+                            val l = ee.looks[k] ?: SlidesEdit.Look()
+                            var next = ee.copy(looks = ee.looks + (k to l.copy(fill = if (o.fill != sp.fill) o.fill ?: SlidesEdit.NONE else l.fill, // only what was changed (a gradient shows as no fill)
+                                line = if (o.line != sp.line) o.line ?: SlidesEdit.NONE else l.line, lineWidth = o.lineWidth.takeIf { it != sp.lineWidth } ?: l.lineWidth,
+                                alt = o.alt.takeIf { it != arranged.alt.orEmpty() } ?: l.alt)))
+                            if (o.widthPt != arranged.w || o.heightPt != arranged.h) next = SlidesEdit.framed(next, k.first, id, arranged.x, arranged.y, o.widthPt, o.heightPt)
+                            if (o.degrees != arranged.rotation) next = next.copy(turns = next.turns + (k to (next.turns[k] ?: SlidesEdit.Turn(arranged.rotation, arranged.flipH, arranged.flipV)).copy(deg = o.degrees)))
+                            change(next); WriterLog.i("Slides: shape options")
+                        }
+                    }
+                    if (alting && arranged != null) {
+                        var typed by remember { mutableStateOf(arranged.alt.orEmpty()) }
+                        androidx.compose.material3.AlertDialog(onDismissRequest = { alting = false }, title = { Text("Alt text") },
+                            text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it }, label = { Text("What it shows, for screen readers") }, minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth()) },
+                            confirmButton = { androidx.compose.material3.TextButton(onClick = { alting = false; restyle { it.copy(alt = typed.trim()) } }) { Text("OK") } },
+                            dismissButton = { androidx.compose.material3.TextButton(onClick = { alting = false }) { Text("Cancel") } })
+                    }
+                    cropping?.let { bmp ->
+                        // Words' crop (Photos' corners, straight cuts on); the cut kept as a crop of the whole picture, so Reset brings it back
+                        val c0 = (arranged as? SlideItem.Picture)?.crop
+                        val start = c0?.let { c -> DocumentQuad(ScanPoint(c[0], c[1]), ScanPoint(1 - c[2], c[1]), ScanPoint(1 - c[2], 1 - c[3]), ScanPoint(c[0], 1 - c[3])) } ?: DocumentQuad.fullFrame()
+                        androidx.compose.ui.window.Dialog({ cropping = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                                CornerEditor(bmp, start, DocumentQuad.fullFrame(), "Reset", straightOption = true, done = { q ->
+                                    cropping = null
+                                    // shortcut: corners moved freely (not straight) are cut to the box round them
+                                    val xs = q.points.map { it.x.coerceIn(0f, 1f) }; val ys = q.points.map { it.y.coerceIn(0f, 1f) }
+                                    recrop(listOf(xs.min(), ys.min(), 1 - xs.max(), 1 - ys.max()))
+                                }, cancel = { cropping = null })
+                            }
+                        }
+                    }
                     if (sizing && arranged != null) SizeAndPosition(arranged, { sizing = false }) { x, y, ww, hh -> sizing = false; reframe { listOf(x, y, ww, hh) } }
                     commentAsk?.let { (how, of) ->
                         val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) // the name Words' comments use

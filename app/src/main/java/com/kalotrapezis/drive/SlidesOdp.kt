@@ -269,7 +269,8 @@ internal object SlidesOdp {
                     }
                     "g" -> shapes(e, out, master, path, top ?: path)
                 }
-                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true }
+                val desc = e.kids().firstOrNull { it.localName == "desc" }?.textContent
+                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else out[i].alt = desc }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 

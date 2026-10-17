@@ -314,6 +314,16 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       first). `items turned and reordered saved` (both, LibreOffice's conversions); emulator: a picture turned 30° and saved —
       LibreOffice turns it the same. Not yet: distribute (needs several chosen), group/ungroup, a group turned, the chosen frame
       drawn turned; crop/replace/reset/border; outline width/dash, shadow, Shape styles. Unit 418/0/7; sweep 349 + 29, none failing.
+      Then (office-C session, 17 Oct): Words' `ShapeOptionsDialog` for a slide's shape — Words' Shape styles, fill, outline, outline
+      width, size, angle, alt text — applied as one step (only what was changed: a gradient shows there as no fill); Alt text for the
+      rest (pictures, charts, tables, text boxes). `Look.lineWidth` (ln w / svg:stroke-width) and `Look.alt`, read back as
+      `SlideItem.alt` (PowerPoint's cNvPr descr, LibreOffice's svg:desc) — also the plan's Accessibility item. `shape options and alt
+      text saved` (both, LibreOffice's conversions); emulator: a style picked, drawn. A picture's Crop: Words' crop editor (`CornerEditor`,
+      Photos' corners, straight cuts) on the whole picture, kept as a crop (`Look.crop`: srcRect / LibreOffice's fo:clip by
+      `Slides.picturePt`), what still shows staying where and as big as it was; Reset picture brings the whole back (Words makes a
+      new cut picture instead: here PowerPoint's own way is kept). `a picture cropped saved` (both, LibreOffice's conversions, Reset);
+      emulator: cropped, saved — srcRect in the file. Unit 419/0/7, sweep 349 + 29 none failing (after the disk was cleared: the
+      tests' LibreOffice folders had filled /tmp, a 6.8 GB RAM disk — they are now removed: `scratchDir`, and the sweep at once).
 - [ ] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
       reorder, many at once); copy slides between decks.
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
@@ -341,7 +351,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       in the style (APA 7, MLA 9, Chicago, Harvard, IEEE), spread over more slides when long, with Update; a **Contents
       slide** after the title slide: each slide's title and number, and in a show a tap on a title goes there
       (`ppaction://hlinksldjump`); Update after slides move.
-- [ ] Accessibility: alt text for pictures.
+- [x] Accessibility: alt text for pictures (with Arrange's Shape options, office-C session 17 Oct).
 
 **From PowerPoint** (checked online 17 Oct: PowerPoint's ribbon — Home, Insert, Draw, Design, Transitions, Animations,
 Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint on each platform); what is not listed above:

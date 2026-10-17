@@ -524,7 +524,7 @@ class OfficeFormatsTest {
             val again = OfficeFormats.read(OfficeFormats.write(back.copy(footFormat = NoteFormats.FOOT, endFormat = NoteFormats.END), kind, bytes), kind)
             assertEquals(kind.name, NoteFormats.FOOT to NoteFormats.END, again.footFormat to again.endFormat)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
@@ -550,7 +550,7 @@ class OfficeFormatsTest {
             val back = OfficeFormats.notesOf(OfficeFormats.read(bytes, kind)).single()
             assertEquals(kind.name, true, back.paras[0].runs.single { it.text == "bold" }.bold)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
@@ -578,7 +578,7 @@ class OfficeFormatsTest {
             val filled = Forms.pictureFilled(back, run.image!!.key)
             assertEquals(kind.name, false, "w:showingPlcHdr" in filled.paras[0].runs.single { it.image != null }.control!!)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "p.${kind.extension}").apply { writeBytes(OfficeFormats.write(filled, kind, bytes)) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
@@ -605,7 +605,7 @@ class OfficeFormatsTest {
                 assert(settings.indexOf("<w:autoHyphenation") < settings.indexOf("<w:consecutiveHyphenLimit") && settings.indexOf("<w:consecutiveHyphenLimit") < settings.indexOf("<w:hyphenationZone")) { settings }
             }
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(set) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
@@ -629,7 +629,7 @@ class OfficeFormatsTest {
         assert(settings.indexOf("<w:trackRevisions/>") in 0 until settings.indexOf("<w:autoHyphenation/>")) { settings }
         assertEquals(listOf("one"), OfficeFormats.read(both, OfficeKind.Docx).paras.map { it.text })
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             for ((name, b) in listOf("on" to both, "off" to bytes)) {
                 java.io.File(dir, "$name.docx").writeBytes(b)
                 ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, java.io.File(dir, "$name.docx").path).redirectErrorStream(true).start().waitFor()
@@ -684,7 +684,7 @@ class OfficeFormatsTest {
             }
             // LibreOffice follows them: its PDF of the file has links inside it, and its other format keeps them as links to bookmarks
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "c.${kind.extension}").apply { writeBytes(OfficeFormats.write(updated, kind)) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 val pdf = String(java.io.File(dir, "c.pdf").readBytes(), Charsets.ISO_8859_1)
@@ -708,7 +708,7 @@ class OfficeFormatsTest {
             // recoloured red: the heads stay
             assertEquals(kind, ends, ShapePicture.of(PictureXml.shapeLook(back, null, 0xFFC00000.toInt(), 2f)!!)!!.ends)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "a.docx").apply { writeBytes(bytes) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 val odt = java.util.zip.ZipFile(java.io.File(dir, "a.odt")).use { z -> listOf("content.xml", "styles.xml").joinToString("") { String(z.getInputStream(z.getEntry(it)).readBytes()) } }
@@ -725,7 +725,7 @@ class OfficeFormatsTest {
             if (kind == OfficeKind.Docx) assert(String(java.util.zip.ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name == "word/document.xml" }; z.readBytes() }).contains("<w:softHyphen/>")) { "no softHyphen" }
             assertEquals(kind.name, "Το $word μας", OfficeFormats.read(bytes, kind).paras.single().text)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
@@ -748,7 +748,7 @@ class OfficeFormatsTest {
             assertEquals(kind.name, listOf("Changed"), OfficeFormats.read(OfficeFormats.write(OfficeDoc(listOf(DocPara(listOf(DocRun(OBJECT_MARK.toString(),
                 image = back.with(raw = PictureXml.boxText(back.raw!!, kind, listOf("Changed")))))))), kind), kind).paras.flatMap { it.runs }.mapNotNull { it.image }.single().box?.map { it.text })
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()

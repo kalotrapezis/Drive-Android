@@ -98,7 +98,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
@@ -131,7 +131,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
@@ -163,7 +163,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
             }
@@ -196,7 +196,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(out, saved, e2, again) else SlidesEdit.save(out, saved, e2, again)
             Slides.read(again).let { assertEquals(name, 2, it.slides[0].comments.size); assertEquals(name, 0, it.slides[1].comments.size) }
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
             }
@@ -227,10 +227,67 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
+        }
+    }
+
+    /** Shape options (Words'): a shape's outline width and alt text, a picture's alt text; saved and read back. */
+    @Test fun `shape options and alt text saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+            val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to box.anim!!) to SlidesEdit.Look(line = 0xFF000000.toInt(), lineWidth = 3f, alt = "A blue box"),
+                (2 to pic.anim!!) to SlidesEdit.Look(alt = "A flag, blue and yellow")))
+            fun check(d: Deck, how: String) {
+                val b = d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+                assertEquals(how, 3f, b.shape!!.lineWidth, 0.1f); assertEquals(how, "A blue box", b.alt)
+                assertEquals(how, "A flag, blue and yellow", d.slides[2].items.filterIsInstance<SlideItem.Picture>().first().alt)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("options-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
+    /** A picture cropped (Words' crop editor): the cut kept as PowerPoint's srcRect / LibreOffice's clip of the whole picture; Reset takes it away. */
+    @Test fun `a picture cropped saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            val cut = listOf(0.1f, 0.2f, 0.1f, 0f)
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to pic.anim!!) to SlidesEdit.Look(crop = cut)),
+                frames = mapOf((2 to pic.anim!!) to listOf(pic.x + pic.w * 0.1f, pic.y + pic.h * 0.2f, pic.w * 0.8f, pic.h * 0.8f)))
+            fun check(d: Deck, how: String) {
+                val p = d.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+                assertEquals(how, cut, p.crop!!.toList().map { Math.round(it * 1000) / 1000f }); assertEquals(how, pic.w * 0.8f, p.w, 1f)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("crop-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val saved = Slides.read(out); check(saved, "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+            // Reset: the whole picture again
+            val p = saved.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            val back = File("build/office-roundtrip").resolve("crop-reset-$name")
+            val e2 = SlidesEdit.start(saved).copy(looks = mapOf((2 to p.anim!!) to SlidesEdit.Look(crop = listOf(0f, 0f, 0f, 0f))))
+            if (src.extension == "odp") SlidesOdpEdit.save(out, saved, e2, back) else SlidesEdit.save(out, saved, e2, back)
+            assertEquals(name, null, Slides.read(back).slides[2].items.filterIsInstance<SlideItem.Picture>().first().crop)
         }
     }
 
@@ -250,7 +307,7 @@ class SlidesTest {
             fun save(from: File, d: Deck, ed: SlidesEdit.Edit, to: File) = if (from.extension == "odp") SlidesOdpEdit.save(from, d, ed, to) else SlidesEdit.save(from, d, ed, to)
             save(src, deck, e, out); check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
@@ -288,7 +345,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
@@ -312,7 +369,7 @@ class SlidesTest {
             check(Slides.read(out), "saved, $name")
             assertEquals(name, 1, Slides.read(out).slides[3].items.count { it is SlideItem.Chart }) // the deck's own chart as it was
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
@@ -340,7 +397,7 @@ class SlidesTest {
             check(Slides.read(out), "saved, $name", ::target)
             if (src.extension == "odp") assertTrue(target(Slides.read(out)).startsWith("#"))
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 val back = Slides.read(dir.listFiles()!!.single { it.extension == other })
                 assertEquals("LibreOffice's $other of $name", listOf("https://example.com/a"), links(back, 2, "Bold red"))
@@ -377,7 +434,7 @@ class SlidesTest {
             if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
             check(Slides.read(out), "saved, $name")
             if (lo) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
@@ -400,7 +457,7 @@ class SlidesTest {
             assertEquals("saved, $name", "x^2+1", OfficeMath.linear(back.math!!)); assertTrue(name, back.bytes()!!.isNotEmpty())
             if (lo) {
                 // LibreOffice: a .pptx's equation as its picture (it draws no a14:m), an .odp's as its Math object
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 val d = Slides.read(dir.listFiles()!!.single { it.extension == other })
                 assertTrue("LibreOffice's $other of $name", d.slides[0].items.any { kotlin.math.abs(it.x - 200f) < 2f && kotlin.math.abs(it.y - 400f) < 2f })
@@ -496,7 +553,7 @@ class SlidesTest {
         assertEquals("Say hello first.", back.slides[1].notes) // its notes went with it
         // LibreOffice opens it: four pages
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             val odp = dir.listFiles()!!.single { it.extension == "odp" }
             val lo = Slides.read(odp)
@@ -537,7 +594,7 @@ class SlidesTest {
             st[1].effects.single().let { assertEquals("fly", it.kind); assertEquals('l', it.from); assertEquals(1000, it.ms); assertTrue(!it.exit) }
             st[2].effects.single().let { assertEquals(b.anim, it.target); assertEquals("fly", it.kind); assertEquals('r', it.from); assertTrue(it.exit) } }
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             val odp = dir.listFiles()!!.single { it.extension == "odp" }
             val content = java.util.zip.ZipFile(odp).use { z -> String(z.getInputStream(z.getEntry("content.xml")).readBytes()) + String(z.getInputStream(z.getEntry("styles.xml")).readBytes()) }
@@ -601,7 +658,7 @@ class SlidesTest {
         }
         check(Slides.read(out), true)
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", "pptx", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             check(Slides.read(dir.listFiles()!!.single { it.extension == "pptx" }), false)
         }
@@ -611,7 +668,7 @@ class SlidesTest {
     @Test fun `animations starting with and after the one before`() {
         fun lo(file: File, to: String): File? {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
             return dir.listFiles()!!.single { it.extension == to }
         }
@@ -639,7 +696,7 @@ class SlidesTest {
     @Test fun `emphasis effects saved`() {
         fun lo(file: File, to: String): File? {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
             return dir.listFiles()!!.single { it.extension == to }
         }
@@ -659,7 +716,7 @@ class SlidesTest {
     @Test fun `wipe and zoom saved`() {
         fun lo(file: File, to: String): File? {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
             return dir.listFiles()!!.single { it.extension == to }
         }
@@ -681,7 +738,7 @@ class SlidesTest {
     @Test fun `delays and slides going on by themselves`() {
         fun lo(file: File, to: String): File? {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
             return dir.listFiles()!!.single { it.extension == to }
         }
@@ -745,7 +802,7 @@ class SlidesTest {
         // LibreOffice draws a dark one dark
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
             val night = SlidesThemes.BUILT_IN.first { it.name == "Night" }
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             val f = File(dir, "n.pptx"); SlidesThemes.apply(blank, night, f)
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
             assertEquals(0xFF000000.toInt() or night.colors[1], Slides.read(File(dir, "n.odp")).slides.first().background)
@@ -770,7 +827,7 @@ class SlidesTest {
         val again = File.createTempFile("theme2", ".odp"); SlidesThemes.apply(out, SlidesThemes.BUILT_IN.first { it.name == "Leaf" }, again)
         assertEquals(1, Slides.read(again).slides[1].items.count { it is SlideItem.Shape && it.shape?.fill == (0xFF000000.toInt() or 0x90C226) })
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             val f = File(dir, "t.odp").also { out.copyTo(it) }
             ProcessBuilder("soffice", "--headless", "--convert-to", "pptx", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
             assertEquals(0xFF000000.toInt() or midnight.colors[1], Slides.read(File(dir, "t.pptx")).slides[1].background)
@@ -789,7 +846,7 @@ class SlidesTest {
         assertEquals(1, d.slides.size)
         assertTrue(d.slides[0].items.any { it is SlideItem.Picture }) // the logo on the master
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             val f = File(dir, "d.pptx").also { deck.copyTo(it) }
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
             assertEquals(1, Slides.read(File(dir, "d.odp")).slides.size)
@@ -800,7 +857,7 @@ class SlidesTest {
     @Test fun `speaker notes saved`() {
         fun lo(file: File, to: String): File? {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", dir.path, file.path).redirectErrorStream(true).start().waitFor()
             return dir.listFiles()!!.single { it.extension == to }
         }
@@ -865,7 +922,7 @@ class SlidesTest {
         check(back)
         assertEquals("2", back.steps.single().effects.single().target)
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-            val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+            val dir = scratchDir("lo")
             ProcessBuilder("soffice", "--headless", "--convert-to", "odp", "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
             val lo = Slides.read(dir.listFiles()!!.single { it.extension == "odp" }).slides[3]
             val (oval, rect) = lo.items.filterIsInstance<SlideItem.Shape>().sortedBy { it.x }

@@ -41,7 +41,8 @@ internal object SlidesEdit {
         val effects: TextEffects? = null, val warp: String? = null,
         /** Shape options (Words'): the outline's width (pt); its words for screen readers ("" none) */ val lineWidth: Float? = null, val alt: String? = null,
         /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
-        /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null) {
+        /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
+        /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
             align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null
@@ -135,7 +136,7 @@ internal object SlidesEdit {
         is SlideItem.Shape -> SlideItem.Shape(item.x, item.y, item.w, item.h, t.deg, item.shape, item.text, item.paths, t.flipH, t.flipV, item.gradient, item.id, item.hint)
         is SlideItem.Picture -> SlideItem.Picture(item.x, item.y, item.w, item.h, t.deg, item.crop, item.math, t.flipH, t.flipV, item.bytes)
         else -> item
-    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
     /** [items] in [stack]'s order from the back (the layout's and master's under them all, one not in it on top). */
     fun stacked(items: List<SlideItem>, stack: List<String>?): List<SlideItem> = if (stack == null) items else
         items.sortedBy { i -> i.anim?.let { a -> stack.indexOf(a).let { if (it < 0) Int.MAX_VALUE else it } } ?: -1 }
@@ -166,7 +167,7 @@ internal object SlidesEdit {
             is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.flipH, item.flipV, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
-        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
     }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
@@ -183,7 +184,7 @@ internal object SlidesEdit {
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp) }
-                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
@@ -249,9 +250,10 @@ internal object SlidesEdit {
     /** [item] in the looks chosen for it (a shape: its fill, border, words' colour; anything else as it is). */
     private fun styled(item: SlideItem, l: Look?): SlideItem {
         l?.alt?.let { item.alt = it.ifEmpty { null } }
+        l?.objectLink?.let { item.link = it.ifEmpty { null } }
         if ((l?.crop != null || l?.image != null) && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation,
             l.crop?.toFloatArray()?.takeIf { c -> c.any { it != 0f } } ?: item.crop.takeIf { l.crop == null },
-            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
@@ -259,7 +261,7 @@ internal object SlidesEdit {
         val text = item.text?.let { looked(it, l) }
         // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
-        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt }
+        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
     fun table(a: Added, look: Look? = null): SlideItem.Table {
@@ -551,6 +553,16 @@ internal object SlidesEdit {
         } }
         // Replace picture, Edit drawing: the picture's blip names its new media part
         for ((id, l) in looks) l.image?.let { rels["image $id"]?.let { rid -> named(id)?.takeIf { it.localName == "pic" }?.getElementsByTagNameNS(A, "blip")?.item(0)?.let { (it as Element).setAttributeNS(R, "r:embed", rid) } } }
+        // Insert › Link on an object: its cNvPr's hlinkClick (by the relationship made for it; the slide it came from by PowerPoint's action alone)
+        for ((id, l) in looks) l.objectLink?.let { to -> root.getElementsByTagNameNS(P, "cNvPr").let { n -> (0 until n.length).map { n.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }?.let { c ->
+            c.kids().filter { it.localName == "hlinkClick" }.forEach { c.removeChild(it) }
+            val h = when {
+                to.isEmpty() -> null
+                to == "back" -> doc.createElementNS(A, "a:hlinkClick").also { it.setAttributeNS(R, "r:id", ""); it.setAttribute("action", "ppaction://hlinkshowjump?jump=lastslideviewed") }
+                else -> rels["object $id"]?.let { rid -> doc.createElementNS(A, "a:hlinkClick").also { it.setAttributeNS(R, "r:id", rid.substringBefore(' ')); if (rid.endsWith(" slide")) it.setAttribute("action", "ppaction://hlinksldjump") } }
+            }
+            h?.let { c.insertBefore(it, c.firstChild) }
+        } }
         // Shape options' alt text: the item's own description (a picture's too)
         for ((id, l) in looks) l.alt?.let { alt -> root.getElementsByTagNameNS(P, "cNvPr").let { n -> (0 until n.length).map { n.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
             ?.let { if (alt.isEmpty()) it.removeAttribute("descr") else it.setAttribute("descr", alt) } }
@@ -901,7 +913,11 @@ internal object SlidesEdit {
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "run $to" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
                 else "run $to" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             }.toMap()
-            val ids = runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
+            val objectLinks = looks.mapNotNull { (id, l) -> l.objectLink?.takeIf { it.isNotEmpty() && it != "back" }?.let { to ->
+                if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "object $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
+                else "object $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
+            } }.toMap()
+            val ids = objectLinks + runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "link $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
                 else "link $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             } }

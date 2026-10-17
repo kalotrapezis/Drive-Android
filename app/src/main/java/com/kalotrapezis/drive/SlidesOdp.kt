@@ -275,7 +275,9 @@ internal object SlidesOdp {
                     "g" -> shapes(e, out, master, path, top ?: path)
                 }
                 val desc = e.kids().firstOrNull { it.localName == "desc" }?.textContent
-                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else out[i].alt = desc }
+                // its click: LibreOffice's "go to page or object" or a web page (office:event-listeners)
+                val click = e.kids().firstOrNull { it.localName == "event-listeners" }?.kids()?.firstOrNull { it.localName == "event-listener" && it.a(PRES, "action") == "show" }?.a(XLINK, "href")
+                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click } }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 

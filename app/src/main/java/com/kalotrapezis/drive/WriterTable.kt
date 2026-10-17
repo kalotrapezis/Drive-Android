@@ -661,8 +661,8 @@ private val SYMBOLS = listOf(
  */
 @Composable
 internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?, linked: Boolean, dismiss: () -> Unit, remove: () -> Unit,
-    slides: List<String>? = null, done: (String, String) -> Unit) {
-    val startSlide = startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
+    slides: List<String>? = null, /** Slides: "The slide it came from" offered too (PowerPoint's Last Slide Viewed: "#back") */ back: Boolean = false, done: (String, String) -> Unit) {
+    val startSlide = if (startUrl == "#back") -1 else startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
     var url by remember { mutableStateOf(startUrl?.takeIf { startSlide == null } ?: "https://") }
     var text by remember { mutableStateOf(startText ?: "") }
     var slide by remember { mutableStateOf(startSlide) } // Slides: a slide chosen, not a web address
@@ -674,15 +674,16 @@ internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?
                 if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
                 if (slides != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Choice("Web page", slide == null) { slide = null }
-                    Choice("Slide in this deck", slide != null) { slide = slide ?: 0 }
+                    Choice("Slide in this deck", slide != null && slide != -1) { slide = slide?.takeIf { it >= 0 } ?: 0 }
+                    if (back) Choice("The slide it came from", slide == -1) { slide = -1 }
                 }
                 if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
-                else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                else if (slide != -1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     slides.orEmpty().forEachIndexed { i, name -> Choice("${i + 1}. $name", slide == i) { slide = i } }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { val to = slide?.let { "#$it" } ?: url; done(text.ifBlank { slide?.let { slides?.getOrNull(it) } ?: url }, to) }) { Text("OK") } },
+        confirmButton = { TextButton(onClick = { val to = slide?.let { if (it == -1) "#back" else "#$it" } ?: url; done(text.ifBlank { slide?.let { if (it == -1) "Back" else slides?.getOrNull(it) } ?: url }, to) }) { Text("OK") } },
         dismissButton = {
             Row {
                 if (linked) TextButton(onClick = remove) { Text("Remove link") }

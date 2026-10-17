@@ -309,6 +309,14 @@ internal object SlidesOdpEdit {
                 setAttributeNS(MANIFEST, "manifest:full-path", path); setAttributeNS(MANIFEST, "manifest:media-type", if (ext == "jpg") "image/jpeg" else "image/$ext") })
             return path
         }
+        /** Insert › Link on an object: LibreOffice's click action — go to a page (named once every page is in place) or a web page; "" none. */
+        fun clickTo(el: Element, to: String) {
+            el.kids().filter { it.localName == "event-listeners" }.forEach { el.removeChild(it) }
+            // shortcut: LibreOffice has no "the slide it came from": in an .odp such a link is left out (Tetra's show offers it in .pptx only)
+            if (to.isEmpty() || to == "back") return
+            el.appendChild(doc.importNode(OfficeFormats.parse(("""<office:event-listeners xmlns:office="$OFFICE" xmlns:presentation="$PRES" xmlns:script="urn:oasis:names:tc:opendocument:xmlns:script:1.0" xmlns:xlink="$XLINK">""" +
+                """<presentation:event-listener script:event-name="dom:click" presentation:action="show" xlink:href="${(if (to.startsWith("slide:")) "#tetra-$to" else to).replace("&", "&amp;").replace("\"", "&quot;")}" xlink:type="simple"/></office:event-listeners>""").toByteArray()).documentElement, true))
+        }
         /** Shape options' alt text: the item's svg:desc ("" none). */
         fun alt(el: Element, words: String) {
             el.kids().filter { it.localName == "desc" && it.namespaceURI == SVG }.forEach { el.removeChild(it) }
@@ -350,6 +358,7 @@ internal object SlidesOdpEdit {
                 if (l.words) words(s, l)
             }
             l.alt?.let { alt(el, it) }
+            l.objectLink?.let { clickTo(el, it) }
             // Replace picture, Edit drawing: the frame's picture a new one in the package
             l.image?.let { p -> el.kids().firstOrNull { it.localName == "image" }?.setAttributeNS(XLINK, "xlink:href", picture(SlidesEdit.Added("image", 0f, 0f, 0f, 0f, image = p, ext = p.substringAfterLast('.')))) }
             l.crop?.let { crop(el, it) }
@@ -578,7 +587,7 @@ internal object SlidesOdpEdit {
             val grown = SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid })
             for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }
             // the words typed into what was put on, and Home's looks on them, as on the page's own
-            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) }; edit.looks[uid to a.id]?.alt?.let { alt(el, it) }; edit.looks[uid to a.id]?.crop?.let { crop(el, it) } }
+            for (a in edit.added[uid].orEmpty()) put[a.id]?.let { el -> edit.texts[uid to a.id]?.let { type(el, it) }; edit.looks[uid to a.id]?.takeIf { it.words }?.let { words(el, it) }; edit.looks[uid to a.id]?.alt?.let { alt(el, it) }; edit.looks[uid to a.id]?.crop?.let { crop(el, it) }; edit.looks[uid to a.id]?.objectLink?.let { clickTo(el, it) } }
             // Arrange › Rotate and Flip: turned about its middle (Words' draw:transform), mirrored as LibreOffice says it (a shape's geometry, a picture's style)
             if (edit.turns.keys.any { it.first == uid }) {
                 val shown = SlidesEdit.slide(deck, edit, edit.order.first { it.uid == uid })
@@ -676,7 +685,7 @@ internal object SlidesOdpEdit {
         val pageName = orderedUid.zip(ordered).associate { (uid, page) ->
             val n = page.a(DRAW, "name")?.takeIf { named.add(it) } ?: fresh("page").also { page.setAttributeNS(DRAW, "draw:name", it); named += it }
             uid to n }
-        for (a in ordered.flatMap { it.all() }.filter { it.localName == "a" && it.a(XLINK, "href")?.startsWith("#tetra-slide:") == true })
+        for (a in ordered.flatMap { it.all() }.filter { (it.localName == "a" || it.localName == "event-listener") && it.a(XLINK, "href")?.startsWith("#tetra-slide:") == true })
             a.setAttributeNS(XLINK, "xlink:href", a.a(XLINK, "href")!!.removePrefix("#tetra-slide:").toIntOrNull()?.let(pageName::get)?.let { "#$it" } ?: "")
         // Slide show › Loop until Esc: the presentation's settings say endless
         edit.loop?.let { loop -> val st = pres.kids().firstOrNull { it.localName == "settings" && it.namespaceURI == PRES }

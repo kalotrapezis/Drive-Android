@@ -62,6 +62,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var grouped = false
     /** Its words for screen readers (alt text: PowerPoint's cNvPr descr, LibreOffice's svg:desc). */
     var alt: String? = null
+    /** Where a tap on it goes in a show (Insert › Link on a picture or shape): a slide's part (an .odp's "#page"), a web address, or "back" (the slide it came from). */
+    var link: String? = null
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -485,8 +487,11 @@ internal object Slides {
                         }
                     }
                 }
-                val descr = e.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("cNvPr")?.attr("descr")
-                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else out[k].alt = descr }
+                val cNvPr = e.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("cNvPr")
+                val descr = cNvPr?.attr("descr")
+                // its own click (PowerPoint's action on the object): a slide, a web page, or the slide it came from
+                val click = cNvPr?.kid("hlinkClick")?.let { h -> if (h.attr("action")?.contains("lastslideviewed") == true) "back" else h.rid("id")?.let(rels::get) }
+                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click } }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 

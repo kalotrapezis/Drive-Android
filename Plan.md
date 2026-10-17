@@ -460,9 +460,22 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       .odp / .pptx; remove notes and comments before sharing (Inspect); password protection (later).
       Template and Inspect done 17 Oct (office-C session, with From Words' File above). Not yet: saving as the other format.
 - [ ] **Text**: right-to-left text and text direction (vertical); highlight (planned in Home above).
-- [ ] **Insert**: Zoom (summary and slide zoom — later); action buttons (as Link to a slide); photo album (later).
+- [~] **Insert**: Zoom (summary and slide zoom — later); action buttons (as Link to a slide); photo album (later).
+      Object links with a zoom done 17 Oct (office-C session; the user: "link from one page to the next … maps with images that zoom in
+      … linking slides and objects together", "click to jump slides or objects, textboxes, zoom in and out effects"): Insert › Link with
+      a picture or shape (or chart) chosen links the object itself — to a slide, a web page, or "The slide it came from" (PowerPoint's
+      Last Slide Viewed; .pptx only, LibreOffice has none) — the shared `LinkDialog` gaining that choice. Saved as PowerPoint's click
+      action on the object (cNvPr hlinkClick, hlinksldjump / lastslideviewed) and LibreOffice's (office:event-listeners, "show" to the
+      page); read back from both (`SlideItem.link`). In a show a tap on it (or on a box with linked words) jumps, the new slide growing
+      out of what was tapped; going back it shrinks back into it — Tetra's own zoom (PowerPoint and LibreOffice jump plainly).
+      `a picture linked to a slide saved` (both, LibreOffice's conversions); emulator: the flag zoomed into Scores, the chart back out.
+      Unit 429/0/7; sweep 349 + 29, none failing. Not yet: PowerPoint's Zoom objects (a slide's picture that is itself the link), photo album.
+- [ ] **Video** (the user, 17 Oct: "Video import, there is no online or offline option on any of the applets"): Insert › Video in
+      Slides — offline (a video from the phone, kept in the deck, played in the show: PowerPoint's p:pic videoFile + p14:media, Impress's
+      draw:plugin) and online (a YouTube or web address kept as a link with its picture, opened when tapped in the show: PowerPoint's
+      Online Video); then Words (Word's Online Video). Excel has none, so Tables not. (office-C session: next after object links.)
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
-  and YouTube (no network services), Cameo, translate, compare presentations.
+  (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 
 **From Words** (asked 17 Oct: "transfer the rest of the features from Words to Slides" — Slides' Insert had only
 Picture, Shape and Table). Each Words button checked against what a slide can hold; what is already listed above is not

@@ -463,6 +463,30 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Link on a picture (the user, 17 Oct: maps that zoom in): the object's own click — to a slide, and back — saved and read back. */
+    @Test fun `a picture linked to a slide saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val pic = deck.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+            val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to pic.anim!!) to SlidesEdit.Look(objectLink = "slide:3"), (2 to box.anim!!) to SlidesEdit.Look(objectLink = "back")))
+            fun check(d: Deck, how: String, back: Boolean) {
+                val p = d.slides[2].items.filterIsInstance<SlideItem.Picture>().first()
+                assertEquals(how, d.slides[3].part, p.link)
+                if (back) assertEquals(how, "back", d.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "A rounded box" }.link)
+            }
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("objlink-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name", name.endsWith("pptx")) // LibreOffice has no "the slide it came from"
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", false)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -1774,15 +1774,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     if (linking) {
                         val box = chosenWords()
-                        val now = box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link }
+                        // a picture or shape chosen (no words of its own): the object itself linked, its tap in a show going there (asked 17 Oct: maps that zoom in)
+                        val thing = if (box == null) item?.let { id -> view?.slides?.getOrNull(chosen ?: -1)?.items?.lastOrNull { it.anim == id } } else null
+                        val now = thing?.link?.let { if (it == "back") "#back" else it } ?: box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link }
                         val ee = edit
                         // a slide's link shown as its place in the deck
                         val shownAt = now?.let { l -> (if (l.startsWith("slide:")) ee?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else view?.slides?.indexOfFirst { it.part == l && l.isNotEmpty() })?.takeIf { it >= 0 }?.let { "#$it" } } ?: now
                         val names = view?.slides.orEmpty().map { sl -> sl.items.filterIsInstance<SlideItem.Shape>().firstNotNullOfOrNull { sh -> sh.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }?.trim()?.takeIf { it.isNotEmpty() && !sh.hint } }?.take(40) ?: "Slide" }
-                        LinkDialog(box == null, shownAt, null, now != null, { linking = false }, { linking = false; restyle { it.copy(link = "") } }, names) { text, to ->
+                        LinkDialog(box == null && thing == null, if (now == "#back") now else shownAt, null, now != null, { linking = false },
+                            { linking = false; restyle { if (thing != null) it.copy(objectLink = "") else it.copy(link = "") } }, names, back = thing != null && !odp) { text, to ->
                             linking = false
-                            val target = to.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()?.let { i -> ee?.order?.getOrNull(i)?.let { "slide:${it.uid}" } } ?: to
-                            if (box != null) restyle { it.copy(link = target) }
+                            val target = if (to == "#back") "back" else to.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()?.let { i -> ee?.order?.getOrNull(i)?.let { "slide:${it.uid}" } } ?: to
+                            if (thing != null) restyle { it.copy(objectLink = target) }
+                            else if (box != null) restyle { it.copy(link = target) }
                             else { val d0 = deck ?: return@LinkDialog; val e0 = edit ?: return@LinkDialog; val cc = chosen ?: return@LinkDialog
                                 val a = SlidesEdit.Added(e0.newId(e0.order[cc].uid, taken(e0, cc)), d0.width * 0.2f, d0.height * 0.42f, d0.width * 0.6f, 40f, prst = SlidesEdit.TEXT_BOX)
                                 val k = e0.order[cc].uid to a.id
@@ -2064,6 +2068,9 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     var since by remember { mutableStateOf(System.nanoTime()) }
     fun mark() { if (rehearse != null) { spent[shown[page]] = (spent[shown[page]] ?: 0L) + (System.nanoTime() - since) / 1_000_000; since = System.nanoTime() } }
     val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
+    // links followed: where each came from and the object tapped there (to go back out of it); the zoom running (from which slide, the object, in or out and when)
+    val visited = remember { ArrayList<Pair<Int, FloatArray>>() }
+    var zooming by remember { mutableStateOf<Triple<Int, FloatArray, Pair<Boolean, Long>>?>(null) }
     fun close() { mark(); rehearse?.invoke(spent); ink.filterValues { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.let { m -> keepInk?.invoke(m.mapKeys { shown[it.key] }) }; close0() }
     // a group of effects lasts as long as its latest one
     fun length(g: SlideStep) = g.effects.maxOfOrNull { it.delay + it.ms } ?: 0
@@ -2092,9 +2099,16 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     /** A tap at [x], [y] in a [w] × [h] window on words with a link (Insert › Link, a file's own): a web page opened, a slide gone to. True: it was one. */
     fun follow(x: Float, y: Float, w: Float, h: Float): Boolean {
         val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
-        val link = slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
-            ?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link } ?: return false
-        jump(link)?.let { i -> shown.indexOf(i).takeIf { it >= 0 }?.let { from = page to System.nanoTime(); page = it; step = 0; playing = null; WriterLog.i("Slides: link to slide ${i + 1}") }; return true }
+        // an object linked (a picture, a shape: asked 17 Oct, maps that zoom in), else words with a link in a box
+        val obj = slide(page).items.lastOrNull { it.link != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }
+        val box = if (obj != null) null else slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
+        val link = obj?.link ?: box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link } ?: return false
+        val tapped = (obj ?: box)!!.let { floatArrayOf(it.x, it.y, it.w, it.h) }
+        // the slide it came from (PowerPoint's Last Slide Viewed): back out of the object it was entered by
+        if (link == "back") { visited.removeLastOrNull()?.let { (p, r) -> mark(); zooming = Triple(page, r, false to System.nanoTime()); page = p; step = slide(p).steps.size; playing = null; from = null
+            WriterLog.i("Slides: back to slide ${shown[p] + 1}") }; return true }
+        jump(link)?.let { i -> shown.indexOf(i).takeIf { it >= 0 }?.let { mark(); visited += page to tapped; zooming = Triple(page, tapped, true to System.nanoTime()); page = it; step = 0; playing = null; from = null
+            WriterLog.i("Slides: link to slide ${i + 1}") }; return true }
         if (Regex("^[a-zA-Z][a-zA-Z+.-]*:").containsMatchIn(link)) { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }; WriterLog.i("Slides: link opened"); return true }
         return false
     }
@@ -2169,6 +2183,18 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
         val sw = deck.width * k; val sh = deck.height * k
         c.save(); c.translate((w - sw) / 2, (h - sh) / 2); c.clipRect(0f, 0f, sw, sh)
         val cur = slide(page)
+        // a link followed from an object: the slide grows out of it (zoom in), or back into it (zoom out), as PowerPoint's Zoom does
+        zooming?.let { (old, r, how) -> val (into, t0) = how
+            val t = (ms(t0) / 600f).coerceIn(0f, 1f); val e = 1 - (1 - t) * (1 - t)
+            if (t < 1f) {
+                fun framed(sl: Slide, p: Int, a: Float, alpha: Float) { // [sl] drawn in the box between the object's (a = 0) and the whole slide's (a = 1)
+                    c.save(); c.translate(r[0] * k * (1 - a), r[1] * k * (1 - a)); c.scale(r[2] / deck.width * (1 - a) + a, r[3] / deck.height * (1 - a) + a)
+                    c.saveLayerAlpha(0f, 0f, sw, sh, (alpha * 255).toInt().coerceIn(0, 255)); Slides.draw(c, deck, sl, k, look = look(sl, p)); c.restore(); c.restore() }
+                if (into) { Slides.draw(c, deck, slide(old), k); framed(cur, page, e, 0.35f + 0.65f * e) }
+                else { Slides.draw(c, deck, cur, k, look = look(cur, page)); framed(slide(old), old, 1 - e, 1 - e) }
+                c.restore(); return
+            }
+        }
         val tr = cur.transition?.takeIf { it.kind.isNotEmpty() } // going on by itself only: no transition to draw
         val f = from
         val t = if (f != null && tr != null) (ms(f.second).toFloat() / tr.ms.coerceAtLeast(1)).coerceIn(0f, 1f) else 1f

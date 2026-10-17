@@ -1708,6 +1708,9 @@ internal object Sheets {
                         when (it.getAttribute("config:name")) { "ActiveTable" -> active = it.textContent; "ShowGrid" -> grid = it.textContent }
                     }
                 }
+                // a view without a Tables list (a sheet's own settings): its own ShowGrid
+                if (grid == null) doc.getElementsByTagNameNS("*", "config-item").let { l -> (0 until l.length).map { l.item(it) as Element } }
+                    .firstOrNull { it.getAttribute("config:name") == "ShowGrid" }?.let { grid = it.textContent }
                 Settings(tables, active, grid)
             }.getOrElse { Settings(emptyMap(), null, null) }
         }

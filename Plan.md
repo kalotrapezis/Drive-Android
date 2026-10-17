@@ -744,7 +744,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 - [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
 - [ ] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
-- [ ] **View**: gridlines and headings on or off; split the window (later).
+- [~] **View**: gridlines and headings on or off; split the window (later).
+      Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
+      view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes
+      the view's own when a file has no Tables list). `gridlines off and on` (both formats; LibreOffice 26.2 carries them neither way).
+      Emulator: off. Not yet: headings on or off.
 - [ ] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
       workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
       dialogs. In-text citations in cells: not planned unless asked.

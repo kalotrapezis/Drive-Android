@@ -937,6 +937,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
                             RibbonDivider(w)
+                            // Excel's View › Gridlines: kept in the file (a change to it, while editing)
+                            if (editing && b.kind != "csv") RibbonButton("Gridlines", w, R.drawable.ic_view_grid, on = s.grid) { val i = index; val on = !s.grid
+                                fileStep(if (on) "gridlines shown" else "gridlines hidden", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.gridXlsx(baked, next, bb.parts.getValue("$i"), on)
+                                    else SheetVisibility.gridOds(baked, next, bb.tabs[i].name, on) }) }
                             RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
                             RibbonButton("Search", w, R.drawable.ic_search) { searching = true }
                         }

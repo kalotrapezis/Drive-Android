@@ -210,6 +210,22 @@ class SheetSaveTest {
         }
     }
 
+    /** View › Gridlines off and on again (Excel's sheet view, LibreOffice's ShowGrid). */
+    @Test fun `gridlines off and on`() {
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("grid").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.'); assertTrue(name, b0.sheet(0).grid)
+            val off = File(dir, "off.${f.extension}")
+            if (name.endsWith("xlsx")) SheetVisibility.gridXlsx(f, off, b0.parts.getValue("0"), false) else SheetVisibility.gridOds(f, off, b0.tabs[0].name, false)
+            assertTrue(name, !Sheets.read(off, ',', '.').sheet(0).grid)
+            // not checked in LibreOffice: 26.2 carries gridlines neither way (Excel's showGridLines="0" → ShowGrid true; its .xlsx always "true")
+            val on = File(dir, "on.${f.extension}")
+            if (name.endsWith("xlsx")) SheetVisibility.gridXlsx(off, on, b0.parts.getValue("0"), true) else SheetVisibility.gridOds(off, on, b0.tabs[0].name, true)
+            assertTrue(name, Sheets.read(on, ',', '.').sheet(0).grid)
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

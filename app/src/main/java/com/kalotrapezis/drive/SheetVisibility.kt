@@ -44,4 +44,30 @@ internal object SheetVisibility {
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")
         }
     }
+
+    /** View › Gridlines (Excel's): sheet part [sheetPart]'s first view shows them or not. */
+    fun gridXlsx(source: File, target: File, sheetPart: String, on: Boolean) {
+        ZipFile(source).use { zip ->
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            val view = Regex("""<sheetView\b[^>]*?(/?)>""").find(x)
+            x = if (view != null) x.replaceRange(view.range, view.value.replace(Regex("""\sshowGridLines="[^"]*""""), "").let { v -> if (on) v else v.replaceFirst("<sheetView", """<sheetView showGridLines="0"""") })
+                else if (on) x else x.replaceFirst(Regex("""<(sheetFormatPr|cols|sheetData)\b"""), """<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews><$1""")
+            SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray()), null)
+        }
+    }
+
+    /** LibreOffice: sheet [name]'s ShowGrid in the document's view settings (shortcut: no entry of its own there: every sheet's). */
+    fun gridOds(source: File, target: File, name: String, on: Boolean) {
+        ZipFile(source).use { zip ->
+            var x = zip.getEntry("settings.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No view settings in this file.")
+            val item = """<config:config-item config:name="ShowGrid" config:type="boolean">$on</config:config-item>"""
+            val showGrid = Regex("""<config:config-item config:name="ShowGrid" config:type="boolean">[^<]*</config:config-item>""")
+            // the sheet's own entry in the view's Tables list (not another list's — the macros' names its sheets too)
+            val tables = Regex("""<config:config-item-map-named config:name="Tables">[\s\S]*?</config:config-item-map-named>""").find(x)
+            val entry = tables?.let { t -> Regex("""(<config:config-item-map-entry config:name="${Regex.escape(OfficeFormats.esc(name))}">)([\s\S]*?)(</config:config-item-map-entry>)""").find(x, t.range.first)?.takeIf { it.range.last <= t.range.last } }
+            x = if (entry != null) x.replaceRange(entry.range, entry.groupValues[1] + (if (showGrid.containsMatchIn(entry.groupValues[2])) showGrid.replace(entry.groupValues[2], item) else entry.groupValues[2] + item) + entry.groupValues[3])
+                else if (showGrid.containsMatchIn(x)) showGrid.replace(x, item) else error("No view settings in this file to keep the gridlines in.")
+            SheetSave.rezip(zip, target, mapOf("settings.xml" to x.toByteArray()), "mimetype")
+        }
+    }
 }

@@ -969,8 +969,8 @@ what is not already above:
       Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers
       and dates read as typing reads them, one step of Undo) and Goal seek (Excel's dialog; `SheetGoalSeek`: the sheet's own
       working-out tried by the secant method, then put back; the found value one change). `goal sought`; emulator: B3 made 765.5 so
-      B5 is 2000; sort.csv imported at F8. Clear filter was there (a column's tab, its chip); the filter is worked out again as cells
-      change, so no Reapply is needed.
+      B5 is 2000; sort.csv imported at F8. Clear filter was there (a column's tab, its chip); Data › Reapply (while a filter or sort is
+      on) works them out again on the cells as they are now, as Excel's.
 - [ ] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
 - [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and

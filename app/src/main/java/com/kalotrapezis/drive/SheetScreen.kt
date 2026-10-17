@@ -366,7 +366,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val layout = laid?.takeIf { it.first === sheet }?.second
     val pins = view.pins.toList(); val filters = view.filters.toMap(); val sort = view.sort; val freeze = view.freeze
     val extent = sheet?.let { it.rows.toLong() * 100_000 + it.cols } ?: 0L // an edit past the used cells lays the sheet out again
-    LaunchedEffect(sheet, pins, filters, sort, freeze, extent) {
+    var reapplied by remember { mutableIntStateOf(0) } // Data › Reapply: the filter and sort worked out again on the cells as they are now
+    LaunchedEffect(sheet, pins, filters, sort, freeze, extent, reapplied) {
         val s = sheet ?: return@LaunchedEffect
         laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null}, frozen ${freeze ?: "as the file"})") { SheetLayout.of(s, pins, filters, sort, freeze) } }
         view.range = null
@@ -1268,6 +1269,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     if ((rows.first..rows.last).any { (s.rowLevels[it] ?: 0) > 0 }) RibbonButton("Ungroup", w, R.drawable.ic_unfold_more) { outlineStep(rows, -1, null) }
                                     if (group != null) { val shut = group.all { it in s.hiddenRows }
                                         RibbonButton(if (shut) "Expand" else "Collapse", w, if (shut) R.drawable.ic_add else R.drawable.ic_remove) { outlineStep(group, 0, !shut) } } }
+                                // Excel's Reapply: the filter and sort again, on the cells as they are now
+                                if (view.filters.isNotEmpty() || view.sort != null) RibbonButton("Reapply", w, R.drawable.ic_filter) { reapplied++ }
                                 // Excel's What-If › Goal Seek, and Get Data › From Text/CSV (into the sheet at the chosen cell)
                                 RibbonButton("Goal seek", w, R.drawable.ic_functions) { seeking = true }
                                 RibbonButton("From text/CSV", w, R.drawable.ic_note_add) { importCsv.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "text/tab-separated-values")) }

@@ -455,9 +455,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       the same or written down as deliberate.
 
 **Made the same** (one shared component where today each app has its own code):
-- [ ] **The tab indicator**: Words draws a bubble behind the chosen tab (`Writer.kt:3842`); Tables (and, by the
-      user's report, Slides) a dash under it (`SheetScreen.kt:710`). One shared tab row for all three. **Settings ›
-      Office: "Tab marker: Bubble / Dash".** Compact always uses the dash, for the room.
+- [x] **The tab indicator**: Words drew a bubble behind the chosen tab; Tables and Slides a dash under it. Now one
+      shared tab row for all three (`OfficeTabRow`, OfficeUi.kt: each app's tabs, its dash colour, the contextual
+      tab's own colour, the chosen tab scrolled clear of the edge's shade). **Settings › Office and File › Settings:
+      "Tab marker: Bubble / Dash"** (bubble by default, as Words had it). Compact always uses the dash, for the room.
+      Checked on the tablet in all three apps, both markers, normal and compact (17 Oct).
 - [ ] Tab names and order: Selection first when something is chosen, then File, Home, Insert, … as Words'; the
       contextual tab (Picture, Table, Column, Row, Sheet) comes by itself, in one place and colour in every app.
 - [ ] File holds the same items in every app: Save, Versions, Export PDF, Print, Share, Open in another app, About

@@ -701,15 +701,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
-                Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx, contextualColour = Color(0xFF6FCF97)) {
                     if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
-                    tabs.forEach { t ->
-                        val on = t == shown
-                        Column(Modifier.clickable { tab = t; group = null }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
-                            Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).heightIn(min = 3.dp, max = 3.dp).background(if (t == ctx) Color(0xFF6FCF97) else EXCEL_GREEN))
-                        }
-                    }
                 }
                 val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }
                 // one sliding line; on a desktop, rows of whole groups (asked 16 Oct)

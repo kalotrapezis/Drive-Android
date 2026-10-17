@@ -1,6 +1,22 @@
 package com.kalotrapezis.drive
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.layout.layoutId
 import android.content.Context
@@ -52,6 +68,8 @@ internal object OfficeUi {
     var size by mutableStateOf("auto"); private set
     /** A mouse moved or clicked last (a finger's or a pen's touch sets it back). */
     var mouse by mutableStateOf(false)
+    /** The ribbon's chosen tab: "bubble" behind it or "dash" under it (asked 17 Oct); compact always the dash, for the room. */
+    var marker by mutableStateOf("bubble"); private set
     val top get() = place == "top" || (place == "auto" && mouse)
     val compact get() = size == "compact" || (size == "auto" && mouse)
 
@@ -59,11 +77,12 @@ internal object OfficeUi {
     fun load(context: Context) {
         val p = prefs(context)
         place = p.getString("ribbonPlace", "auto") ?: "auto"; size = p.getString("ribbonSize", "auto") ?: "auto"
+        marker = p.getString("tabMarker", "bubble") ?: "bubble"
     }
-    fun set(context: Context, place: String = this.place, size: String = this.size) {
-        this.place = place; this.size = size
-        prefs(context).edit().putString("ribbonPlace", place).putString("ribbonSize", size).apply()
-        WriterLog.i("Office settings: ribbon $place, $size")
+    fun set(context: Context, place: String = this.place, size: String = this.size, marker: String = this.marker) {
+        this.place = place; this.size = size; this.marker = marker
+        prefs(context).edit().putString("ribbonPlace", place).putString("ribbonSize", size).putString("tabMarker", marker).apply()
+        WriterLog.i("Office settings: ribbon $place, $size, tab marker $marker")
     }
 }
 
@@ -94,10 +113,38 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
         Column {
             Choices("The ribbon", OfficeUi.place, listOf("auto" to "By itself", "bottom" to "At the bottom", "top" to "At the top")) { OfficeUi.set(context, place = it) }
             Choices("Its tools", OfficeUi.size, listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact")) { OfficeUi.set(context, size = it) }
-            Text("By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, for a finger. " +
+            Choices("Tab marker", OfficeUi.marker, listOf("bubble" to "Bubble", "dash" to "Dash")) { OfficeUi.set(context, marker = it) }
+            Text("By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, for a finger. Compact tools always mark the tab with the dash. " +
                 "Office's other settings (AutoSave, lengths, read aloud) are in Tetra's Settings › Office.", style = MaterialTheme.typography.bodySmall)
         }
     }, confirmButton = { TextButton(onClick = dismiss) { Text("Done") } })
+}
+
+/** The ribbon's tab row, one for Words, Tables and Slides: the chosen tab under a bubble or over a dash (OfficeUi.marker),
+ *  scrolled clear of the edge's shade. [contextual] (Picture, Column, …) has a colour of its own; [lead] goes before the tabs. */
+@Composable internal fun <T> OfficeTabRow(tabs: List<T>, shown: T, w: Color, dash: Color, pick: (T) -> Unit, contextual: T? = null,
+    contextualColour: Color = dash, label: (T) -> String = { it.toString() }, lead: @Composable () -> Unit = {}) {
+    val bubble = OfficeUi.marker == "bubble" && !OfficeUi.compact
+    Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        lead()
+        tabs.forEach { t ->
+            val on = t == shown
+            val mark = if (t == contextual) contextualColour else dash
+            // The chosen tab scrolls clear of the edge's shade (Design sat half under it on a phone).
+            val seen = remember { BringIntoViewRequester() }
+            var wide by remember { mutableStateOf(0) }
+            val shade = with(LocalDensity.current) { 48.dp.toPx() }
+            LaunchedEffect(on, wide) { if (on && wide > 0) seen.bringIntoView(Rect(-shade, 0f, wide + shade, 1f)) }
+            val m = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }
+            if (bubble) Text(label(t), color = if (on) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                modifier = m.padding(2.dp).clip(CircleShape).background(if (!on) Color.Transparent else if (t == contextual) contextualColour else driveNavigationSelectedColor())
+                    .clickable { pick(t) }.padding(horizontal = 14.dp, vertical = 7.dp))
+            else Column(m.clickable { pick(t) }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(label(t), style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
+                Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).height(3.dp).background(mark))
+            }
+        }
+    }
 }
 
 /** A right-click's menu where it was clicked ([at], from the parent's top left): rounded, its items smaller with a mouse. */

@@ -3822,26 +3822,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c)) },
                     { dictate?.invoke() ?: run { message = "This phone has no voice typing" } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
             } else Column(Modifier.fillMaxWidth()) {
-            val tabsScroll = rememberScrollState()
-            Row(Modifier.fillMaxWidth().scrollShade(tabsScroll).horizontalScroll(tabsScroll).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val selectedObject = selectedPicture?.second?.let { pictures[it] }
+            // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
+            OfficeTabRow((listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
+                WriterTab.Selection -> selectionTabShown || tab == WriterTab.Selection
+                WriterTab.Picture -> selectedObject != null && selectedObject.table == null
+                WriterTab.Table -> selectedObject?.table != null
+                else -> true
+            } }, tab, w, WORD_BLUE, { tab = it }, label = { t -> if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label }) {
                 if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, "Back to the keyboard bar", w, on = true) { ribbonOverKeyboard = false }
-                val selectedObject = selectedPicture?.second?.let { pictures[it] }
-                // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
-                (listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
-                    WriterTab.Selection -> selectionTabShown || tab == WriterTab.Selection
-                    WriterTab.Picture -> selectedObject != null && selectedObject.table == null
-                    WriterTab.Table -> selectedObject?.table != null
-                    else -> true
-                } }.forEach { t ->
-                    // The chosen tab scrolls clear of the edge's shade (Design sat half under it on a phone).
-                    val seen = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
-                    var wide by remember { mutableStateOf(0) }
-                    val shade = with(LocalDensity.current) { 48.dp.toPx() }
-                    LaunchedEffect(tab == t, wide) { if (tab == t && wide > 0) seen.bringIntoView(androidx.compose.ui.geometry.Rect(-shade, 0f, wide + shade, 1f)) }
-                    Text(if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label, color = if (tab == t) driveNavigationSelectedContentColor() else w, style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }.padding(horizontal = 2.dp, vertical = 2.dp).clip(CircleShape).background(if (tab == t) driveNavigationSelectedColor() else Color.Transparent)
-                            .clickable { tab = t }.padding(horizontal = 14.dp, vertical = 7.dp))
-                }
             }
             // The tools of a tab in pages that fit the width, swiped one page at a time (asked 2026-09-27), with dots.
             val span = state.currentSpanStyle

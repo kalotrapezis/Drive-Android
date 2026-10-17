@@ -754,16 +754,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island
                         Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
                             Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) {
-                                Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                OfficeTabRow(tabs, shown, w, POWERPOINT_ORANGE, { ribbonTab = it }) {
                                     // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
                                     if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
-                                    tabs.forEach { t ->
-                                        val on = t == shown
-                                        Column(Modifier.clickable { ribbonTab = t }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
-                                            Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).heightIn(min = 3.dp, max = 3.dp).background(POWERPOINT_ORANGE))
-                                        }
-                                    }
                                 }
                                 // the tab's tools on one sliding line, as Words' and Tables' (only catalogs, as colours or effects, take 2–3 lines)
                                 key(shown) {

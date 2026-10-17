@@ -1655,6 +1655,9 @@ private fun SettingsTab(
                 Text("Its tools", style = MaterialTheme.typography.titleSmall)
                 Text("By itself: smaller while a mouse is in use.", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact"), OfficeUi.size) { OfficeUi.set(officeContext, size = it) }
+                Text("Tab marker", style = MaterialTheme.typography.titleSmall)
+                Text("The chosen ribbon tab: a bubble behind it or a dash under it. Compact tools always use the dash.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("bubble" to "Bubble", "dash" to "Dash"), OfficeUi.marker) { OfficeUi.set(officeContext, marker = it) }
                 LaunchedEffect(Unit) { WriterUnits.load(officeContext) }
                 Text("Lengths in", style = MaterialTheme.typography.titleSmall)
                 Text("Words' rulers, margins, indents and sizes.", style = MaterialTheme.typography.bodySmall)

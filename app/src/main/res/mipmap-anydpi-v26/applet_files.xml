@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Settings › App icons: Home's art for this part on Tetra's own dark tile (tools: gen from the art, 17 Oct). -->
+<!-- Settings › App icons: Home's art for this part on its own colour (tools/applet-icons.py). -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
+    <background android:drawable="@color/applet_files" />
     <foreground android:drawable="@drawable/applet_files_fg" />
 </adaptive-icon>

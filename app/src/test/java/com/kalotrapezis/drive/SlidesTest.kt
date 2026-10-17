@@ -199,6 +199,30 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Chart: Words' chart put on a slide — saved as PowerPoint's chart part (with its workbook) and LibreOffice's chart object, read back here and by LibreOffice. */
+    @Test fun `a chart put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val ch = DocChart(ChartKind.Column, "Apples", listOf("Mon", "Tue", "Wed"), listOf(ChartSeries("Sold", listOf(3.0, 5.0, 2.0)), ChartSeries("Eaten", listOf(1.0, 2.0, 4.0))))
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(added = mapOf(1 to listOf(SlidesEdit.Added("9400", 100f, 100f, 400f, 300f, prst = "chart", chart = ch))))
+            fun check(d: Deck, how: String) {
+                val got = d.slides[1].items.filterIsInstance<SlideItem.Chart>().single().chart
+                assertEquals(how, listOf("Mon", "Tue", "Wed"), got.categories); assertEquals(how, listOf(1.0, 2.0, 4.0), got.series[1].values)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("chart-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            assertEquals(name, 1, Slides.read(out).slides[3].items.count { it is SlideItem.Chart }) // the deck's own chart as it was
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

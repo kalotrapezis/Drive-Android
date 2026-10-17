@@ -253,7 +253,11 @@ which shared piece it uses; a separate implementation only for a real reason, sa
 - [~] **Insert**: Text box (plain; today only shapes) — done 17 Oct (office-engine session): Insert › Text box puts a box of
       words alone (PowerPoint's txBox, no fill or line, growing to its words; LibreOffice's frame with auto-grow), typed
       into at once; anything put on but a picture or table can now be typed into and takes Home's tools; `a text box
-      put on and typed into` (.pptx, .odp, LibreOffice's conversions); Chart (Words' chart editor); Link (to a web page or to a
+      put on and typed into` (.pptx, .odp, LibreOffice's conversions); Chart (Words' chart editor) — done 17 Oct (office-B
+      session): Words' `ChartDialog` (WORD_SAMPLE_CHART to start), held as its `DocChart` (`Added.chart`), drawn by `ChartDrawable`,
+      saved by Words' `ChartWriter` (.pptx: a chart part + its workbook, as PowerPoint; .odp: LibreOffice's chart object); the
+      chart's tab has Edit data. `a chart put on saved` (both, LibreOffice's conversions); emulator: line chart put on, turned
+      into a pie by Edit data, saved — LibreOffice draws it. Not yet: Edit data on a deck's own chart (Picture / Shape below); Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

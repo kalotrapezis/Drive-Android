@@ -14,7 +14,8 @@ internal object SlidesEdit {
     /** A picture ([image]: a copy on the phone, [ext] png/jpeg) or a shape ([prst], [fill]) put on a slide, where it is (points). */
     data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
-        /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList())
+        /** a table ([prst] "table"): its rows and columns, its cells' words row by row */ val rows: Int = 0, val cols: Int = 0, val cells: List<String> = emptyList(),
+        /** a chart (Insert › Chart, Words' chart editor): its kind, numbers and looks */ val chart: DocChart? = null)
     /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
     data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null,
         /** Home (17 Oct, Words' tools): every letter's face, size, bold, italic, underline, strike-through, highlight ([NONE]: taken away) — null: as they are */
@@ -142,7 +143,7 @@ internal object SlidesEdit {
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
-            (if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
+            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f) { runCatching { File(a.image).readBytes() }.getOrNull() }
             else {
                 // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
                 val box = a.prst == TEXT_BOX
@@ -343,7 +344,9 @@ internal object SlidesEdit {
             val xfrm = """<a:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></a:xfrm>"""
             val ns = """xmlns:p="$P" xmlns:a="$A" xmlns:r="$R""""
             fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            val x = if (a.prst == "table") """<p:graphicFrame $ns><p:nvGraphicFramePr><p:cNvPr id="${a.id}" name="Table ${a.id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr><a:tblGrid>""" +
+            // a chart as PowerPoint's Insert › Chart makes it: a frame naming its chart part
+            val x = if (a.chart != null) """<p:graphicFrame $ns><p:nvGraphicFramePr><p:cNvPr id="${a.id}" name="Chart ${a.id}"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="${rels[a.id]}"/></a:graphicData></a:graphic></p:graphicFrame>"""
+                else if (a.prst == "table") """<p:graphicFrame $ns><p:nvGraphicFramePr><p:cNvPr id="${a.id}" name="Table ${a.id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr><a:tblGrid>""" +
                     (0 until a.cols).joinToString("") { """<a:gridCol w="${emu(a.w / a.cols)}"/>""" } + "</a:tblGrid>" +
                     (0 until a.rows).joinToString("") { r -> """<a:tr h="${emu(a.h / a.rows)}">""" + (0 until a.cols).joinToString("") { c ->
                         val look = looks[a.id]
@@ -582,7 +585,7 @@ internal object SlidesEdit {
         ids.forEach { list.removeChild(it) }
         fun relsPath(part: String) = part.substringBeforeLast('/') + "/_rels/" + part.substringAfterLast('/') + ".rels"
         var nextMedia = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/media/tetra(\d+)\.""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
-        /** The pictures put on slide [uid] into the file: each a media part and a relationship in [relsXml] (the slide's); their ids → rIds. */
+        /** The pictures and charts put on slide [uid] into the file: each a part and a relationship in [relsXml] (the slide's); their ids → rIds. */
         fun media(uid: Int, relsXml: org.w3c.dom.Document): Map<String, String> = edit.added[uid].orEmpty().filter { it.image != null }.associate { a ->
             val ext = when (a.ext) { "jpeg", "jpg" -> "jpeg"; "gif" -> "gif"; else -> "png" }
             val name = "tetra${nextMedia++}.$ext"
@@ -594,7 +597,22 @@ internal object SlidesEdit {
             relsXml.documentElement.appendChild(relsXml.createElementNS(relsXml.documentElement.namespaceURI, "Relationship").apply {
                 setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"); setAttribute("Target", "../media/$name") })
             a.id to rid
-        }
+        } + edit.added[uid].orEmpty().mapNotNull { a -> a.chart?.let { ch ->
+            // a chart put on: its part and its numbers in an embedded workbook, as PowerPoint keeps them (Words' ChartWriter)
+            val name = generateSequence(1) { it + 1 }.map { "ppt/charts/chart$it.xml" }.first { zip.getEntry(it) == null && it !in out }
+            out[name] = ChartWriter.drawingml(ch, workbook = true).toByteArray()
+            val book = generateSequence(1) { it + 1 }.map { "ppt/embeddings/Microsoft_Excel_Worksheet_tetra$it.xlsx" }.first { zip.getEntry(it) == null && it !in out }
+            out[book] = ChartWriter.workbook(ch)
+            out["ppt/charts/_rels/" + name.substringAfterLast('/') + ".rels"] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/${book.substringAfterLast('/')}"/></Relationships>""".toByteArray()
+            typesOut = typesOut.replace("</Types>", """<Override PartName="/$name" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>""")
+            if (!Regex("""Extension="xlsx"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut))
+                typesOut = typesOut.replace("</Types>", """<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/></Types>""")
+            val ids = relsXml.documentElement.kids().map { it.getAttribute("Id") }.toSet()
+            val rid = generateSequence(1) { it + 1 }.map { "rId$it" }.first { it !in ids }
+            relsXml.documentElement.appendChild(relsXml.createElementNS(relsXml.documentElement.namespaceURI, "Relationship").apply {
+                setAttribute("Id", rid); setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"); setAttribute("Target", "../charts/${name.substringAfterLast('/')}") })
+            a.id to rid
+        } }
         fun relsDoc(part: String?) = (part?.let { read(relsPath(it)) } ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>""".toByteArray()).let(OfficeFormats::parse)
         /** A new slide part's relationships: its layout's, or the duplicated slide's without its notes (they belong to the first). */
         fun newRels(layout: String?, from: String?): org.w3c.dom.Document {

@@ -328,7 +328,15 @@ internal object SlidesOdpEdit {
         val ns = """xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:text="$TEXT" xmlns:xlink="$XLINK""""
         fun added(a: SlidesEdit.Added, look: SlidesEdit.Look?): Element? {
             val box = """svg:x="${cm(a.x)}" svg:y="${cm(a.y)}" svg:width="${cm(a.w)}" svg:height="${cm(a.h)}""""
-            val x = if (a.image != null) {
+            val x = if (a.chart != null) {
+                // a chart put on: an object of its own in the package, as LibreOffice keeps one (Words' ChartWriter)
+                val name = generateSequence(1) { it + 1 }.map { "Object tetra-$it" }.first { zip.getEntry("$it/content.xml") == null && "$it/content.xml" !in out }
+                out["$name/content.xml"] = ChartWriter.odf(a.chart, a.w, a.h).toByteArray()
+                manifest?.documentElement?.let { m ->
+                    m.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", "$name/"); setAttributeNS(MANIFEST, "manifest:version", "1.3"); setAttributeNS(MANIFEST, "manifest:media-type", "application/vnd.oasis.opendocument.chart") })
+                    m.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", "$name/content.xml"); setAttributeNS(MANIFEST, "manifest:media-type", "text/xml") }) }
+                """<draw:frame $ns draw:layer="layout" $box><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+            } else if (a.image != null) {
                 val st = derive("graphic", null, "picture") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none") } }
                 """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:image xlink:href="${picture(a)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"><text:p/></draw:image></draw:frame>"""
             } else if (a.prst == SlidesEdit.TEXT_BOX) {
@@ -520,7 +528,7 @@ internal object SlidesOdpEdit {
         val after = pres.kids().firstOrNull { it.localName == "settings" }
         ordered.forEach { pres.insertBefore(it, after) }
         out["content.xml"] = xml(doc)
-        if (manifest != null && out.keys.any { it.startsWith("Pictures/") }) out["META-INF/manifest.xml"] = xml(manifest)
+        if (manifest != null && out.keys.any { it.startsWith("Pictures/") || it.startsWith("Object tetra-") }) out["META-INF/manifest.xml"] = xml(manifest)
         SheetSave.rezip(zip, target, out, stored = "mimetype")
         zip.close()
     }

@@ -284,6 +284,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var stripBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a card tapped there (Cancel goes back to it)
     var stripPicked by remember { mutableStateOf<Any?>(null) } // …and the card tapped
     var dropOptions by remember { mutableStateOf(false) } // Drop cap › More…: Words' dialog, raised
+    var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) } // Insert › Chart, Edit data: Words' chart editor (the chart's id; null: a new one)
     var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
     /** The chosen box's words' size before a raised first letter: what Drop cap's lines are counted in. */
     fun wordsSize(box: SlideItem.Shape?): Float {
@@ -478,6 +479,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
+                // a chart put on here: its numbers in Words' chart editor again
+                a?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = a.id to ch }; RibbonDivider(w) }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
                     if (typable(it0, a)) RibbonDivider(w)
                     Swatches(w, R.drawable.ic_format_color_fill, "Fill", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
@@ -532,6 +535,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     WriterLog.i("Slides: a text box put on")
                 }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+                // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
+                RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
             }
             "File" -> {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
@@ -1010,6 +1015,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (stripPicked == DropKind.Raised) edit = b.copy(looks = b.looks + (k to (b.looks[k] ?: SlidesEdit.Look()).copy(raise = SlidesEdit.slide(base ?: return@DesignGalleryStrip, b, b.order[cc]).items.lastOrNull { it.anim == id }.let { wordsSize(it as? SlideItem.Shape) } * n)))
                                 if (stripPicked == DropKind.Dropped) dropped(b, cc, id, n)?.let { edit = it }
                             })
+                    }
+                    charting?.let { (id, start) ->
+                        ChartDialog(start, id != null, { charting = null }) { ch ->
+                            charting = null
+                            if (id != null) { alter { it.copy(chart = ch) }; WriterLog.i("Slides: a chart's data changed") }
+                            else { val d = deck ?: return@ChartDialog; val ee = edit ?: return@ChartDialog; val cc = chosen ?: return@ChartDialog
+                                put(SlidesEdit.Added(ee.newId(ee.order[cc].uid, taken(ee, cc)), d.width * 0.15f, d.height * 0.18f, d.width * 0.7f, d.height * 0.7f, prst = "chart", chart = ch))
+                                WriterLog.i("Slides: a chart put on") }
+                        }
                     }
                     if (dropOptions) chosenWords()?.let { box ->
                         val p = box.text?.paras?.firstOrNull { pp -> pp.runs.any { it.text.isNotBlank() } }

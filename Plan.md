@@ -234,7 +234,11 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       slide edited (a word typed, a new line: it took its level's dash and look), undone, not saved; Words' Art_test
       and TextBox_test and Tables' sheet.xlsx and Slides-test.odp as before. Seen in passing, not the engine's (its
       page is pixel-identical to before): TextBox_test's box has no bottom line on the page, the line after it covers it.
-- [ ] 5. The engine moved into its own file (`OfficeText.kt`): a pure move, nothing changed.
+- [x] 5. The engine moved into its own file (`OfficeText.kt`): a pure move, nothing changed.
+      Done (office-F session, 17 Oct): `ParaLook`, `MarkerLook`, `TabStop`/`tabGap`, the marker and tab spans, `TextBoxDrawable`, `Block`
+      and `LetterLooks` moved from OfficePages.kt (U, topPt/bottomPt and the two spans now internal, as both files use them). The layout
+      itself (`OfficePages.stack`, `paragraph`) stays in OfficePages: it shares some forty private helpers with Words' page layout, so
+      moving it would not be a pure move. Words' fingerprint unchanged (emulator); unit 442/0/7.
 - [ ] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,
       the user's document sweep (`UserDocsSweepTest`, TETRA_SWEEP=1), the LibreOffice round trips, and a walk of

@@ -274,11 +274,21 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
     return navigationBarsPadding().then(if (windowed && noBar) Modifier.padding(bottom = 12.dp) else Modifier)
 }
 
+/** Find and Replace's second row (Words', shared with Slides and Tables): the words to put in, Replace and All. */
+@androidx.compose.runtime.Composable
+internal fun ReplaceRow(w: Color, replacement: String, setReplacement: (String) -> Unit, found: Boolean, replace: () -> Unit, replaceAll: () -> Unit) =
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        androidx.compose.material3.OutlinedTextField(replacement, setReplacement, singleLine = true, placeholder = { androidx.compose.material3.Text("Replace with") },
+            modifier = androidx.compose.ui.Modifier.weight(1f))
+        RibbonButton("Replace", w, enabled = found) { replace() }
+        RibbonButton("All", w, enabled = found) { replaceAll() }
+    }
+
 /**
  * Find and Replace (Words' bar, shared with Slides): the words looked for with ✕, how many and which, ‹ ›, and Replace's own row
- * ([replacing]) with Replace and All.
+ * ([replacing]) with Replace and All. Tables keeps its own find (all sheets, Go To) with this bar's [ReplaceRow].
  */
-@androidx.compose.runtime.Composable
+@Composable
 internal fun FindReplaceBar(w: Color, query: String, setQuery: (String) -> Unit, count: String, found: Boolean, previous: () -> Unit, next: () -> Unit,
     replacing: Boolean, setReplacing: (Boolean) -> Unit, replacement: String, setReplacement: (String) -> Unit, replace: () -> Unit, replaceAll: () -> Unit, close: () -> Unit) {
     Column(androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -292,11 +302,6 @@ internal fun FindReplaceBar(w: Color, query: String, setQuery: (String) -> Unit,
             Box(androidx.compose.ui.Modifier.graphicsLayer { rotationZ = 180f }) { Tool(R.drawable.ic_keyboard_arrow_up, "Next", w, enabled = found) { next() } }
             Tool(R.drawable.ic_swap_horiz, "Replace", w, on = replacing) { setReplacing(!replacing) }
         }
-        if (replacing) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            androidx.compose.material3.OutlinedTextField(replacement, setReplacement, singleLine = true, placeholder = { androidx.compose.material3.Text("Replace with") },
-                modifier = androidx.compose.ui.Modifier.weight(1f))
-            RibbonButton("Replace", w, enabled = found) { replace() }
-            RibbonButton("All", w, enabled = found) { replaceAll() }
-        }
+        if (replacing) ReplaceRow(w, replacement, setReplacement, found, replace, replaceAll)
     }
 }

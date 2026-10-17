@@ -691,6 +691,9 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       hide and unhide rows, columns and sheets; insert and delete cells shifting the rest; Fill down and right; cell
       styles; **Format as table** (make an Excel Table); **conditional formatting** made here (it is only read today);
       Find and **Replace**; Format painter.
+      Replace done (office-F session, 17 Oct): Tables' own find (all sheets, Go To) gets Words' replace row (`ReplaceRow`, moved out of
+      `FindReplaceBar` and shared) while editing — Replace (the cell shown) and All, in each found cell's words or formula, any case
+      (`SheetInput.replaced`), one step of Undo, recalculated. `words replaced in a cell`; emulator: alpha → Gamma, "Replaced 1".
 - [ ] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).

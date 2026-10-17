@@ -328,6 +328,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         laid = s to withContext(Dispatchers.Default) { WriterLog.timed("Sheets: layout (${pins.size} pinned, ${filters.size} filtered, sorted ${sort != null}, frozen ${freeze ?: "as the file"})") { SheetLayout.of(s, pins, filters, sort, freeze) } }
         view.range = null
     }
+    /** Find and Replace: in [keys]' cells (their words, or their formulas), the words looked for made [with] — one step of Undo. */
+    fun replaceFound(keys: List<Long>, with: String) {
+        val b = book ?: return; val s = sheet ?: return
+        val changes = keys.mapNotNull { k -> val r = Sheet.row(k); val c = Sheet.col(k); val (look, format) = lookAt(s, r, c)
+            SheetInput.replaced(SheetInput.text(s[r, c], format, b.format), query, with)?.let { k to SheetInput.cell(it, s[r, c], look, format, b.format) } }.toMap()
+        if (changes.isEmpty()) { message = "Nothing here to replace"; return }
+        history.apply(b, index, changes); version++
+        message = "Replaced ${changes.size}"; WriterLog.i("Sheets: replaced in ${changes.size} cells")
+    }
     /** What was typed goes into the chosen cell (and, [move]: the cell below is chosen, as Excel's Enter). */
     fun commit(move: Boolean) {
         val d = draft ?: return; val b = book ?: return; val s = sheet ?: return
@@ -899,6 +908,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     everywhere = everywhere.takeIf { (book?.tabs?.count { !it.hidden } ?: 0) > 1 }, hits = hits.size,
                     toggle = { if (!everywhere) { everywhere = true; showHits = true } else if (!showHits) showHits = true else { everywhere = false; showHits = false }; WriterLog.i("Sheets: search in all sheets $everywhere") },
                     move = { d -> if (found.isNotEmpty()) { current = (current + d).mod(found.size); found[current].let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ } } },
+                    replace = if (editing) { with, all -> replaceFound(if (all) found else listOfNotNull(found.getOrNull(current)), with) } else null,
                     close = { searching = false; query = "" })
                 else Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
@@ -1227,9 +1237,12 @@ private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets
 internal class SheetMarks(val found: Set<Long>, val current: Long)
 
 @Composable
-private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, everywhere: Boolean?, hits: Int, toggle: () -> Unit, move: (Int) -> Unit, close: () -> Unit) {
+private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, everywhere: Boolean?, hits: Int, toggle: () -> Unit, move: (Int) -> Unit, close: () -> Unit,
+    /** Replace (while editing; null: viewing): Words' replace row under the find */ replace: ((String, Boolean) -> Unit)? = null) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
+    var replacing by remember { mutableStateOf(false) }; var replacement by remember { mutableStateOf("") }
+    Column {
     Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close search") }
         Box(Modifier.weight(1f)) {
@@ -1248,6 +1261,11 @@ private fun SearchBar(query: String, change: (String) -> Unit, count: Int, curre
         if (query.isNotBlank() && !(goTo && count == 0)) Text(if (count == 0) "None" else "${current + 1} of $count", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
         IconButton(onClick = { move(-1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Previous") }
         IconButton(onClick = { move(1) }, enabled = count > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = "Next", modifier = Modifier.rotate(180f)) }
+        if (replace != null) Tool(R.drawable.ic_swap_horiz, "Replace", islandContentColor(), on = replacing) { replacing = !replacing }
+    }
+    if (replace != null && replacing) Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+        ReplaceRow(islandContentColor(), replacement, { replacement = it }, count > 0, { replace(replacement, false) }, { replace(replacement, true) })
+    }
     }
 }
 

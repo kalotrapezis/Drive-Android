@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
 class SheetEditTest {
+    /** Find and Replace: every one, any case; in a formula too (Excel's "Look in: Formulas"); none: nothing to change. */
+    @org.junit.Test fun `words replaced in a cell`() {
+        org.junit.Assert.assertEquals("Gamma and Gamma", SheetInput.replaced("Alpha and alpha", "ALPHA", "Gamma"))
+        org.junit.Assert.assertEquals("=SUM(C1:C9)", SheetInput.replaced("=SUM(B1:B9)", "b", "C"))
+        org.junit.Assert.assertEquals("a\$1 (x)", SheetInput.replaced("a.b (x)", ".b", "\$1"))
+        org.junit.Assert.assertEquals(null, SheetInput.replaced("Beta", "alpha", "x"))
+    }
+
     private val gr = SheetFormat(',', '.', language = java.util.Locale.forLanguageTag("el"))
 
     @Test fun `typed entries`() {

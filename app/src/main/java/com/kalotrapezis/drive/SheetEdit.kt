@@ -12,6 +12,12 @@ import java.util.TreeMap
  * a cell, what a typed entry becomes, the cells that count on a changed one worked out again, and undo.
  */
 internal object SheetInput {
+    /** Find and Replace: [content] (a cell as typed: its words, or its formula) with every [find] in it, any case, made [with]; null: none in it. */
+    fun replaced(content: String, find: String, with: String): String? {
+        if (find.isEmpty()) return null
+        val r = Regex(Regex.escape(find), RegexOption.IGNORE_CASE)
+        return if (r.containsMatchIn(content)) r.replace(content, Regex.escapeReplacement(with)) else null
+    }
     /** A cell as the formula bar shows it (Excel's: the value as typed — 1234.5, not 1.234,50; a date as a date). */
     fun text(cell: SheetCell?, format: String, f: SheetFormat): String {
         if (cell == null) return ""

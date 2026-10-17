@@ -65,7 +65,10 @@ How to write here:
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
-- (none now — the .odp's sources: answered 17 Oct, see B › References)
+- (office-F, 17 Oct night) **Touch targets** (A's script, details under A › Touch points): the tab row's tabs are 41–43 dp tall and the
+  icon-only ribbon buttons 40–46 dp wide, under Android's 48 dp. Make them 48 dp (the ribbon ~5 dp taller; icon buttons' circles
+  as now, 8 dp more room round each), or keep the present compact look?
+- (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
 
@@ -84,9 +87,15 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [ ] **Lag**: each action timed in writer.log (Tables already logs slow frames; Words and Slides to do the same) and
       `dumpsys gfxinfo … framestats` around it. Aims: a tap answered within 100 ms, no frame over 32 ms while
       scrolling, a slide or sheet switch within 200 ms. The worst ten fixed first.
-- [ ] **Touch points**: a script dumps each screen's layout (uiautomator) and flags any tappable thing smaller than
+- [~] **Touch points**: a script dumps each screen's layout (uiautomator) and flags any tappable thing smaller than
       48 dp (compact mode excepted only with a mouse). Plus a hand check of resize handles, small chips and close
       buttons, things near the screen's edges (Android's back gesture), and gestures that fight (pinch against drag).
+      Script done and run (office-F session, 17 Oct, emulator 1280×800 at 160 dpi, editing, every ribbon tab): `tools/touch-targets.py
+      <device> <tab>…`. Words 143, Slides 125, Tables 52 small targets (lists: touch-targets/ in the group's notes folder). The same few
+      shared things every time: the tab row's tabs 41–43 dp tall (`OfficeTabRow`); icon-only tools 40–46 dp wide (`Tool` 40 dp, `Swatches`:
+      Bold, Italic, Text colour, Fill, Fewer decimals…); the top bar's Undo, Redo, Save, Find 40 dp; Words' References › 1 2 3 35 dp; an
+      unnamed 25–41 dp thing at the ribbon's right edge in Words' Home, Layout, Review and Slides' Insert (the edge: Android's back
+      gesture). Not changed: making them 48 dp changes the ribbon's look — asked under Waiting on the user. Hand check: on the tablet.
 - [ ] **Inconsistencies**: the checklist below, the three apps side by side on the tablet. Each difference is made
       the same or written down as deliberate.
 

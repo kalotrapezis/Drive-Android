@@ -661,7 +661,8 @@ private val SYMBOLS = listOf(
  */
 @Composable
 internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?, linked: Boolean, dismiss: () -> Unit, remove: () -> Unit,
-    slides: List<String>? = null, /** Slides: "The slide it came from" offered too (PowerPoint's Last Slide Viewed: "#back") */ back: Boolean = false, done: (String, String) -> Unit) {
+    slides: List<String>? = null, /** Slides: "The slide it came from" offered too (PowerPoint's Last Slide Viewed: "#back") */ back: Boolean = false,
+    /** what [slides] are called (Tables: its sheets) */ place: String = "Slide in this deck", done: (String, String) -> Unit) {
     val startSlide = if (startUrl == "#back") -1 else startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
     var url by remember { mutableStateOf(startUrl?.takeIf { startSlide == null } ?: "https://") }
     var text by remember { mutableStateOf(startText ?: "") }
@@ -674,7 +675,7 @@ internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?
                 if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
                 if (slides != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Choice("Web page", slide == null) { slide = null }
-                    Choice("Slide in this deck", slide != null && slide != -1) { slide = slide?.takeIf { it >= 0 } ?: 0 }
+                    Choice(place, slide != null && slide != -1) { slide = slide?.takeIf { it >= 0 } ?: 0 }
                     if (back) Choice("The slide it came from", slide == -1) { slide = -1 }
                 }
                 if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })

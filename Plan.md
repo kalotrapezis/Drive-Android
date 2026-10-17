@@ -719,6 +719,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Words' `ChartWriter` part in the sheet's drawing, a two-cell anchor — a new drawing made when the sheet has none —, or LibreOffice's
       chart object in the cell). shortcut: the chart holds its own numbers (not linked to the cells). `a chart put on a sheet` (both
       formats, LibreOffice's conversions); emulator: A1:B3 charted.
+      Link done (office-F session, 17 Oct): Insert › Link — Words' shared `LinkDialog` (now naming its places: "Sheet in this workbook"),
+      a web page or another sheet's A1, the words to show typed into the cell; Excel's hyperlink (an outside relationship, or a location)
+      or LibreOffice's text:a round the cell's words (`SheetLinks`, a change to the file); Remove link. `links on cells saved` (both
+      formats, LibreOffice's conversions, one taken away); emulator: A2 linked to the second sheet.
 - [ ] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
       cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
       checked against LibreOffice as the 129 are.

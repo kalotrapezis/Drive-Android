@@ -162,6 +162,32 @@ class SheetSaveTest {
         }
     }
 
+    /** Insert › Link on a cell (Words' dialog): a web page and another sheet — Excel's hyperlinks, LibreOffice's text:a; then one taken away. */
+    @Test fun `links on cells saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("links").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val part = Sheets.read(f, ',', '.').parts["0"]
+            fun step(r: Int, c: Int, url: String?) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetLinks.xlsx(f, next, part!!, r, c, url) else SheetLinks.ods(f, next, 0, r, c, url); f = next }
+            step(1, 0, "https://example.org/olives"); step(2, 0, "#'Second'!A1")
+            fun check(file: File, how: String) {
+                val s = Sheets.read(file, ',', '.').sheet(0)
+                assertEquals(how, "https://example.org/olives", s[1, 0]?.link); assertEquals(how, "Alpha", s[1, 0]?.text)
+                assertTrue(how + ": " + s[2, 0]?.link, s[2, 0]?.link?.replace("'", "")?.equals("#Second!A1", true) == true); assertEquals(how, "Βήτα", s[2, 0]?.text)
+            }
+            check(f, "linked $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+            step(1, 0, null)
+            Sheets.read(f, ',', '.').sheet(0).let { s -> assertEquals(name, null, s[1, 0]?.link); assertEquals(name, "Alpha", s[1, 0]?.text); assertTrue(name, s[2, 0]?.link != null) }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

@@ -173,6 +173,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
+    var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
@@ -878,6 +879,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                             RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
                             RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
+                            RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
                             // Excel's Insert › Chart: the chosen cells into Words' chart editor (its series from them), then on the sheet beside them
                             RibbonButton("Chart", w, R.drawable.ic_bar_chart) {
                                 val d = g ?: run { message = "Choose the cells to chart first (a long press, then drag)"; return@RibbonButton }
@@ -1208,6 +1210,18 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 TextButton(onClick = { leaving = false }) { Text("Cancel") }
             }
         })
+    // Insert › Link (Words' dialog): a web page or another sheet (its A1); the words shown typed in the cell first, the link a change to the file
+    if (linking) sheet?.let { s -> val (r, c) = chosen(s); val cell = s[r, c]; val tabs = book?.tabs.orEmpty()
+        fun put(url: String?) { val i = index
+            fileStep(if (url == null) "link taken away" else "link put on", { baked, next, b -> when (b.kind) {
+                "xlsx" -> SheetLinks.xlsx(baked, next, b.parts.getValue("$i"), r, c, url); "ods" -> SheetLinks.ods(baked, next, i, r, c, url)
+                else -> error("A CSV file keeps no links: save it as a workbook first.") } }) }
+        val now = cell?.link?.let { l -> if (l.startsWith("#")) tabs.indexOfFirst { it.name.equals(l.drop(1).substringBefore('!').trim('\''), true) }.takeIf { it >= 0 }?.let { "#$it" } else l }
+        LinkDialog(true, now, cell?.text, cell?.link != null, { linking = false }, { linking = false; put(null) }, slides = tabs.map { it.name }, place = "Sheet in this workbook") { text, to ->
+            linking = false; val b = book ?: return@LinkDialog
+            if (text.isNotBlank() && text != cell?.text) { val (look, format) = lookAt(s, r, c); history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(text, cell, look, format, b.format))); version++ }
+            put(if (to.startsWith("#")) to.drop(1).toIntOrNull()?.let { k -> tabs.getOrNull(k)?.name }?.let { n -> "#'${n.replace("'", "''")}'!A1" } ?: to else to)
+        } }
     // a column's Width or a row's Height, typed in Words' unit (cm or inches)
     sizing?.let { (cols, at) -> val s = sheet
         val now = s?.let { if (cols) it.width(at) else it.height(at) } ?: 0f

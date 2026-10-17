@@ -59,7 +59,7 @@ internal object SheetBook {
      * An .xlsx with its sheets changed: [add] a new sheet called that (after sheet [index]), [rename] sheet [index],
      * [delete] it, or [move] it to place [to]. Names kept per sheet (localSheetId) follow their sheet.
      */
-    fun xlsx(source: File, target: File, parts: Map<String, String>, tabs: List<String>, index: Int, add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null) {
+    fun xlsx(source: File, target: File, parts: Map<String, String>, tabs: List<String>, index: Int, add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null, copy: Boolean = false) {
         val zip = ZipFile(source)
         val out = HashMap<String, ByteArray?>()
         fun read(p: String) = out[p]?.let { String(it) } ?: zip.getEntry(p)?.let { e -> String(zip.getInputStream(e).readBytes()) } ?: error("No $p.")
@@ -78,7 +78,18 @@ internal object SheetBook {
                 val dir = parts.getValue("0").substringBeforeLast('/')
                 val n = generateSequence(1) { it + 1 }.first { zip.getEntry("$dir/sheet$it.xml") == null }
                 val path = "$dir/sheet$n.xml"
-                out[path] = SHEET.toByteArray()
+                // a copy (Move or Copy › Create a copy): the sheet's cells, looks and links (its own pictures, notes and tables not:
+                // their parts are its alone); else an empty sheet
+                // shortcut: a copy leaves pictures, charts, notes and tables behind; upgrade by copying those parts with new names
+                out[path] = if (!copy) SHEET.toByteArray() else {
+                    val from = parts.getValue("$index")
+                    val fromRels = from.substringBeforeLast('/') + "/_rels/" + from.substringAfterLast('/') + ".rels"
+                    zip.getEntry(fromRels)?.let { String(zip.getInputStream(it).readBytes()) }?.let { r ->
+                        val links = Regex("""<Relationship\b[^>]*/hyperlink"[^>]*/>""").findAll(r).joinToString("") { it.value }
+                        if (links.isNotEmpty()) out["$dir/_rels/sheet$n.xml.rels"] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">$links</Relationships>""".toByteArray() }
+                    read(from).replace(Regex("""\stabSelected="1""""), "").replace(Regex("""<(drawing|legacyDrawing|legacyDrawingHF|picture)\b[^>]*/>"""), "")
+                        .replace(Regex("""<(tableParts|oleObjects|controls)\b[\s\S]*?</\1>"""), "").replace(Regex("""<tableParts\b[^>]*/>"""), "").toByteArray()
+                }
                 relsX = relsX.replace("</Relationships>", """<Relationship Id="$rid" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="${path.removePrefix(wb.substringBeforeLast('/', "") + "/")}"/></Relationships>""")
                 out[rels] = relsX.toByteArray()
                 out["[Content_Types].xml"] = read("[Content_Types].xml").replace("</Types>", """<Override PartName="/$path" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>""").toByteArray()
@@ -128,7 +139,7 @@ internal object SheetBook {
     }
 
     /** The same for an .ods: its tables added, renamed, deleted or moved, LibreOffice's references following. */
-    fun ods(source: File, target: File, tabs: List<String>, index: Int, add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null) {
+    fun ods(source: File, target: File, tabs: List<String>, index: Int, add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null, copy: Boolean = false) {
         val zip = ZipFile(source)
         val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml")).use { it.readBytes() })
         val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
@@ -150,10 +161,11 @@ internal object SheetBook {
         }
         when {
             add != null -> {
-                val t = doc.createElementNS(T, "table:table")
+                // a copy: the whole table (its pictures and notes with it); else an empty one
+                val t = if (copy) table.cloneNode(true) as org.w3c.dom.Element else doc.createElementNS(T, "table:table").apply {
+                    appendChild(doc.createElementNS(T, "table:table-column"))
+                    appendChild(doc.createElementNS(T, "table:table-row").apply { appendChild(doc.createElementNS(T, "table:table-cell")) }) }
                 t.setAttributeNS(T, "table:name", add)
-                t.appendChild(doc.createElementNS(T, "table:table-column"))
-                t.appendChild(doc.createElementNS(T, "table:table-row").apply { appendChild(doc.createElementNS(T, "table:table-cell")) })
                 table.parentNode.insertBefore(t, table.nextSibling)
             }
             rename != null -> { refs(tabs[index], rename); table.setAttributeNS(T, "table:name", rename) }

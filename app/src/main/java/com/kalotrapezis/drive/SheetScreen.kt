@@ -600,11 +600,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     fun openVersion(v: File) = fileStep("version opened", { _, next, _ -> v.copyTo(next, overwrite = true) }) { message = "This version is open. Save keeps it, Undo goes back." }
 
     /** A sheet added after this one, renamed, deleted, or moved to place [to]. */
-    fun sheetStep(add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null) {
+    fun sheetStep(add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null, copy: Boolean = false) {
         val i = index
-        fileStep(when { add != null -> "sheet added"; rename != null -> "sheet renamed"; delete -> "sheet deleted"; else -> "sheet moved" }, { baked, next, b ->
-            if (b.kind == "xlsx") SheetBook.xlsx(baked, next, b.parts, b.tabs.map { it.name }, i, add, rename, delete, to)
-            else SheetBook.ods(baked, next, b.tabs.map { it.name }, i, add, rename, delete, to)
+        fileStep(when { copy -> "sheet copied"; add != null -> "sheet added"; rename != null -> "sheet renamed"; delete -> "sheet deleted"; else -> "sheet moved" }, { baked, next, b ->
+            if (b.kind == "xlsx") SheetBook.xlsx(baked, next, b.parts, b.tabs.map { it.name }, i, add, rename, delete, to, copy)
+            else SheetBook.ods(baked, next, b.tabs.map { it.name }, i, add, rename, delete, to, copy)
         }) { nb ->
             views.clear(); header = null
             index = when { add != null -> i + 1; delete -> maxOf(0, i - 1); to != null -> to; else -> i }.coerceIn(0, nb.tabs.lastIndex)
@@ -954,6 +954,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Move left", w, R.drawable.ic_chevron_left, enabled = index > 0) { sheetStep(to = index - 1) }
                             RibbonButton("Move right", w, R.drawable.ic_chevron_right, enabled = index < b.tabs.lastIndex) { sheetStep(to = index + 1) }
+                            // Excel's Move or Copy › Create a copy: "Name (2)" after it
+                            if (b.kind != "csv") RibbonButton("Copy", w, R.drawable.ic_copy) { val base = b.tabs[index].name.take(26)
+                                sheetStep(add = generateSequence(2) { it + 1 }.map { "$base ($it)" }.first { n -> b.tabs.none { it.name.equals(n, true) } }, copy = true) }
+                            // Excel's Tab Color
+                            if (b.kind != "csv") Swatches(w, R.drawable.ic_palette, "Tab colour", CELL_FILLS) { c -> val i = index; val argb = c?.let { (it.value shr 32).toInt() }
+                                fileStep("tab colour", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.colourXlsx(baked, next, bb.parts.getValue("$i"), argb) else SheetVisibility.colourOds(baked, next, i, argb) }) }
                             RibbonDivider(w)
                             RibbonButton("Delete", w, R.drawable.ic_delete, enabled = b.tabs.count { !it.hidden } > 1) { deletingSheet = true }
                             // Excel's Hide and Unhide on a sheet's tab
@@ -1206,6 +1212,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     { look { st, _ -> st.copy(size = maxOf(6f, st.size - 1)) } }, { look { st, _ -> st.copy(size = minOf(72f, st.size + 1)) } })
                                 RibbonDivider(w)
                                 RibbonButton("Clear formatting", w, R.drawable.ic_format_clear) { look { _, _ -> b.styles[0] } }
+                                // AutoSum on Home too, as Excel has it
+                                RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
                             }
                         }
                     }

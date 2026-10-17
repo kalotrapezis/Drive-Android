@@ -24,7 +24,30 @@ internal object SheetVisibility {
         }
     }
 
-    fun ods(source: File, target: File, index: Int, hidden: Boolean) {
+    fun ods(source: File, target: File, index: Int, hidden: Boolean) = tableStyle(source, target, index) { it.setAttributeNS(SheetMerge.T, "table:display", if (hidden) "false" else "true") }
+
+    /** A sheet tab's colour ([colour] null: none): Excel's sheetPr tabColor. */
+    fun colourXlsx(source: File, target: File, sheetPart: String, colour: Int?) {
+        ZipFile(source).use { zip ->
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            x = x.replace(Regex("""<tabColor\b[^>]*/>"""), "")
+            if (colour != null) { val tag = """<tabColor rgb="FF%06X"/>""".format(colour and 0xFFFFFF)
+                x = when {
+                    Regex("""<sheetPr\b[^>]*/>""").containsMatchIn(x) -> x.replace(Regex("""<sheetPr\b([^>]*)/>"""), "<sheetPr$1>$tag</sheetPr>")
+                    Regex("""<sheetPr\b""").containsMatchIn(x) -> x.replaceFirst(Regex("""(<sheetPr\b[^>]*>)"""), "$1$tag") // tabColor first, as the schema has it
+                    else -> x.replaceFirst(Regex("""(<worksheet\b[^>]*>)"""), "$1<sheetPr>$tag</sheetPr>")
+                } }
+            SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray()), null)
+        }
+    }
+
+    /** LibreOffice: a sheet tab's colour, its table style's tableooo:tab-color. */
+    fun colourOds(source: File, target: File, index: Int, colour: Int?) = tableStyle(source, target, index) { pr ->
+        val OOO = "http://openoffice.org/2009/table"
+        if (colour == null) pr.removeAttributeNS(OOO, "tab-color") else pr.setAttributeNS(OOO, "tableooo:tab-color", "#%06x".format(colour and 0xFFFFFF)) }
+
+    /** Sheet [index]'s table style (a copy of its own: others may share it) with its table properties [set]. */
+    private fun tableStyle(source: File, target: File, index: Int, set: (Element) -> Unit) {
         ZipFile(source).use { zip ->
             val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
             val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
@@ -32,14 +55,14 @@ internal object SheetVisibility {
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
             val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
             val styles = (0 until autos.childNodes.length).mapNotNull { autos.childNodes.item(it) as? Element }
-            // the table's own style copied (others may share it), its display set
+            // the table's own style copied (others may share it), its properties set
             val old = table.getAttributeNS(SheetMerge.T, "style-name").takeIf { it.isNotEmpty() }?.let { n -> styles.firstOrNull { it.getAttributeNS(S, "name") == n && it.getAttributeNS(S, "family") == "table" } }
             val st = (old?.cloneNode(true) as Element?) ?: doc.createElementNS(S, "style:style").also { it.setAttributeNS(S, "style:family", "table") }
             val name = generateSequence(1) { it + 1 }.map { "taT$it" }.first { n -> styles.none { it.getAttributeNS(S, "name") == n } }
             st.setAttributeNS(S, "style:name", name)
             val pr = (0 until st.childNodes.length).mapNotNull { st.childNodes.item(it) as? Element }.firstOrNull { it.localName == "table-properties" }
                 ?: doc.createElementNS(S, "style:table-properties").also { st.appendChild(it) }
-            pr.setAttributeNS(SheetMerge.T, "table:display", if (hidden) "false" else "true")
+            set(pr)
             autos.appendChild(st); table.setAttributeNS(SheetMerge.T, "table:style-name", name)
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")
         }

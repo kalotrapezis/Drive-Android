@@ -32,6 +32,24 @@ class SheetBookTest {
         else SheetBook.ods(s, t, b.tabs.map { it.name }, index, add, rename, delete, to)
     }
 
+    /** Move or Copy › Create a copy, and a tab's colour: the copy after the sheet with its cells and looks; LibreOffice shows it. */
+    @Test fun `a sheet copied and a tab coloured`() {
+        for (name in listOf("Excel-test.xlsx", "Excel-test.ods")) {
+            val (b, f) = change(name) { s, t, b0 -> val tabs = b0.tabs.map { it.name }
+                if (b0.kind == "xlsx") SheetBook.xlsx(s, t, b0.parts, tabs, 0, add = "${tabs[0]} (2)", copy = true) else SheetBook.ods(s, t, tabs, 0, add = "${tabs[0]} (2)", copy = true) }
+            val first = b.sheet(0); val copy = b.sheet(1)
+            assertEquals(name, b.tabs[0].name + " (2)", b.tabs[1].name)
+            for (r in 0 until first.rows) for (c in 0 until first.cols) {
+                assertEquals("$name $r,$c", first[r, c]?.text, copy[r, c]?.text); assertEquals("$name $r,$c", first[r, c]?.formula, copy[r, c]?.formula)
+                assertEquals("$name $r,$c", first.look(first[r, c]?.style ?: 0, b.styles)?.fill, copy.look(copy[r, c]?.style ?: 0, b.styles)?.fill) }
+            shown(f)?.let { s -> assertTrue("$name: ${s.keys}", s.keys.any { it.endsWith("(2)") }) }
+            // the copy's tab coloured
+            val coloured = File(f.parentFile, "coloured.${f.extension}")
+            if (name.endsWith("xlsx")) SheetVisibility.colourXlsx(f, coloured, b.parts.getValue("1"), 0xFFFFC7CE.toInt()) else SheetVisibility.colourOds(f, coloured, 1, 0xFFFFC7CE.toInt())
+            Sheets.read(coloured, ',', '.').let { c -> assertEquals(name, 0xFFFFC7CE.toInt(), c.sheet(1).tab); assertEquals(name, null, c.sheet(0).tab) }
+        }
+    }
+
     @Test fun `quoted names`() {
         assertEquals("Rows", SheetBook.quoted("Rows")); assertEquals("'Grades Σ'", SheetBook.quoted("Grades Σ")); assertEquals("'A1'", SheetBook.quoted("A1"))
         assertEquals("SUM('My x'!B3:B12)+Other!A1", SheetBook.renamed("SUM(Rows!B3:B12)+Other!A1", "Rows", "My x"))

@@ -489,6 +489,37 @@ class SlidesTest {
     }
 
     /** Insert › Video (asked 17 Oct): a film from the phone kept in the deck, and an online one linked, each with its picture; saved and read back. */
+    /** Home › Selection pane: a thing renamed and hidden, saved as PowerPoint's (cNvPr name, hidden) and LibreOffice's (draw:name, drawooo:display), read back, through LibreOffice. */
+    @Test fun `a thing named and hidden saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = deck.slides[2].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("A rounded") == true }
+            assertTrue(name, !box.hidden)
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to box.anim!!) to SlidesEdit.Look(name = "The blue box", hide = true)))
+            fun check(d: Deck, how: String) {
+                val b = d.slides[2].items.first { (it as? SlideItem.Shape)?.let(::words)?.startsWith("A rounded") == true }
+                assertEquals(how, "The blue box", b.name); assertTrue(how, b.hidden)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("hidden-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                // (a shape of its own: on a placeholder LibreOffice 26.2 loses hidden both ways, and its .pptx renames placeholders)
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+            // shown again: no longer hidden once saved
+            val again = Slides.read(out); val b2 = again.slides[2].items.first { (it as? SlideItem.Shape)?.let(::words)?.startsWith("A rounded") == true }
+            val out2 = File("build/office-roundtrip").resolve("shown-$name")
+            val e2 = SlidesEdit.start(again).copy(looks = mapOf((2 to b2.anim!!) to SlidesEdit.Look(hide = false)))
+            if (src.extension == "odp") SlidesOdpEdit.save(out, again, e2, out2) else SlidesEdit.save(out, again, e2, out2)
+            assertTrue(name, !Slides.read(out2).slides[2].items.first { (it as? SlideItem.Shape)?.let(::words)?.startsWith("A rounded") == true }.hidden)
+        }
+    }
+
     /** A text box's Layout (B, 17 Oct): inner margins, wrap and columns saved as PowerPoint's and LibreOffice's, read back, through LibreOffice. */
     @Test fun `a box's layout saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

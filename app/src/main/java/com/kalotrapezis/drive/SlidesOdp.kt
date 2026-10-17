@@ -283,7 +283,8 @@ internal object SlidesOdp {
                 val desc = e.kids().firstOrNull { it.localName == "desc" }?.textContent
                 // its click: LibreOffice's "go to page or object" or a web page (office:event-listeners)
                 val click = e.kids().firstOrNull { it.localName == "event-listeners" }?.kids()?.firstOrNull { it.localName == "event-listener" && it.a(PRES, "action") == "show" }?.a(XLINK, "href")
-                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click } }
+                if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click
+                    out[i].name = e.a(DRAW, "name")?.ifEmpty { null }; out[i].hidden = e.getAttributeNS("http://openoffice.org/2010/draw", "display") == "none" } }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 

@@ -365,6 +365,9 @@ internal object SlidesOdpEdit {
                 if (l.words) words(s, l)
             }
             l.alt?.let { alt(el, it) }
+            // the Selection pane: its name, and hidden as LibreOffice keeps one (drawooo:display)
+            l.name?.let { if (it.isEmpty()) el.removeAttributeNS(DRAW, "name") else el.setAttributeNS(DRAW, "draw:name", it) }
+            l.hide?.let { if (it) el.setAttributeNS("http://openoffice.org/2010/draw", "drawooo:display", "none") else el.removeAttributeNS("http://openoffice.org/2010/draw", "display") }
             l.objectLink?.let { clickTo(el, it) }
             // Replace picture, Edit drawing: the frame's picture a new one in the package
             l.image?.let { p -> el.kids().firstOrNull { it.localName == "image" }?.setAttributeNS(XLINK, "xlink:href", picture(SlidesEdit.Added("image", 0f, 0f, 0f, 0f, image = p, ext = p.substringAfterLast('.')))) }

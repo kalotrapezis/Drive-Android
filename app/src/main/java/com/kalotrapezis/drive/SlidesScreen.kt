@@ -208,6 +208,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
     var effectKinds by remember { mutableStateOf(false) } // Animations › Effect: the catalog of entrances, emphases and exits, a line each
+    var selectionPane by remember { mutableStateOf(false) } // Home › Selection pane: every thing on the slide, front first
     var animPane by remember { mutableStateOf(false) } // Animations › Animation pane: the slide's effects in their order
     var animPainter by remember { mutableStateOf<List<SlideEffect>?>(null) } // Animations › Animation painter: the effects taken, put on the next thing chosen
     LaunchedEffect(ribbonTab, item) { effectOptions = false; effectKinds = false }
@@ -887,6 +888,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front) { restack('f') }
                     RibbonButton("Send backward", w, R.drawable.ic_flip_to_back) { restack('-') }
                     RibbonButton("Send to back", w, R.drawable.ic_flip_to_back) { restack('b') }
+                    RibbonButton("Selection pane", w, R.drawable.ic_layers) { selectionPane = true }
                     Box {
                         var aligning by remember { mutableStateOf(false) }
                         RibbonButton("Align", w, R.drawable.ic_align_horizontal_center) { aligning = true }
@@ -942,6 +944,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // Section (PowerPoint's): slides in named groups, from the chosen one; an .odp has none
                 if (deck?.sections != null) RibbonButton("Section", w, R.drawable.ic_label) { sectioning = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
+                // PowerPoint's Selection Pane (Home › Arrange): the way to reach a thing under another on a tablet
+                RibbonButton("Selection pane", w, R.drawable.ic_layers) { selectionPane = true }
                 RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
                 RibbonButton("Move down", w, R.drawable.ic_keyboard_arrow_down, enabled = c < e.order.lastIndex) { change(e.copy(order = e.order.toMutableList().apply { add(c + 1, removeAt(c)) })); chosen = c + 1 }
@@ -1507,7 +1511,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     if (chosen != i) { chosen = i; typing = null; item = null; return@detectTapGestures }
                                     val x = o.x / size.width * d.width; val y = o.y / size.height * d.height
                                     // what is tapped is chosen (its tools in the ribbon); tapped again, a text box's words are typed, a table's cell
-                                    val hit = s.items.lastOrNull { it.anim != null && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
+                                    val hit = s.items.lastOrNull { it.anim != null && !it.hidden && x in it.x..(it.x + it.w) && y in it.y..(it.y + it.h) }
                                     val a = hit?.anim?.let { id -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == id } } }
                                     when {
                                         hit == null -> { item = null; message = "Tap a text box, shape or picture on the slide" }
@@ -1793,6 +1797,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 }, cancel = { cropping = null })
                             }
                         }
+                    }
+                    if (selectionPane) e?.let { e1 -> val c1 = chosen ?: return@let; val sl = view?.slides?.getOrNull(c1) ?: return@let; val uid = e1.order[c1].uid
+                        SelectionPane(sl, item, { selectionPane = false }, { id -> item = id; typing = null },
+                            look = { id, f -> change(e1.copy(looks = e1.looks + ((uid to id) to f(e1.looks[uid to id] ?: SlidesEdit.Look())))); WriterLog.i("Slides: selection pane, $id") },
+                            move = { id, how -> item = id; restack(how) })
                     }
                     if (animPane) e?.let { e1 -> val c1 = chosen ?: return@let; val uid = e1.order[c1].uid; val sl = view?.slides?.getOrNull(c1) ?: return@let
                         val list = e1.anims[uid] ?: SlidesEdit.flat(sl.steps)
@@ -2676,6 +2685,46 @@ internal fun ThemeCard(t: SlideTheme, chosen: Boolean, modifier: Modifier = Modi
 /** Changes not yet saved, kept when the app went to the background: one per presentation (by its path), in the app's storage. */
 private fun slideDraft(context: android.content.Context, file: File) =
     File(File(context.filesDir, "slide-drafts"), "${file.absolutePath.hashCode().toUInt()}.${file.extension}")
+
+/**
+ * Home › Selection pane (PowerPoint's): every thing on [slide], the front one first — tapped, it is chosen (one under another too);
+ * its eye hides or shows it ([look]: `Look.hide`), its name is changed in place (`Look.name`), ↑ ↓ bring it forward or send it back ([move]).
+ */
+@Composable
+private fun SelectionPane(slide: Slide, chosen: String?, dismiss: () -> Unit, choose: (String) -> Unit, look: (String, (SlidesEdit.Look) -> SlidesEdit.Look) -> Unit, move: (String, Char) -> Unit) {
+    val things = slide.items.filter { it.anim != null && !(it is SlideItem.Shape && it.hint) }.distinctBy { it.anim }.asReversed()
+    var naming by remember { mutableStateOf<Pair<String, String>?>(null) }
+    fun kind(it0: SlideItem) = when (it0) {
+        is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
+        is SlideItem.Picture -> if (it0.media != null) "Video" else if (it0.math != null) "Equation" else "Picture"
+        is SlideItem.Chart -> "Chart"; is SlideItem.Table -> "Table"
+    }
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Selection pane") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            things.forEachIndexed { i, it0 -> val id = it0.anim!!
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                    .background(if (id == chosen) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent).clickable { if (!it0.hidden) choose(id) }.padding(start = 8.dp)) {
+                    if (naming?.first == id) androidx.compose.material3.OutlinedTextField(naming!!.second, { naming = id to it }, singleLine = true, modifier = Modifier.weight(1f),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { look(id) { l -> l.copy(name = naming!!.second.trim()) }; naming = null }),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done))
+                    else Column(Modifier.weight(1f)) {
+                        Text(it0.name ?: kind(it0), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if (it0.hidden) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                        (it0 as? SlideItem.Shape)?.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }?.trim()?.takeIf { it.isNotEmpty() && it0.name != null }?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    }
+                    if (naming?.first == id) IconButton(onClick = { look(id) { l -> l.copy(name = naming!!.second.trim()) }; naming = null }) { Icon(painterResource(R.drawable.ic_check), "Keep the name") }
+                    else IconButton(onClick = { naming = id to (it0.name ?: "") }) { Icon(painterResource(R.drawable.ic_edit), "Rename") }
+                    IconButton(onClick = { look(id) { l -> l.copy(hide = !it0.hidden) } }) {
+                        Icon(painterResource(if (it0.hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility), if (it0.hidden) "Show it" else "Hide it") }
+                    IconButton(onClick = { move(id, '+') }, enabled = i > 0) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), "Bring forward") }
+                    IconButton(onClick = { move(id, '-') }, enabled = i < things.lastIndex) { Icon(painterResource(R.drawable.ic_keyboard_arrow_down), "Send backward") }
+                }
+            }
+            if (things.isEmpty()) Text("Nothing on this slide", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Done") } })
+}
 
 /**
  * Animations › Animation pane (PowerPoint's): the slide's effects in their order — each with when it starts, what it does and to what;

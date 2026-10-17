@@ -62,6 +62,9 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var grouped = false
     /** Its words for screen readers (alt text: PowerPoint's cNvPr descr, LibreOffice's svg:desc). */
     var alt: String? = null
+    /** Its name in the Selection pane (PowerPoint's cNvPr name, LibreOffice's draw:name) and whether it is hidden there (not drawn: hidden="1", drawooo:display="none"). */
+    var name: String? = null
+    var hidden = false
     /** Where a tap on it goes in a show (Insert › Link on a picture or shape): a slide's part (an .odp's "#page"), a web address, or "back" (the slide it came from). */
     var link: String? = null
     /** A video (Insert › Video, asked 17 Oct): a part of the file (its path), a copy on the phone, or a web address — this item its picture, played when tapped in a show. */
@@ -496,7 +499,7 @@ internal object Slides {
                 val descr = cNvPr?.attr("descr")
                 // its own click (PowerPoint's action on the object): a slide, a web page, or the slide it came from
                 val click = cNvPr?.kid("hlinkClick")?.let { h -> if (h.attr("action")?.contains("lastslideviewed") == true) "back" else h.rid("id")?.let(rels::get) }
-                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click } }
+                if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click; out[k].name = cNvPr?.attr("name")?.ifEmpty { null }; out[k].hidden = cNvPr?.attr("hidden").let { it == "1" || it == "true" } } }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }
 
@@ -697,6 +700,7 @@ internal object Slides {
             ?.let { c.drawBitmap(it, null, android.graphics.RectF(0f, 0f, deck.width, deck.height), paint) } }
         for (item in slide.items) {
             if (item is SlideItem.Shape && item.hint && !hints) continue
+            if (item.hidden) continue // the Selection pane's eye shut
             val state = if (look != null) look(item) ?: continue else null
             val saved = c.save()
             if (state != null) {

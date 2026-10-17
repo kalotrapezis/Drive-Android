@@ -443,8 +443,15 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       drawn from the drawing the file saves with it (check: not found in Slides' code); a deck's **video and audio
       played** in the show (today neither is); its embedded fonts used; equations drawn (Word's OMML, as Words');
       hidden slides skipped in the show; an empty placeholder shows "Click to add title/text" and typing fills it.
-- [ ] **Selection pane**: every object on the slide in a list — choose one under another, hide or show it, rename it,
+- [x] **Selection pane**: every object on the slide in a list — choose one under another, hide or show it, rename it,
       reorder by dragging (the only way to reach a covered object on a tablet).
+      Done 17 Oct (office-D session): Home › Selection pane (and beside Arrange's order buttons) — the slide's things, front first, each
+      by its name (else what it is) with its words under it; tapped, it is chosen (one under another too); the eye hides or shows it (not
+      drawn, not tappable on the slide, skipped in the show); rename in place; ↑ ↓ Bring forward / Send backward (`restack`, Edit.stack —
+      arrows, not dragging: a list's drag fights the dialog's scroll on a phone). Saved as PowerPoint's cNvPr name / hidden="1" and
+      LibreOffice's draw:name / drawooo:display="none"; read back from both (`SlideItem.name`, `hidden`; `Look.name`, `Look.hide`).
+      **Shared piece:** none of Words' (Words has no selection pane); the Animation pane's list. `a thing named and hidden saved`
+      (a shape: both kept by LibreOffice's conversions; on a placeholder LibreOffice 26.2 loses hidden both ways and its .pptx renames it).
 - [ ] **Picture**: picture styles (frame, shadow, rounded corners — the tablet app has these); transparency; colour
       and brightness; compress pictures; remove background (later).
 - [ ] **Shapes**: text effects (shadow, outline, glow) and character spacing; merge shapes (union, combine,

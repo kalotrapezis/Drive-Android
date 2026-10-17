@@ -221,6 +221,17 @@ internal object SlidesOdpEdit {
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
                 })
             }
+            // Insert › Link: each paragraph's words in a link (a slide's named once every page is in place); "" a link taken off
+            l.link?.let { to -> for (p in paras(h)) {
+                for (a in p.all().filter { it.localName == "a" && it.namespaceURI == TEXT }) { while (a.firstChild != null) a.parentNode.insertBefore(a.firstChild, a); a.parentNode.removeChild(a) }
+                if (to.isEmpty() || p.textContent.isBlank()) continue
+                // inside each span, as LibreOffice's own (Impress keeps no span inside a link)
+                fun texts(n: org.w3c.dom.Node): List<org.w3c.dom.Text> = if (n is org.w3c.dom.Text) listOf(n) else (0 until n.childNodes.length).flatMap { texts(n.childNodes.item(it)) }
+                for (t in texts(p).filter { it.data.isNotEmpty() }) {
+                    val a = doc.createElementNS(TEXT, "text:a").also { it.setAttributeNS(XLINK, "xlink:type", "simple"); it.setAttributeNS(XLINK, "xlink:href", if (to.startsWith("slide:")) "#tetra-" + to else to) }
+                    t.parentNode.replaceChild(a, t); a.appendChild(t)
+                }
+            } }
             // Insert › Drop cap, raised: the first letter in a span of its own, its size (and face, colour); 0: a raised one plain again
             l.raise?.let { size -> paras(h).firstOrNull { it.textContent.isNotBlank() }?.let { p ->
                 fun texts(n: org.w3c.dom.Node): List<org.w3c.dom.Text> = if (n is org.w3c.dom.Text) listOf(n) else (0 until n.childNodes.length).flatMap { texts(n.childNodes.item(it)) }
@@ -500,13 +511,13 @@ internal object SlidesOdpEdit {
         }
 
         val used = HashSet<Int>()
-        val ordered = ArrayList<Element>()
+        val ordered = ArrayList<Element>(); val orderedUid = ArrayList<Int>()
         for (e in edit.order) {
             // a new slide: its layout's page (empty boxes in the master's places)
             if (e.layout >= 0) {
                 val l = deck.layouts.getOrNull(e.layout) ?: continue
                 val page = fragment(String(l.xml)).also { it.setAttributeNS(DRAW, "draw:name", fresh("page")) }
-                apply(page, l.preview, e.uid); ordered += page; continue
+                apply(page, l.preview, e.uid); ordered += page; orderedUid += e.uid; continue
             }
             val orig = pages.getOrNull(e.src) ?: continue
             val page = if (used.add(e.src)) orig else (orig.cloneNode(true) as Element).also { copy ->
@@ -521,8 +532,15 @@ internal object SlidesOdpEdit {
                 }
             }
             apply(page, deck.slides[e.src], e.uid)
-            ordered += page
+            ordered += page; orderedUid += e.uid
         }
+        // links to slides: to the page's name, as LibreOffice's (a page with none, or a name another has, given its own)
+        val named = HashSet<String>()
+        val pageName = orderedUid.zip(ordered).associate { (uid, page) ->
+            val n = page.a(DRAW, "name")?.takeIf { named.add(it) } ?: fresh("page").also { page.setAttributeNS(DRAW, "draw:name", it); named += it }
+            uid to n }
+        for (a in ordered.flatMap { it.all() }.filter { it.localName == "a" && it.a(XLINK, "href")?.startsWith("#tetra-slide:") == true })
+            a.setAttributeNS(XLINK, "xlink:href", a.a(XLINK, "href")!!.removePrefix("#tetra-slide:").toIntOrNull()?.let(pageName::get)?.let { "#$it" } ?: "")
         // the pages in their order where they were (before the presentation's settings)
         pages.forEach { pres.removeChild(it) }
         val after = pres.kids().firstOrNull { it.localName == "settings" }

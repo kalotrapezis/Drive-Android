@@ -31,10 +31,12 @@ internal object SlidesEdit {
         val raise: Float? = null, val raiseFont: String? = null, val raiseColor: Int? = null,
         /** Insert › Drop cap, dropped (the letter in a text box of its own beside it): the first paragraph's left edge (pt), no first-line indent
          *  nor space after it; the paragraph after it (the rest of the words, split where the letter's lines end) no space before nor first-line indent */
-        val drop: Float? = null, val dropRest: Boolean = true) {
+        val drop: Float? = null, val dropRest: Boolean = true,
+        /** Insert › Link on all its words: a web address, or "slide:" and a slide's uid; "" a link taken off */
+        val link: String? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -67,6 +69,8 @@ internal object SlidesEdit {
                 l.underline?.let { r = r.copy(underline = it) }; l.strike?.let { r = r.copy(strike = it) }
                 l.text?.let { r = r.copy(color = it and 0xFFFFFF) }
                 l.highlight?.let { h -> r = r.copy(highlight = h.takeIf { it != NONE }?.and(0xFFFFFF)) }
+                // a link in Office's link colour (the theme's, once saved and read again)
+                l.link?.let { k -> r = if (k.isEmpty()) r.copy(link = null) else r.copy(link = k, color = 0x0563C1) }
                 r
             }
             // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
@@ -275,7 +279,7 @@ internal object SlidesEdit {
     }
 
     /** A text body ([body]: a:txBody) in Home's looks [l], as PowerPoint writes them: on every run and paragraph mark, each paragraph, the body. */
-    private fun words(doc: org.w3c.dom.Document, body: Element, l: Look) {
+    private fun words(doc: org.w3c.dom.Document, body: Element, l: Look, link: String? = null) {
         fun a(name: String, vararg attrs: Pair<String, String>) = doc.createElementNS(A, "a:$name").also { e -> attrs.forEach { (k, v) -> e.setAttribute(k, v) } }
         fun rgb(c: Int, holder: String) = a(holder).also { it.appendChild(a("srgbClr", "val" to "%06X".format(c and 0xFFFFFF))) }
         val paras = body.getElementsByTagNameNS(A, "p").let { ps -> (0 until ps.length).map { ps.item(it) as Element } }
@@ -295,6 +299,11 @@ internal object SlidesEdit {
                 l.text?.let { c -> listOf("noFill", "gradFill", "blipFill", "pattFill", "grpFill").forEach { n -> rPr.kids().filter { it.localName == n }.forEach { rPr.removeChild(it) } }; place(rPr, rgb(c, "solidFill"), RPR) }
                 l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }
+                // Link: its relationship ([link]: its rId, and " slide" for a jump to a slide, as PowerPoint's); "" taken off
+                if (l.link != null && rPr.localName == "rPr") {
+                    rPr.kids().filter { it.localName == "hlinkClick" }.forEach { rPr.removeChild(it) }
+                    link?.split(' ')?.let { (rid) -> place(rPr, a("hlinkClick").also { h -> h.setAttributeNS(R, "r:id", rid); if (link.endsWith(" slide")) h.setAttribute("action", "ppaction://hlinksldjump") }, RPR) }
+                }
             }
             if (p === paras.firstOrNull { q -> q.getElementsByTagNameNS(A, "t").let { ts -> (0 until ts.length).any { ts.item(it).textContent.isNotBlank() } } }) l.raise?.let { raise(doc, p, l) }
             val first = paras.indexOfFirst { q -> q.getElementsByTagNameNS(A, "t").let { ts -> (0 until ts.length).any { ts.item(it).textContent.isNotBlank() } } }
@@ -423,7 +432,7 @@ internal object SlidesEdit {
                     if (c != NONE) n.setAttribute("w", "19050"); spPr.insertBefore(n, spPr.kids().firstOrNull { it.localName in setOf("effectLst", "effectDag", "scene3d", "sp3d", "extLst") }) }
                 refill(ln, c, ln.kids().map { it.localName }.filter { it !in fills }.toSet())
             }
-            if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l) }
+            if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l, rels["link $id"]) }
         }
         // deleted: the item gone from the tree (its animation is taken out by the caller, so no timing names it)
         for (id in removed) (root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).map { l.item(it) as Element } }.firstOrNull { it.getAttribute("id") == id }
@@ -691,6 +700,9 @@ internal object SlidesEdit {
             list.appendChild(pres.createElementNS(P, "p:sldId").apply { setAttribute("id", "${nextId++}"); setAttributeNS(R, "r:id", rid) })
             typesOut = typesOut.replace("</Types>", """<Override PartName="/$part" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>""")
         }
+        // each slide's part, known before any is written (a link may jump to one further on): its own the first time it is in the order, else a new one
+        val partOf = HashMap<Int, String>().also { m -> val seen = HashSet<Int>(); var n = nextSlide
+            for (e in edit.order) m[e.uid] = if (e.layout < 0 && seen.add(e.src)) deck.slides[e.src].part else "ppt/slides/slide${n++}.xml" }
         for (e in edit.order) {
             val texts = edit.texts.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
             val looks = edit.looks.filterKeys { it.first == e.uid }.mapKeys { it.key.second }
@@ -702,9 +714,13 @@ internal object SlidesEdit {
             val source = if (e.layout >= 0) null else deck.slides[e.src]
             val original = source != null && used.add(e.src)
             // the slide's part: its own (the first time it is in the order), else a new one (a duplicate, a new slide of a layout)
-            val part = if (original) source!!.part else "ppt/slides/slide${nextSlide++}.xml"
+            val part = partOf.getValue(e.uid)
             val relsXml = if (original) relsDoc(part) else newRels(if (e.layout >= 0) deck.layouts[e.layout].part else null, source?.part)
-            val ids = media(e.uid, relsXml)
+            // Insert › Link: a web page (an outside relationship) or a slide (the slide's part), named by the words' hlinkClick
+            val ids = media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
+                if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "link $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
+                else "link $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
+            } }
             val base = if (e.layout >= 0) deck.layouts[e.layout].xml else read(source!!.part) ?: continue
             // its notes as typed; a copy's own notes page with the first's words (its relationships leave the first's out)
             val noted = (edit.notes[e.uid] ?: source?.notes?.takeIf { !original && it.isNotEmpty() })?.let { notes(part, relsXml, it) } ?: false

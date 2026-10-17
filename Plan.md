@@ -258,6 +258,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       saved by Words' `ChartWriter` (.pptx: a chart part + its workbook, as PowerPoint; .odp: LibreOffice's chart object); the
       chart's tab has Edit data. `a chart put on saved` (both, LibreOffice's conversions); emulator: line chart put on, turned
       into a pie by Edit data, saved — LibreOffice draws it. Not yet: Edit data on a deck's own chart (Picture / Shape below); Link (to a web page or to a
+      slide) — done 17 Oct (office-B session): Words' link dialog moved into a shared `LinkDialog` (WriterTable.kt; Words uses
+      it as before) with Slides' choice of "Web page" or "Slide in this deck" (the slides by their first words); a chosen box's
+      words all linked (`Look.link`, the rich typing editor will link a word), nothing chosen: a text box of the words to show;
+      saved as PowerPoint's hlinkClick (an outside relationship, or a slide's with ppaction://hlinksldjump) and LibreOffice's
+      text:a inside each span ("#" and the page's name for a slide); Remove link; the show follows a tap on linked words (a
+      web page opened, a slide gone to; an .odp's "#page" links too). `links put on saved` (both; LibreOffice reads Tetra's
+      slide jumps as its own and writes them back as PowerPoint's); emulator: Plan's words linked to Scores, the show jumped there. Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

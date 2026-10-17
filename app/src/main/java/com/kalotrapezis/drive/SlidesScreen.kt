@@ -284,6 +284,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var stripBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) } // …the edit before a card tapped there (Cancel goes back to it)
     var stripPicked by remember { mutableStateOf<Any?>(null) } // …and the card tapped
     var dropOptions by remember { mutableStateOf(false) } // Drop cap › More…: Words' dialog, raised
+    var linking by remember { mutableStateOf(false) } // Insert › Link: Words' link dialog
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) } // Insert › Chart, Edit data: Words' chart editor (the chart's id; null: a new one)
     var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
     /** The chosen box's words' size before a raised first letter: what Drop cap's lines are counted in. */
@@ -537,6 +538,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                 // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
+                // Link (as Words'): a box's words linked to a web page or a slide; nothing chosen: a text box of words to show
+                RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
             }
             "File" -> {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
@@ -1016,6 +1019,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (stripPicked == DropKind.Dropped) dropped(b, cc, id, n)?.let { edit = it }
                             })
                     }
+                    if (linking) {
+                        val box = chosenWords()
+                        val now = box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link }
+                        val ee = edit
+                        // a slide's link shown as its place in the deck
+                        val shownAt = now?.let { l -> (if (l.startsWith("slide:")) ee?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else view?.slides?.indexOfFirst { it.part == l && l.isNotEmpty() })?.takeIf { it >= 0 }?.let { "#$it" } } ?: now
+                        val names = view?.slides.orEmpty().map { sl -> sl.items.filterIsInstance<SlideItem.Shape>().firstNotNullOfOrNull { sh -> sh.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }?.trim()?.takeIf { it.isNotEmpty() && !sh.hint } }?.take(40) ?: "Slide" }
+                        LinkDialog(box == null, shownAt, null, now != null, { linking = false }, { linking = false; restyle { it.copy(link = "") } }, names) { text, to ->
+                            linking = false
+                            val target = to.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()?.let { i -> ee?.order?.getOrNull(i)?.let { "slide:${it.uid}" } } ?: to
+                            if (box != null) restyle { it.copy(link = target) }
+                            else { val d0 = deck ?: return@LinkDialog; val e0 = edit ?: return@LinkDialog; val cc = chosen ?: return@LinkDialog
+                                val a = SlidesEdit.Added(e0.newId(e0.order[cc].uid, taken(e0, cc)), d0.width * 0.2f, d0.height * 0.42f, d0.width * 0.6f, 40f, prst = SlidesEdit.TEXT_BOX)
+                                val k = e0.order[cc].uid to a.id
+                                change(e0.copy(added = e0.added + (k.first to e0.added[k.first].orEmpty() + a), texts = e0.texts + (k to listOf(text)), looks = e0.looks + (k to SlidesEdit.Look(link = target))))
+                                item = a.id }
+                            WriterLog.i("Slides: a link put on")
+                        }
+                    }
                     charting?.let { (id, start) ->
                         ChartDialog(start, id != null, { charting = null }) { ch ->
                             charting = null
@@ -1151,7 +1173,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text("Cancel") }
         } })
     val d = view
-    presenting?.let { start -> if (d != null) Present(d, start, notes) { presenting = null } }
+    presenting?.let { start -> if (d != null) Present(d, start, notes, jump = { l ->
+        // a link's slide: one linked here (its uid), or the deck's own part a file's link names
+        (if (l.startsWith("slide:")) edit?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else d.slides.indexOfFirst { it.part == l })?.takeIf { it >= 0 }
+    }) { presenting = null } }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
     if (showVersions) file?.let { f -> VersionsDialog(f, "leaving without saving goes back", { showVersions = false }) { v -> showVersions = false; openVersion(v) } }
     if (about) androidx.compose.material3.AlertDialog(onDismissRequest = { about = false },
@@ -1191,7 +1216,7 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
  * to the list with Back.
  */
 @Composable
-private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
+private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> Int? = { null }, close: () -> Unit) {
     val context = LocalContext.current
     val shown = remember(deck) { deck.slides.indices.filter { !deck.slides[it].hidden || it == start } }
     var page by remember { mutableStateOf(shown.indexOf(start).coerceAtLeast(0)) }
@@ -1223,6 +1248,15 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
         }
     }
     fun back() { if (page > 0) { page--; step = slide(page).steps.size; playing = null; from = null } }
+    /** A tap at [x], [y] in a [w] × [h] window on words with a link (Insert › Link, a file's own): a web page opened, a slide gone to. True: it was one. */
+    fun follow(x: Float, y: Float, w: Float, h: Float): Boolean {
+        val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
+        val link = slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
+            ?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link } ?: return false
+        jump(link)?.let { i -> shown.indexOf(i).takeIf { it >= 0 }?.let { from = page to System.nanoTime(); page = it; step = 0; playing = null; WriterLog.i("Slides: link to slide ${i + 1}") }; return true }
+        if (Regex("^[a-zA-Z][a-zA-Z+.-]*:").containsMatchIn(link)) { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }; WriterLog.i("Slides: link opened"); return true }
+        return false
+    }
     // a slide that goes on by itself: its time once its effects are done (and its transition in), then the next
     // shortcut: PowerPoint counts the time from the slide's start; here it runs after its last effect, the same when it has none
     // Pause (the presenter's notes, asked 17 Oct): a moment aside — slides that go on by themselves wait, the teleprompter stops
@@ -1381,16 +1415,17 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, close: () -> Unit) {
                 // one tap: on; a swipe: to the left on, to the right back; two quick taps: the tools (one screen); three: the screen black, or back (asked 17 Oct)
                 // (a tap waits a quarter second for another, to tell it from a triple tap)
                 if (tool == null) awaitEachGesture {
-                    var taps = 0
+                    var taps = 0; var at = androidx.compose.ui.geometry.Offset.Zero
                     while (taps < 3) {
                         val down = if (taps == 0) awaitFirstDown() else withTimeoutOrNull(250) { awaitFirstDown() } ?: break
+                        if (taps == 0) at = down.position
                         var moved = 0f; var end = down
                         while (true) { val ev = awaitPointerEvent(); val ch = ev.changes.firstOrNull { it.id == down.id } ?: break; moved = ch.position.x - down.position.x; end = ch; if (!ch.pressed) break }
                         if (kotlin.math.abs(moved) > 60.dp.toPx()) { if (taps == 0 && !black) { if (moved < 0) next() else back() }; return@awaitEachGesture }
                         taps++
                     }
                     if (taps == 3) { black = !black; WriterLog.i("Slides: black $black") }
-                    else if (!black) { if (taps == 2) { if (tv == null) dock = true } else next() }
+                    else if (!black) { if (taps == 2) { if (tv == null) dock = true } else if (!follow(at.x, at.y, size.width.toFloat(), size.height.toFloat())) next() }
                 }
             }, contentAlignment = Alignment.Center) {
             // the whole slide in the window it is shown in, black bars on the sides that are left over (fillMaxSize first made it as tall as the window and cut its sides on a 3:2 tablet)

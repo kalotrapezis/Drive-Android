@@ -294,7 +294,8 @@ internal object SlidesOdp {
                     }
                 if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
             }
-            Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", transition = transition, steps = steps)
+            // its part: its name as a link names it ("#page3"), so a show follows one
+            Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps)
         }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
         // placeholders as a page's empty boxes (grey hints); a deck of one master gets Title only and Blank as well

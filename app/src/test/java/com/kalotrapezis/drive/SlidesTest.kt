@@ -223,6 +223,41 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Link: a box's words linked to a web page, another's to a slide of the deck — saved as PowerPoint's hlinkClick and LibreOffice's text:a, read back. */
+    @Test fun `links put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            fun box(d: Deck, i: Int, start: String) = d.slides[i].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith(start) == true }
+            val red = box(deck, 2, "Bold red").anim!!; val plan = box(deck, 1, "Read the slides").anim!!
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to red) to SlidesEdit.Look(link = "https://example.com/a"), (1 to plan) to SlidesEdit.Look(link = "slide:3")))
+            fun links(d: Deck, i: Int, start: String) = box(d, i, start).text!!.paras.flatMap { it.runs }.filter { it.text.isNotBlank() }.map { it.link }.distinct()
+            fun check(d: Deck, how: String, slide: (Deck) -> String) {
+                assertEquals(how, listOf("https://example.com/a"), links(d, 2, "Bold red"))
+                assertEquals(how, listOf(slide(d)), links(d, 1, "Read the slides"))
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name") { "slide:3" }
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("links-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            // a slide's link: its part (.pptx), the page's name (.odp)
+            fun target(d: Deck) = if (d.slides[3].part.endsWith(".xml")) d.slides[3].part else links(d, 1, "Read the slides").single()!!
+            check(Slides.read(out), "saved, $name", ::target)
+            if (src.extension == "odp") assertTrue(target(Slides.read(out)).startsWith("#"))
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                val back = Slides.read(dir.listFiles()!!.single { it.extension == other })
+                assertEquals("LibreOffice's $other of $name", listOf("https://example.com/a"), links(back, 2, "Bold red"))
+                assertTrue("LibreOffice's $other of $name: ${links(back, 1, "Read the slides")}", links(back, 1, "Read the slides").single() != null)
+            }
+            // taken off again
+            val off = File.createTempFile("off", "." + src.extension); val again = Slides.read(out)
+            val e2 = SlidesEdit.start(again).copy(looks = mapOf((2 to box(again, 2, "Bold red").anim!!) to SlidesEdit.Look(link = "")))
+            if (src.extension == "odp") SlidesOdpEdit.save(out, again, e2, off) else SlidesEdit.save(out, again, e2, off)
+            assertEquals(name, listOf<String?>(null), links(Slides.read(off), 2, "Bold red"))
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

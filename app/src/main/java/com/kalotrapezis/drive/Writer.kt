@@ -4552,35 +4552,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         )
     }
     if (linking) {
-        var url by remember { mutableStateOf(state.selectedLinkUrl ?: "https://") }
-        var text by remember { mutableStateOf(state.selectedLinkText ?: "") }
         val selection = state.selection
-        AlertDialog(
-            onDismissRequest = { linking = false },
-            title = { Text("Link") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (selection.collapsed && !state.isLink) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
-                    OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    linking = false
-                    when {
-                        state.isLink -> state.updateLink(url)
-                        !selection.collapsed -> state.addLinkToSelection(url)
-                        else -> state.addLink(text.ifBlank { url }, url)
-                    }
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                Row {
-                    if (state.isLink) TextButton(onClick = { linking = false; state.removeLink() }) { Text("Remove link") }
-                    TextButton(onClick = { linking = false }) { Text("Cancel") }
-                }
-            },
-        )
+        LinkDialog(selection.collapsed && !state.isLink, state.selectedLinkUrl, state.selectedLinkText, state.isLink, { linking = false }, { linking = false; state.removeLink() }) { text, url ->
+            linking = false
+            when {
+                state.isLink -> state.updateLink(url)
+                !selection.collapsed -> state.addLinkToSelection(url)
+                else -> state.addLink(text, url)
+            }
+        }
     }
     if (insertingTable) {
         var rows by remember { mutableIntStateOf(2) }

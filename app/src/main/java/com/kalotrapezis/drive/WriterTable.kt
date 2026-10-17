@@ -655,6 +655,43 @@ private val SYMBOLS = listOf(
     "Arrows" to "←→↑↓↔⇐⇒⇔↵",
 )
 
+/**
+ * Insert › Link (Words', shared with Slides 17 Oct): [showText] asks for the words to show (nothing chosen to link); [linked] offers Remove link.
+ * [slides] (Slides): a slide of the deck can be the link's end instead of a web address — [done] then gets "#" and its number from 0.
+ */
+@Composable
+internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?, linked: Boolean, dismiss: () -> Unit, remove: () -> Unit,
+    slides: List<String>? = null, done: (String, String) -> Unit) {
+    val startSlide = startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
+    var url by remember { mutableStateOf(startUrl?.takeIf { startSlide == null } ?: "https://") }
+    var text by remember { mutableStateOf(startText ?: "") }
+    var slide by remember { mutableStateOf(startSlide) } // Slides: a slide chosen, not a web address
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Link") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
+                if (slides != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Choice("Web page", slide == null) { slide = null }
+                    Choice("Slide in this deck", slide != null) { slide = slide ?: 0 }
+                }
+                if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
+                else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    slides.orEmpty().forEachIndexed { i, name -> Choice("${i + 1}. $name", slide == i) { slide = i } }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { val to = slide?.let { "#$it" } ?: url; done(text.ifBlank { slide?.let { slides?.getOrNull(it) } ?: url }, to) }) { Text("OK") } },
+        dismissButton = {
+            Row {
+                if (linked) TextButton(onClick = remove) { Text("Remove link") }
+                TextButton(onClick = dismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
 @Composable
 internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {

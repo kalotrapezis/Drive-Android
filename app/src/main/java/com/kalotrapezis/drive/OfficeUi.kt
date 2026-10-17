@@ -149,6 +149,12 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     }
 }
 
+/** A strip's head, in the ribbon's place (Tables' Borders and Number, Slides' Options and Effect; 17 Oct: all alike): ‹ back, its name. */
+@Composable internal fun StripHead(title: String, w: Color, back: () -> Unit) {
+    androidx.compose.material3.IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back", tint = w) }
+    Text(title, color = w, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
+}
+
 /** File › Versions in Tables and Slides: the file as it was before each save (the last 3, [keepPrevious]); [open] one. */
 @Composable internal fun VersionsDialog(file: java.io.File, goBack: String, dismiss: () -> Unit, open: (java.io.File) -> Unit) {
     val context = LocalContext.current

@@ -1,6 +1,7 @@
 package com.kalotrapezis.drive
 
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
@@ -418,7 +419,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val kinds = listOfNotNull("None" to "", "Fade" to "fade", "Push" to "push", "Wipe" to "wipe", "Cover" to "cover", "Uncover" to "pull", ("Cut" to "cut").takeIf { !odp })
                 fun set(t: SlideTransition) { change(e.copy(transitions = e.transitions + (uid to t))); WriterLog.i("Slides: transition ${t.kind} ${t.dir} ${t.ms}") }
                 if (effectOptions) {
-                    IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                     if (now != null && now.kind in setOf("push", "wipe", "cover", "pull"))
                         for ((label, d) in listOf("From the right" to "l", "From the left" to "r", "From below" to "u", "From above" to "d"))
                             RibbonButton(label, w, on = (now.dir ?: "l") == d) { set(now.copy(dir = d)) }
@@ -460,7 +460,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     effectKinds -> {
                         // a catalog: the same kind of choice, so a line each for in, emphasis and out (asked 16 Oct)
-                        IconButton(onClick = { effectKinds = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         Column {
                             for ((which, name, kinds) in listOf(
                                 Triple('i', "In", listOf("None" to null, "Appear" to "appear", "Fade" to "fade", "Fly" to "fly", "Wipe" to "wipe", "Zoom" to "zoom")),
@@ -475,7 +474,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     effectOptions && (inK >= 0 || outK >= 0 || emK >= 0) -> {
-                        IconButton(onClick = { effectOptions = false }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                         // the side a fly comes from (or goes to), and how long each of the item's effects takes
                         fun all(f: (SlideEffect) -> SlideEffect) = set(list.map { if (it.target == id) f(it) else it })
                         val mineNow = list.filter { it.target == id }
@@ -800,6 +798,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         } ?: "Shape"
                         // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island
                         Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+                            // Options and Effect take the ribbon's place, ‹ back, as Tables' Borders and Number (17 Oct)
+                            val strip = when { shown == "Transitions" && effectOptions -> "Transition options"; shown == "Animations" && item != null && effectKinds -> "Effect"
+                                shown == "Animations" && item != null && effectOptions -> "Effect options"; else -> null }
+                            androidx.compose.animation.AnimatedContent(strip, label = "strip", transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { st ->
+                            if (st != null) Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp).then(if (wide) Modifier else Modifier.bottomBarPadding()), verticalAlignment = Alignment.CenterVertically) {
+                                StripHead(st, w) { effectOptions = false; effectKinds = false }
+                                RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(vertical = 2.dp)) { if (e != null) SlideRibbon(shown, c, e, w) }
+                            } else
                             Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) {
                                 OfficeTabRow(tabs, shown, w, POWERPOINT_ORANGE, { ribbonTab = it }, contextual = "Item", label = { if (it == "Item") itemKind else it }) {
                                     // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
@@ -812,6 +818,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         if (e != null) SlideRibbon(shown, c, e, w)
                                     }
                                 }
+                            }
                             }
                         }
                     }

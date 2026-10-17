@@ -16,7 +16,8 @@ How to write here:
       bubble in each app's colour (office tab-marker session, 17 Oct).
 - [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).
 - [x] (4a6d7b1) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
-- [x] (next commit) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
+- [x] (5e8b4e8) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
+- [x] (next commit) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -69,7 +70,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       Done: every action in Tables and Slides has one (new: filter off, fewer/more decimals; A−/A+ as Words' − size +);
       choices stay words as Words' style names do (speeds, sides, transition kinds, number formats, table sizes). No
       Tables or Slides tab overflows yet, so nothing is behind ⋯ — B and C add tools under that rule. Tablet 17 Oct.
-- [ ] Strips (Words' Page numbers, Tables' Borders and Number) open the same way: ‹ back, a title, sliding in.
+- [x] Strips (Words' Page numbers, Tables' Borders and Number) open the same way: ‹ back, a title, sliding in.
+      Done: one `StripHead` (‹ and the name) for Tables' Borders and Number and Slides' Transition options, Effect and
+      Effect options, which now take the whole ribbon's place and slide in as Tables' do. Deliberate difference: Words'
+      galleries (Page numbers, Fonts, Colours, WordArt…) keep their name with Cancel and OK — they preview on the page
+      and need OK. Checked on the emulator (1280 dp) 17 Oct; the tablet was in the user's hands.
 - [ ] One colour picker (Words' swatches; Slides has its own `SLIDE_COLOURS`), one font picker, one size picker.
 - [ ] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded
       alike. View-only on opening with Edit, the Save / Don't save question on leaving, recovery drafts and versions

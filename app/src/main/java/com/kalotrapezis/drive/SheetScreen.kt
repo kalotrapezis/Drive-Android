@@ -681,8 +681,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         // A group with choices of its own (Borders, Number) takes the ribbon's place, ‹ back (asked 16 Oct, as Page numbers).
         @Composable fun Strip(name: String) = Row(Modifier.fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            IconButton(onClick = { group = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-            Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+            StripHead(name, w) { group = null }
             val thin = SheetLine(0xFF000000.toInt(), 1f)
             if (name == "Borders") {
                                     val keys = targets(s, l); val g2 = box(keys)

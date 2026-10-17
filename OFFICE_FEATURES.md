@@ -508,6 +508,31 @@ Foundation first: **a slide's words as runs** (today an edited paragraph is one 
       (`ppaction://hlinksldjump`); Update after slides move.
 - [ ] Accessibility: alt text for pictures.
 
+**From Words** (asked 17 Oct: "transfer the rest of the features from Words to Slides" — Slides' Insert had only
+Picture, Shape and Table). Each Words button checked against what a slide can hold; what is already listed above is not
+repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
+- [ ] **Selection** (Slides has none of these): Cut, Copy, Paste a shape, picture or table (on another slide, in
+      another deck); Paste text only; Select all on the slide; Copy formatting / Paste formatting.
+- [ ] **Home** (with the runs above): superscript and subscript; Smaller / Bigger text; Aa (change case); multilevel
+      lists; Words' paragraph page (More…: indents, spacing before and after, line spacing exactly); a text box's
+      border and shading (as Words' Borders, written as the shape's line and fill).
+- [ ] **Insert**: **Drop cap** — PowerPoint and Impress have none, so it is either a raised cap (the first letter a
+      bigger run of its own, which every app shows) or a dropped one (the letter in its own box, the paragraph's first
+      lines indented beside it: looks right everywhere but doesn't reflow) — **the user to choose**; Date and time
+      (fixed, or a field that updates, as PowerPoint's); line break inside a paragraph; Comment; a link's Edit
+      (beside Link above). Slide numbers come with Header & footer.
+- [ ] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline
+      colour, besides width and dash above); Save picture as; Edit data on a chart, Edit equation, Edit drawing.
+- [ ] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
+      table; merge and split cells; borders and shading; table styles; Make chart from the table.
+- [ ] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
+- [ ] **Design**: the theme's fonts (Words' Fonts), besides its colours above.
+- [ ] **Review**: Read aloud (a slide's words, or its notes), as Words'.
+- [ ] **File**: AutoSave, Save a copy, Save as, Rename (as Words', beside A's list).
+- [ ] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.
+- Not for slides: page breaks, blank page, watermark, page borders, line numbers, hyphenation, footnotes and
+  endnotes, captions and cross-references, track changes, content controls, style sets (PowerPoint has none of these).
+
 ### C. Tables — what Excel and Calc have that Tables lacks
 - [ ] **Home**: merge and centre (and unmerge); column width and row height (typed, and AutoFit to the contents);
       hide and unhide rows, columns and sheets; insert and delete cells shifting the rest; Fill down and right; cell
@@ -528,6 +553,25 @@ Foundation first: **a slide's words as runs** (today an edited paragraph is one 
 - [ ] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
       workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
       dialogs. In-text citations in cells: not planned unless asked.
+
+**From Excel's ribbon** (checked online 17 Oct: desktop Excel's tabs and groups, and the tablet app's shorter ribbon);
+what is not already above:
+- [ ] **Home**: vertical alignment (top, middle, bottom); text angle (rotated, vertical); indent in a cell; Clear ▸
+      contents, formats, all; Fill ▸ series (1, 2, 3…, dates, months) besides down and right; AutoSum on Home as
+      Excel has it; **cell styles** (Good, Bad, Heading, Total…); sheet ▸ rename, tab colour, move or copy.
+- [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
+      (later, with PivotTables).
+- [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
+      Calculate now and automatic / manual; trace precedents and dependents as arrows; evaluate a formula step by step.
+- [ ] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
+      Flash fill (later); Goal seek; consolidate (later); forecast (later).
+- [ ] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
+      workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
+- [ ] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
+      columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
+- [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
+- [ ] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
+      keyboard bar while typing in a cell.
 
 ### D. Words
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.

@@ -188,7 +188,15 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       look` (.pptx XML; LibreOffice's text-looks.odp). Emulator: cronbach slide 2 edited inside a bold word — the
       paragraph kept its bold, plain and italic words; saved, LibreOffice shows the same.
       After (17 Oct, steps 0–4): unit suite 405 tests, 0 failing, 7 skipped; sweep 349 documents and 29 decks, none
-      failing; Words' fingerprint unchanged at every step (emulator-5554). Tablet walk: not yet — the user was using it.
+      failing; Words' fingerprint unchanged at every step (emulator-5554).
+      Tablet 971f6b37 (17 Oct, 14:06–14:18): the Words fingerprint stored for it (expected-24091RPADG.txt: the same as the
+      emulator's but for 3 page hashes, antialiasing); 117 slides of the 14 test decks drawn there identical to the
+      emulator's but for antialiasing (no pixel off by more than 40/255), so they stand beside LibreOffice as above. In
+      the app: the user's cronbach deck as LibreOffice shows it where the fonts are the same (slide 6 line for line;
+      slide 3 wraps otherwise: LibreOffice has the real Century Schoolbook on the computer); Slides-test.pptx's Plan
+      slide edited (a word typed, a new line: it took its level's dash and look), undone, not saved; Words' Art_test
+      and TextBox_test and Tables' sheet.xlsx and Slides-test.odp as before. Seen in passing, not the engine's (its
+      page is pixel-identical to before): TextBox_test's box has no bottom line on the page, the line after it covers it.
 - [ ] 5. The engine moved into its own file (`OfficeText.kt`): a pure move, nothing changed.
 - [ ] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,

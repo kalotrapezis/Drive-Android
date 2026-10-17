@@ -1144,6 +1144,18 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }
                                 RibbonButton("", w, R.drawable.ic_align_right, on = now.align == SheetAlign.Right) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Right) SheetAlign.General else SheetAlign.Right) } }
                                 RibbonButton("Wrap", w, R.drawable.ic_wrap_text, on = now.wrap) { look { st, _ -> st.copy(wrap = !now.wrap) } }
+                                // Excel's Alignment group: top, middle, bottom; indent; orientation
+                                RibbonButton("", w, R.drawable.ic_vertical_align_top, on = now.valign == SheetVAlign.Top) { look { st, _ -> st.copy(valign = SheetVAlign.Top) } }
+                                RibbonButton("", w, R.drawable.ic_vertical_align_center, on = now.valign == SheetVAlign.Center) { look { st, _ -> st.copy(valign = SheetVAlign.Center) } }
+                                RibbonButton("", w, R.drawable.ic_vertical_align_bottom, on = now.valign == SheetVAlign.Bottom) { look { st, _ -> st.copy(valign = SheetVAlign.Bottom) } }
+                                RibbonButton("", w, R.drawable.ic_format_indent_decrease, enabled = now.indent > 0) { look { st, _ -> st.copy(indent = maxOf(0, st.indent - 1)) } }
+                                RibbonButton("", w, R.drawable.ic_format_indent_increase) { look { st, _ -> st.copy(indent = minOf(15, st.indent + 1), align = if (st.align == SheetAlign.Right || st.align == SheetAlign.Left) st.align else SheetAlign.Left) } }
+                                Box { var open by remember { mutableStateOf(false) }
+                                    RibbonButton("Orientation", w, R.drawable.ic_rotate_left, on = now.rotation != 0) { open = true }
+                                    DropdownMenu(open, { open = false }) {
+                                        listOf("Horizontal" to 0, "Angle counterclockwise" to 45, "Angle clockwise" to 135, "Rotate text up" to 90, "Rotate text down" to 180).forEach { (name, r) ->
+                                            DropdownMenuItem(text = { Text(name) }, onClick = { open = false; look { st, _ -> st.copy(rotation = r) } },
+                                                trailingIcon = { if (now.rotation == r) Icon(painterResource(R.drawable.ic_check), null) }) } } }
                                 // Excel's Fill ▸ Down and Right: the chosen cells' first row (or column) carried through them, as the fill handle carries it
                                 if (g != null && (g.r2 > g.r1 || g.c2 > g.c1)) {
                                     if (g.r2 > g.r1) RibbonButton("Fill down", w, R.drawable.ic_keyboard_arrow_down) { fillCells(SheetRange(g.r1, g.c1, g.r1, g.c2), g) }

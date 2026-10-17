@@ -71,7 +71,7 @@ How to write here:
       lists (ac405b3), Fill ▸ Series and month/day names (8be8075), Cell styles (a925139), Format as table (dafa7bc), Conditional
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
       Print titles (420575e), Header and footer (b66a9cb),
-      engine step 6 for .ods (rich text). Checks at a925139: unit
+      engine step 6 for .ods (rich text) (95a08d5), Home's alignment. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF).
@@ -852,6 +852,11 @@ what is not already above:
       Fixed on the way: a double border in .ods written as LibreOffice writes Excel's (1.76pt double-thin — a bare "double" it took
       as thin) and read back as double. `cell styles xlsx/ods` (LibreOffice's conversions: its .xlsx of an .ods with a themed
       Default style drops every font colour — a LibreOffice quirk, it shows ours); emulator: Heading 1 on A1:D1.
+      Vertical alignment, indent, text angle done (office-F session, 18 Oct): Home › Top / Middle / Bottom, Decrease / Increase indent,
+      Orientation ▾ (Excel's: horizontal, angle counterclockwise / clockwise, rotate up / down) — cell looks; .ods now writes the angle
+      (style:rotation-angle) and indent (paragraph margin, 0.2965 cm a level as LibreOffice turns Excel's) and reads the indent; a cell's
+      angle is Excel's number everywhere now (an .ods angled down was read negative). `alignment xlsx/ods` (LibreOffice's conversions);
+      emulator: Alpha angled, Βήτα indented twice.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);

@@ -440,11 +440,14 @@ internal object SheetSave {
                 if (look.wrap) setAttributeNS(FO, "fo:wrap-option", "wrap")
                 if (look.shrink) setAttributeNS(STYLE, "style:shrink-to-fit", "true")
                 if (!look.locked) setAttributeNS(STYLE, "style:cell-protect", "none")
+                // Excel's angle (91–180: down) as LibreOffice's degrees counterclockwise
+                if (look.rotation in 1..180) { setAttributeNS(STYLE, "style:rotation-angle", "${if (look.rotation <= 90) look.rotation else 360 - (look.rotation - 90)}"); setAttributeNS(STYLE, "style:rotation-align", "none") }
                 setAttributeNS(STYLE, "style:vertical-align", when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "middle"; else -> "bottom" })
                 if (look.align != SheetAlign.General) setAttributeNS(STYLE, "style:text-align-source", "fix")
             })
-            if (look.align != SheetAlign.General) e.appendChild(doc.createElementNS(STYLE, "style:paragraph-properties").apply {
-                setAttributeNS(FO, "fo:text-align", when (look.align) { SheetAlign.Left -> "start"; SheetAlign.Center -> "center"; SheetAlign.Right -> "end"; else -> "justify" })
+            if (look.align != SheetAlign.General || look.indent > 0) e.appendChild(doc.createElementNS(STYLE, "style:paragraph-properties").apply {
+                if (look.align != SheetAlign.General) setAttributeNS(FO, "fo:text-align", when (look.align) { SheetAlign.Left -> "start"; SheetAlign.Center -> "center"; SheetAlign.Right -> "end"; else -> "justify" })
+                if (look.indent > 0) setAttributeNS(FO, "fo:margin-left", String.format(java.util.Locale.ROOT, "%.3fcm", look.indent * 0.2965))
             })
             e.appendChild(doc.createElementNS(STYLE, "style:text-properties").apply {
                 if (look.bold) setAttributeNS(FO, "fo:font-weight", "bold")

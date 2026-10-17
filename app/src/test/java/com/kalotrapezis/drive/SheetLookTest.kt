@@ -82,6 +82,27 @@ class SheetLookTest {
         check(saved, "$name by Tetra")
         convert(saved, if (name.endsWith("ods")) "xlsx" else "ods")?.let { check(it, "$name by LibreOffice") }
     }
+    /** Home's alignment: top and middle, an indent, text angled up and down — saved, read back by Tetra and by LibreOffice. */
+    private fun alignment(name: String) {
+        val dir = Files.createTempDirectory("align").toFile()
+        val file = File(dir, name).apply { writeBytes(resource(name)) }
+        val book = Sheets.read(file, ',', '.'); val s = book.sheet(0); val history = SheetHistory()
+        fun put(r: Int, c: Int, change: (SheetStyle) -> SheetStyle) = history.apply(book, 0, SheetLook.change(book, s, listOf(Sheet.key(r, c))) { st, _ -> change(st) })
+        put(2, 0) { it.copy(valign = SheetVAlign.Top) }; put(3, 0) { it.copy(valign = SheetVAlign.Center, indent = 2, align = SheetAlign.Left) }
+        put(4, 0) { it.copy(rotation = 45) }; put(5, 0) { it.copy(rotation = 135) }
+        val saved = File(dir, "aligned." + name.substringAfterLast('.')); SheetSave.save(book, file, saved)
+        fun check(f: File, who: String) {
+            val b = Sheets.read(f, ',', '.'); val t = b.sheet(0)
+            fun st(r: Int, c: Int) = t.look(t[r, c]!!.style, b.styles)!!
+            assertEquals(who, SheetVAlign.Top, st(2, 0).valign); assertEquals(who, SheetVAlign.Center, st(3, 0).valign); assertEquals(who, 2, st(3, 0).indent)
+            assertEquals(who, 45, st(4, 0).rotation); assertEquals(who, 135, st(5, 0).rotation); assertEquals(who, 0, st(6, 0).rotation)
+        }
+        check(saved, "$name by Tetra")
+        convert(saved, if (name.endsWith("ods")) "xlsx" else "ods")?.let { check(it, "$name by LibreOffice") }
+    }
+    @Test fun `alignment xlsx`() = alignment("Excel-test.xlsx")
+    @Test fun `alignment ods`() = alignment("Excel-test.ods")
+
     @Test fun `cell styles xlsx`() = cellStyles("Excel-test.xlsx")
     @Test fun `cell styles ods`() = cellStyles("Excel-test.ods")
 

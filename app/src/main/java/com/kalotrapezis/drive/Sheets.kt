@@ -13,6 +13,7 @@ import javax.xml.parsers.SAXParserFactory
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Tetra's spreadsheets (the user, 15 Oct: "start with the viewer and let's complete it like we did with Word"): an
@@ -1315,7 +1316,10 @@ internal object Sheets {
                 },
                 valign = when (p["c.vertical-align"]) { "top" -> SheetVAlign.Top; "middle" -> SheetVAlign.Center; else -> SheetVAlign.Bottom },
                 wrap = p["c.wrap-option"] == "wrap", shrink = p["c.shrink-to-fit"] == "true", locked = p["c.cell-protect"].let { it == null || "protected" in it },
-                rotation = p["c.rotation-angle"]?.toIntOrNull()?.let { if (it > 180) it - 360 else it } ?: 0,
+                // as Excel numbers it: 0–90 up, 91–180 down (90 + degrees); LibreOffice's other angles (upside down) not kept
+                rotation = p["c.rotation-angle"]?.toFloatOrNull()?.toInt()?.let { a -> when (a) { in 0..90 -> a; in 270..359 -> 90 + (360 - a); else -> 0 } } ?: 0,
+                // LibreOffice's indent as Excel's levels: 0.2965 cm (8.4 pt) each, as LibreOffice turns Excel's into its own
+                indent = odfPx(p["p.margin-left"])?.let { (it * 3 / 4 / 8.4f).roundToInt() } ?: 0,
                 left = border(p["c.border-left"] ?: all), right = border(p["c.border-right"] ?: all),
                 top = border(p["c.border-top"] ?: all), bottom = border(p["c.border-bottom"] ?: all),
                 format = formatCode(p["data-style"]),

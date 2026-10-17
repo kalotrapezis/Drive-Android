@@ -1025,7 +1025,8 @@ internal object WriterBridge {
 }
 
 /** A document in Tetra's Files, for the Office home. */
-internal data class OfficeFile(val file: File, val relative: String)
+/** [modified] read once: sorting by file.lastModified() asked the disk at every comparison (asked 17 Oct: Recents slow). */
+internal data class OfficeFile(val file: File, val relative: String, val modified: Long = file.lastModified())
 
 /** How many documents the Office home lists: the newest. */
 private const val OFFICE_RECENT = 10 // of each kind, newest first (asked 17 Oct: 10 each, 40 in all, so the page opens faster; 20 before)
@@ -1034,9 +1035,9 @@ private fun isOfficeFile(name: String) = (OfficeKind.of(name) != null || LegacyD
 
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
-    .filter { it.isFile && isOfficeFile(it.name) }
+    .filter { isOfficeFile(it.name) && it.isFile } // the name first: most files are not Office ones, and isFile asks the disk
     .map { OfficeFile(it, it.relativeTo(root).path) }
-    .sortedByDescending { it.file.lastModified() }
+    .sortedByDescending { it.modified }
     .toList()
 
 @Composable
@@ -1048,7 +1049,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
     LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { all -> total = all.size
         // the newest of each kind, one list again by date (the list is newest first)
-        files = all.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.file.lastModified() } } }
+        files = all.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.modified } } }
     BackHandler { back() }
     var choosingTemplate by remember { mutableStateOf(false) }
     // each card's Open: Android's picker for that kind only (asked 17 Oct); what is chosen opens in its own app
@@ -1083,18 +1084,18 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     val metadata = remember(context) { DriveMetadata(context) }
     fun loadFavs() = metadata.favorites(root).filter { !it.isDirectory && isOfficeFile(it.file.name) }
         .map { OfficeFile(it.file, it.relativePath) }
-    var favs by remember { mutableStateOf<List<OfficeFile>>(emptyList()) }
+    var favs by remember { mutableStateOf<List<OfficeFile>?>(null) } // null while they load
     LaunchedEffect(hasAccess) { if (hasAccess) favs = withContext(Dispatchers.IO) { loadFavs() } }
     @Composable fun officeRow(f: OfficeFile) {
         val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name); val pdf = Pdf.isPdf(f.file.name)
-        val fav = favs.any { it.relative == f.relative }
+        val fav = favs.orEmpty().any { it.relative == f.relative }
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { Uri.fromFile(f.file).toString().let { if (pdf) openPdf(it) else if (deck) openSlides(it) else if (sheet) openSheet(it) else open(it) } }) {
             Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Icon(painterResource(if (deck) R.drawable.ic_play else if (sheet) R.drawable.ic_table else R.drawable.ic_file_text), contentDescription = null,
                     tint = if (pdf) PDF_RED else if (deck) POWERPOINT_ORANGE else if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.file.lastModified())),
+                    Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.modified)),
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 androidx.compose.material3.IconButton(onClick = { runCatching { metadata.setFavorite(f.relative, !fav) }; favs = loadFavs() }) {
@@ -1120,7 +1121,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     Text("Tetra needs access to all files to list your documents.", style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = grant) { Text("Allow access") }
                 } else when (val list = files) {
-                    null -> Text("Looking…", style = MaterialTheme.typography.bodyMedium)
+                    null -> LoadingSpinner()
                     else -> if (list.isEmpty()) Text("No documents, spreadsheets, presentations or PDFs in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium)
                         else list.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } }
                 }
@@ -1129,11 +1130,14 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         val favouritesTitle: @Composable (Modifier) -> Unit = { m ->
             Column(m.padding(top = 14.dp, bottom = 2.dp)) {
                 Text("Favourites", style = MaterialTheme.typography.titleMedium)
-                if (hasAccess && favs.isEmpty()) Text("Tap the heart beside a document to keep it here.", style = MaterialTheme.typography.bodySmall)
+                if (hasAccess && favs?.isEmpty() == true) Text("Tap the heart beside a document to keep it here.", style = MaterialTheme.typography.bodySmall)
             }
         }
         val favourites: @Composable (Modifier) -> Unit = { m ->
-            Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) { favs.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } } }
+            Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val list = favs
+                if (list == null) { if (hasAccess) LoadingSpinner() } else list.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } }
+            }
         }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 136.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1172,6 +1176,9 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter), art = R.drawable.office_art)
     }
 }
+
+/** A spinner in the middle of a list's own area while it loads (asked 17 Oct: Recents take their time). */
+@Composable private fun LoadingSpinner() = Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
 
 /** An Office app's card: New on the left, Open (the picker for its kind of file, asked 17 Oct) on the right; one without New opens all over. */
 @Composable private fun NewDocCard(app: String, label: String, color: Color, modifier: Modifier, new: (() -> Unit)?, open: () -> Unit) = Surface(

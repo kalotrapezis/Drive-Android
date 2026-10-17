@@ -93,7 +93,10 @@ internal class Slide(val items: List<SlideItem>, val background: Int, val notes:
     val transition: SlideTransition? = null, val steps: List<SlideStep> = emptyList(),
     /** Insert › Header & footer: its layout's date ("dt"), footer ("ftr") and number ("sldNum") boxes as they would show on it; the ids of
      *  its own ones' ids and kinds; whether it is a title slide (Don't show on title slide) */
-    val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false)
+    val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false,
+    /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList())
+/** A comment on a slide: Words' [comment], its marker at [x], [y] (points). */
+internal data class SlideComment(val comment: DocComment, val x: Float, val y: Float)
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList())
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
@@ -277,7 +280,38 @@ internal object Slides {
             }.toMap()
             val own = s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp -> phOf(sp)?.attr("type")?.takeIf { it in kinds }?.let { k -> sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id")?.let { it to k } } }.toMap()
             val title = layout?.attr("type") == "title" || s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().any { phOf(it)?.attr("type") == "ctrTitle" }
-            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title)
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path))
+        }
+
+        /** Who wrote comments: the older list's authors (by number) and PowerPoint 365's (by their GUID) — name and initials. */
+        val authors by lazy {
+            listOfNotNull(relType(xml, "ppt/presentation.xml", "commentAuthors"), relType(xml, "ppt/presentation.xml", "authors")).mapNotNull(xml)
+                .flatMap { it.kids().filter { a -> a.localName in setOf("cmAuthor", "author") } }.associate { a -> a.attr("id").orEmpty() to (a.attr("name").orEmpty() to a.attr("initials")) }
+        }
+        /**
+         * A slide's comments: PowerPoint's older list (which LibreOffice writes too; a reply names its parent in p15:parentCm, its
+         * place in eighths of a point) or PowerPoint 365's threads (replies inside, resolved or not).
+         */
+        fun comments(path: String): List<SlideComment> {
+            val list = relType(xml, path, "comments")?.let(xml) ?: return emptyList()
+            fun words(e: Element?) = e?.below("p")?.joinToString("\n") { p -> p.below("t").joinToString("") { it.textContent } }.orEmpty()
+            fun who(id: String?) = authors[id.orEmpty()] ?: ("" to null)
+            return list.kids("cm").flatMap { cm ->
+                val pos = cm.kid("pos")
+                if (cm.kid("text") != null) {
+                    val (name, initials) = who(cm.attr("authorId"))
+                    val parent = cm.below("parentCm").firstOrNull()?.let { "${it.attr("authorId")}-${it.attr("idx")}" }
+                    listOf(SlideComment(DocComment("${cm.attr("authorId")}-${cm.attr("idx")}", name, cm.attr("dt"), cm.kid("text")!!.textContent, initials = initials, parent = parent),
+                        (pos?.attr("x")?.toFloatOrNull() ?: 0f) / 8f, (pos?.attr("y")?.toFloatOrNull() ?: 0f) / 8f))
+                } else {
+                    // shortcut: a threaded comment's place taken as EMU (most anchor to an object instead); upgrade when a deck shows them astray
+                    val x = (pos?.attr("x")?.toFloatOrNull() ?: 0f) / EMU; val y = (pos?.attr("y")?.toFloatOrNull() ?: 0f) / EMU
+                    val id = cm.attr("id").orEmpty()
+                    fun one(e: Element, parent: String?) = who(e.attr("authorId")).let { (name, initials) ->
+                        SlideComment(DocComment(e.attr("id").orEmpty(), name, e.attr("created"), words(e.kid("txBody")), initials = initials, parent = parent, done = e.attr("status") == "resolved"), x, y) }
+                    listOf(one(cm, null)) + cm.kid("replyLst")?.kids("reply").orEmpty().map { one(it, id) }
+                }
+            }
         }
 
         /** The slide's transition (PowerPoint 2010's own, in AlternateContent, or the plain one). */

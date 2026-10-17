@@ -104,7 +104,8 @@ internal object SlidesEdit {
         /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet(),
         /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null,
         /** a slide's speaker notes as typed (asked 17 Oct), a line a paragraph */ val notes: Map<Int, String> = emptyMap(),
-        /** a slide's date, number and footer as chosen (Insert › Header & footer) — its own ones replaced */ val footers: Map<Int, Footers> = emptyMap()) {
+        /** a slide's date, number and footer as chosen (Insert › Header & footer) — its own ones replaced */ val footers: Map<Int, Footers> = emptyMap(),
+        /** a slide's comments as they are now (Review › Comments: added, edited, answered, deleted), the whole list */ val comments: Map<Int, List<SlideComment>> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
@@ -180,7 +181,7 @@ internal object SlidesEdit {
         val all = (items.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) } + footed
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
-        return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide)
+        return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide, edit.comments[e.uid] ?: s.comments)
     }
     /** A layout's date, footer or number box [sh] holding [words], in its first run's look ([id]: its own). */
     fun worded(sh: SlideItem.Shape, words: String, id: String? = sh.id): SlideItem.Shape {
@@ -739,6 +740,37 @@ internal object SlidesEdit {
             WriterLog.i("Slides: a notes master made")
             part
         }
+        // Review › Comments as PowerPoint's older list, which LibreOffice reads and writes and PowerPoint 365 shows: each slide's
+        // in a comments part, a reply naming its parent (p15:parentCm), their authors in commentAuthors.xml with each one's last number
+        class Author(val id: Int, val name: String, val initials: String, var last: Int, val clr: String)
+        val authorsPart = rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/commentAuthors") }?.let { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }
+        val authors = authorsPart?.let(::read)?.let(OfficeFormats::parse)?.documentElement?.kids().orEmpty().filter { it.localName == "cmAuthor" }.map {
+            Author(it.getAttribute("id").toIntOrNull() ?: 0, it.getAttribute("name"), it.getAttribute("initials"), it.getAttribute("lastIdx").toIntOrNull() ?: 0, it.getAttribute("clrIdx").ifEmpty { "0" }) }.toMutableList()
+        var authorsChanged = false
+        fun author(name: String, initials: String?) = authors.firstOrNull { it.name == name } ?: Author((authors.maxOfOrNull { it.id } ?: -1) + 1, name,
+            initials ?: name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }, 0, "${authors.size % 8}").also { authors += it }
+        var nextComments = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/comments/comment(\d+)\.xml$""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        /** Slide [part]'s comments as [list] ([own]: the slide's own part, whose old comments part goes or is written again; a copy's stays the first's). */
+        fun comments(part: String, relsXml: org.w3c.dom.Document, list: List<SlideComment>, own: Boolean) {
+            var reuse: String? = null
+            for (r in relsXml.documentElement.kids().filter { it.getAttribute("Type").endsWith("/comments") }) {
+                val path = "ppt/comments/" + r.getAttribute("Target").substringAfterLast('/')
+                // the older list's part written again; PowerPoint 365's threads become the older list
+                if (own) { if (reuse == null && r.getAttribute("Type") == "$relNs/comments") reuse = path else { out[path] = null; typesOut = typesOut.replace(Regex("""<Override PartName="/${Regex.escape(path)}"[^>]*/>"""), "") } }
+                relsXml.documentElement.removeChild(r)
+            }
+            if (list.isEmpty()) { reuse?.let { out[it] = null; typesOut = typesOut.replace(Regex("""<Override PartName="/${Regex.escape(it)}"[^>]*/>"""), "") }; return }
+            fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+            val numbers = HashMap<String, Pair<Int, Int>>()
+            val body = list.joinToString("") { sc -> val c = sc.comment
+                val a = author(c.author, c.initials); a.last++; authorsChanged = true; numbers[c.id] = a.id to a.last
+                val parent = c.parent?.let(numbers::get)?.let { (pa, pi) -> """<p:extLst><p:ext uri="{C676402C-5697-4E1C-873F-D02D1690AC5C}"><p15:threadingInfo timeZoneBias="0"><p15:parentCm authorId="$pa" idx="$pi"/></p15:threadingInfo></p:ext></p:extLst>""" }.orEmpty()
+                """<p:cm authorId="${a.id}" dt="${esc(c.date ?: java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).toString())}" idx="${a.last}"><p:pos x="${Math.round(sc.x * 8)}" y="${Math.round(sc.y * 8)}"/><p:text>${esc(c.text)}</p:text>$parent</p:cm>"""
+            }
+            val path = reuse ?: "ppt/comments/comment${nextComments++}.xml".also { typesOut = typesOut.replace("</Types>", """<Override PartName="/$it" ContentType="application/vnd.openxmlformats-officedocument.presentationml.comments+xml"/></Types>""") }
+            out[path] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmLst xmlns:p="$P" xmlns:p15="http://schemas.microsoft.com/office/powerpoint/2012/main">$body</p:cmLst>""".toByteArray()
+            rel(relsXml, "comments", "../comments/" + path.substringAfterLast('/'))
+        }
         var nextNotes = (zip.entries().asSequence().mapNotNull { Regex("""^ppt/notesSlides/notesSlide(\d+)\.xml$""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
         /** Slide [part]'s notes as [text]: written into its notes page ([relsXml] names it), else a new notes page (true: [relsXml] changed). */
         fun notes(part: String, relsXml: org.w3c.dom.Document, text: String): Boolean {
@@ -794,12 +826,14 @@ internal object SlidesEdit {
                     .map { Triple(it.getAttribute("type"), it.getAttribute("idx").ifEmpty { null }, it.getAttribute("sz").ifEmpty { null }) } }.orEmpty()
             // its notes as typed; a copy's own notes page with the first's words (its relationships leave the first's out)
             val noted = (edit.notes[e.uid] ?: source?.notes?.takeIf { !original && it.isNotEmpty() })?.let { notes(part, relsXml, it) } ?: false
+            // its comments as they are now; a copy gets its own copy of the first's
+            val commented = (edit.comments[e.uid] ?: source?.comments?.takeIf { !original && it.isNotEmpty() })?.also { comments(part, relsXml, it, original) } != null
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
                 if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
                     out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
-                if (ids.isNotEmpty() || noted) out[relsPath(part)] = xml(relsXml)
+                if (ids.isNotEmpty() || noted || commented) out[relsPath(part)] = xml(relsXml)
             } else {
                 out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
                 out[relsPath(part)] = xml(relsXml)
@@ -817,6 +851,13 @@ internal object SlidesEdit {
             } }
             out[s.part] = null; out[relsPath(s.part)] = null
             typesOut = typesOut.replace(Regex("""<Override PartName="/${Regex.escape(s.part)}"[^>]*/>"""), "")
+        }
+        if (authorsChanged) {
+            val path = authorsPart ?: "ppt/commentAuthors.xml".also { p -> rel(rels, "commentAuthors", "commentAuthors.xml")
+                typesOut = typesOut.replace("</Types>", """<Override PartName="/$p" ContentType="application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml"/></Types>""") }
+            fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
+            out[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:p="$P">""" + authors.joinToString("") {
+                """<p:cmAuthor id="${it.id}" name="${esc(it.name)}" initials="${esc(it.initials)}" lastIdx="${it.last}" clrIdx="${it.clr}"/>""" } + "</p:cmAuthorLst>").toByteArray()
         }
         out[presPath] = xml(pres); out[presRels] = xml(rels)
         if (typesOut != types) out["[Content_Types].xml"] = typesOut.toByteArray()

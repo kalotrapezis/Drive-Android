@@ -308,7 +308,16 @@ which shared piece it uses; a separate implementation only for a real reason, sa
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
-- [ ] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
+- [~] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
+      Comments done 17 Oct (office-C session), with Insert › Comment: Words' `NewCommentDialog` (its remembered name), Words'
+      `CommentCard`s with their replies (Edit, Reply, Delete — no Resolve: `CommentActions.resolve` now optional, as neither
+      PowerPoint's older list nor Impress keeps it) in a pane beside the slide on a tablet, over the slides on a phone; a marker on
+      the slide where each stands (tap: the pane at it); Review › New comment, Comments, Previous/Next (round the deck), Reply,
+      Delete comment. Read: PowerPoint's older list (+ p15:parentCm replies), PowerPoint 365's threads (replies, resolved), Impress's
+      officeooo:annotation; written as PowerPoint's older list (commentAuthors.xml, eighths of a point — what LibreOffice writes and
+      PowerPoint 365 shows; a slide's 365 threads become it when its comments are changed) and as Impress's annotations (a reply
+      its own annotation: Impress has no threads). `comments saved` (both, LibreOffice's conversions; LibreOffice reads a
+      comment's place only roughly — its own 5 cm comes back 4.76). Emulator: read, added, saved; phone size too. Spelling: not yet Unit 417/0/7; sweep 349 + 29, none failing.
 - [ ] **View**: Outline (every slide's words as one list to edit, good on a phone); notes page; editing the slide
       master; grid and guides with snapping; zoom.
 - [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.

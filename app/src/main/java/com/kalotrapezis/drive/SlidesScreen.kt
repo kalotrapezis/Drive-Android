@@ -335,6 +335,21 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var footing by remember { mutableStateOf(false) } // Insert › Header & footer
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' symbol page
     var dating by remember { mutableStateOf(false) } // Insert › Date: Words' date forms
+    var commentsOn by remember { mutableStateOf(false) } // Review › Comments: the chosen slide's comments beside it (over it on a phone)
+    var commentAsk by remember { mutableStateOf<Pair<Char, DocComment?>?>(null) } // Words' comment dialog: 'n' new, 'e' edit, 'r' reply (to the comment)
+    var hereComment by remember { mutableStateOf<String?>(null) } // the comment tapped (its marker or card)
+    /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
+    fun recomment(f: (List<SlideComment>) -> List<SlideComment>) {
+        val e = edit ?: return; val c = chosen ?: return
+        change(e.copy(comments = e.comments + (e.order[c].uid to f(view?.slides?.getOrNull(c)?.comments.orEmpty()))))
+    }
+    /** Review's Previous and Next comment: the next slide (on or back, round) with comments, its pane open at the first. */
+    fun goComment(on: Boolean) {
+        val all = view?.slides ?: return; val c = chosen ?: 0
+        val order = if (on) (1..all.size).map { (c + it) % all.size } else (1..all.size).map { (c - it + all.size) % all.size }
+        val to = order.firstOrNull { all[it].comments.isNotEmpty() } ?: run { message = "No comments in this presentation"; return }
+        chosen = to; item = null; commentsOn = true; hereComment = all[to].comments.first().comment.id
+    }
     var equating by remember { mutableStateOf<Pair<String?, MathNode?>?>(null) } // Insert › Equation, Edit equation: Words' editor (the item's id; null: a new one)
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) } // Insert › Chart, Edit data: Words' chart editor (the chart's id; null: a new one)
     var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
@@ -590,6 +605,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
                 // Link (as Words'): a box's words linked to a web page or a slide; nothing chosen: a text box of words to show
                 RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
+                // Comment (as Words'): Words' comment dialog, the comment by the chosen item (else the slide's top left)
+                RibbonButton("Comment", w, R.drawable.ic_comment) { commentAsk = 'n' to null }
                 // Header & footer (as PowerPoint's): the date, the slide's number and a footer, on this slide or all
                 RibbonButton("Header & footer", w, R.drawable.ic_page_header) { footing = true }
                 // Words' Symbol and Date, and a line break inside a paragraph: where the typing cursor is (the chosen box's words opened at their end)
@@ -625,6 +642,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
                 RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
+            }
+            "Review" -> {
+                // Words' Comments group: a new one, the comments shown, the one before or after (on other slides too), and the one tapped
+                RibbonButton("New comment", w, R.drawable.ic_comment) { commentAsk = 'n' to null }
+                RibbonButton("Comments", w, R.drawable.ic_comment, on = commentsOn) { commentsOn = !commentsOn; if (commentsOn && view?.slides?.getOrNull(c)?.comments.isNullOrEmpty()) message = "No comments on this slide" }
+                Tool(R.drawable.ic_chevron_left, "Previous comment", w) { goComment(false) }
+                Tool(R.drawable.ic_chevron_right, "Next comment", w) { goComment(true) }
+                RibbonDivider(w)
+                val here = view?.slides?.getOrNull(c)?.comments?.firstOrNull { it.comment.id == hereComment }?.comment
+                RibbonButton("Reply", w, R.drawable.ic_comment, enabled = here != null) { commentAsk = 'r' to here }
+                RibbonButton("Delete comment", w, R.drawable.ic_delete, enabled = here != null) { here?.let { d -> recomment { l -> l.filter { it.comment.id != d.id && it.comment.parent != d.id } } } }
             }
             "Design" -> {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
@@ -841,6 +869,22 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 })
                         }
                     }
+                    /** Review › Comments: the chosen slide's, each Words' card with its replies under it — Edit, Reply, Delete; New at the top. */
+                    @Composable fun CommentsPane(modifier: Modifier) {
+                        val list = view?.slides?.getOrNull(chosen ?: -1)?.comments.orEmpty()
+                        val act = CommentActions(repliesOf = { p -> list.map { it.comment }.filter { it.parent == p.id } }, open = { hereComment = it.id },
+                            delete = { x -> recomment { l -> l.filter { it.comment.id != x.id && it.comment.parent != x.id } }; WriterLog.i("Slides: comment deleted") },
+                            reply = { commentAsk = 'r' to it }, resolve = null, edit = { commentAsk = 'e' to it })
+                        Column(modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFF2A2A2A)).verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Comments", color = Color.White, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                                androidx.compose.material3.TextButton(onClick = { commentAsk = 'n' to null }) { Text("New") }
+                                IconButton(onClick = { commentsOn = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close comments", tint = Color.White, modifier = Modifier.size(18.dp)) }
+                            }
+                            if (list.isEmpty()) Text("No comments on this slide", color = Color.LightGray, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(4.dp))
+                            list.filter { it.comment.parent == null }.forEach { sc -> CommentCard(sc.comment, sc.comment.id == hereComment, act) }
+                        }
+                    }
                     /** Slide [i] as it is edited: chosen with a tap, its items tapped, moved and sized (the phone's list, the tablet's big slide). */
                     @Composable fun SlideBox(i: Int, s: Slide) {
                         Box(Modifier.fillMaxWidth().aspectRatio(d.width / d.height)
@@ -917,6 +961,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
+                        // its comments' markers (PowerPoint's): a tap shows the comment
+                        if (s.comments.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.matchParentSize()) {
+                            s.comments.filter { it.comment.parent == null }.forEach { sc ->
+                                Box(Modifier.offset(maxWidth * (sc.x / d.width), maxHeight * (sc.y / d.height)).size(28.dp).clip(RoundedCornerShape(5.dp))
+                                    .background(if (sc.comment.id == hereComment && commentsOn) POWERPOINT_ORANGE else Color(0xFFFFB300))
+                                    .clickable { if (chosen != i) { chosen = i; typing = null; item = null }; commentsOn = true; hereComment = sc.comment.id }, contentAlignment = Alignment.Center) {
+                                    Icon(painterResource(R.drawable.ic_comment), "Comment by ${sc.comment.author}", tint = Color.White, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
                         slideMenu?.takeIf { !it.first && it.second == i }?.let { (_, _, at) -> OfficeMenu(at, { slideMenu = null }) {
                                 @Composable fun entry(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { slideMenu = null; WriterLog.i("Slides: menu › $label"); action() }
                                 val hit = item?.let { id -> s.items.lastOrNull { it.anim == id } }
@@ -975,6 +1029,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             Column(Modifier.width(if (OfficeUi.top) maxOf(slideW, minOf(maxWidth, 480.dp)) else slideW), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) }; if (OfficeUi.top) NotesPane(c, d.slides[c]) }
                         }
+                        if (commentsOn) CommentsPane(Modifier.width(320.dp).fillMaxHeight().padding(top = if (OfficeUi.top) 150.dp else 16.dp, end = 12.dp, bottom = if (OfficeUi.top) 16.dp else 150.dp))
                     } else {
                     // page by page (asked 17 Oct): a swipe ends with the next or the one before in the middle, however hard it is flung
                     val oneAtATime = remember(list) {
@@ -1010,7 +1065,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
                         // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
-                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Item".takeIf { item != null })
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Review", "Item".takeIf { item != null })
                         val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
@@ -1046,6 +1101,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                     }
+                    // a phone's comments: over the slides, at the top
+                    if (editing && commentsOn && !wide) CommentsPane(Modifier.align(Alignment.TopCenter).fillMaxWidth().heightIn(max = 380.dp).padding(8.dp))
                     // New slide: the deck's layouts in the strip's place, each a small slide; the one tapped comes after the chosen slide
                     // Home › Font and Insert › Drop cap: Words' strips, a card tapped shown at once; Cancel puts the words back
                     var stripShown by remember { mutableStateOf(DesignGallery.Font) } // kept while it slides away
@@ -1107,6 +1164,30 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
+                    commentAsk?.let { (how, of) ->
+                        val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) // the name Words' comments use
+                        NewCommentDialog(if (how == 'e') of?.author.orEmpty() else remember { prefs.getString("author", "") ?: "" }, { commentAsk = null },
+                            title = when (how) { 'e' -> "Edit comment"; 'r' -> "Reply to " + of?.author.orEmpty().ifBlank { "comment" }; else -> "Comment" },
+                            start = if (how == 'e') of?.text.orEmpty() else "", confirm = if (how == 'e') "Done" else "Add") { author, text ->
+                            commentAsk = null
+                            if (how != 'e') prefs.edit().putString("author", author).apply()
+                            val now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).withNano(0).toString()
+                            when (how) {
+                                'e' -> recomment { l -> l.map { if (it.comment.id == of?.id) it.copy(comment = it.comment.copy(text = text)) else it } }
+                                'r' -> recomment { l -> val p = l.firstOrNull { it.comment.id == of?.id } ?: return@recomment l
+                                    // after the comment's last reply, at its place
+                                    val at = l.indexOfLast { it.comment.id == p.comment.id || it.comment.parent == p.comment.id } + 1
+                                    l.take(at) + SlideComment(DocComment("t${System.nanoTime()}", author, now, text, parent = p.comment.id), p.x, p.y) + l.drop(at) }
+                                else -> { val sl = view?.slides?.getOrNull(chosen ?: -1)
+                                    // by the chosen item's top right corner (PowerPoint's), else the slide's top left
+                                    val it0 = item?.let { id -> sl?.items?.lastOrNull { it.anim == id } }
+                                    val id = "t${System.nanoTime()}"
+                                    recomment { l -> l + SlideComment(DocComment(id, author, now, text), it0?.let { minOf(it.x + it.w, (deck?.width ?: 720f) - 20f) } ?: 10f, it0?.y ?: 10f) }
+                                    commentsOn = true; hereComment = id }
+                            }
+                            WriterLog.i("Slides: comment ${how}")
+                        }
+                    }
                     if (footing) {
                         val ee = edit; val cc = chosen
                         if (ee == null || cc == null) footing = false else {

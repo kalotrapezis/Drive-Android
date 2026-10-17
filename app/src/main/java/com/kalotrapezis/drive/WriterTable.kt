@@ -812,7 +812,8 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
             TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text("Edit", color = Color(0xFF1A73E8), maxLines = 1) }
             TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text("Reply", color = Color(0xFF1A73E8), maxLines = 1) }
-            TextButton(onClick = { act.resolve(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
+            // Slides' comments have none (PowerPoint's older list and Impress keep no resolved state)
+            if (act.resolve != null) TextButton(onClick = { act.resolve.invoke(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
             TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text("Delete", color = Color(0xFF1A73E8), maxLines = 1) }
         }
     }
@@ -820,7 +821,7 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
 
 /** What a comment card can do: its replies, go to its words, delete it (and its replies), reply, resolve or reopen. */
 internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, val open: (DocComment) -> Unit, val delete: (DocComment) -> Unit,
-    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit, val edit: (DocComment) -> Unit = {})
+    val reply: (DocComment) -> Unit, val resolve: ((DocComment) -> Unit)?, val edit: (DocComment) -> Unit = {})
 
 /**
  * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only

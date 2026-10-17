@@ -328,7 +328,12 @@ internal object SlidesOdp {
             // its part: its name as a link names it ("#page3"), so a show follows one
             val own = page.kids().withIndex().mapNotNull { (k, e) -> FOOT[e.a(PRES, "class")]?.let { "o$k" to it } }.toMap() + footed.mapNotNull { it.id }.associateWith { it.removePrefix("footer.") }
             Slide(items + footed, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps,
-                footers = footers, footerIds = own, titleSlide = page.kids().any { it.a(PRES, "class") == "subtitle" })
+                footers = footers, footerIds = own, titleSlide = page.kids().any { it.a(PRES, "class") == "subtitle" },
+                // Impress's comments: an annotation each, where its marker stands, who and when (Dublin Core)
+                comments = page.kids().filter { it.localName == "annotation" }.mapIndexed { n, an ->
+                    fun dc(k: String) = an.kids().firstOrNull { it.localName == k && it.namespaceURI == "http://purl.org/dc/elements/1.1/" }?.textContent
+                    SlideComment(DocComment("odp-$index-$n", dc("creator").orEmpty(), dc("date"), an.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent },
+                        initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) })
         }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
         // placeholders as a page's empty boxes (grey hints); a deck of one master gets Title only and Blank as well

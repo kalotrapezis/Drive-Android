@@ -170,6 +170,39 @@ class SlidesTest {
         }
     }
 
+    /** Review › Comments: a comment and a reply on a slide, another on a second slide; who, when, what and where saved and read back, a deleted one gone. */
+    @Test fun `comments saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val first = SlideComment(DocComment("n1", "Teo K", "2026-10-17T10:00:00", "Check this slide", initials = "TK"), 100f, 40f)
+            val reply = SlideComment(DocComment("n2", "Ann", "2026-10-17T10:05:00", "Done\nTwo lines"), 100f, 40f).let { it.copy(comment = it.comment.copy(parent = "n1")) }
+            val e = SlidesEdit.start(deck).copy(comments = mapOf(0 to listOf(first, reply), 1 to listOf(SlideComment(DocComment("n3", "Teo K", null, "Second slide"), 10f, 10f))))
+            fun check(d: Deck, how: String, lo: Boolean = false) {
+                val c0 = d.slides[0].comments; val c1 = d.slides[1].comments
+                assertEquals(how, listOf("Check this slide", "Done\nTwo lines"), c0.map { it.comment.text }); assertEquals(how, listOf("Teo K", "Ann"), c0.map { it.comment.author })
+                // LibreOffice reads a comment's place only roughly (its own 5 cm comes back 4.76 cm)
+                if (!lo) { assertEquals(how, 100f, c0[0].x, 1f); assertEquals(how, 40f, c0[0].y, 1f) }; assertTrue(how, c0[0].comment.date!!.startsWith("2026-10-17T10:00"))
+                if (!lo && name.endsWith("pptx")) assertEquals(how, c0[0].comment.id, c0[1].comment.parent) // Impress keeps no threads
+                assertEquals(how, listOf("Second slide"), c1.map { it.comment.text })
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("comments-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val saved = Slides.read(out); check(saved, "saved, $name")
+            // the second slide's taken off again: none left there
+            val again = File("build/office-roundtrip").resolve("comments-again-$name")
+            val e2 = SlidesEdit.start(saved).copy(comments = mapOf(1 to emptyList()))
+            if (src.extension == "odp") SlidesOdpEdit.save(out, saved, e2, again) else SlidesEdit.save(out, saved, e2, again)
+            Slides.read(again).let { assertEquals(name, 2, it.slides[0].comments.size); assertEquals(name, 0, it.slides[1].comments.size) }
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -500,6 +500,19 @@ internal object SlidesOdpEdit {
             }
             // put on: over the page's own, before its notes and animations
             val before = page.kids().firstOrNull { it.localName in setOf("notes", "par", "seq", "animations") }
+            // Review › Comments: Impress's annotations, written again from the list (a reply is one of its own: Impress has no threads)
+            edit.comments[uid]?.let { list ->
+                page.kids().filter { it.localName == "annotation" }.forEach { page.removeChild(it) }
+                fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                for (sc in list) { val c = sc.comment
+                    val date = (c.date ?: java.time.LocalDateTime.now().toString()).removeSuffix("Z").replace(Regex("""[+-]\d\d:\d\d$"""), "")
+                    val x = """<officeooo:annotation xmlns:officeooo="http://openoffice.org/2009/office" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0" xmlns:svg="$SVG" xmlns:text="$TEXT" """ +
+                        """svg:x="${cm(sc.x)}" svg:y="${cm(sc.y)}" svg:width="0.6cm" svg:height="0.6cm"><dc:creator>${esc(c.author)}</dc:creator>""" +
+                        (c.initials?.takeIf { it.isNotBlank() }?.let { "<meta:creator-initials>${esc(it)}</meta:creator-initials>" } ?: "") +
+                        "<dc:date>${esc(date)}</dc:date>" + c.text.split('\n').joinToString("") { "<text:p>${esc(it)}</text:p>" } + "</officeooo:annotation>"
+                    page.insertBefore(doc.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true), before)
+                }
+            }
             val put = HashMap<String, Element>()
             val grown = SlidesEdit.grown(deck, edit, edit.order.first { it.uid == uid })
             for (a in edit.added[uid].orEmpty()) added(grown[a.id]?.let { g -> a.copy(h = g[3]) } ?: a, edit.looks[uid to a.id])?.let { page.insertBefore(it, before); put[a.id] = it }

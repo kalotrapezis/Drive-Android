@@ -359,6 +359,31 @@ class SlidesTest {
         assertEquals(Regex("""draw:fill-color="[^"]*"""").findAll(part(odp, "styles.xml")).map { it.value }.toList(), Regex("""draw:fill-color="[^"]*"""").findAll(styles).map { it.value }.toList())
     }
 
+    /** Design › Format background: a colour on one slide, a picture on another; drawn, saved and read back in both formats. */
+    @Test fun `backgrounds saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val pic = File(scratchDir("bg"), "flag.png").apply { writeBytes(Slides.read(File("src/test/resources/slides.pptx")).slides[2].items.filterIsInstance<SlideItem.Picture>().first().bytes()!!) }
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(backgrounds = mapOf(0 to SlidesEdit.Back(color = 0xFFFFC000.toInt()), 1 to SlidesEdit.Back(picture = pic.path)))
+            fun check(d: Deck, how: String, lo: Boolean = false) {
+                assertEquals(how, 0xFFC000, d.slides[0].background and 0xFFFFFF)
+                val b = d.slides[1].backPicture?.invoke(); assertTrue(how, b != null && b.size > 100)
+                if (!lo) assertTrue(how, b!!.contentEquals(pic.readBytes()))
+                assertEquals(how, null, d.slides[2].backPicture)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("background-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

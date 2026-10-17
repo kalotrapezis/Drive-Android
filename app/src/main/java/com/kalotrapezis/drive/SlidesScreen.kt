@@ -285,6 +285,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::putPicture) }
+    // Design › Background › Picture: the photo copied as Insert › Picture's are (PNG or JPEG), the chosen slide's background
+    val pickBack = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val made = withContext(Dispatchers.IO) { runCatching {
+                val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                val png = bytes.size > 4 && bytes[1] == 'P'.code.toByte() && bytes[2] == 'N'.code.toByte()
+                val data = if (png || (bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte())) bytes
+                    else java.io.ByteArrayOutputStream().also { out -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out) }.toByteArray()
+                File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.${if (png) "png" else "jpeg"}").apply { writeBytes(data) } to if (png) "png" else "jpeg"
+            }.getOrNull() } ?: run { message = "That picture could not be read"; return@launch }
+            val e = edit ?: return@launch; val c = chosen ?: return@launch
+            change(e.copy(backgrounds = e.backgrounds + (e.order[c].uid to SlidesEdit.Back(picture = made.first.path, ext = made.second)))); WriterLog.i("Slides: a picture background")
+        }
+    }
     fun leave() { if (changed) leaving = true else { file?.let { slideDraft(context, it).delete() }; back() } }
     // The app sent to the background with changes not saved (Android may close it then): kept as a draft, as Words' and Tables'.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -772,6 +786,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
                 Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (e.theme != null) RibbonButton("As the file was", w, R.drawable.ic_restore) { change(e.copy(theme = null)) }
+                // Format background (PowerPoint's): this slide's own colour or picture, the same on all, or as its layout has it again
+                RibbonDivider(w)
+                Swatches(w, R.drawable.ic_format_color_fill, "Background", SHAPE_COLOURS.map { Color(it) }) { col ->
+                    change(e.copy(backgrounds = e.backgrounds + (uid to SlidesEdit.Back(color = col?.toArgb() ?: 0xFFFFFFFF.toInt())))) }
+                RibbonButton("Background picture", w, R.drawable.ic_gallery) { pickBack.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                e.backgrounds[uid]?.let { b ->
+                    RibbonButton("Apply to all", w, R.drawable.ic_done_all) { change(e.copy(backgrounds = e.backgrounds + e.order.associate { it.uid to b })) }
+                    RibbonButton("Reset background", w, R.drawable.ic_restore) { change(e.copy(backgrounds = e.backgrounds - uid)) }
+                }
                 // Words' Colours and Fonts strips: the theme's colour set (PowerPoint's Variants) and its heading and body fonts, the design kept
                 RibbonDivider(w)
                 if (!odp) RibbonButton("Colours", w, R.drawable.ic_format_color_text) { strip = DesignGallery.Colours }

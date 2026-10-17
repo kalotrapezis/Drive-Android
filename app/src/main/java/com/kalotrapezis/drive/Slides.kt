@@ -97,7 +97,8 @@ internal class Slide(val items: List<SlideItem>, val background: Int, val notes:
     /** Insert › Header & footer: its layout's date ("dt"), footer ("ftr") and number ("sldNum") boxes as they would show on it; the ids of
      *  its own ones' ids and kinds; whether it is a title slide (Don't show on title slide) */
     val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false,
-    /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList())
+    /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList(),
+    /** a picture over its [background], stretched to the slide (PowerPoint's blipFill background, LibreOffice's bitmap fill) */ val backPicture: (() -> ByteArray?)? = null)
 /** A comment on a slide: Words' [comment], its marker at [x], [y] (points). */
 internal data class SlideComment(val comment: DocComment, val x: Float, val y: Float)
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList(),
@@ -272,6 +273,9 @@ internal object Slides {
             map = HashMap<String, String>().also { m -> master?.kid("clrMap")?.let { cm -> for (i in 0 until cm.attributes.length) cm.attributes.item(i).let { a -> m[a.localName ?: a.nodeName] = a.nodeValue } } }
             val bg = listOfNotNull(s, layout, master).firstNotNullOfOrNull { e -> e.kid("cSld")?.kid("bg")?.let { b -> b.kid("bgPr")?.let(::fill) ?: b.kid("bgRef")?.let(::color) } }
                 ?: 0xFFFFFFFF.toInt()
+            // a picture background: the nearest that has a background says it (its own relationships name the picture)
+            val backPicture = listOf(s to path, layout to layoutPath, master to masterPath).firstOrNull { (e, _) -> e?.kid("cSld")?.kid("bg") != null }?.let { (e, p) ->
+                e!!.kid("cSld")!!.kid("bg")!!.kid("bgPr")?.kid("blipFill")?.kid("blip")?.rid("embed")?.let { id -> p?.let { rels(xml, it)[id] } } }?.let { pic -> { part(pic) } }
             val context = Placeholders(layout, master, defaults)
             val items = ArrayList<SlideItem>()
             fun tree(e: Element?, from: String, ctx: Placeholders?) = e?.kid("cSld")?.kid("spTree")?.let { shapes(it, rels(xml, from), ctx, items, null) }
@@ -293,7 +297,7 @@ internal object Slides {
             }.toMap()
             val own = s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp -> phOf(sp)?.attr("type")?.takeIf { it in kinds }?.let { k -> sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id")?.let { it to k } } }.toMap()
             val title = layout?.attr("type") == "title" || s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().any { phOf(it)?.attr("type") == "ctrTitle" }
-            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path))
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path), backPicture)
         }
 
         /** Who wrote comments: the older list's authors (by number) and PowerPoint 365's (by their GUID) — name and initials. */
@@ -645,6 +649,12 @@ internal object Slides {
         c.clipRect(0f, 0f, deck.width, deck.height)
         c.drawColor(slide.background)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        // a picture background, stretched to the slide
+        slide.backPicture?.let { pic -> (pictures.get(pic) ?: runCatching { pic()?.let { b ->
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
+            var n = 1; while (o.outWidth / (n * 2) >= deck.width * 3) n *= 2
+            android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = n }) } }.getOrNull()?.also { pictures.put(pic, it) })
+            ?.let { c.drawBitmap(it, null, android.graphics.RectF(0f, 0f, deck.width, deck.height), paint) } }
         for (item in slide.items) {
             if (item is SlideItem.Shape && item.hint && !hints) continue
             val state = if (look != null) look(item) ?: continue else null

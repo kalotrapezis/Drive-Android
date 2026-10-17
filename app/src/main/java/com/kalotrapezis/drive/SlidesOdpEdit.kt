@@ -496,7 +496,20 @@ internal object SlidesOdpEdit {
             ?: fragment("""<anim:par $ans smil:dur="indefinite" smil:restart="never" presentation:node-type="timing-root"/>""").also { r -> page.insertBefore(r, page.kids().firstOrNull { it.localName == "notes" }) }
 
         /** Page [page] (showing [slide] as read, [uid] in the edit) with its edits. */
+        // Design › Format background: the pictures' fill images, for styles.xml (where LibreOffice keeps them), one a picture
+        val fillImages = LinkedHashMap<String, String>()
         fun apply(page: Element, slide: Slide, uid: Int) {
+            // Design › Format background: the page's own drawing-page style, a colour or a picture stretched over it
+            edit.backgrounds[uid]?.let { b ->
+                val name = b.picture?.let { p -> fillImages.getOrPut(p) { picture(SlidesEdit.Added("background", 0f, 0f, 0f, 0f, image = p, ext = b.ext)) }.let { "tetra-bg-" + (fillImages.keys.indexOf(p) + 1) } }
+                page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "back $b") { st ->
+                    val d = props(st, "drawing-page-properties")
+                    listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name").forEach { d.removeAttributeNS(DRAW, it) }
+                    if (name != null) { d.setAttributeNS(DRAW, "draw:fill", "bitmap"); d.setAttributeNS(DRAW, "draw:fill-image-name", name); d.setAttributeNS(STYLE, "style:repeat", "stretch") }
+                    else { d.setAttributeNS(DRAW, "draw:fill", "solid"); d.setAttributeNS(DRAW, "draw:fill-color", hex(b.color ?: -1)) }
+                    d.setAttributeNS(PRES, "presentation:background-visible", "true")
+                })
+            }
             // Home › Layout: the page on the master page chosen
             edit.relayout[uid]?.let { k -> page.setAttributeNS(DRAW, "draw:master-page-name", deck.layouts[k].part) }
             fun at(id: String): Element? { var el: Element? = page; for (k in id.removePrefix("o").split('.')) el = el?.kids()?.getOrNull(k.toIntOrNull() ?: return null); return el }
@@ -657,6 +670,10 @@ internal object SlidesOdpEdit {
         val after = pres.kids().firstOrNull { it.localName == "settings" }
         ordered.forEach { pres.insertBefore(it, after) }
         out["content.xml"] = xml(doc)
+        if (fillImages.isNotEmpty()) read("styles.xml")?.let { String(it) }?.let { st ->
+            val images = fillImages.values.withIndex().joinToString("") { (k, href) -> """<draw:fill-image draw:name="tetra-bg-${k + 1}" xlink:href="$href" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>""" }
+            out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$images</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$images</office:styles><office:automatic-styles")).toByteArray()
+        }
         if (manifest != null && out.keys.any { it.startsWith("Pictures/") || it.startsWith("Object tetra-") }) out["META-INF/manifest.xml"] = xml(manifest)
         SheetSave.rezip(zip, target, out, stored = "mimetype")
         zip.close()

@@ -80,6 +80,9 @@ internal object SlidesOdp {
         }
         collect(styles); collect(content)
         // LibreOffice's gradients by name: their two colours and angle (0: top to bottom, turning anticlockwise)
+        // the fill pictures (a page's bitmap background names one)
+        val fillImages = listOfNotNull(styles, content).flatMap { root -> root.getElementsByTagNameNS(DRAW, "fill-image").let { l -> (0 until l.length).map { l.item(it) as Element } } }
+            .mapNotNull { f -> f.a(DRAW, "name")?.let { n -> f.a(XLINK, "href")?.removePrefix("./")?.let { n to it } } }.toMap()
         val gradients = HashMap<String, SlideGradient>()
         for (root in listOfNotNull(styles, content)) root.getElementsByTagNameNS(DRAW, "gradient").let { l -> for (i in 0 until l.length) { val g = l.item(i) as Element
             val a = g.a(DRAW, "start-color")?.let(::hex) ?: continue; val b = g.a(DRAW, "end-color")?.let(::hex) ?: continue
@@ -302,6 +305,9 @@ internal object SlidesOdp {
             shapes(page, items, false)
             fun bg(style: String?) = if (prop("drawing-page", style, "d.fill") == "solid" || prop("drawing-page", style, "d.fill-color") != null) hex(prop("drawing-page", style, "d.fill-color")) else null
             val background = bg(dp) ?: bg(master?.a(DRAW, "style-name")) ?: 0xFFFFFFFF.toInt()
+            // a bitmap background (the page's, else its master's)
+            fun bgPicture(style: String?) = if (prop("drawing-page", style, "d.fill") == "bitmap") prop("drawing-page", style, "d.fill-image-name")?.let(fillImages::get) else null
+            val backPicture = (bgPicture(dp) ?: bgPicture(master?.a(DRAW, "style-name")))?.let { p -> { part(p) } }
             val notes = page.kids().firstOrNull { it.localName == "notes" }?.kids()?.firstOrNull { it.a(PRES, "class") == "notes" }
                 ?.getElementsByTagNameNS(TEXT, "p")?.let { l -> (0 until l.length).joinToString("\n") { plainText(l.item(it)) } }?.trim().orEmpty()
             // the transition: the page style's (LibreOffice's names), its length from the timing's own filter
@@ -345,7 +351,8 @@ internal object SlidesOdp {
                 comments = page.kids().filter { it.localName == "annotation" }.mapIndexed { n, an ->
                     fun dc(k: String) = an.kids().firstOrNull { it.localName == k && it.namespaceURI == "http://purl.org/dc/elements/1.1/" }?.textContent
                     SlideComment(DocComment("odp-$index-$n", dc("creator").orEmpty(), dc("date"), an.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent },
-                        initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) })
+                        initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) },
+                backPicture = backPicture)
         }
         val slides = pages.mapIndexed { index, page -> pageSlide(index, page, page.a(DRAW, "master-page-name")) }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text

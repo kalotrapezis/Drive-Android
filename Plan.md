@@ -346,6 +346,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       theme chosen or the deck's own (`SlidesThemes.fromFile`) with `SlideTheme.keep`: only the theme part's colour set and fonts
       change — masters, backgrounds and bands stay (an .odp, which has no theme colours: Fonts only, its colours and backgrounds kept).
       `theme colours and fonts on the deck's own design`; emulator: Green — the theme-coloured box went green.
+      Format background (office-C session, 17 Oct): Design › Background — a colour (Words' `Swatches`, `SHAPE_COLOURS`) or Background
+      picture (the phone's photo picker, as Insert › Picture), Apply to all, Reset background (as its layout has it); `Edit.backgrounds`,
+      drawn stretched over the slide (`Slide.backPicture`); saved as PowerPoint's p:bg (solidFill / blipFill with its media part) and
+      as LibreOffice's page style (solid, or bitmap stretched with a draw:fill-image in styles.xml). Read too now: a deck's own picture
+      backgrounds (PowerPoint's on a slide, layout or master; LibreOffice's bitmap fill) — before, only colours were drawn.
+      `backgrounds saved` (both, LibreOffice's conversions); LibreOffice draws Tetra's .odp's colour and picture. Not yet: gradient
+      backgrounds (read or made), slide size. Unit 424/0/7; sweep 349 + 29, none failing.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
 - [~] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
       Comments done 17 Oct (office-C session), with Insert › Comment: Words' `NewCommentDialog` (its remembered name), Words'

@@ -786,19 +786,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                         }
                         shown == "File" -> {
+                            // File as in Words and Slides (17 Oct): Save · Versions, Export PDF, Print · Share, another app · About, log · Settings
                             RibbonButton("Save", w, R.drawable.ic_save, enabled = !saving) { save() }
                             RibbonDivider(w)
+                            if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                             RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
-                            RibbonButton("Print", w) { printIt() }
+                            RibbonButton("Print", w, R.drawable.ic_print) { printIt() }
                             file?.let { f ->
                                 RibbonDivider(w)
                                 RibbonButton("Share", w, R.drawable.ic_share) { shareDriveFile(context, f) }
                                 RibbonButton("Open in another app", w, R.drawable.ic_open_with) { openElsewhere(context, f) }
                             }
                             RibbonDivider(w)
-                            if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
-                            RibbonButton("About this file", w) { about = true }
-                            RibbonButton("Send log", w) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                            RibbonButton("About this file", w, R.drawable.ic_info) { about = true }
+                            RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
                             RibbonDivider(w)
                             RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
                         }
@@ -1120,26 +1121,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(onClick = { deletingSheet = false; sheetStep(delete = true) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deletingSheet = false }) { Text("Cancel") } })
     }
-    if (showVersions) file?.let { f ->
-        val list = remember { versions(context, f) }
-        val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
-        AlertDialog(onDismissRequest = { showVersions = false }, title = { Text("Versions") },
-            text = {
-                Column {
-                    Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else "The file as it was before a save. Opening one puts it in the editor; Save keeps it, Undo goes back.",
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
-                    list.forEach { v ->
-                        Row(Modifier.fillMaxWidth().clickable { showVersions = false; editing = true; openVersion(v) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
-                            Text(format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())) + " · ${(v.length() + 1023) / 1024} KB",
-                                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                            Text("Open", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Close") } })
-    }
+    if (showVersions) file?.let { f -> VersionsDialog(f, "Undo goes back", { showVersions = false }) { v -> showVersions = false; editing = true; openVersion(v) } }
     if (leaving) AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
         text = { Text("${history.unsaved} change${if (history.unsaved == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },

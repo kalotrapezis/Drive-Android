@@ -492,6 +492,19 @@ internal object Slides {
 
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
     /** [look]: an item's state in an animation — null hidden, else its opacity and how far it is moved (points), and (an emphasis) its scale and turn in degrees about a point. */
+    /** File › Export PDF and Print: a page a slide, the deck's size in points, the hidden slides left out (as PowerPoint). */
+    fun pdf(deck: Deck, out: java.io.OutputStream): Int {
+        val pdf = android.graphics.pdf.PdfDocument()
+        val shown = deck.slides.filter { !it.hidden }
+        shown.forEachIndexed { i, s ->
+            val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(deck.width.toInt(), deck.height.toInt(), i + 1).create())
+            draw(page.canvas, deck, s, 1f)
+            pdf.finishPage(page)
+        }
+        pdf.writeTo(out); pdf.close()
+        return shown.size
+    }
+
     fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false, look: ((SlideItem) -> FloatArray?)? = null) {
         c.save(); c.scale(k, k)
         c.clipRect(0f, 0f, deck.width, deck.height)

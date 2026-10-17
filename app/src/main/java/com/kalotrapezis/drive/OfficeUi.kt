@@ -149,6 +149,29 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     }
 }
 
+/** File › Versions in Tables and Slides: the file as it was before each save (the last 3, [keepPrevious]); [open] one. */
+@Composable internal fun VersionsDialog(file: java.io.File, goBack: String, dismiss: () -> Unit, open: (java.io.File) -> Unit) {
+    val context = LocalContext.current
+    val list = remember { versions(context, file) }
+    val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Versions") },
+        text = {
+            Column {
+                Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else "The file as it was before a save. Opening one puts it in the editor; Save keeps it, $goBack.",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                list.forEach { v ->
+                    Row(Modifier.fillMaxWidth().clickable { open(v) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
+                        Text(format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())) + " · ${(v.length() + 1023) / 1024} KB",
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
+                        Text("Open", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Close") } })
+}
+
 /** A right-click's menu where it was clicked ([at], from the parent's top left): rounded, its items smaller with a mouse. */
 @Composable internal fun OfficeMenu(at: Offset, dismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) =
     Box(Modifier.offset { IntOffset(at.x.toInt(), at.y.toInt()) }) {

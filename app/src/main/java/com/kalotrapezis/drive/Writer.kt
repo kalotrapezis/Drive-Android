@@ -3846,13 +3846,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Save as", w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
                     RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
-                    RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
-                    RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
+                    // as Tables' and Slides' (17 Oct): Versions, Export PDF, Print · Share, another app · About, log · Settings
                     RibbonButton("Versions", w, R.drawable.ic_history, enabled = loaded) { showVersions = true }
+                    RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
+                    RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
                 }, {
                     RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
                         file?.let { shareDriveFile(context, it) }
                         if (dirty) message = "Shared as last saved — your newest changes are not in it yet"
+                    }
+                    RibbonButton("Open in another app", w, R.drawable.ic_open_with, enabled = file?.isFile == true) {
+                        file?.let { openElsewhere(context, it) }
+                        if (dirty) message = "Opened as last saved — your newest changes are not in it yet"
                     }
                     RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
                     // The log (asked 2026-10-01), to send when something goes wrong: what was done, not the words.

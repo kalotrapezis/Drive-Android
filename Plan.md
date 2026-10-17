@@ -14,6 +14,8 @@ How to write here:
 ## Now — who is doing what
 - [x] (813e7c4, 18c031f) Office: one tab row for Words, Slides and Tables; Settings › Tab marker: Bubble / Dash; the
       bubble in each app's colour (office tab-marker session, 17 Oct).
+- [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).
+- [x] (next commit) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -49,11 +51,18 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       tab's own colour, the chosen tab scrolled clear of the edge's shade). **Settings › Office and File › Settings:
       "Tab marker: Bubble / Dash"** (bubble by default, as Words had it). Compact always uses the dash, for the room.
       Checked on the tablet in all three apps, both markers, normal and compact (17 Oct).
-- [ ] Tab names and order: Selection first when something is chosen, then File, Home, Insert, … as Words'; the
+- [x] (386b04c) Tab names and order: Selection first when something is chosen, then File, Home, Insert, … as Words'; the
       contextual tab (Picture, Table, Column, Row, Sheet) comes by itself, in one place and colour in every app.
-- [ ] File holds the same items in every app: Save, Versions, Export PDF, Print, Share, Open in another app, About
+      Done: Slides' "Slide" tab is Home (PowerPoint's Slides group is on Home); what is chosen on a slide has its own
+      last tab named by it (Text box, Picture, Table, Chart, Shape) — Slides' Selection tab is left for Cut/Copy/Paste
+      (B); the contextual tab is a lighter tone of each app's colour; Words' "Image" tab is "Picture". Tablet 17 Oct.
+- [x] File holds the same items in every app: Save, Versions, Export PDF, Print, Share, Open in another app, About
       this file, Send log, Settings. Slides lacks Versions, Export PDF, Print, About and Send log today; the checklist
       above says Slides' Export PDF is done, but its File tab has no such button, so check that line.
+      Done: Slides had no Export PDF (the ticked line was Words'); now all of them (`Slides.pdf`: a page a slide at the
+      deck's size, hidden slides left out; Versions opens one unsaved, Save puts it over the file), one shared
+      `VersionsDialog` for Tables and Slides (Words keeps its page previews), the same order in all three, Words gains
+      Open in another app. Tablet 17 Oct: PDF of 4 slides; a version opened and saved, LibreOffice opens it.
 - [ ] Every button has an icon (memory: ribbon icons); the everyday tools on the ribbon and the rest under ⋯ on a
       full page (memory: ribbon ⋯ button) — in Slides and Tables too.
 - [ ] Strips (Words' Page numbers, Tables' Borders and Number) open the same way: ‹ back, a title, sliding in.

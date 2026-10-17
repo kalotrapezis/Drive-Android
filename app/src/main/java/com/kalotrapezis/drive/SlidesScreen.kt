@@ -125,6 +125,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var leaving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
+    var source by remember { mutableStateOf<File?>(null) } // File › Versions: the version opened, saved over the file by Save
+    var showVersions by remember { mutableStateOf(false) }
+    var about by remember { mutableStateOf(false) }
     suspend fun load(f: File) = withContext(Dispatchers.IO) { runCatching { WriterLog.timed("Slides: deck read") { Slides.read(f) } } }
     LaunchedEffect(open) {
         WriterLog.init(context)
@@ -139,7 +142,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val base: Deck? = edit?.theme?.let { themed[it]?.second } ?: deck
     LaunchedEffect(edit?.theme) {
         val t = edit?.theme ?: return@LaunchedEffect
-        val src = file ?: return@LaunchedEffect
+        val src = source ?: file ?: return@LaunchedEffect
         if (t in themed) return@LaunchedEffect
         withContext(Dispatchers.IO) { runCatching {
             val out = File(context.cacheDir, "theme-${System.nanoTime()}.${src.extension.lowercase()}")
@@ -151,7 +154,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun save(then: (() -> Unit)? = null) {
         val e = edit ?: return
         // with a theme chosen: saved from the themed copy, into the file
-        val f = file ?: return; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: f
+        val f = file ?: return; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: source ?: f
         if (e.theme != null && e.theme !in themed) return
         if (saving) return
         saving = true
@@ -166,7 +169,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 Slides.read(f)
             } }
             saving = false
-            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
+            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -243,6 +246,33 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
+    /** File › Versions: [v] in the editor, unsaved — Save puts it over the file; leaving without saving keeps the file as it is. */
+    fun openVersion(v: File) = scope.launch {
+        load(v).onSuccess { d -> themed.clear(); source = v; deck = d; edit = SlidesEdit.start(d); saved = null; undos.clear(); redos.clear(); chosen = null; item = null
+            editing = true; message = "This version is open. Save keeps it; leave without saving to go back."; WriterLog.i("Slides: a version opened") }
+            .onFailure { WriterLog.e("Slides: a version", it); message = "That version could not be opened." }
+    }
+    /** File › Export PDF (beside the presentation, never over a file) and Print: the slides as shown, changes included. */
+    fun slidesPdf(to: File): Int = view?.let { d -> to.outputStream().use { Slides.pdf(d, it) } } ?: error("Nothing to export.")
+    fun exportPdf() {
+        val f = file ?: return
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching {
+                val target = generateSequence(1) { it + 1 }.map { File(f.parentFile, if (it == 1) "${f.nameWithoutExtension}.pdf" else "${f.nameWithoutExtension} ($it).pdf") }.first { !it.exists() }
+                val n = slidesPdf(target); WriterLog.i("Slides: PDF of $n slides, ${target.length() / 1024} KB"); target
+            } }
+            message = result.fold({ "Saved ${it.name} beside the presentation" }, { WriterLog.e("Slides: PDF", it); "Could not make the PDF." })
+        }
+    }
+    fun printIt() {
+        val title = file?.nameWithoutExtension ?: "Presentation"
+        scope.launch {
+            val pdf = withContext(Dispatchers.IO) { runCatching { File(context.cacheDir, "print.pdf").also { slidesPdf(it) } }
+                .onFailure { WriterLog.e("Slides: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+            context.getSystemService(android.print.PrintManager::class.java)?.print(title, PdfPrintAdapter(pdf, title), null)
+            WriterLog.i("Slides: print ${pdf.length() / 1024} KB")
+        }
+    }
     /** What is chosen on the slide, deleted — its animation with it (the slide's timing then names only what is there). */
     fun deleteItem() {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
@@ -351,11 +381,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "File" -> {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
                 RibbonButton("Save", w, R.drawable.ic_save, enabled = changed && !saving) { save() }
+                // the same File as Words' and Tables' (17 Oct)
+                RibbonDivider(w)
+                if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
+                RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
+                RibbonButton("Print", w, R.drawable.ic_print) { printIt() }
                 file?.let { f ->
                     RibbonDivider(w)
                     RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
                     RibbonButton("Open in another app", w, R.drawable.ic_open_with) { if (changed) save { openElsewhere(context, f) } else openElsewhere(context, f) }
                 }
+                RibbonDivider(w)
+                RibbonButton("About this file", w, R.drawable.ic_info) { about = true }
+                RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
                 RibbonDivider(w)
                 RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
             }
@@ -885,7 +923,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     if (themesPage) ThemesDialog(edit?.theme, { themesPage = false }) { t -> themesPage = false; edit?.let { change(it.copy(theme = t)) } }
     if (leaving) androidx.compose.material3.AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
-        text = { Text("${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
+        text = { Text(if (source != null) "The version opened is not saved over ${file?.name ?: "this presentation"}." else "${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
         dismissButton = { Row {
             androidx.compose.material3.TextButton(onClick = { leaving = false; WriterLog.i("Slides: left without saving"); back() }) { Text("Don't save") }
@@ -894,6 +932,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val d = view
     presenting?.let { start -> if (d != null) Present(d, start, notes) { presenting = null } }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
+    if (showVersions) file?.let { f -> VersionsDialog(f, "leaving without saving goes back", { showVersions = false }) { v -> showVersions = false; openVersion(v) } }
+    if (about) androidx.compose.material3.AlertDialog(onDismissRequest = { about = false },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { about = false }) { Text("Close") } },
+        title = { Text(file?.name ?: "Presentation") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(if (odp) "OpenDocument presentation (.odp)" else "PowerPoint presentation (.pptx)")
+                file?.let { Text("${"%.1f".format(it.length() / 1024.0 / 1024.0)} MB · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it.lastModified()))) }
+                view?.let { d ->
+                    val hidden = d.slides.count { it.hidden }
+                    Text("${d.slides.size} slide${if (d.slides.size == 1) "" else "s"}" + (if (hidden > 0) ", $hidden hidden" else "") +
+                        " · ${if (kotlin.math.abs(d.width / d.height - 16f / 9) < 0.05f) "16:9" else if (kotlin.math.abs(d.width / d.height - 4f / 3) < 0.05f) "4:3" else "%.1f × %.1f cm".format(d.width / 72 * 2.54, d.height / 72 * 2.54)}")
+                    val notes = d.slides.count { it.notes.isNotBlank() }
+                    if (notes > 0) Text("Speaker notes on $notes slide${if (notes == 1) "" else "s"}")
+                }
+            }
+        })
 }
 
 /** PowerPoint's standard colours, and white, black and grey. */

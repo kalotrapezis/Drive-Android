@@ -228,6 +228,20 @@ class SheetEditTest {
         put(0, 3, ""); assertEquals(listOf("", "", "", ""), col(3, 0..3))
     }
 
+    /** Review › Spelling: the sheet's words in reading order (numbers and formulas left out), checked by Words' English dictionary; one changed. */
+    @Test fun `spelling in a sheet`() {
+        val s = Sheets.csv("Olive harvst,12\nThe ferry,=A1".toByteArray()).sheet(0)
+        s.cells[Sheet.key(1, 1)] = SheetCell("x", SheetKind.Text, formula = "=\"wrongg\"")
+        val words = SheetSpelling.words(s)
+        assertEquals(listOf("Olive", "harvst", "The", "ferry"), words.map { it.third })
+        val dir = java.io.File("src/main/assets/dictionaries")
+        val en = Dictionaries.of(java.io.File(dir, "en_US.aff").inputStream(), java.io.File(dir, "en_US.dic").inputStream(), "en")
+        val wrong = words.filter { Dictionaries.misspelled(en, it.third) != null }
+        assertEquals(listOf("harvst"), wrong.map { it.third }); assertTrue(Dictionaries.misspelled(en, "harvst")!!.contains("harvest"))
+        val (k, r, _) = wrong[0]
+        assertEquals("Olive harvest", SheetSpelling.changed(s.cells[k]!!, r, "harvest").text)
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

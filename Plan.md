@@ -78,11 +78,11 @@ How to write here:
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
-      Sources sheet. Checks at a925139: unit
+      Sources sheet (116c4d6), Review tab. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -878,7 +878,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       page regions and fields read and written (an .ods's own "sheet name / Page 1" now read, as LibreOffice prints it), and printed:
       Export PDF and Print draw them 0.3" from the edges. In `page layout saved` (both formats, LibreOffice's conversions); emulator:
       "Draft | sheet name" and "Page 1 of ?" in the exported PDF. shortcut: one header for every page (Excel's first/even ones not kept).
-- [~] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
+- [x] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
       Respecting a protected sheet done (office-F session, 17 Oct): Excel's sheetProtection and LibreOffice's table:protected read
       (`Sheet.protected`), each look's Locked (Excel's protection locked, LibreOffice's cell-protect; on by default: `SheetStyle.locked`);
       a change to a locked cell refused where every change passes (`SheetHistory.apply`/`locked`, with a message), typing not begun,
@@ -890,7 +890,12 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       LibreOffice's cell-protect; Shrink to fit, read since step 6, now saved too). `SheetProtect`; `Sheet.guarded`. `a sheet protected
       and unprotected` (both formats; the hashes checked against Python's; LibreOffice's conversions keep the protection, not the
       password — it can't turn one hash into the other); emulator: protected with a password, A2 refused, a wrong password refused,
-      unprotected. Not yet: spelling.
+      unprotected.
+      Spelling done (office-F session, 18 Oct): a Review tab, as Excel's — Spelling (Words' Hunspell dictionaries, Greek and English, on
+      the phone: `WriterSpelling`): the sheet's words in reading order, each not known shown with its cell and suggestions in Excel's
+      dialog (Change, Ignore, Ignore all); also Previous / Next note, New or Edit note, Protect / Unprotect sheet, and Workbook
+      statistics (sheets; this sheet's cells, numbers, formulas, words, notes, drawings, used range). `SheetSpelling`; `spelling in a
+      sheet` (Words' English dictionary read in the test); emulator: harvst → harvest, ferri → ferry in a CSV, the counts.
 - [~] **View**: gridlines and headings on or off; split the window (later).
       Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
       view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes

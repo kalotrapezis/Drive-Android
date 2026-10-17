@@ -197,6 +197,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
     var figureSizing by remember { mutableStateOf<SheetDrawing?>(null) } // a drawing's Size: its width and height asked
     var sourcing by remember { mutableStateOf(false) } // Insert › Source: Words' source dialog
+    var counting by remember { mutableStateOf(false) } // Review › Workbook statistics
+    var spellRun by remember { mutableStateOf<SpellRun?>(null) } // Review › Spelling: what is left to look at
+    val speller = remember { WriterSpelling(context) }
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -841,6 +844,18 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             if (bb.kind == "xlsx") SheetDrawings.xlsx(baked, next, bb.parts.getValue("$i"), ordinal, change) else SheetDrawings.ods(baked, next, i, ordinal, change) }) {
             view.figure = if (change is SheetDrawings.Size) ordinal else -1 }
     }
+    /** Review › Spelling: the sheet's words checked (Words' dictionaries, on the phone); the first not known shown, with its suggestions. */
+    fun checkSpelling() { val s = sheet ?: return
+        message = "Checking spelling…"
+        scope.launch {
+            val words = SheetSpelling.words(s)
+            val wrong = speller.check(words.map { it.third })
+            val queue = words.filter { it.third in wrong }
+            if (queue.isEmpty()) { message = "No spelling mistakes found"; return@launch }
+            message = null; spellRun = SpellRun(queue, wrong, emptySet())
+            WriterLog.i("Sheets: spelling, ${queue.size} words to look at")
+        }
+    }
     /** Cells [g] (the sheet's) inserted, the rest shifted down ([rows]) or right, or deleted, the rest shifted up or left: one step of Undo. */
     fun shiftCells(g: SheetRange, rows: Boolean, insert: Boolean) {
         val s = sheet ?: return; val b = book ?: return
@@ -911,7 +926,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> figName }
         // Selection first, as in Words: Cut, Copy, Paste and Clear out of the crowded Home (asked 16 Oct); a cell is
         // always chosen while editing, so it is always there then, but Home stays the tab in use
-        val base = listOf("Selection", "File", "Home", "Insert", "Page layout", "Formulas", "Data", "View")
+        val base = listOf("Selection", "File", "Home", "Insert", "Page layout", "Formulas", "Data", "Review", "View")
         val tabs = (if (editing) base else listOfNotNull("Selection".takeIf { g != null })) + listOfNotNull(ctx)
         if (tabs.isEmpty()) return
         LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in base } ?: "Home" }
@@ -1252,6 +1267,23 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 // Excel's Data Validation › List: the cells take one of the values given
                                 if (b.kind != "csv") RibbonButton("Drop-down list", w, R.drawable.ic_checklist) {
                                     listing = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) } }
+                        }
+                        // Excel's Review: Spelling (Words' dictionaries), the notes one by one, the sheet's protection, the workbook's counts
+                        shown == "Review" -> {
+                            RibbonButton("Spelling", w, R.drawable.ic_spellcheck) { checkSpelling() }
+                            RibbonDivider(w)
+                            val notes = remember(version, s) { ArrayList<Long>().also { l -> s.cells.forEach { k, c -> if (c.note != null) l += k } }.sortedWith(compareBy({ Sheet.row(it) }, { Sheet.col(it) })) }
+                            fun goNote(forward: Boolean) { if (notes.isEmpty()) { message = "No notes on this sheet"; return }
+                                val here = Sheet.key(cr, cc)
+                                val k = if (forward) notes.firstOrNull { it > here } ?: notes.first() else notes.lastOrNull { it < here } ?: notes.last()
+                                view.row = Sheet.row(k); view.col = Sheet.col(k); view.reveal++; message = s.cells[k]?.note }
+                            RibbonButton("Previous note", w, R.drawable.ic_keyboard_arrow_up, enabled = notes.isNotEmpty()) { goNote(false) }
+                            RibbonButton("Next note", w, R.drawable.ic_keyboard_arrow_down, enabled = notes.isNotEmpty()) { goNote(true) }
+                            if (editing) RibbonButton(if (s[cr, cc]?.note != null) "Edit note" else "New note", w, R.drawable.ic_comment) { noting = true }
+                            RibbonDivider(w)
+                            if (editing && b.kind != "csv") RibbonButton(if (s.protected) "Unprotect sheet" else "Protect sheet", w, R.drawable.ic_lock, on = s.protected) {
+                                if (s.protected && !s.guarded) protectSheet(false, "") else protecting = true }
+                            RibbonButton("Workbook statistics", w, R.drawable.ic_numbers) { counting = true }
                         }
                         shown == "View" -> {
                             RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
@@ -1780,6 +1812,48 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     if (sourcing) SourceDialog(null, { sourcing = false }) { src -> sourcing = false
         fileStep("source added", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSources.add(baked, next, bb, CiteStyle.APA.entry(src), sym.decimalSeparator, sym.groupingSeparator) } }) { nb ->
             views.clear(); header = null; index = nb.tabs.indexOfFirst { it.name.equals(SheetSources.NAME, true) }.coerceAtLeast(0); message = "Added to the Sources sheet" } }
+    // Review › Spelling: Excel's dialog — the word not in the dictionary, its cell, the suggestions; Change, Ignore, Ignore all
+    spellRun?.let { run -> sheet?.let { s -> val b = book
+        val (k, r, word) = run.queue.first()
+        LaunchedEffect(k) { view.row = Sheet.row(k); view.col = Sheet.col(k); view.reveal++ }
+        val offered = run.suggestions[word].orEmpty()
+        var choice by remember(run) { mutableStateOf(offered.firstOrNull()) }
+        fun next(ignored: Set<String> = run.ignored) {
+            // what is left after this word: on in reading order, words ignored left out
+            val rest = run.queue.drop(1).filter { it.third !in ignored }
+            spellRun = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else run.copy(queue = rest, ignored = ignored)
+        }
+        AlertDialog(onDismissRequest = { spellRun = null }, title = { Text("Spelling") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Not in the dictionary: $word", fontWeight = FontWeight.Bold)
+                Text("${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: ${s.cells[k]?.text.orEmpty()}", style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                if (offered.isEmpty()) Text("No suggestions")
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    offered.forEach { o -> androidx.compose.material3.FilterChip(choice == o, { choice = o }, { Text(o) }) } } } },
+            confirmButton = { Row {
+                TextButton(enabled = choice != null && editing, onClick = { val cell = s.cells[k]; val c = choice
+                    if (cell != null && c != null && b != null && cell.text.regionMatches(r.first, word, 0, word.length)) {
+                        history.apply(b, index, mapOf(k to SheetSpelling.changed(cell, r, c))); version++
+                        // on to the next, this cell's later words moved by the change
+                        val shift = c.length - word.length
+                        val rest = run.queue.drop(1).map { q -> if (q.first == k && q.second.first > r.last) Triple(k, q.second.first + shift..q.second.last + shift, q.third) else q }.filter { it.third !in run.ignored }
+                        spellRun = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else run.copy(queue = rest)
+                    } else next() }) { Text("Change") }
+                TextButton(onClick = { next() }) { Text("Ignore") }
+                TextButton(onClick = { next(run.ignored + word) }) { Text("Ignore all") } } },
+            dismissButton = { TextButton(onClick = { spellRun = null }) { Text("Close") } }) } }
+    // Review › Workbook statistics: as Words' counts — the workbook's sheets, this sheet's cells, words, formulas, notes, drawings
+    if (counting) book?.let { b -> sheet?.let { s -> var filled = 0; var numbers = 0; var formulas2 = 0; var words = 0; var notes = 0
+        s.cells.forEach { _, c -> if (c.kind != SheetKind.Empty) filled++; if (c.kind == SheetKind.Number) numbers++; if (c.formula != null) formulas2++
+            if (c.kind == SheetKind.Text) words += WriterSpelling.words(c.text).size; if (c.note != null) notes++ }
+        AlertDialog(onDismissRequest = { counting = false }, title = { Text("Workbook statistics") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Workbook", fontWeight = FontWeight.Bold); Text("Sheets: ${b.tabs.size}" + (b.tabs.count { it.hidden }.takeIf { it > 0 }?.let { " ($it hidden)" } ?: ""))
+                Text(s.name, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                Text("Cells with data: $filled"); Text("Numbers: $numbers"); Text("Formulas: $formulas2"); Text("Words: $words")
+                Text("Notes: $notes"); Text("Pictures, charts and shapes: ${s.drawings.size}")
+                Text("Used range: A1:${Sheets.colName(maxOf(0, s.cols - 1))}${maxOf(1, s.rows)}") } },
+            confirmButton = { TextButton(onClick = { counting = false }) { Text("Close") } }) } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },
@@ -3044,6 +3118,9 @@ internal class SheetPainter(
         }
     }
 }
+
+/** Review › Spelling's run: the words left to look at, each word's suggestions, the words ignored. */
+internal data class SpellRun(val queue: List<Triple<Long, IntRange, String>>, val suggestions: Map<String, List<String>>, val ignored: Set<String>)
 
 /** Changes not yet saved, kept when the app went to the background: one per spreadsheet (by its path), in the app's storage. */
 private fun sheetDraft(context: android.content.Context, file: File) =

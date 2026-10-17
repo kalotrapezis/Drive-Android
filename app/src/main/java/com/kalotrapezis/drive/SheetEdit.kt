@@ -767,3 +767,19 @@ internal object SheetTrace {
     fun errors(sheet: Sheet): List<Long> = ArrayList<Long>().also { out -> sheet.cells.forEach { k, cell -> if (cell.kind == SheetKind.Error) out += k } }
         .sortedWith(compareBy({ Sheet.row(it) }, { Sheet.col(it) }))
 }
+
+/**
+ * Review › Spelling in Tables (Words' dictionaries, [WriterSpelling]): each word of the sheet's cells of words (not
+ * formulas, not numbers), in reading order, to check; a word changed in its cell.
+ */
+internal object SheetSpelling {
+    /** The words to check: their cell, where they are in its words, the word. */
+    fun words(sheet: Sheet): List<Triple<Long, IntRange, String>> {
+        val out = ArrayList<Triple<Long, IntRange, String>>()
+        sheet.cells.forEach { k, c -> if (c.kind == SheetKind.Text && c.formula == null) WriterSpelling.words(c.text).forEach { r -> out += Triple(k, r, c.text.substring(r)) } }
+        return out.sortedWith(compareBy({ Sheet.row(it.first) }, { Sheet.col(it.first) }, { it.second.first }))
+    }
+
+    /** Cell [cell]'s words with [r] made [with] (its rich text's looks given up: one look, the cell's). */
+    fun changed(cell: SheetCell, r: IntRange, with: String) = cell.copy(text = cell.text.replaceRange(r, with), runs = null)
+}

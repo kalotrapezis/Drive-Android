@@ -449,8 +449,13 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       intersect, subtract — later); edit points (later).
 - [ ] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`
       is played today, not set); **Morph** (later: the most used modern transition).
-- [ ] **Animations**: start on click / with previous / after previous; duration and delay; entrance, emphasis and
+- [~] **Animations**: start on click / with previous / after previous; duration and delay; entrance, emphasis and
       exit kinds; the animation list (pane) to reorder; animation painter; motion paths and triggers (later).
+      Found 17 Oct (office-D session): start, duration (Fast/Medium/Slow), delay, the kinds and Earlier/Later were already in Options and
+      Effect. Added: **Animation pane** (the slide's effects in order — click number, what, to what, when, how long; tap to choose, ↑ ↓,
+      take away) and **Animation painter** (the chosen thing's effects put on the next thing chosen, in place of its own). **Shared
+      piece:** none of Words' (Words has no animations); the format painter's way of working. Emulator: Fade painted from the title onto
+      the subtitle, both in the pane. Not yet: motion paths and triggers (later).
 - [~] **Slide show**: go to a slide by number or from a grid during the show; keyboard keys as PowerPoint's (N/P,
       arrows, B/W screen, number + Enter, Esc); keep or discard the pen's ink at the end, saved into the deck;
       set-up options (loop, without animations, use timings or not); subtitles (later).

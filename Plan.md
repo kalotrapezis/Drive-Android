@@ -20,7 +20,7 @@ How to write here:
 - [x] (66b4b5a) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
 - [x] (4ddb8da) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
 - [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
-- [x] (next commit) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
+- [x] (20e0b17) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -59,8 +59,9 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] (386b04c) Tab names and order: Selection first when something is chosen, then File, Home, Insert, … as Words'; the
       contextual tab (Picture, Table, Column, Row, Sheet) comes by itself, in one place and colour in every app.
       Done: Slides' "Slide" tab is Home (PowerPoint's Slides group is on Home); what is chosen on a slide has its own
-      last tab named by it (Text box, Picture, Table, Chart, Shape) — Slides' Selection tab is left for Cut/Copy/Paste
-      (B); the contextual tab is a lighter tone of each app's colour; Words' "Image" tab is "Picture". Tablet 17 Oct.
+      last tab named by it (Text box, Image, Table, Chart, Shape) — Slides' Selection tab is left for Cut/Copy/Paste
+      (B); the contextual tab is a lighter tone of each app's colour. The picture's tab is **Image** in Words and
+      Slides (the user, 17 Oct: "It should be Image not Picture" — 386b04c had renamed it, put back). Tablet 17 Oct.
 - [x] File holds the same items in every app: Save, Versions, Export PDF, Print, Share, Open in another app, About
       this file, Send log, Settings. Slides lacks Versions, Export PDF, Print, About and Send log today; the checklist
       above says Slides' Export PDF is done, but its File tab has no such button, so check that line.

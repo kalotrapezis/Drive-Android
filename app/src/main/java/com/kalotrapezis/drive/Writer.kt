@@ -1251,7 +1251,7 @@ internal fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Picture"), Table("Table"), Selection("Selection") }
+private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Image"), Table("Table"), Selection("Selection") }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)

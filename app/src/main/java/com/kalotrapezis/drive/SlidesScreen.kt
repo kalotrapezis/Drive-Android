@@ -823,9 +823,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val itemKind = e?.let { e1 ->
                             val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
                             when (val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }) {
-                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> "Picture"; is SlideItem.Chart -> "Chart"
+                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> "Image"; is SlideItem.Chart -> "Chart"
                                 is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
-                                null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Picture" else "Shape"
+                                null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Image" else "Shape"
                             }
                         } ?: "Shape"
                         // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island

@@ -41,6 +41,9 @@ How to write here:
       office-engine-17oct.md in the group's notes folder). Tablet in use (Crunchyroll) 15:00: these three seen on the emulator only.
 - [~] (office-B session, 17 Oct, from office-engine's hand-over) B on from Dropped drop cap: the rest of Insert, Arrange, Slide,
       Design, Draw, Review, View, File, Slide show, References; then C, then A's walk. Tablet: Crunchyroll in front 15:35 — emulator.
+      Done here: Dropped (5bf71af), Chart (1617bd3), Link (6ae8501), Header & footer (9578abf), Symbol/Date/Line break/Equation
+      (4e68384). Unit suite 415/0/7; sweep 349 + 29, none failing (after 9578abf). Tablet still Crunchyroll at 16:22: all on the
+      emulator only. Handing on (notes: office-B-17oct.md in the group's notes folder); next WordArt, Comment, then Arrange.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

@@ -70,6 +70,9 @@ private const val U = 20f
 private fun StaticLayout.topPt(line: Int) = getLineTop(line) / U
 private fun StaticLayout.bottomPt(line: Int) = getLineBottom(line) / U
 
+/** A list marker's own look: [color] 0xAARRGGBB, [size] a share of its letters', [font] its face (a slide's buClr, buSzPct, buFont). */
+internal class MarkerLook(val color: Int?, val size: Float, val font: String?)
+
 /** A tab stop: where (pt from the text's left edge), how the text after it lines up ('l', 'r', 'c'), what fills the gap. */
 internal data class TabStop(val pos: Float, val type: Char, val leader: Char? = null)
 
@@ -171,6 +174,10 @@ internal abstract class DocStyles {
     /** A run's font name from its raw settings (Word's rFonts, ODF's font attributes). */
     open fun fontName(raw: String?): String? = raw?.let { Regex("""(?:w:ascii|w:hAnsi|style:font-name|fo:font-family)="([^"]+)"""").find(it)?.groupValues?.get(1) }
         ?.trim('\'', ' ')?.replace(Regex("""\d+$"""), "")
+    /** A list item's number or bullet where paragraphs are stacked (a header, a cell, a text box, a slide's box). */
+    open fun marker(p: DocPara): String? = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
+    /** Its own look (a slide's bullet); null: its paragraph's first letters'. */
+    open fun markerLook(p: DocPara): MarkerLook? = null
     /** A list item's number or bullet as its list writes it ("2.1.", "a)", "iv."), from the counts at each level. */
     open fun listLabel(p: DocPara, counts: IntArray): String? = null
     /** Each level's number format and text ("lowerLetter", "%2.") of the file's numbered lists, for the editor; null: Writer's 1. 2. 3. */
@@ -1006,12 +1013,21 @@ internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val in
             canvas.restore()
             return
         }
-        canvas.save()
-        canvas.clipRect(b)
-        val room = (b.height() - 2 * inset.second - text.height).coerceAtLeast(0f)
-        canvas.translate(b.left + inset.first, b.top + inset.second + when (anchor) { 'c' -> room / 2; 'b' -> room; else -> 0f })
-        LaidPage.drawParts(canvas, text.pieces, text.boxes, text.lines)
-        canvas.restore()
+        framed(canvas, text, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat(), inset.first, inset.second, inset.first, inset.second, anchor, true)
+    }
+    companion object {
+        /**
+         * Words laid out in a frame (a text box, a slide's box or shape, a cell): [text] [left]…[bottom] in from the box's
+         * sides, at its top, middle or bottom ([anchor] 't', 'c', 'b'); cut at the box when [clip] (PowerPoint lets it overflow).
+         */
+        fun framed(canvas: Canvas, text: Block, x: Float, y: Float, w: Float, h: Float, left: Float, top: Float, right: Float, bottom: Float, anchor: Char, clip: Boolean) {
+            canvas.save()
+            if (clip) canvas.clipRect(x, y, x + w, y + h)
+            val room = (h - (top + bottom) - text.height).let { if (clip) it.coerceAtLeast(0f) else it }
+            canvas.translate(x + left, y + top + when (anchor) { 'c' -> room / 2; 'b' -> room; else -> 0f })
+            LaidPage.drawParts(canvas, text.pieces, text.boxes, text.lines)
+            canvas.restore()
+        }
     }
     override fun setAlpha(alpha: Int) = Unit
     override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
@@ -1412,7 +1428,7 @@ internal object OfficePages {
      * Paragraphs (and tables) one under the other in [width], from 0,0 — a header, a footer, a table's cell. Floating
      * pictures go to [floats] placed from ([left], [top]) when given; else (in a cell) they are left out.
      */
-    private fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
+    internal fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
         floats: MutableList<LaidPage.Floating>?, left: Float, top: Float, tableExtraWidth: Float = 0f, under: ParaLook? = null): Block {
         val area = page.copy(width = width, left = 0f, right = 0f)
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
@@ -1424,7 +1440,7 @@ internal object OfficePages {
                 return@forEachIndexed
             }
             val look = styles.look(p).let { l -> under?.let { u -> l.copy(bold = l.bold ?: u.bold, italic = l.italic ?: u.italic, color = l.color ?: u.color, sizePt = l.sizePt ?: u.sizePt) } ?: l }
-            val marker = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
+            val marker = styles.marker(p)
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, area, marker, pictureBytes, floating)
             if (i > 0) y += look.before
@@ -1625,6 +1641,14 @@ internal object OfficePages {
                 r.sizePt?.let { mark(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
                 OfficeFonts.typeface(styles.fontName(r.font))?.let { mark(TypefaceSpan(OfficeFonts.styled(it, r.bold, r.italic))) }
                 r.color?.let { mark(ForegroundColorSpan(0xFF000000.toInt() or it)) }
+            }
+            styles.markerLook(p)?.let { m ->
+                fun mark(s: Any) = text.setSpan(s, 0, marker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                m.color?.let { mark(ForegroundColorSpan(it)) }
+                if (m.size != 1f) mark(RelativeSizeSpan(m.size))
+                // its own face, else the paragraph's with the phone's behind it (a symbol the letters' face lacks)
+                text.getSpans(0, marker.length, TypefaceSpan::class.java).forEach(text::removeSpan)
+                OfficeFonts.typeface(m.font)?.let { mark(TypefaceSpan(it)) }
             }
         }
         for (r in OfficeFormats.tidy(p.runs)) {

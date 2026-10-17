@@ -2,11 +2,6 @@ package com.kalotrapezis.drive
 
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.text.Layout
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.StaticLayout
-import android.text.TextPaint
 import org.w3c.dom.Element
 import kotlin.math.max
 
@@ -17,7 +12,8 @@ import kotlin.math.max
  */
 internal class SlideRun(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: Int, val font: String?)
 internal class SlidePara(val runs: List<SlideRun>, val align: Char, val level: Int, val bullet: String?, val bulletColor: Int?,
-    val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float)
+    val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float,
+    /** the bullet's size, a share of its letters' (buSzPct); its own face (buFont) */ val bulletSize: Float = 1f, val bulletFont: String? = null)
 /** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box. */
 internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false)
 
@@ -445,6 +441,8 @@ internal object Slides {
             val anchor = when (bodyAttr("anchor")) { "ctr" -> 'c'; "b" -> 'b'; else -> 't' }
             fun inset(a: String, d: Float) = (bodyAttr(a)?.toFloatOrNull()?.div(EMU)) ?: d
             val scale = bodyPr.firstNotNullOfOrNull { it.kid("normAutofit")?.attr("fontScale")?.toFloatOrNull() }?.div(100_000f) ?: 1f
+            // shrunk on overflow, lines closer too: PowerPoint takes this off each line's spacing (20%: 100% → 80%)
+            val reduce = bodyPr.firstNotNullOfOrNull { it.kid("normAutofit")?.attr("lnSpcReduction")?.toFloatOrNull() }?.div(100_000f) ?: 0f
             val out = paras.map { p ->
                 val pPr = p.kid("pPr")
                 val lvl = pPr?.attr("lvl")?.toIntOrNull() ?: 0
@@ -473,7 +471,8 @@ internal object Slides {
                 fun spacing(n: String) = pKid(n)?.let { s -> s.kid("spcPts")?.attr("val")?.toFloatOrNull()?.div(100f) ?: s.kid("spcPct")?.attr("val")?.toFloatOrNull()?.let { it / 100_000f * (runs.firstOrNull()?.size ?: defaultSize) } } ?: 0f
                 val line = pKid("lnSpc")?.kid("spcPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f
                 SlidePara(runs, when (pAttr("algn")) { "ctr" -> 'c'; "r" -> 'r'; "just" -> 'j'; else -> 'l' }, lvl, bullet,
-                    pKid("buClr")?.let(::color), pt("marL"), pt("indent"), spacing("spcBef") * scale, spacing("spcAft") * scale, line * (1 - (1 - scale) / 5))
+                    pKid("buClr")?.let(::color), pt("marL"), pt("indent"), spacing("spcBef") * scale, spacing("spcAft") * scale, (line - reduce).coerceAtLeast(0.5f),
+                    pKid("buSzPct")?.attr("val")?.toFloatOrNull()?.div(100_000f) ?: 1f, pKid("buFont")?.attr("typeface"))
             }
             return SlideText(out, anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
                 bodyPr.any { it.kid("normAutofit") != null })
@@ -526,7 +525,7 @@ internal object Slides {
                     if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2)
                     if (item.paths.isNotEmpty() || item.gradient != null) outline(c, item, paint) else item.shape?.drawAt(c, item.x, item.y, item.w, item.h)
                     if (item.flipH || item.flipV) c.scale(if (item.flipH) -1f else 1f, if (item.flipV) -1f else 1f, item.x + item.w / 2, item.y + item.h / 2) // words not mirrored
-                    item.text?.let { text(c, it, item.x, item.y, item.w, item.h) }
+                    item.text?.let { SlidesText.draw(c, it, item.x, item.y, item.w, item.h) }
                 }
                 is SlideItem.Picture -> {
                     val gif = if (isGif(item)) gifs.get(item) ?: runCatching { item.bytes()?.let { b ->
@@ -677,64 +676,17 @@ internal object Slides {
         var y = t.y
         t.cells.forEachIndexed { r, row ->
             // a row grows to its words, as PowerPoint's
-            val need = row.mapIndexed { i, (_, text) -> text?.let { measure(it, t.cols.getOrElse(i) { 0f }) } ?: 0f }.maxOrNull() ?: 0f
+            val need = row.mapIndexed { i, (_, text) -> text?.let { SlidesText.height(it, t.cols.getOrElse(i) { 0f }) } ?: 0f }.maxOrNull() ?: 0f
             val h = max(t.rows.getOrElse(r) { 0f }, need)
             var x = t.x
             row.forEachIndexed { i, (fill, text) ->
                 val w = t.cols.getOrElse(i) { 0f }
                 fill?.let { paint.style = Paint.Style.FILL; paint.color = it; c.drawRect(x, y, x + w, y + h, paint) }
                 t.line?.let { paint.style = Paint.Style.STROKE; paint.strokeWidth = 1f; paint.color = it; c.drawRect(x, y, x + w, y + h, paint) }
-                text?.let { text(c, it, x, y, w, h) }
+                text?.let { SlidesText.draw(c, it, x, y, w, h) }
                 x += w
             }
             y += h
-        }
-    }
-
-    private fun layouts(t: SlideText, w: Float, k: Float = 1f): List<Pair<SlidePara, StaticLayout>> {
-        val width = max(1f, w - t.insets[0] - t.insets[2])
-        return t.paras.map { p ->
-            val sb = SpannableStringBuilder()
-            val lead = p.marL + p.indent
-            p.bullet?.let { b -> sb.append(b).append(' '); p.bulletColor?.let { sb.setSpan(android.text.style.ForegroundColorSpan(it), 0, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) } }
-            for (r in p.runs) {
-                val s = sb.length; sb.append(r.text); val e = sb.length
-                if (e == s) continue
-                sb.setSpan(android.text.style.AbsoluteSizeSpan((r.size * k).toInt().coerceAtLeast(1)), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                sb.setSpan(android.text.style.ForegroundColorSpan(r.color), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                val style = (if (r.bold) android.graphics.Typeface.BOLD else 0) or (if (r.italic) android.graphics.Typeface.ITALIC else 0)
-                if (style != 0) sb.setSpan(android.text.style.StyleSpan(style), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                if (r.underline) sb.setSpan(android.text.style.UnderlineSpan(), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                // the face in its weight: a TypefaceSpan of the plain face would undo the StyleSpan's bold
-                OfficeFonts.typeface(r.font ?: "")?.let { tf -> sb.setSpan(android.text.style.TypefaceSpan(OfficeFonts.styled(tf, r.bold, r.italic)), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
-            }
-            // the first line from marL + indent (a bullet hanging), the rest from marL
-            if (sb.isNotEmpty()) sb.setSpan(android.text.style.LeadingMarginSpan.Standard(lead.toInt().coerceAtLeast(0), p.marL.toInt().coerceAtLeast(0)), 0, sb.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-            val size = (p.runs.firstOrNull()?.size ?: 18f) * k
-            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = size; color = p.runs.firstOrNull()?.color ?: 0xFF000000.toInt() }
-            val align = when (p.align) { 'c' -> Layout.Alignment.ALIGN_CENTER; 'r' -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
-            val text: CharSequence = if (sb.isEmpty()) " " else sb
-            p to StaticLayout.Builder.obtain(text, 0, text.length, paint, if (t.wrap) width.toInt() else 100_000).setAlignment(align)
-                .setIncludePad(false).setLineSpacing(0f, p.line).build()
-        }
-    }
-
-    private fun measure(t: SlideText, w: Float) = layouts(t, w).sumOf { (p, l) -> (p.before + l.height + p.after).toDouble() }.toFloat() + t.insets[1] + t.insets[3]
-
-    /** A text body in its box: its paragraphs one under the other, from the top, the middle or the bottom. */
-    fun text(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
-        val room = h - t.insets[1] - t.insets[3]
-        fun height(l: List<Pair<SlidePara, StaticLayout>>) = l.sumOf { (p, s) -> (p.before + s.height + p.after).toDouble() }.toFloat()
-        // shrink on overflow: a size a twentieth smaller each time, until the words fit (no smaller than a third)
-        var k = 1f
-        var laid = layouts(t, w)
-        while (t.shrink && height(laid) > room && k > 0.35f) { k -= 0.05f; laid = layouts(t, w, k) }
-        val total = height(laid)
-        var top = y + t.insets[1] + when (t.anchor) { 'c' -> (room - total) / 2; 'b' -> room - total; else -> 0f }
-        for ((p, l) in laid) {
-            top += p.before
-            c.save(); c.translate(x + t.insets[0], top); l.draw(c); c.restore()
-            top += l.height + p.after
         }
     }
 }

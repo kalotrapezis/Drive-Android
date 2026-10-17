@@ -43,7 +43,7 @@ internal object SlidesOdp {
     private fun hex(v: String?) = v?.takeIf { it.startsWith("#") && it.length == 7 }?.substring(1)?.toIntOrNull(16)?.or(0xFF000000.toInt())
 
     private class Style(val parent: String?, val props: Map<String, String>)
-    private class Bullet(val char: String?, val before: Float, val label: Float, val color: Int?)
+    private class Bullet(val char: String?, val before: Float, val label: Float, val color: Int?, val size: Float = 1f, val font: String? = null)
 
     fun read(file: java.io.File): Deck = java.util.zip.ZipFile(file).let { zip ->
         fun part(n: String): ByteArray? = zip.getEntry(n)?.let { e -> zip.getInputStream(e).use { it.readBytes() } }
@@ -71,7 +71,9 @@ internal object SlidesOdp {
                     val lp = lv.kids().firstOrNull { it.localName == "list-level-properties" }
                     val tp = lv.kids().firstOrNull { it.localName == "text-properties" }
                     (lv.a(TEXT, "level")?.toIntOrNull() ?: 1) - 1 to Bullet(if (lv.localName == "list-level-style-bullet") lv.a(TEXT, "bullet-char") else if (lv.localName == "list-level-style-number") "1." else null,
-                        pt(lp?.a(TEXT, "space-before")) ?: 0f, pt(lp?.a(TEXT, "min-label-width")) ?: 0f, hex(tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "color")))
+                        pt(lp?.a(TEXT, "space-before")) ?: 0f, pt(lp?.a(TEXT, "min-label-width")) ?: 0f, hex(tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "color")),
+                        tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "font-size")?.takeIf { it.endsWith("%") }?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
+                        tp?.a(STYLE, "font-name") ?: tp?.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0", "font-family")?.takeIf { it.isNotEmpty() })
                 }
             }
         }
@@ -138,7 +140,8 @@ internal object SlidesOdp {
                 val align = when (pProp("text-align")) { "center" -> 'c'; "end", "right" -> 'r'; "justify" -> 'j'; else -> 'l' }
                 val marL = (bullet?.let { it.before + it.label } ?: 0f) + (pt(pProp("margin-left")) ?: 0f)
                 SlidePara(runs, align, level, bullet?.char, bullet?.color, marL, -(bullet?.label ?: 0f) + (pt(pProp("text-indent")) ?: 0f),
-                    pt(pProp("margin-top")) ?: 0f, pt(pProp("margin-bottom")) ?: 0f, pProp("line-height")?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f).let { paras += it }
+                    pt(pProp("margin-top")) ?: 0f, pt(pProp("margin-bottom")) ?: 0f, pProp("line-height")?.removeSuffix("%")?.toFloatOrNull()?.div(100f) ?: 1f,
+                    bullet?.size ?: 1f, bullet?.font).let { paras += it }
             }
             // a list's items sit one level in each time a list is inside an item
             fun walkList(list: Element, level: Int, name: String?) {

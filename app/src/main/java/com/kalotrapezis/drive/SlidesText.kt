@@ -1,0 +1,77 @@
+package com.kalotrapezis.drive
+
+import android.graphics.Canvas
+
+/**
+ * A slide's words laid out and drawn by Words' engine (the Office engine, step 1, 17 Oct: "Text is text no matter where it
+ * is"): a [SlideText] as Words' paragraphs and runs with looks of their own, stacked by [OfficePages.stack] and drawn in
+ * the box by [TextBoxDrawable.framed] — not cut at the box, as PowerPoint lets words overflow it.
+ */
+internal object SlidesText {
+    /** A slide's paragraphs' looks, bullets and their colours; its runs name their face itself. */
+    private class Styles(val looks: java.util.IdentityHashMap<DocPara, ParaLook>, val bullets: java.util.IdentityHashMap<DocPara, SlidePara>) : DocStyles() {
+        override fun look(p: DocPara) = looks[p] ?: ParaLook()
+        override fun fontName(raw: String?) = raw
+        // a bullet no face here has (Noto Sans Symbols' 🞆): Word's •; one the phone draws as a colour emoji (⚫) asked for as a letter, in its colour
+        override fun marker(p: DocPara) = bullets[p]?.bullet?.let { bullet(it) }?.let { b -> if (glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
+        override fun markerLook(p: DocPara) = bullets[p]?.let { MarkerLook(it.bulletColor, it.bulletSize, it.bulletFont) }
+        private val glyphs = android.graphics.Paint()
+    }
+
+    /** Laid out per box: slides are drawn often (thumbnails, each frame of an animation). */
+    private val laid = java.util.WeakHashMap<SlideText, HashMap<Long, Block>>()
+
+    /** [t]'s words in a box [w] wide, their sizes times [k] (shrink on overflow), from the box's inside left. */
+    fun block(t: SlideText, w: Float, k: Float = 1f): Block {
+        val key = (w.toRawBits().toLong() shl 32) or k.toRawBits().toLong().and(0xFFFFFFFFL)
+        synchronized(laid) { laid[t]?.get(key) }?.let { return it }
+        val looks = java.util.IdentityHashMap<DocPara, ParaLook>(); val bullets = java.util.IdentityHashMap<DocPara, SlidePara>()
+        val paras = t.paras.map { p ->
+            val first = p.runs.firstOrNull()
+            // shortcut: a run's colour loses its see-through part (Words' runs are 0xRRGGBB), when one has it: carry alpha in DocRun
+            val runs = p.runs.map { r -> DocRun(r.text.replace('\n', LINE_BREAK), bold = r.bold, italic = r.italic, underline = r.underline,
+                sizePt = r.size * k, color = r.color and 0xFFFFFF, font = r.font) }
+            DocPara(runs, list = p.bullet?.let { DocList(it.firstOrNull()?.isDigit() == true, p.level) },
+                align = when (p.align) { 'c' -> DocAlign.Center; 'r' -> DocAlign.End; 'j' -> DocAlign.Justify; else -> DocAlign.Start }).also { d ->
+                looks[d] = ParaLook(before = p.before, after = p.after, lineMultiple = p.line * single(first), left = p.marL, firstLine = p.indent, listIndented = true,
+                    sizePt = (first?.size ?: 18f) * k, font = first?.font, color = first?.color?.and(0xFFFFFF))
+                if (p.bullet != null) bullets[d] = p
+            }
+        }
+        val styles = Styles(looks, bullets)
+        val doc = OfficeDoc(paras, basePt = 18f * k)
+        val inner = maxOf(1f, w - t.insets[0] - t.insets[2])
+        fun stack(width: Float) = OfficePages.stack(doc, paras, styles, DocPage(), width, { null }, null, 0f, 0f)
+        val block = if (t.wrap) stack(inner) else {
+            // Not wrapped: as wide as its longest line, standing out of the box on the side its alignment says.
+            val wide = stack(100_000f).pieces.maxOfOrNull { pc -> (pc.firstLine..pc.lastLine).maxOf { pc.layout.getLineWidth(it) } / 20f + pc.x } ?: 0f
+            val width = maxOf(inner, wide + 1f)
+            // shortcut: the first paragraph's alignment places them all; paragraphs aligned differently in one unwrapped box are rare
+            stack(width).moved(when (paras.firstOrNull()?.align) { DocAlign.Center -> (inner - width) / 2; DocAlign.End -> inner - width; else -> 0f }, 0f)
+        }
+        synchronized(laid) { laid.getOrPut(t) { HashMap() }[key] = block }
+        return block
+    }
+
+    /**
+     * PowerPoint's single line is 1.2 times its letters' size (LibreOffice draws it so too), Word's the font's own height:
+     * the share of Words' line that makes PowerPoint's, for [r]'s face.
+     */
+    private fun single(r: SlideRun?): Float {
+        val fm = android.text.TextPaint().apply { typeface = OfficeFonts.styled(OfficeFonts.typeface(r?.font), r?.bold == true, r?.italic == true); textSize = 100f }.fontMetrics
+        return 120f / (fm.descent - fm.ascent + fm.leading).coerceAtLeast(1f)
+    }
+
+    /** How tall [t] stands in a box [w] wide, its insets too (a table's row grows to it). */
+    fun height(t: SlideText, w: Float) = block(t, w).height + t.insets[1] + t.insets[3]
+
+    /** [t] in its box: from the top, the middle or the bottom; made smaller until it fits when it shrinks on overflow. */
+    fun draw(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
+        val room = h - t.insets[1] - t.insets[3]
+        // shrink on overflow: a size a twentieth smaller each time, until the words fit (no smaller than a third)
+        var k = 1f
+        var text = block(t, w)
+        while (t.shrink && text.height > room && k > 0.35f) { k -= 0.05f; text = block(t, w, k) }
+        TextBoxDrawable.framed(c, text, x, y, w, h, t.insets[0], t.insets[1], t.insets[2], t.insets[3], t.anchor, false)
+    }
+}

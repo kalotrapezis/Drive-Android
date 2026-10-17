@@ -138,12 +138,24 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       floats (a text box's lines too) and an MD5 of the page drawn at 2×, against `expected-<model>.txt` (emulator-5554
       stored; the same twice running). Run: assembleDebug assembleDebugAndroidTest, install both, `am instrument -w -e
       class com.kalotrapezis.drive.WordsFingerprintDeviceTest com.kalotrapezis.drive.test/androidx.test.runner.AndroidJUnitRunner`.
-- [ ] 1. Slides' text boxes and table cells drawn by Words' engine: `stack` shared; the frame gets four insets, no
+- [x] 1. Slides' text boxes and table cells drawn by Words' engine: `stack` shared; the frame gets four insets, no
       clipping (PowerPoint lets text overflow its box) and no default border; a list-marker hook so a slide's own
       bullet character and colour show; a `SlidesText.kt` adapter (a slide's text → `DocPara`s, its own `DocStyles`);
       laid text cached per box (slides are drawn often: thumbnails, animation). Fixes the four bugs above. ~120 new
       lines, ~45 removed, ~15 changed in OfficePages. **Risk:** line height — Words spaces lines as Word does, a few
       percent taller than Slides draws today; checked against LibreOffice's PDFs of real decks before it is committed.
+      Done (office-engine session, 17 Oct): `SlidesText.kt` (a SlideText → DocParas with their own looks, stacked by
+      `OfficePages.stack`, cached per box and size), `TextBoxDrawable.framed` (four insets, clip or not; Words' text
+      boxes draw through it), DocStyles' `marker`/`markerLook` hooks (a slide's bullet character, colour, size share
+      buSzPct and face buFont; LibreOffice's list font size and family). Read better too: PowerPoint's lnSpcReduction
+      (was guessed from fontScale). Line height: PowerPoint's single line is 1.2 × the letters' size (LibreOffice draws
+      it so), Word's the font's own — the adapter turns one into the other. Checked against LibreOffice's PDFs of 11
+      decks (99 slides: the user's cronbach, lecture 3–4, counseling, phishing, ethismos, Test-Sheets' four, olive,
+      slides): line breaks and line pitch now as LibreOffice's (before: lines 4–15 % apart, bullets as tofu,
+      justify ignored, sizes cut to whole points); Words' fingerprint unchanged; unit suite 402 / 0 / 7; sweep 349 + 29,
+      none failing. Not the engine's (seen in passing): LibreOffice re-fits normAutofit itself (lecture 3–4 bigger
+      there; Tetra keeps PowerPoint's saved fontScale); small caps (cap="small") wait for step 3. Tool:
+      `SlidesRenderDeviceTest` draws decks pushed to files/slides-in as PNGs.
 - [ ] 2. Text effects on slides: shadow, glow and outline read from PowerPoint's `a:effectLst`/`a:ln` into Words'
       `TextEffects`; WordArt bends already shared (`TextWarp`). ~40 lines.
 - [ ] 3. Slides read straight into `DocPara`/`DocRun` (`SlideRun`/`SlidePara` gone): slides gain strike, sub- and

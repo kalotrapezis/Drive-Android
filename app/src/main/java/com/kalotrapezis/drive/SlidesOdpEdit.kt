@@ -565,6 +565,7 @@ internal object SlidesOdpEdit {
         /** Page [page] (showing [slide] as read, [uid] in the edit) with its edits. */
         // Design › Format background: the pictures' fill images, for styles.xml (where LibreOffice keeps them), one a picture
         val fillImages = LinkedHashMap<String, String>()
+        val fillGradients = ArrayList<Pair<Int, Int>>() // background gradients made here, for styles.xml
         fun apply(page: Element, slide: Slide, uid: Int) {
             // Design › Format background: the page's own drawing-page style, a colour or a picture stretched over it
             edit.backgrounds[uid]?.let { b ->
@@ -573,6 +574,9 @@ internal object SlidesOdpEdit {
                     val d = props(st, "drawing-page-properties")
                     listOf("fill-gradient-name", "fill-image-name", "fill-hatch-name").forEach { d.removeAttributeNS(DRAW, it) }
                     if (name != null) { d.setAttributeNS(DRAW, "draw:fill", "bitmap"); d.setAttributeNS(DRAW, "draw:fill-image-name", name); d.setAttributeNS(STYLE, "style:repeat", "stretch") }
+                    // a gradient: LibreOffice's linear one, top to bottom (angle 0), defined in styles.xml
+                    else if (b.to != null) { val g = (b.color ?: -1) to b.to; if (g !in fillGradients) fillGradients += g
+                        d.setAttributeNS(DRAW, "draw:fill", "gradient"); d.setAttributeNS(DRAW, "draw:fill-color", hex(g.first)); d.setAttributeNS(DRAW, "draw:fill-gradient-name", "tetra-grad-${fillGradients.indexOf(g) + 1}") }
                     else { d.setAttributeNS(DRAW, "draw:fill", "solid"); d.setAttributeNS(DRAW, "draw:fill-color", hex(b.color ?: -1)) }
                     d.setAttributeNS(PRES, "presentation:background-visible", "true")
                 })
@@ -772,6 +776,10 @@ internal object SlidesOdpEdit {
         if (fillImages.isNotEmpty()) read("styles.xml")?.let { String(it) }?.let { st ->
             val images = fillImages.values.withIndex().joinToString("") { (k, href) -> """<draw:fill-image draw:name="tetra-bg-${k + 1}" xlink:href="$href" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>""" }
             out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$images</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$images</office:styles><office:automatic-styles")).toByteArray()
+        }
+        if (fillGradients.isNotEmpty()) (out["styles.xml"] ?: read("styles.xml"))?.let { String(it) }?.let { st ->
+            val defs = fillGradients.withIndex().joinToString("") { (k, g) -> "<draw:gradient draw:name=\"tetra-grad-${k + 1}\" draw:display-name=\"Tetra gradient ${k + 1}\" draw:style=\"linear\" draw:cx=\"50%\" draw:cy=\"50%\" draw:start-color=\"${hex(g.first)}\" draw:end-color=\"${hex(g.second)}\" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:angle=\"0deg\" draw:border=\"0%\"/>" }
+            out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$defs</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$defs</office:styles><office:automatic-styles")).toByteArray()
         }
         if (dashes.isNotEmpty()) (out["styles.xml"] ?: read("styles.xml"))?.let { out["styles.xml"] = LineDash.intoStyles(String(it), dashes).toByteArray() }
         if (manifest != null && out.keys.any { it.startsWith("Pictures/") || it.startsWith("Media/") || it.startsWith("Object tetra-") }) out["META-INF/manifest.xml"] = xml(manifest)

@@ -1223,6 +1223,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 Swatches(w, R.drawable.ic_format_color_fill, "Background", SHAPE_COLOURS.map { Color(it) }) { col ->
                     change(e.copy(backgrounds = e.backgrounds + (uid to SlidesEdit.Back(color = col?.toArgb() ?: 0xFFFFFFFF.toInt())))) }
+                // a gradient (PowerPoint's Gradient fill): the colour's light tint at the top to the colour at the foot
+                Swatches(w, R.drawable.ic_gradient, "Gradient", SHAPE_COLOURS.map { Color(it) }) { col -> col?.toArgb()?.let { c ->
+                    fun tint(v: Int) = v + (255 - v) * 7 / 10
+                    val light = android.graphics.Color.rgb(tint(android.graphics.Color.red(c)), tint(android.graphics.Color.green(c)), tint(android.graphics.Color.blue(c)))
+                    change(e.copy(backgrounds = e.backgrounds + (uid to SlidesEdit.Back(color = light, to = c)))); WriterLog.i("Slides: gradient background") } }
                 RibbonButton("Background picture", w, R.drawable.ic_gallery) { pickBack.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 e.backgrounds[uid]?.let { b ->
                     RibbonButton("Apply to all", w, R.drawable.ic_done_all) { change(e.copy(backgrounds = e.backgrounds + e.order.associate { it.uid to b })) }

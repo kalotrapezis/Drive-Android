@@ -262,6 +262,29 @@ class SlidesTest {
         }
     }
 
+    /** Design › Background › Gradient: a slide's own, top to bottom — PowerPoint's gradFill, LibreOffice's gradient — read back from both and their conversions. */
+    @Test fun `a gradient background saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(backgrounds = mapOf(1 to SlidesEdit.Back(color = 0xFFDDEBF7.toInt(), to = 0xFF2E75B6.toInt())))
+            fun check(d: Deck, how: String) {
+                val g = d.slides[1].backGradient; assertTrue(how, g != null)
+                assertEquals(how, 0xDDEBF7, g!!.colors.first() and 0xFFFFFF); assertEquals(how, 0x2E75B6, g.colors.last() and 0xFFFFFF); assertEquals(how, 90f, g.angle, 1f)
+                assertTrue(how, d.slides[0].backGradient == null)
+            }
+            check(Deck(deck.width, deck.height, listOf(deck.slides[0], SlidesEdit.slide(deck, e, e.order[1]))), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("gradient-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** Design › Slide size: a 4:3 deck made 16:9 — fitted (as it was, in the middle) or maximized (bigger, its letters too, cut above and below). */
     @Test fun `slide size changed`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -140,7 +140,7 @@ internal object SlidesEdit {
             ((taken + added.values.flatten().map { it.id }).mapNotNull { it.toIntOrNull() }.filter { it >= 9000 }.maxOrNull()?.plus(1) ?: (9000 + added.values.sumOf { it.size })).toString()
     }
     /** Design › Format background: a colour, or a picture (a copy kept on the phone until Save puts it in the file, [ext] png/jpeg). */
-    data class Back(val color: Int? = null, val picture: String? = null, val ext: String = "png")
+    data class Back(val color: Int? = null, val picture: String? = null, val ext: String = "png", /** a gradient: from [color] at the top to this at the foot */ val to: Int? = null)
     /** Arrange › Rotate and Flip: degrees clockwise about its middle, mirrored across or up and down. */
     data class Turn(val deg: Float = 0f, val flipH: Boolean = false, val flipV: Boolean = false)
     /** [item] turned as [t] says (a shape or picture; others as they are). */
@@ -291,8 +291,9 @@ internal object SlidesEdit {
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
         return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide, edit.comments[e.uid] ?: s.comments,
-            edit.backgrounds[e.uid].let { b -> if (b == null) s.backPicture else b.picture?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } })
-            .let { sl -> edit.backgrounds[e.uid]?.color?.let { c -> Slide(sl.items, c, sl.notes, sl.hidden, sl.part, sl.transition, sl.steps, sl.footers, sl.footerIds, sl.titleSlide, sl.comments, sl.backPicture) } ?: sl }
+            edit.backgrounds[e.uid].let { b -> if (b == null) s.backPicture else b.picture?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } },
+            backGradient = edit.backgrounds[e.uid].let { b -> if (b == null) s.backGradient else b.to?.let { SlideGradient(intArrayOf(b.color ?: -1, it), floatArrayOf(0f, 1f), 90f) } })
+            .let { sl -> edit.backgrounds[e.uid]?.color?.let { c -> Slide(sl.items, c, sl.notes, sl.hidden, sl.part, sl.transition, sl.steps, sl.footers, sl.footerIds, sl.titleSlide, sl.comments, sl.backPicture, backGradient = sl.backGradient) } ?: sl }
     }
     /** A layout's date, footer or number box [sh] holding [words], in its first run's look ([id]: its own). */
     fun worded(sh: SlideItem.Shape, words: String, id: String? = sh.id): SlideItem.Shape {
@@ -752,7 +753,9 @@ internal object SlidesEdit {
         // Design › Format background: the slide's own p:bg, first in its cSld (a picture by the relationship made for it)
         back?.let { b -> root.kids().firstOrNull { it.localName == "cSld" }?.let { cSld ->
             cSld.kids().filter { it.localName == "bg" }.forEach { cSld.removeChild(it) }
+            fun srgb(c: Int) = """<a:srgbClr val="${"%06X".format(c and 0xFFFFFF)}"/>"""
             val fill = if (b.picture != null) """<a:blipFill dpi="0" rotWithShape="1"><a:blip r:embed="${rels["background"]}"/><a:srcRect/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"""
+                else if (b.to != null) """<a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0">${srgb(b.color ?: -1)}</a:gs><a:gs pos="100000">${srgb(b.to)}</a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill>"""
                 else """<a:solidFill><a:srgbClr val="${"%06X".format((b.color ?: -1) and 0xFFFFFF)}"/></a:solidFill>"""
             cSld.insertBefore(doc.importNode(OfficeFormats.parse("""<p:bg xmlns:p="$P" xmlns:a="$A" xmlns:r="$R"><p:bgPr>$fill<a:effectLst/></p:bgPr></p:bg>""".toByteArray()).documentElement, true), cSld.firstChild)
         } }

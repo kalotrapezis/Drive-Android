@@ -341,6 +341,9 @@ internal object SlidesOdp {
             // a bitmap background (the page's, else its master's)
             fun bgPicture(style: String?) = if (prop("drawing-page", style, "d.fill") == "bitmap") prop("drawing-page", style, "d.fill-image-name")?.let(fillImages::get) else null
             val backPicture = (bgPicture(dp) ?: bgPicture(master?.a(DRAW, "style-name")))?.let { p -> { part(p) } }
+            // a gradient background: the page's own fill, else its master's
+            fun bgGradient(style: String?) = if (prop("drawing-page", style, "d.fill") == "gradient") prop("drawing-page", style, "d.fill-gradient-name")?.let(gradients::get) else null
+            val backGradient = if (prop("drawing-page", dp, "d.fill") != null) bgGradient(dp) else bgGradient(master?.a(DRAW, "style-name"))
             val notes = page.kids().firstOrNull { it.localName == "notes" }?.kids()?.firstOrNull { it.a(PRES, "class") == "notes" }
                 ?.getElementsByTagNameNS(TEXT, "p")?.let { l -> (0 until l.length).joinToString("\n") { plainText(l.item(it)) } }?.trim().orEmpty()
             // the transition: the page style's (LibreOffice's names), its length from the timing's own filter
@@ -385,7 +388,7 @@ internal object SlidesOdp {
                     fun dc(k: String) = an.kids().firstOrNull { it.localName == k && it.namespaceURI == "http://purl.org/dc/elements/1.1/" }?.textContent
                     SlideComment(DocComment("odp-$index-$n", dc("creator").orEmpty(), dc("date"), an.kids().filter { it.localName == "p" }.joinToString("\n") { it.textContent },
                         initials = an.kids().firstOrNull { it.localName == "creator-initials" }?.textContent), pt(an.a(SVG, "x")) ?: 0f, pt(an.a(SVG, "y")) ?: 0f) },
-                backPicture = backPicture, placeholders = page.kids().withIndex().filter { it.value.a(PRES, "class") != null }.map { "o${it.index}" }.toSet())
+                backPicture = backPicture, backGradient = backGradient, placeholders = page.kids().withIndex().filter { it.value.a(PRES, "class") != null }.map { "o${it.index}" }.toSet())
         }
         val slides = pages.mapIndexed { index, page -> pageSlide(index, page, page.a(DRAW, "master-page-name")) }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text

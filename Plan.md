@@ -59,7 +59,8 @@ How to write here:
       outline dash/shadow (Words' Shape options), choosing several, Select all, group/ungroup, distribute, Reset slide, slide size, gradient
       backgrounds, a deck's own tables, multilevel lists, Words' paragraph page; then engine step 5, C (Tables onto the engine), then A's walk.
       Tablet not touched tonight (the user asleep): emulator-5554 only. Done: dash/shadow (19f4206); several chosen, Select all, Group /
-      Ungroup, Distribute, Reset slide 4847685. Unit suite 439, 0 failing; sweep 349 + 29, none failing (21:45).
+      Ungroup, Distribute, Reset slide (4847685); slide size (396a8f8); gradient backgrounds. Unit suite 439, 0 failing; sweep 349 + 29,
+      none failing (21:45).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -401,6 +402,11 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       as a theme's copy is (`Edit.size`; the theme's and size's copies one, keyed by both). Only from a deck with nothing else changed
       ("Save first": the size moves everything). **Shared piece:** Design › Themes' copy (`themed`). `slide size changed` (both formats,
       both ways, LibreOffice's conversions); emulator: arrange.pptx made 16:9, saved — sldSz 12192000 × 6858000. Not: notes pages' size.
+      Gradient backgrounds (office-F session, 17 Oct): read — PowerPoint's bgPr gradFill and a theme's background fills (bgRef 1001 on,
+      `bgFillStyles`), LibreOffice's gradient page fill (a page's own fill, else its master's) — and drawn under the slide (`Slide.backGradient`,
+      the shapes' gradient drawing shared: `Slides.shader`); made in Design › Gradient (a colour: its light tint at the top to it at the foot;
+      `Back.to`), saved as PowerPoint's gradFill (lin 90°) and LibreOffice's linear draw:gradient in styles.xml. `a gradient background saved`
+      (both formats, LibreOffice's conversions read back as gradients); emulator: the title slide blue, top light. Not: radial gradients made.
 - [x] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
       Done 17 Oct (office-C session): a Draw tab (PowerPoint's place, after Insert) › Draw on slide opens Words' `DrawDialog` with the slide
       under the pens (it now takes a slide as it takes a page: `slide = width, height, drawing`) — pens, highlighter, eraser, move, undo,

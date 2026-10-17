@@ -113,7 +113,8 @@ internal class Slide(val items: List<SlideItem>, val background: Int, val notes:
     val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false,
     /** Review › Comments: its comments (Words' [DocComment]s, a reply naming its [DocComment.parent]) */ val comments: List<SlideComment> = emptyList(),
     /** a picture over its [background], stretched to the slide (PowerPoint's blipFill background, LibreOffice's bitmap fill) */ val backPicture: (() -> ByteArray?)? = null,
-    /** its own placeholders' ids (Home › Reset puts them back): as read, not kept by the edited slide */ val placeholders: Set<String> = emptySet())
+    /** its own placeholders' ids (Home › Reset puts them back): as read, not kept by the edited slide */ val placeholders: Set<String> = emptySet(),
+    /** a gradient over its [background] (PowerPoint's gradFill background, LibreOffice's gradient fill) */ val backGradient: SlideGradient? = null)
 /** A comment on a slide: Words' [comment], its marker at [x], [y] (points). */
 internal data class SlideComment(val comment: DocComment, val x: Float, val y: Float)
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList(),
@@ -178,6 +179,7 @@ internal object Slides {
         // the theme's colours and fonts, the master's map of them (bg1 → lt1…)
         var scheme = HashMap<String, Int>(); var major = "Calibri Light"; var minor = "Calibri"; var map = HashMap<String, String>()
         var fillStyles = emptyList<Element>() // the theme's fills a shape style's fillRef names (1, 2, 3)
+        var bgFillStyles = emptyList<Element>() // the theme's background fills a slide's bgRef names (1001, 1002, 1003)
         var ph: Int? = null // the style's colour, for the theme's fills that say "phClr"
 
         fun read(): Deck {
@@ -297,6 +299,9 @@ internal object Slides {
             // a picture background: the nearest that has a background says it (its own relationships name the picture)
             val backPicture = listOf(s to path, layout to layoutPath, master to masterPath).firstOrNull { (e, _) -> e?.kid("cSld")?.kid("bg") != null }?.let { (e, p) ->
                 e!!.kid("cSld")!!.kid("bg")!!.kid("bgPr")?.kid("blipFill")?.kid("blip")?.rid("embed")?.let { id -> p?.let { rels(xml, it)[id] } } }?.let { pic -> { part(pic) } }
+            // a gradient background: the nearest's own, or its theme's (bgRef 1001 on: the theme's background fills)
+            val backGradient = listOfNotNull(s, layout, master).firstNotNullOfOrNull { e -> e.kid("cSld")?.kid("bg") }?.let { b -> b.kid("bgPr")?.kid("gradFill")?.let { gradient(it) }
+                ?: b.kid("bgRef")?.let { r -> r.attr("idx")?.toIntOrNull()?.takeIf { it > 1000 }?.let { bgFillStyles.getOrNull(it - 1001) }?.takeIf { it.localName == "gradFill" }?.let { g -> gradient(g, color(r)) } } }
             val context = Placeholders(layout, master, defaults)
             val items = ArrayList<SlideItem>()
             fun tree(e: Element?, from: String, ctx: Placeholders?) = e?.kid("cSld")?.kid("spTree")?.let { shapes(it, rels(xml, from), ctx, items, null) }
@@ -319,7 +324,7 @@ internal object Slides {
             val own = s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp -> phOf(sp)?.attr("type")?.takeIf { it in kinds }?.let { k -> sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id")?.let { it to k } } }.toMap()
             val title = layout?.attr("type") == "title" || s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().any { phOf(it)?.attr("type") == "ctrTitle" }
             val phIds = s.below("ph").mapNotNull { (it.parentNode?.parentNode as? Element)?.kid("cNvPr")?.attr("id") }.toSet()
-            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path), backPicture, phIds)
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title, comments(path), backPicture, phIds, backGradient)
         }
 
         /** Who wrote comments: the older list's authors (by number) and PowerPoint 365's (by their GUID) — name and initials. */
@@ -398,6 +403,7 @@ internal object Slides {
             scheme = HashMap()
             t.below("clrScheme").firstOrNull()?.kids()?.forEach { c -> color(c)?.let { scheme[c.localName] = it and 0xFFFFFF } }
             fillStyles = t.below("fillStyleLst").firstOrNull()?.kids().orEmpty()
+            bgFillStyles = t.below("bgFillStyleLst").firstOrNull()?.kids().orEmpty()
             t.below("majorFont").firstOrNull()?.kid("latin")?.attr("typeface")?.let { major = it }
             t.below("minorFont").firstOrNull()?.kid("latin")?.attr("typeface")?.let { minor = it }
         }
@@ -704,11 +710,19 @@ internal object Slides {
         return shown.size
     }
 
+    /** [g] over the box [x], [y], [w] x [h]: along its angle through the box's middle, as far as the box reaches that way. */
+    private fun shader(g: SlideGradient, x: Float, y: Float, w: Float, h: Float): android.graphics.Shader {
+        val a = Math.toRadians(g.angle.toDouble()); val cx = x + w / 2; val cy = y + h / 2
+        val r = (Math.abs(Math.cos(a)) * w / 2 + Math.abs(Math.sin(a)) * h / 2).toFloat()
+        return android.graphics.LinearGradient(cx - r * Math.cos(a).toFloat(), cy - r * Math.sin(a).toFloat(), cx + r * Math.cos(a).toFloat(), cy + r * Math.sin(a).toFloat(),
+            g.colors, g.stops, android.graphics.Shader.TileMode.CLAMP)
+    }
     fun draw(c: Canvas, deck: Deck, slide: Slide, k: Float, hints: Boolean = false, look: ((SlideItem) -> FloatArray?)? = null) {
         c.save(); c.scale(k, k)
         c.clipRect(0f, 0f, deck.width, deck.height)
         c.drawColor(slide.background)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        slide.backGradient?.let { g -> paint.shader = shader(g, 0f, 0f, deck.width, deck.height); c.drawRect(0f, 0f, deck.width, deck.height, paint); paint.shader = null }
         // a picture background, stretched to the slide
         slide.backPicture?.let { pic -> (pictures.get(pic) ?: runCatching { pic()?.let { b ->
             val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
@@ -890,11 +904,7 @@ internal object Slides {
         item.shape?.let { s -> for ((path, sp) in paths) s.shadowOf(c, path, (sp?.fill ?: true) && (fill != null || g != null)) }
         for ((path, sp) in paths) {
             if ((sp?.fill ?: true) && g != null) {
-                // along its angle through the box's middle, as far as the box reaches that way
-                val a = Math.toRadians(g.angle.toDouble()); val cx = item.x + item.w / 2; val cy = item.y + item.h / 2
-                val r = (Math.abs(Math.cos(a)) * item.w / 2 + Math.abs(Math.sin(a)) * item.h / 2).toFloat()
-                paint.shader = android.graphics.LinearGradient(cx - r * Math.cos(a).toFloat(), cy - r * Math.sin(a).toFloat(), cx + r * Math.cos(a).toFloat(), cy + r * Math.sin(a).toFloat(),
-                    g.colors, g.stops, android.graphics.Shader.TileMode.CLAMP)
+                paint.shader = shader(g, item.x, item.y, item.w, item.h)
                 paint.style = Paint.Style.FILL; paint.color = 0xFF000000.toInt(); c.drawPath(path, paint); paint.shader = null
             } else if ((sp?.fill ?: true) && fill != null) { paint.style = Paint.Style.FILL; paint.color = fill; c.drawPath(path, paint) }
             if ((sp?.stroke ?: true) && line != null) { paint.style = Paint.Style.STROKE; paint.strokeWidth = item.shape?.lineWidth ?: 1f; paint.strokeJoin = Paint.Join.ROUND; paint.color = line

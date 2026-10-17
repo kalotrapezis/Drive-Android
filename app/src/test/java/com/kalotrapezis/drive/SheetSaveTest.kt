@@ -623,6 +623,28 @@ class SheetSaveTest {
         }
     }
 
+    /** Data › Subtotal: a total row after each group, a Grand Total that counts each value once, the groups outlined — both formats, and LibreOffice. */
+    @Test fun `subtotals made`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("subtotal").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b = Sheets.read(f, ',', '.'); val out = File(dir, "totals.${f.extension}")
+            assertEquals(name, listOf(1..1, 2..2), SheetSubtotal.groups(b.sheet(0), SheetRange(0, 0, 2, 3), 0))
+            SheetSubtotal.apply(f, out, b, 0, SheetRange(0, 0, 2, 3), 0, listOf(1), 9, ',', '.')
+            fun check(file: File, how: String) { val s = Sheets.read(file, ',', '.').sheet(0)
+                assertEquals(how, listOf("Alpha", "Alpha Total", "Βήτα", "Βήτα Total", "Grand Total"), (1..5).map { s[it, 0]?.text })
+                assertEquals(how, listOf(1234.5, 1234.5, -42.0, -42.0, 1192.5), (1..5).map { s[it, 1]?.value })
+                assertEquals(how, mapOf(1 to 1, 3 to 1), s.rowLevels) }
+            check(out, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "totals.$other"), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

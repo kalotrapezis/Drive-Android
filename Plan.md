@@ -76,11 +76,11 @@ How to write here:
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
-      dynamic arrays (dc739be), row groups. Checks at a925139: unit
+      dynamic arrays (dc739be), row groups (40132d5), subtotals. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -812,7 +812,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       — it works them out again itself); emulator: =SEQUENCE(4) down F2:F5. Full run after it: unit 476, 0 failing, 2 skipped; sweep
       349 + 29, none failing. shortcut: a formula reading a spill's lower cells is worked out again at the next change, not at once;
       SORT by columns and SORTBY not yet.
-- [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
+- [x] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row
       headers?), the rows alike after the first gone (any case, spaces round trimmed: `SheetInput.unique`), the rest moved up — cell
@@ -837,6 +837,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       (`Sheet.rowLevels`). `SheetOutline`. `rows grouped and collapsed` (both formats, LibreOffice's conversions); emulator: rows 2–3 of
       an .ods grouped, collapsed, expanded. shortcut: no outline bar beside the row numbers (the ribbon has the buttons); columns not
       grouped; rows across a group's edge not grouped in an .ods.
+      Subtotals done (office-F session, 18 Oct): Data › Subtotal — Excel's dialog (at each change in a column, Sum/Count/Average/Max/
+      Min/Product, the columns to total): a row after each group ("North Total", SUBTOTAL(9,…)), a Grand Total, each group's rows
+      outlined — one change to the file, rows put in as Insert row does (`SheetShift`, every reference following). SUBTOTAL added to
+      the engine, leaving out cells that are subtotals themselves (`Context.formulaOf`), so the Grand Total counts each value once.
+      `SheetSubtotal`; `subtotals made` (both formats, LibreOffice's conversions); emulator: Region/Sales → 30, 12, 3, Grand Total 45.
       Drop-down lists done (office-F session, 18 Oct): Data › Drop-down list on the chosen cells — the values typed, comma-separated
       (Excel's Source box), Take away; Excel's list dataValidation and LibreOffice's table:content-validation (`SheetLists`, a change to
       the file), both read (`Sheet.lists`/`listAt`, `SheetList`: a quoted list, or this sheet's cells). While editing, the chosen

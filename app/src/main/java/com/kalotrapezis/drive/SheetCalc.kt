@@ -174,7 +174,9 @@ internal object SheetCalc {
     /** Where a formula's cells come from: a cell's value (Double, String, Boolean, Err, or null when empty). */
     fun interface Cells { fun value(sheet: String?, r: Int, c: Int): Any? }
 
-    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat(), val names: Map<String, String> = emptyMap()) {
+    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat(), val names: Map<String, String> = emptyMap(),
+                  /** A cell's formula (SUBTOTAL leaves out cells that are subtotals themselves); null: none or not known. */
+                  val formulaOf: (String?, Int, Int) -> String? = { _, _, _ -> null }) {
         fun cell(sheet: String?, r: Int, c: Int): Any? = cells.value(sheet, r, c)
     }
 
@@ -419,6 +421,27 @@ internal object SheetCalc {
                 val across = area.range.r1 == area.range.r2
                 val count = if (across) area.range.c2 - area.range.c1 + 1 else min(area.range.r2 - area.range.r1, 200_000) + 1
                 find(count, { if (across) ctx.cell(area.sheet, area.range.r1, area.range.c1 + it) else ctx.cell(area.sheet, area.range.r1 + it, area.range.c1) }, key, type)?.let { it + 1.0 } ?: Err("#N/A")
+            }
+            // Excel's SUBTOTAL: 1 AVERAGE, 2 COUNT, 3 COUNTA, 4 MAX, 5 MIN, 6 PRODUCT, 7 STDEV, 8 STDEVP, 9 SUM, 10 VAR, 11 VARP (and
+            // 101–111 the same); cells that are subtotals themselves left out, so a grand total counts each value once
+            "SUBTOTAL" -> {
+                need(2)
+                val fn = (d(0) as? Double)?.toInt()?.let { if (it > 100) it - 100 else it } ?: return Err("#VALUE!")
+                val name = listOf("AVERAGE", "COUNT", "COUNTA", "MAX", "MIN", "PRODUCT", "STDEV", "STDEVP", "SUM", "VAR", "VARP").getOrNull(fn - 1) ?: return Err("#VALUE!")
+                val values = ArrayList<Any?>()
+                for (arg in a.drop(1)) when (val x = calc(arg, ctx)) {
+                    is Area -> for (r in x.range.r1..min(x.range.r2, x.range.r1 + 200_000)) for (c in x.range.c1..min(x.range.c2, x.range.c1 + 1_000))
+                        if (ctx.formulaOf(x.sheet, r, c)?.contains("SUBTOTAL(", ignoreCase = true) != true) values += ctx.cell(x.sheet, r, c)
+                    else -> values += x
+                }
+                val nums = values.filterIsInstance<Double>()
+                when (name) {
+                    "COUNT" -> nums.size.toDouble(); "COUNTA" -> values.count { it != null && it != "" }.toDouble()
+                    "SUM" -> nums.sum(); "PRODUCT" -> nums.fold(1.0) { p, q -> p * q }
+                    "AVERAGE" -> if (nums.isEmpty()) Err("#DIV/0!") else nums.average()
+                    "MAX" -> nums.maxOrNull() ?: 0.0; "MIN" -> nums.minOrNull() ?: 0.0
+                    else -> { val p = name.endsWith("P"); if (nums.size < (if (p) 1 else 2)) Err("#DIV/0!") else { val m = nums.average(); val v = nums.sumOf { (it - m) * (it - m) } / (nums.size - if (p) 0 else 1); if (name.startsWith("VAR")) v else sqrt(v) } }
+                }
             }
             // Excel's dynamic arrays: their results spill (see [Arr])
             "SEQUENCE" -> {

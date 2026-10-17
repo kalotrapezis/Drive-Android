@@ -218,7 +218,9 @@ internal object SheetRecalc {
         ctx = SheetCalc.Context(SheetCalc.Cells { s, r, c ->
             if (s == null || s.equals(name, true)) { val k = Sheet.key(r, c); if (k in affected) result(k) else valueOf(sheet.cells[k]) }
             else book.tabs.indexOfFirst { it.name.equals(s, true) }.let { i -> if (i < 0) SheetCalc.Err("#REF!") else valueOf(book.sheet(i)[r, c]) }
-        }, format = book.format, names = book.names)
+        }, format = book.format, names = book.names, formulaOf = { s, r, c ->
+            if (s == null || s.equals(name, true)) sheet.cells[Sheet.key(r, c)]?.formula
+            else book.tabs.indexOfFirst { it.name.equals(s, true) }.takeIf { it >= 0 }?.let { book.sheet(it)[r, c]?.formula } })
         fun shown(old: SheetCell, v: Any?): SheetCell {
             val code = old.format ?: (sheet.look(old.style, book.styles)?.format ?: "General")
             return when (v) {

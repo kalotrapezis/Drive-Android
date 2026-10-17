@@ -192,6 +192,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
+    var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -1210,6 +1211,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     if ((rows.first..rows.last).any { (s.rowLevels[it] ?: 0) > 0 }) RibbonButton("Ungroup", w, R.drawable.ic_unfold_more) { outlineStep(rows, -1, null) }
                                     if (group != null) { val shut = group.all { it in s.hiddenRows }
                                         RibbonButton(if (shut) "Expand" else "Collapse", w, if (shut) R.drawable.ic_add else R.drawable.ic_remove) { outlineStep(group, 0, !shut) } } }
+                                // Excel's Subtotal: a total row after each group of rows alike in a column, a Grand Total, the groups outlined
+                                if (b.kind != "csv") RibbonButton("Subtotal", w, R.drawable.ic_functions) {
+                                    totalling = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
                                 // Excel's Sort dialog: the rows themselves reordered (the file changes), by one column then others
                                 RibbonButton("Sort", w, R.drawable.ic_sort_name) {
                                     sortingRows = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
@@ -1717,6 +1721,28 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     supportingText = { if (name.isNotEmpty() && problem != null) Text(problem) }) } },
             confirmButton = { TextButton(enabled = problem == null, onClick = { namesFor = null; nameStep(name.trim(), g) }) { Text("Add") } },
             dismissButton = { TextButton(onClick = { namesFor = null }) { Text("Close") } }) } }
+    // Data › Subtotal: Excel's dialog — at each change in, the function, the columns to total
+    totalling?.let { d -> sheet?.let { s -> val b = book
+        fun named(c: Int) = s[d.r1, c]?.text?.takeIf { it.isNotBlank() } ?: "Column ${Sheets.colName(c)}"
+        var by by remember(d) { mutableStateOf(d.c1) }
+        var fn by remember(d) { mutableStateOf(9) }
+        val cols = remember(d) { androidx.compose.runtime.mutableStateListOf<Int>().apply { addAll((d.c1..d.c2).filter { c -> (d.r1 + 1..d.r2).any { s[it, c]?.kind == SheetKind.Number } }) } }
+        AlertDialog(onDismissRequest = { totalling = null }, title = { Text("Subtotal") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${Sheets.colName(d.c1)}${d.r1 + 1}:${Sheets.colName(d.c2)}${d.r2 + 1}, its first row the headings")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("At each change in")
+                    Box { var open by remember { mutableStateOf(false) }
+                        OutlinedButton(onClick = { open = true }) { Text(named(by), maxLines = 1) }
+                        DropdownMenu(open, { open = false }) { (d.c1..d.c2).forEach { c -> DropdownMenuItem(text = { Text(named(c)) }, onClick = { open = false; by = c }) } } } }
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SheetSubtotal.FUNCTIONS.forEach { (n, k) -> androidx.compose.material3.FilterChip(fn == k, { fn = k }, { Text(n) }) } }
+                Text("Add a subtotal to:")
+                (d.c1..d.c2).filter { it != by }.forEach { c -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { if (c in cols) cols.remove(c) else cols.add(c) }) {
+                    Checkbox(c in cols, { if (it) cols.add(c) else cols.remove(c) }); Text(named(c)) } } } },
+            confirmButton = { TextButton(enabled = cols.any { it != by }, onClick = { totalling = null; if (b == null) return@TextButton; val i = index; val chosen = cols.filter { it != by }.sorted()
+                if (s.merges.any { m -> m.r1 <= d.r2 && d.r1 <= m.r2 && m.c1 <= d.c2 && d.c1 <= m.c2 }) { message = "Merged cells are in the way: unmerge them first"; return@TextButton }
+                fileStep("subtotals", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSubtotal.apply(baked, next, bb, i, d, by, chosen, fn, sym.decimalSeparator, sym.groupingSeparator) } }) }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { totalling = null }) { Text("Cancel") } }) } }
     // Insert › Text box: its words, then a box 3 columns × 4 rows big at the chosen cell
     if (boxing) sheet?.let { s -> var words by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { boxing = false }, title = { Text("Text box") },

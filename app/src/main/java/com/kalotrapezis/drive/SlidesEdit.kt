@@ -81,6 +81,10 @@ internal object SlidesEdit {
                 l.spacing?.let { look.copy(lineMultiple = it, lineExact = null) } ?: look, bullet, p.base)
         }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink)
     }
+    /** Insert › Header & footer on a slide (PowerPoint's): the date ([fixed] its words, null: today's, updated), the slide's number, a footer's words (null: none). */
+    data class Footers(val date: Boolean = false, val fixed: String? = null, val number: Boolean = false, val text: String? = null)
+    /** Today as Header & footer's date shows it (the first of Words' Date and time forms). */
+    fun today(): String = dateForms().first()
     const val NONE = 0
     /** An [Added]'s kind for Insert › Text box: a box of words alone (no fill, no border). */
     const val TEXT_BOX = "textbox"
@@ -92,7 +96,8 @@ internal object SlidesEdit {
         /** (slide uid, item id) → where the file's own item was moved or sized to: x, y, w, h (points) */ val frames: Map<Pair<Int, String>, List<Float>> = emptyMap(),
         /** (slide uid, item id): the file's own items deleted */ val removed: Set<Pair<Int, String>> = emptySet(),
         /** Design's theme chosen (null: the file's own) — shown and saved from a copy of the deck with it */ val theme: SlideTheme? = null,
-        /** a slide's speaker notes as typed (asked 17 Oct), a line a paragraph */ val notes: Map<Int, String> = emptyMap()) {
+        /** a slide's speaker notes as typed (asked 17 Oct), a line a paragraph */ val notes: Map<Int, String> = emptyMap(),
+        /** a slide's date, number and footer as chosen (Insert › Header & footer) — its own ones replaced */ val footers: Map<Int, Footers> = emptyMap()) {
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
@@ -158,11 +163,24 @@ internal object SlidesEdit {
                 else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), text, id = a.id)
             }).also { it.anim = a.id } // what it is chosen and animated by
         }
+        // Header & footer: the slide's own date, footer and number gone, the chosen ones in the layout's boxes (the number its place in the deck)
+        val foot = edit.footers[e.uid]
+        val footed = foot?.let { f -> listOfNotNull(
+            s.footers["dt"]?.takeIf { f.date }?.let { worded(it, f.fixed ?: today()) },
+            s.footers["ftr"]?.takeIf { f.text != null }?.let { worded(it, f.text!!) },
+            s.footers["sldNum"]?.takeIf { f.number }?.let { worded(it, "${edit.order.indexOf(e) + 1}") }) }.orEmpty()
         val groups = s.items.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { box(s, it) }
-        val all = (items.filter { it.anim == null || (e.uid to it.anim!!) !in edit.removed }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
+        val all = (items.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added).map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) } + footed
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
-        return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps)
+        return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide)
+    }
+    /** A layout's date, footer or number box [sh] holding [words], in its first run's look ([id]: its own). */
+    fun worded(sh: SlideItem.Shape, words: String, id: String? = sh.id): SlideItem.Shape {
+        val t = sh.text ?: return sh
+        val p = t.paras.firstOrNull() ?: return sh
+        val text = SlideText(listOf(SlidePara(p.para.copy(runs = p.runs.take(1).map { it.copy(text = words) }), p.look, null, p.base)), t.anchor, t.insets, t.scale, t.wrap, t.shrink)
+        return SlideItem.Shape(sh.x, sh.y, sh.w, sh.h, sh.rotation, sh.shape, text, sh.paths, sh.flipH, sh.flipV, sh.gradient, id)
     }
     /** A slide's clicks as a list to edit, each effect with its start (on a click, with the one before, after it) and its wait from then. */
     fun flat(steps: List<SlideStep>): List<SlideEffect> = steps.flatMap { st ->
@@ -344,10 +362,29 @@ internal object SlidesEdit {
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),
         looks: Map<String, Look> = emptyMap(), transition: SlideTransition? = null, anims: List<SlideEffect>? = null, frames: Map<String, List<Float>> = emptyMap(),
-        removed: Set<String> = emptySet()): ByteArray {
+        removed: Set<String> = emptySet(), footers: Footers? = null, number: Int = 0, layoutPhs: List<Triple<String, String?, String?>> = emptyList()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         val tree = root.getElementsByTagNameNS(P, "spTree").item(0) as Element?
+        // Insert › Header & footer: the slide's own date, footer and number placeholders written again from the choices, in its layout's boxes
+        if (footers != null && tree != null) {
+            val kinds = setOf("dt", "ftr", "sldNum")
+            tree.kids().filter { sp -> sp.localName == "sp" && sp.getElementsByTagNameNS(P, "ph").let { l -> l.length > 0 && (l.item(0) as Element).getAttribute("type") in kinds } }.forEach { tree.removeChild(it) }
+            val lang = java.util.Locale.getDefault().toLanguageTag()
+            fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            fun field(type: String, words: String) = """<a:fld id="{${java.util.UUID.randomUUID().toString().uppercase()}}" type="$type"><a:rPr lang="$lang"/><a:t>${esc(words)}</a:t></a:fld>"""
+            fun run(words: String) = """<a:r><a:rPr lang="$lang"/><a:t>${esc(words)}</a:t></a:r>"""
+            var id = (root.getElementsByTagNameNS(P, "cNvPr").let { l -> (0 until l.length).mapNotNull { (l.item(it) as Element).getAttribute("id").toIntOrNull() } }.maxOrNull() ?: 1) + 1
+            for ((type, idx, sz) in layoutPhs) {
+                val runs = when (type) {
+                    "dt" -> if (!footers.date) null else footers.fixed?.let(::run) ?: field("datetime1", today())
+                    "ftr" -> footers.text?.let(::run)
+                    else -> if (footers.number) field("slidenum", "$number") else null
+                } ?: continue
+                val sp = doc.importNode(OfficeFormats.parse(("""<p:spTree xmlns:p="$P" xmlns:a="$A">""" + Slides.footerSp(type, idx, sz, "${id++}", runs) + "</p:spTree>").toByteArray()).documentElement.firstChild, true)
+                tree.insertBefore(sp, tree.kids().firstOrNull { it.localName == "extLst" })
+            }
+        }
         fun emu(pt: Float) = (pt * 12700).toLong()
         for (a in added) {
             val xfrm = """<a:xfrm><a:off x="${emu(a.x)}" y="${emu(a.y)}"/><a:ext cx="${emu(a.w)}" cy="${emu(a.h)}"/></a:xfrm>"""
@@ -722,16 +759,22 @@ internal object SlidesEdit {
                 else "link $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             } }
             val base = if (e.layout >= 0) deck.layouts[e.layout].xml else read(source!!.part) ?: continue
+            // Header & footer: the choices, the slide's number, its layout's date, footer and number boxes (their idx and size)
+            val footers = edit.footers[e.uid]; val number = edit.order.indexOf(e) + 1
+            val phs = if (footers == null) emptyList() else relsXml.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/slideLayout") }
+                ?.let { read("ppt/slideLayouts/" + it.getAttribute("Target").substringAfterLast('/')) }?.let(OfficeFormats::parse)?.getElementsByTagNameNS(P, "ph")
+                ?.let { l -> (0 until l.length).map { l.item(it) as Element }.filter { it.getAttribute("type") in setOf("dt", "ftr", "sldNum") }
+                    .map { Triple(it.getAttribute("type"), it.getAttribute("idx").ifEmpty { null }, it.getAttribute("sz").ifEmpty { null }) } }.orEmpty()
             // its notes as typed; a copy's own notes page with the first's words (its relationships leave the first's out)
             val noted = (edit.notes[e.uid] ?: source?.notes?.takeIf { !original && it.isNotEmpty() })?.let { notes(part, relsXml, it) } ?: false
             if (original) {
                 byPart[part]?.let { list.appendChild(it) }
                 // written only when its words, its hiding or what is on it changed
-                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden))
-                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
+                if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
+                    out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
                 if (ids.isNotEmpty() || noted) out[relsPath(part)] = xml(relsXml)
             } else {
-                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed)
+                out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs)
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }

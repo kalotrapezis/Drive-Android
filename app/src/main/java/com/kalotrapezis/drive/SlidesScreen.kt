@@ -285,6 +285,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var stripPicked by remember { mutableStateOf<Any?>(null) } // …and the card tapped
     var dropOptions by remember { mutableStateOf(false) } // Drop cap › More…: Words' dialog, raised
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' link dialog
+    var footing by remember { mutableStateOf(false) } // Insert › Header & footer
     var charting by remember { mutableStateOf<Pair<String?, DocChart>?>(null) } // Insert › Chart, Edit data: Words' chart editor (the chart's id; null: a new one)
     var dropLines by remember { androidx.compose.runtime.mutableIntStateOf(3) } // Drop cap: how many lines tall (the strip's setting)
     /** The chosen box's words' size before a raised first letter: what Drop cap's lines are counted in. */
@@ -540,6 +541,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
                 // Link (as Words'): a box's words linked to a web page or a slide; nothing chosen: a text box of words to show
                 RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
+                // Header & footer (as PowerPoint's): the date, the slide's number and a footer, on this slide or all
+                RibbonButton("Header & footer", w, R.drawable.ic_page_header) { footing = true }
             }
             "File" -> {
                 // as Words' and Tables' File: the file's own actions (asked 16 Oct: Share in File); a change saved first, so what goes is what shows
@@ -1019,6 +1022,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 if (stripPicked == DropKind.Dropped) dropped(b, cc, id, n)?.let { edit = it }
                             })
                     }
+                    if (footing) {
+                        val ee = edit; val cc = chosen
+                        if (ee == null || cc == null) footing = false else {
+                            // what the slide shows now: its choices here, else its own date, footer and number
+                            val sl = view?.slides?.getOrNull(cc)
+                            val start = ee.footers[ee.order[cc].uid] ?: sl?.let { v ->
+                                fun words(k: String) = v.items.filterIsInstance<SlideItem.Shape>().firstOrNull { v.footerIds[it.id] == k }?.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }
+                                val date = words("dt")
+                                SlidesEdit.Footers(date != null, date?.takeIf { it != SlidesEdit.today() }, words("sldNum") != null, words("ftr"))
+                            } ?: SlidesEdit.Footers()
+                            FootersDialog(start, { footing = false }) { f, all, notOnTitle ->
+                                footing = false
+                                val base = view
+                                fun mine(i: Int, e: SlidesEdit.Entry) = if (notOnTitle && base?.slides?.getOrNull(i)?.titleSlide == true) SlidesEdit.Footers() else f
+                                change(ee.copy(footers = ee.footers + if (all) ee.order.mapIndexed { i, e -> e.uid to mine(i, e) } else listOf(ee.order[cc].uid to mine(cc, ee.order[cc]))))
+                                WriterLog.i("Slides: header and footer on ${if (all) "all slides" else "a slide"}")
+                            }
+                        }
+                    }
                     if (linking) {
                         val box = chosenWords()
                         val now = box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link }
@@ -1495,6 +1517,41 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
  * The presenter's notes beside the slide while a second screen shows it (asked 17 Oct): Full — all of them, to read and
  * scroll; Teleprompter — large, rolling up by themselves at the chosen speed, from the top again on each slide.
  */
+/** Insert › Header & footer (PowerPoint's): the date (updated or fixed words), the slide's number, a footer; Apply to the slide or to all. */
+@Composable
+private fun FootersDialog(start: SlidesEdit.Footers, dismiss: () -> Unit, apply: (SlidesEdit.Footers, Boolean, Boolean) -> Unit) {
+    var date by remember { mutableStateOf(start.date) }
+    var fixed by remember { mutableStateOf(start.fixed != null) }
+    var fixedText by remember { mutableStateOf(start.fixed ?: SlidesEdit.today()) }
+    var number by remember { mutableStateOf(start.number) }
+    var footer by remember { mutableStateOf(start.text != null) }
+    var footerText by remember { mutableStateOf(start.text.orEmpty()) }
+    var notOnTitle by remember { mutableStateOf(true) }
+    fun made() = SlidesEdit.Footers(date, fixedText.takeIf { fixed }, number, footerText.takeIf { footer })
+    @Composable fun check(label: String, on: Boolean, change: (Boolean) -> Unit) = Row(Modifier.fillMaxWidth().clickable { change(!on) }, verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.Checkbox(on, change); Text(label) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Header & footer") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                check("Date and time", date) { date = it }
+                if (date) Row(Modifier.padding(start = 40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Choice("Update automatically", !fixed) { fixed = false }; Choice("Fixed", fixed) { fixed = true } }
+                if (date && fixed) androidx.compose.material3.OutlinedTextField(fixedText, { fixedText = it }, singleLine = true, modifier = Modifier.padding(start = 40.dp), label = { Text("Date") })
+                check("Slide number", number) { number = it }
+                check("Footer", footer) { footer = it }
+                if (footer) androidx.compose.material3.OutlinedTextField(footerText, { footerText = it }, singleLine = true, modifier = Modifier.padding(start = 40.dp), label = { Text("Footer") })
+                check("Don't show on title slide", notOnTitle) { notOnTitle = it }
+            }
+        },
+        confirmButton = { Row {
+            androidx.compose.material3.TextButton(onClick = { apply(made(), false, notOnTitle) }) { Text("Apply") }
+            androidx.compose.material3.TextButton(onClick = { apply(made(), true, notOnTitle) }) { Text("Apply to all") } } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
+}
+
 @Composable
 private fun PresenterNotes(notes: String, page: Int, paused: Boolean, modifier: Modifier, header: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     val context = LocalContext.current

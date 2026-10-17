@@ -87,7 +87,10 @@ internal class SlideStep(val auto: Boolean, val effects: List<SlideEffect>)
 
 /** [part]: the slide's part in the file (ppt/slides/slide3.xml), for saving into. */
 internal class Slide(val items: List<SlideItem>, val background: Int, val notes: String, val hidden: Boolean = false, val part: String = "",
-    val transition: SlideTransition? = null, val steps: List<SlideStep> = emptyList())
+    val transition: SlideTransition? = null, val steps: List<SlideStep> = emptyList(),
+    /** Insert › Header & footer: its layout's date ("dt"), footer ("ftr") and number ("sldNum") boxes as they would show on it; the ids of
+     *  its own ones' ids and kinds; whether it is a title slide (Don't show on title slide) */
+    val footers: Map<String, SlideItem.Shape> = emptyMap(), val footerIds: Map<String, String> = emptyMap(), val titleSlide: Boolean = false)
 internal class Deck(val width: Float, val height: Float, val slides: List<Slide>, val layouts: List<SlideLayout> = emptyList())
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
@@ -106,6 +109,13 @@ internal object Slides {
     private fun Element.below(name: String): List<Element> = getElementsByTagNameNS("*", name).let { l -> (0 until l.length).map { l.item(it) as Element } }
     private fun Element.attr(name: String): String? = getAttribute(name).takeIf { it.isNotEmpty() }
     private fun Element.rid(name: String): String? = getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", name).takeIf { it.isNotEmpty() }
+
+    /** A slide's own date, footer or number placeholder ([type] "dt", "ftr", "sldNum"; [idx] and [sz] its layout's) holding [runs] (a:r, a:fld). */
+    fun footerSp(type: String, idx: String?, sz: String?, id: String, runs: String): String {
+        val name = when (type) { "dt" -> "Date Placeholder"; "ftr" -> "Footer Placeholder"; else -> "Slide Number Placeholder" }
+        return """<p:sp><p:nvSpPr><p:cNvPr id="$id" name="$name $id"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="$type"${sz?.let { " sz=\"$it\"" }.orEmpty()}${idx?.let { " idx=\"$it\"" }.orEmpty()}/></p:nvPr></p:nvSpPr><p:spPr/>""" +
+            """<p:txBody><a:bodyPr/><a:lstStyle/><a:p>$runs</a:p></p:txBody></p:sp>"""
+    }
 
     /** A deck read from its parts. */
     fun read(file: java.io.File): Deck {
@@ -252,7 +262,19 @@ internal object Slides {
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
             val notes = (if (own != null) null else relType(xml, path, "notesSlide"))?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
                 ?.below("p")?.joinToString("\n") { p -> p.below("*").joinToString("") { if (it.localName == "br") "\n" else if (it.localName == "t") it.textContent else "" } }?.trim().orEmpty() // a line break inside a paragraph kept
-            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s))
+            // Header & footer: the layout's boxes, each read as a slide's own placeholder of it would be (its place and looks from the layout and master)
+            val kinds = setOf("dt", "ftr", "sldNum")
+            fun phOf(sp: Element) = sp.kid("nvSpPr")?.kid("nvPr")?.kid("ph")
+            val footers = layout?.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { phOf(it)?.takeIf { p -> p.attr("type") in kinds } }.mapNotNull { ph ->
+                val t = ph.attr("type")!!
+                val tree = OfficeFormats.parse(("""<p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">""" +
+                    footerSp(t, ph.attr("idx"), ph.attr("sz"), "1", """<a:r><a:rPr lang="en-US"/><a:t>$t</a:t></a:r>""") + "</p:spTree>").toByteArray()).documentElement
+                val got = ArrayList<SlideItem>(); runCatching { shapes(tree, emptyMap(), context, got, null) }
+                (got.lastOrNull() as? SlideItem.Shape)?.let { t to it }
+            }.toMap()
+            val own = s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().mapNotNull { sp -> phOf(sp)?.attr("type")?.takeIf { it in kinds }?.let { k -> sp.kid("nvSpPr")?.kid("cNvPr")?.attr("id")?.let { it to k } } }.toMap()
+            val title = layout?.attr("type") == "title" || s.kid("cSld")?.kid("spTree")?.kids("sp").orEmpty().any { phOf(it)?.attr("type") == "ctrTitle" }
+            return Slide(items, bg, notes, s.attr("show") == "0", path, transition(s), steps(s), footers, own, title)
         }
 
         /** The slide's transition (PowerPoint 2010's own, in AlternateContent, or the plain one). */

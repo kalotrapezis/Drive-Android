@@ -258,6 +258,36 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Header & footer: a fixed date, the slide's number and a footer on every slide but the title slide — saved, read back here and by LibreOffice. */
+    @Test fun `header and footer saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            assertTrue(name, deck.slides[0].titleSlide); assertTrue(name, !deck.slides[1].titleSlide)
+            val f = SlidesEdit.Footers(date = true, fixed = "1 May 2026", number = true, text = "Tetra talk")
+            val e0 = SlidesEdit.start(deck)
+            val e = e0.copy(footers = e0.order.associate { it.uid to if (deck.slides[it.src].titleSlide) SlidesEdit.Footers() else f })
+            fun words(d: Deck, i: Int) = d.slides[i].items.filterIsInstance<SlideItem.Shape>().mapNotNull { words(it) }.toSet()
+            fun check(d: Deck, how: String) {
+                assertTrue("$how: ${words(d, 1)}", words(d, 1).containsAll(listOf("1 May 2026", "2", "Tetra talk")))
+                assertTrue("$how: ${words(d, 3)}", words(d, 3).containsAll(listOf("4", "Tetra talk")))
+                assertTrue("$how: ${words(d, 0)}", "Tetra talk" !in words(d, 0))
+                // in the layout's places: the number at the right, under the words
+                val n = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it) == "2" }
+                assertTrue(how, n.x > d.width / 2 && n.y > d.height * 0.8f)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("footers-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

@@ -452,6 +452,25 @@ internal object SlidesOdpEdit {
             looks.forEach { (el, l) -> restyle(el, l) }
             frames.forEach { (el, f, box) -> place(el, f, box) }
             removed.forEach { it.parentNode?.removeChild(it) }
+            // Insert › Header & footer, as LibreOffice keeps it: the page's own date, footer and number boxes gone; the master's shown or not by the
+            // page's style, the footer's and date's words declared (presentation:footer-decl, date-time-decl) and named by the page
+            edit.footers[uid]?.let { f ->
+                page.kids().filter { it.a(PRES, "class") in setOf("date-time", "footer", "page-number") }.forEach { page.removeChild(it) }
+                page.setAttributeNS(DRAW, "draw:style-name", derive("drawing-page", page.a(DRAW, "style-name"), "footers ${f.date} ${f.number} ${f.text != null}") { st ->
+                    val d = props(st, "drawing-page-properties")
+                    d.setAttributeNS(PRES, "presentation:display-footer", "${f.text != null}"); d.setAttributeNS(PRES, "presentation:display-page-number", "${f.number}")
+                    d.setAttributeNS(PRES, "presentation:display-date-time", "${f.date}")
+                })
+                fun declare(kind: String, prefix: String, fill: (Element) -> Unit): String {
+                    val n = fresh(prefix)
+                    pres.insertBefore(doc.createElementNS(PRES, "presentation:$kind").also { it.setAttributeNS(PRES, "presentation:name", n); fill(it) }, pres.kids().firstOrNull { it.localName == "page" })
+                    return n
+                }
+                page.removeAttributeNS(PRES, "use-footer-name"); page.removeAttributeNS(PRES, "use-date-time-name")
+                f.text?.let { t -> page.setAttributeNS(PRES, "presentation:use-footer-name", declare("footer-decl", "ftr") { it.textContent = t }) }
+                if (f.date) page.setAttributeNS(PRES, "presentation:use-date-time-name", declare("date-time-decl", "dtd") { d ->
+                    if (f.fixed != null) { d.setAttributeNS(PRES, "presentation:source", "fixed"); d.textContent = f.fixed } else d.setAttributeNS(PRES, "presentation:source", "current-date") })
+            }
             // put on: over the page's own, before its notes and animations
             val before = page.kids().firstOrNull { it.localName in setOf("notes", "par", "seq", "animations") }
             val put = HashMap<String, Element>()

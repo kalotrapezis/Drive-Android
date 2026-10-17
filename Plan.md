@@ -264,7 +264,14 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       saved as PowerPoint's hlinkClick (an outside relationship, or a slide's with ppaction://hlinksldjump) and LibreOffice's
       text:a inside each span ("#" and the page's name for a slide); Remove link; the show follows a tap on linked words (a
       web page opened, a slide gone to; an .odp's "#page" links too). `links put on saved` (both; LibreOffice reads Tetra's
-      slide jumps as its own and writes them back as PowerPoint's); emulator: Plan's words linked to Scores, the show jumped there. Link (to a web page or to a
+      slide jumps as its own and writes them back as PowerPoint's); emulator: Plan's words linked to Scores, the show jumped there. Header & footer (slide number,
+      date, footer text) — done 17 Oct (office-B session): PowerPoint's dialog (date updated or fixed, slide number, footer,
+      Don't show on title slide; Apply / Apply to all), opening with what the slide shows; drawn in the layout's own boxes
+      (each read as a slide's own placeholder would be: `Slide.footers`), the date as Words' Date and time's first form
+      (`dateForms`); saved as PowerPoint's dt/ftr/sldNum placeholders (slidenum and datetime1 fields) and as LibreOffice
+      keeps them (footer-decl, date-time-decl, the page style's display flags; the .odp reader now shows the master's
+      boxes so). `header and footer saved` (both, LibreOffice's conversions both ways); emulator: on all but the title slide,
+      saved, LibreOffice draws them. Seen: the footer's words in LibreOffice's default face (the layout names none). Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

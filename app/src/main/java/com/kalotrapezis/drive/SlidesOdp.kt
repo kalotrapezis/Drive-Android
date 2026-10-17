@@ -251,10 +251,29 @@ internal object SlidesOdp {
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 
-        val slides = pages.map { page ->
+        // Header & footer as LibreOffice keeps them: the words a page's footer and date name (presentation:footer-decl, date-time-decl)
+        val decls = content.getElementsByTagNameNS(PRES, "*").let { l -> (0 until l.length).map { l.item(it) as Element } }.filter { it.localName in setOf("footer-decl", "date-time-decl") }
+        val FOOT = mapOf("date-time" to "dt", "footer" to "ftr", "page-number" to "sldNum")
+        val slides = pages.mapIndexed { index, page ->
             val items = ArrayList<SlideItem>()
             val master = masters[page.a(DRAW, "master-page-name")]
             val dp = page.a(DRAW, "style-name")
+            // the master's date, footer and number boxes as a page's own would show (its field as the kind's name, for the words put in)
+            val footers = master?.kids().orEmpty().filter { it.localName == "frame" && it.a(PRES, "class") in FOOT }.mapNotNull { f ->
+                val k = FOOT.getValue(f.a(PRES, "class")!!)
+                val copy = f.cloneNode(true) as Element; copy.removeAttributeNS(PRES, "class")
+                fun all(e: Element): List<Element> = e.kids().flatMap { listOf(it) + all(it) }
+                all(copy).filter { it.localName in FOOT.keys }.forEach { fe -> fe.parentNode.replaceChild(fe.ownerDocument.createTextNode(k), fe) }
+                val wrap = f.ownerDocument.createElementNS(DRAW, "draw:g").also { it.appendChild(copy) }
+                val got = ArrayList<SlideItem>(); shapes(wrap, got, false, "footer")
+                (got.lastOrNull() as? SlideItem.Shape)?.let { k to it }
+            }.toMap()
+            fun shows(key: String, otherwise: Boolean) = prop("drawing-page", dp, "d.$key")?.let { it == "true" } ?: otherwise
+            fun decl(name: String?) = name?.let { n -> decls.firstOrNull { it.a(PRES, "name") == n } }
+            val footed = listOfNotNull(
+                footers["dt"]?.takeIf { shows("display-date-time", true) }?.let { sh -> decl(page.a(PRES, "use-date-time-name"))?.let { d -> SlidesEdit.worded(sh, if (d.a(PRES, "source") == "fixed") d.textContent else SlidesEdit.today(), "footer.dt") } },
+                footers["ftr"]?.takeIf { shows("display-footer", true) }?.let { sh -> decl(page.a(PRES, "use-footer-name"))?.let { SlidesEdit.worded(sh, it.textContent, "footer.ftr") } },
+                footers["sldNum"]?.takeIf { shows("display-page-number", false) }?.let { SlidesEdit.worded(it, "${index + 1}", "footer.sldNum") })
             if (prop("drawing-page", dp, "d.background-objects-visible") != "false") master?.let { shapes(it, items, true) }
             shapes(page, items, false)
             fun bg(style: String?) = if (prop("drawing-page", style, "d.fill") == "solid" || prop("drawing-page", style, "d.fill-color") != null) hex(prop("drawing-page", style, "d.fill-color")) else null
@@ -295,7 +314,9 @@ internal object SlidesOdp {
                 if (effects.isEmpty()) null else SlideStep(click.a(SMIL, "begin") != "next", effects)
             }
             // its part: its name as a link names it ("#page3"), so a show follows one
-            Slide(items, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps)
+            val own = page.kids().withIndex().mapNotNull { (k, e) -> FOOT[e.a(PRES, "class")]?.let { "o$k" to it } }.toMap() + footed.mapNotNull { it.id }.associateWith { it.removePrefix("footer.") }
+            Slide(items + footed, background, notes, prop("drawing-page", dp, "d.visibility") == "hidden", page.a(DRAW, "name")?.let { "#$it" } ?: "", transition = transition, steps = steps,
+                footers = footers, footerIds = own, titleSlide = page.kids().any { it.a(PRES, "class") == "subtitle" })
         }
         // New slide's layouts: each master page (LibreOffice's copy of a PowerPoint layout is one), its title and text
         // placeholders as a page's empty boxes (grey hints); a deck of one master gets Title only and Blank as well

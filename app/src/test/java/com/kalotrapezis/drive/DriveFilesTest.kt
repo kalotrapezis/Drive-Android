@@ -67,6 +67,26 @@ class DriveFilesTest {
         } finally { DriveRules.chosenFolders = emptySet() }
     }
 
+    @Test fun aFolderLeftOutGoesWithItsContentsOutOrInTheTrash() {
+        val root = Files.createTempDirectory("drive-root").toFile()
+        try {
+            DriveRules.chosenFolders = emptySet()
+            File(root, "Music/Live").mkdirs(); File(root, "Music/song.mp3").writeText("x"); File(root, "song.mp3").writeText("y")
+            File(root, "Work").mkdirs(); File(root, "Work/plan.pdf").writeText("x"); File(root, "Books").mkdirs()
+            val moved = DriveRules.clearLeftOut(root, "Music", toTrash = false).toMap()
+            assertEquals("song (2).mp3", moved["Music/song.mp3"])
+            assertEquals("Live", moved["Music/Live"])
+            assertFalse(File(root, "Music").exists())
+            assertEquals(listOf("Work" to "Trash/Work"), DriveRules.clearLeftOut(root, "Work", toTrash = true))
+            assertTrue(File(root, "Trash/Work/plan.pdf").exists())
+            DriveRules.clearLeftOut(root, "Books", toTrash = true)
+            assertFalse(File(root, "Books").exists())
+            DriveRules.chosenFolders = setOf("AI")
+            try { DriveRules.clearLeftOut(root, "AI", toTrash = false); fail("a chosen folder stays") } catch (_: IllegalArgumentException) {}
+            try { DriveRules.clearLeftOut(root, "Documents", toTrash = false); fail("Documents always stays") } catch (_: IllegalArgumentException) {}
+        } finally { DriveRules.chosenFolders = emptySet(); root.deleteRecursively() }
+    }
+
     @Test fun theLaterSystemFolderChoiceWinsAndATieGoesToChosen() {
         assertTrue(DriveRules.incomingChoiceWins(localChosen = false, localAt = 0, chosen = true, at = 0))
         assertFalse(DriveRules.incomingChoiceWins(localChosen = true, localAt = 0, chosen = false, at = 0))

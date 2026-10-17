@@ -63,7 +63,8 @@ object SystemFolderChoice {
         val next = if (chosen) DriveRules.chosenFolders + name else DriveRules.chosenFolders - name
         prefs(context).edit().putStringSet("systemFolders", next).putLong("systemFolderAt.$name", updatedAt).apply()
         DriveRules.chosenFolders = next
-        if (chosen) File(root, name).mkdirs()
+        // Left out over there: an empty one goes here too; one with files stays, an ordinary folder, until its files follow.
+        if (chosen) File(root, name).mkdirs() else File(root, name).takeIf { it.isDirectory }?.delete()
     }
 }
 
@@ -246,14 +247,39 @@ object DriveRules {
         requireMovable(relativePath)
         val source = item(root, relativePath)
         require(!inside(trash, source)) { "This item is already in Trash." }
-        // A name already in Trash never blocks a delete: the newcomer becomes "name (2)", as everywhere in Drive.
-        var target = File(trash, source.name)
+        val target = freeTarget(trash, source)
+        moveExisting(root, source, target)
+        return relative(root, target)
+    }
+
+    /** A name already in [dir] never blocks a move there: the newcomer becomes "name (2)", as everywhere in Drive. */
+    private fun freeTarget(dir: File, source: File): File {
+        var target = File(dir, source.name)
         for (n in 2..Int.MAX_VALUE) {
             if (!target.exists()) break
-            target = File(trash, source.nameWithoutExtension + " ($n)" + source.name.removePrefix(source.nameWithoutExtension))
+            target = File(dir, source.nameWithoutExtension + " ($n)" + source.name.removePrefix(source.nameWithoutExtension))
         }
-        moveExisting(root, source, target.canonicalFile)
-        return relative(root, target.canonicalFile)
+        return target.canonicalFile
+    }
+
+    /**
+     * A folder just left out of System folders goes (asked 17 Oct): what is in it to the top of Tetra, or the folder
+     * whole to the Trash, as the user answered. Returns each move (from, to), so favorites and tags follow.
+     */
+    fun clearLeftOut(root: File, name: String, toTrash: Boolean): List<Pair<String, String>> {
+        require(name in OPTIONAL_FOLDERS && !isSystem(name)) { "$name is still a system folder." }
+        val dir = File(root, name).canonicalFile
+        if (!inside(root, dir) || !dir.isDirectory) return emptyList()
+        val entries = dir.listFiles().orEmpty()
+        if (toTrash && entries.isNotEmpty()) return listOf(name to moveToTrash(root, name))
+        val moved = entries.map { entry ->
+            val from = relative(root, entry)
+            val target = freeTarget(root.canonicalFile, entry)
+            moveExisting(root, entry.canonicalFile, target)
+            from to relative(root, target)
+        }
+        dir.delete()
+        return moved
     }
 
     fun emptyTrash(root: File): Int {

@@ -1815,6 +1815,7 @@ private fun DriveTab(
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
     var systemFoldersOpen by remember { mutableStateOf(false) }
+    var leftOutAsk by remember { mutableStateOf<Pair<Set<String>, List<String>>?>(null) } // left-out folders with files in them
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
     var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
@@ -1965,10 +1966,40 @@ private fun DriveTab(
         usage = spaceUsage,
         dismiss = { toolsOpen = false },
     )
-    if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
+    fun saveSystemFolders(chosen: Set<String>, toTrash: Boolean) {
+        val leftOut = DriveRules.chosenFolders - chosen
         SystemFolderChoice.choose(context, chosen)
+        Thread {
+            val result = runCatching {
+                leftOut.flatMap { DriveRules.clearLeftOut(root, it, toTrash) }.forEach { (from, to) -> metadata.rewritePath(from, to); driveOpeners.rewritePath(from, to) }
+            }
+            Handler(Looper.getMainLooper()).post {
+                result.onFailure { error = it.message ?: "Could not move what was in the folder." }
+                metadataVersion++
+                refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+            }
+        }.start()
+    }
+    if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
         systemFoldersOpen = false
-        refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+        // A folder left out goes; one with something in it asks first where that goes (asked 17 Oct).
+        val full = (DriveRules.chosenFolders - chosen).filter { File(root, it).list().orEmpty().isNotEmpty() }
+        if (full.isEmpty()) saveSystemFolders(chosen, toTrash = false) else leftOutAsk = chosen to full
+    }
+    leftOutAsk?.let { (chosen, full) ->
+        val one = full.size == 1
+        AlertDialog(
+            onDismissRequest = { leftOutAsk = null },
+            title = { Text(if (one) "“${full[0]}” has files in it" else "${full.dropLast(1).joinToString(", ")} and ${full.last()} have files in them") },
+            text = { Text("Move what is inside to the top of Tetra, or move ${if (one) "the folder" else "the folders"} with everything in ${if (one) "it" else "them"} to Trash. Empty folders left out simply go.") },
+            confirmButton = { TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = false) }) { Text("Move files out") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { leftOutAsk = null }) { Text("Cancel") }
+                    TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = true) }) { Text("Move to Trash") }
+                }
+            },
+        )
     }
     if (tagsOpen) DriveTagsSheet(
         tags = metadata.allTags(root),
@@ -2515,7 +2546,7 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("System folders", style = MaterialTheme.typography.titleLarge)
             Text("Folders Tetra keeps in Files for sorting things into, each with its own picture. Documents is always there. " +
-                "A folder left out later stays, as an ordinary folder, with everything in it.", style = MaterialTheme.typography.bodyMedium)
+                "A folder left out later goes; if it has files in it, you choose where they go.", style = MaterialTheme.typography.bodyMedium)
             androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DriveRules.OPTIONAL_FOLDERS.forEach { name ->
                     val (icon, tint) = systemFolderLook(name) ?: (R.drawable.ic_folder to Color.Gray)

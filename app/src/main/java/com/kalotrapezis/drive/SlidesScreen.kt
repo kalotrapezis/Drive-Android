@@ -177,7 +177,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 Slides.read(f)
             } }
             saving = false
-            result.onSuccess { nd -> slideDraft(context, f).delete(); deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
+            result.onSuccess { nd -> slideDraft(context, f).delete(); deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex); message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -273,7 +273,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(item, chosen) { if (OfficeUi.top && notesTyping != null) focusManager.clearFocus() }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
-    LaunchedEffect(message) { if (message != null) { kotlinx.coroutines.delay(2500); message = null } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     /** File › Versions: [v] in the editor, unsaved — Save puts it over the file; leaving without saving keeps the file as it is. */
     fun openVersion(v: File) = scope.launch {
@@ -400,7 +399,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     notesTyping = uid to androidx.compose.ui.text.input.TextFieldValue(n, androidx.compose.ui.text.TextRange(n.length))
                 }
                 RibbonDivider(w)
-                RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = null }
+                RibbonButton("Delete", w, R.drawable.ic_delete, enabled = e.order.size > 1) { change(e.copy(order = e.order.filterIndexed { k, _ -> k != c })); chosen = c.coerceAtMost(e.order.size - 2) }
             }
             "Insert" -> {
                 RibbonButton("Picture", w, R.drawable.ic_gallery) { pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -617,7 +616,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     val fit = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 200).coerceAtLeast(200).dp * (d.width / d.height)
                     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
                     // a tablet edits a slide at a time: the first is chosen to begin with
-                    LaunchedEffect(editing, wide) { if (editing && wide && chosen == null) chosen = 0 }
+                    LaunchedEffect(editing, wide, chosen) { if (editing && wide && chosen == null) chosen = 0 } // the ribbon stays (asked 17 Oct: it went after Save)
                     /**
                      * A desktop's notes pane (the ribbon at the top, asked 17 Oct): slide [i]'s speaker notes under it as PowerPoint's,
                      * small, typed in where they are, a scroll bar beside them; what is typed goes in as it is (one step of Undo a visit).
@@ -953,8 +952,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                     }
-                    message?.let { m -> Surface(color = Color.Black.copy(alpha = 0.8f), contentColor = Color.White, shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.align(Alignment.TopCenter).padding(12.dp)) { Text(m, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) } }
+                    OfficeMessage(message, top = 12.dp) { message = null }
                 }
             }
         }

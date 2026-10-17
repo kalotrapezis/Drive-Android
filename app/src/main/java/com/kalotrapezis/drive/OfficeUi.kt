@@ -149,6 +149,16 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     }
 }
 
+/** A message for a moment, the same in Words, Tables and Slides (Words' look, 17 Oct): a black pill at the top for 2.8 s, written in the log. */
+@Composable internal fun androidx.compose.foundation.layout.BoxScope.OfficeMessage(m: String?, top: androidx.compose.ui.unit.Dp, gone: () -> Unit) {
+    m ?: return
+    LaunchedEffect(m) { WriterLog.i("said: $m"); kotlinx.coroutines.delay(2800); gone() }
+    androidx.compose.material3.Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape,
+        modifier = Modifier.align(Alignment.TopCenter).padding(top = top, start = 16.dp, end = 16.dp)) {
+        Text(m, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    }
+}
+
 /** One set of colours for Words, Tables and Slides (17 Oct): the words' colour (white for dark fills and slides) … */
 internal val TEXT_COLOURS = listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31), Color.White)
 /** … the highlighter's … */

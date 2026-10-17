@@ -166,7 +166,6 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var menu by remember { mutableStateOf(false) }
     var formulas by remember { mutableStateOf(false) } // ⋯ › Show formulas: the cells show their formulas
     var message by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var about by remember { mutableStateOf(false) }
@@ -1076,13 +1075,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             }
         }
     }
-    message?.let { m ->
-        Box(Modifier.fillMaxSize().bottomBarPadding().padding(bottom = 72.dp), contentAlignment = Alignment.BottomCenter) {
-            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
-                Text(m, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-            }
-        }
-    }
+    // under the top bar and the cell bar, as Words' and Slides' messages
+    Box(Modifier.fillMaxSize().statusBarsPadding()) { OfficeMessage(message, top = 108.dp) { message = null } }
     }
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }

@@ -1543,7 +1543,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
     LaunchedEffect(viewing, reading) { WriterLog.i(if (reading) "reading mode at $readingZoom%" else if (viewing) "view mode" else "edit mode") }
     LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
-    LaunchedEffect(message) { message?.let { WriterLog.i("said: $it") } }
     DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
     /**
      * The package just written ([bytes], from [saved]) becomes the one Writer works from: a picture or shape added in
@@ -4435,12 +4434,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Text("Go to “${goal.value.text.take(40).trim()}”", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        message?.let { m ->
-            LaunchedEffect(m) { delay(2800); message = null }
-            Surface(color = Color.Black, contentColor = Color.White, shape = CircleShape, modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp, start = 16.dp, end = 16.dp)) {
-                Text(m, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            }
-        }
+        OfficeMessage(message, top = 60.dp) { message = null }
         cropping?.let { bitmap ->
             BackHandler { cropping = null }
             // Photos' crop, with straight cuts (90°) on at first (asked 2026-09-28); off, the corners move freely and the

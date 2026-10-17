@@ -21,6 +21,7 @@ How to write here:
 - [x] (4ddb8da) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
 - [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
 - [x] (20e0b17) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
+- [x] (next commit) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -101,7 +102,12 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] (16 Oct, `RibbonRows`) A ribbon on rows on a big screen: with the ribbon at the top on a screen 840 dp or wider,
       each tab's tools go on as many rows as they need, a whole group moving to the next row (never one tool). The
       user, 17 Oct, shown it: **keep it in all three apps** — new tools in B and C go through `RibbonLine`, which does it.
-- [ ] Messages, empty states and dialogs in one style; English only (memory: UI English only).
+- [x] Messages, empty states and dialogs in one style; English only (memory: UI English only).
+      Done: one `OfficeMessage` — Words' black pill at the top for 2.8 s, written in the log — in all three (Tables'
+      was a grey box at the bottom for 3.5 s, Slides' a see-through box for 2.5 s). Dialogs were already Material's
+      AlertDialog everywhere; "Opening…" and "could not be opened" already worded alike; all English.
+      Also (the user, 17 Oct: "Slides' ribbon does not stick"): on a tablet Save and Delete slide left no slide
+      chosen, so Slides' ribbon went away; now the slide stays chosen. Emulator 17 Oct.
 
 ### B. Slides — what PowerPoint and Impress have that Slides lacks
 Foundation first: **a slide's words as runs** (today an edited paragraph is one line in its first run's look,

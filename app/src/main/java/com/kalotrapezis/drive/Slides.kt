@@ -42,8 +42,9 @@ internal class SlidePara(val para: DocPara, val look: ParaLook = ParaLook(listIn
             SlidePara(DocPara(listOf(DocRun(words, bold = bold, sizePt = size, color = color and 0xFFFFFF, font = face?.let(Slides::face))), list = DocList(false, 0), align = align))
     }
 }
-/** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box. */
-internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false)
+/** [shrink]: "shrink text on overflow" (PowerPoint's normAutofit, LibreOffice's shrink-to-fit): made smaller until it fits its box; [warp]: WordArt's bend (Words' TextWarp). */
+internal class SlideText(val paras: List<SlidePara>, val anchor: Char, val insets: FloatArray, val scale: Float = 1f, val wrap: Boolean = true, val shrink: Boolean = false,
+    val warp: TextWarp? = null)
 
 /**
  * A shape's own outline (DrawingML's custGeom): its moves (0), lines (1), curves (2) and closes (4), the points from 0 to 1
@@ -558,7 +559,8 @@ internal object Slides {
                     runOf(null, ""))
             }
             return SlideText(SlidePara.numbered(out), anchor, floatArrayOf(inset("lIns", 7.2f), inset("tIns", 3.6f), inset("rIns", 7.2f), inset("bIns", 3.6f)), scale, bodyAttr("wrap") != "none",
-                bodyPr.any { it.kid("normAutofit") != null })
+                bodyPr.any { it.kid("normAutofit") != null },
+                bodyPr.firstNotNullOfOrNull { it.kid("prstTxWarp")?.attr("prst") }?.let { w -> TextWarp.entries.firstOrNull { it.word == w } })
         }
     }
 

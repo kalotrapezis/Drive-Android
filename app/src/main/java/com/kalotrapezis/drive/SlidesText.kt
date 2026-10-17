@@ -84,6 +84,14 @@ internal object SlidesText {
 
     /** [t] in its box: from the top, the middle or the bottom; made smaller until it fits when it shrinks on overflow. */
     fun draw(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
+        // WordArt bent: its words along the bend, in its first letters' look (as Words draws a document's)
+        t.warp?.let { bend ->
+            val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: return
+            val look = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xFF000000.toInt() or (r.color ?: 0); typeface = OfficeFonts.styled(OfficeFonts.typeface(DocStyles.Plain.fontName(r.font)), r.bold, r.italic) }
+            TextBoxDrawable.bent(c, bend, t.paras.joinToString(" ") { p -> p.runs.joinToString("") { it.text }.trim() }.trim(), look, x, y, w, h)
+            return
+        }
         val room = h - t.insets[1] - t.insets[3]
         // shrink on overflow: a size a twentieth smaller each time, until the words fit (no smaller than a third)
         var k = 1f

@@ -4907,8 +4907,8 @@ private fun Modifier.pinchZoom(now: () -> Float, min: Float, max: Float, side: a
 }
 
 /** WordArt's outline: black round coloured letters, grey round black ones; its glow gold, blue round gold letters. */
-private fun artOutline(color: Int) = if (color and 0xFFFFFF == 0) 0x7F7F7F else 0x000000
-private fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 else 0xFFC000
+internal fun artOutline(color: Int) = if (color and 0xFFFFFF == 0) 0x7F7F7F else 0x000000
+internal fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 else 0xFFC000
 
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable

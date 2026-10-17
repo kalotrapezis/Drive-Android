@@ -34,10 +34,12 @@ internal object SlidesEdit {
          *  nor space after it; the paragraph after it (the rest of the words, split where the letter's lines end) no space before nor first-line indent */
         val drop: Float? = null, val dropRest: Boolean = true,
         /** Insert › Link on all its words: a web address, or "slide:" and a slide's uid; "" a link taken off */
-        val link: String? = null) {
+        val link: String? = null,
+        /** Insert › WordArt (Words' looks and bends): every letter's outline, shadow and glow; the words' bend ("" straight, else PowerPoint's prstTxWarp name) */
+        val effects: TextEffects? = null, val warp: String? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null
+            align != null || list != null || spacing != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -72,6 +74,8 @@ internal object SlidesEdit {
                 l.highlight?.let { h -> r = r.copy(highlight = h.takeIf { it != NONE }?.and(0xFFFFFF)) }
                 // a link in Office's link colour (the theme's, once saved and read again)
                 l.link?.let { k -> r = if (k.isEmpty()) r.copy(link = null) else r.copy(link = k, color = 0x0563C1) }
+                // WordArt's effects in Word's form, which Words' drawing reads (a run's own ones, either form, replaced)
+                l.effects?.let { fx -> r = r.copy(font = r.font.orEmpty().replace(EFFECTS, "") + fx.docx()) }
                 r
             }
             // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
@@ -80,8 +84,10 @@ internal object SlidesEdit {
             val look = l.drop?.let { d -> when (i) { first -> look0.copy(left = d, firstLine = 0f, after = 0f); first + 1 -> if (l.dropRest) look0.copy(firstLine = 0f, before = 0f) else null; else -> null } } ?: look0
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.text?.first()?.isDigit() == true, p.level)),
                 l.spacing?.let { look.copy(lineMultiple = it, lineExact = null) } ?: look, bullet, p.base)
-        }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink)
+        }), l.anchor ?: t.anchor, t.insets, t.scale, t.wrap, l.autofit?.let { it == 's' } ?: t.shrink, if (l.warp == null) t.warp else TextWarp.entries.firstOrNull { it.word == l.warp })
     }
+    /** A run's own text effects, as Word writes them or LibreOffice: what WordArt's replace. */
+    private val EFFECTS = Regex("""<w14:(glow|shadow|textOutline)\b[\s\S]*?</w14:\1>|\s?style:text-outline="[^"]*"|\s?fo:text-shadow="[^"]*"""")
     /** Insert › Header & footer on a slide (PowerPoint's): the date ([fixed] its words, null: today's, updated), the slide's number, a footer's words (null: none). */
     data class Footers(val date: Boolean = false, val fixed: String? = null, val number: Boolean = false, val text: String? = null)
     /** Today as Header & footer's date shows it (the first of Words' Date and time forms). */
@@ -148,7 +154,7 @@ internal object SlidesEdit {
                 val rs = runs.map { (r, t) -> (r ?: DocRun("", sizePt = 18f)).copy(text = t).let { if (item.hint) it.copy(color = 0) else it } }
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
-            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink) }
+            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp) }
                 ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped }
         }
         // what was put on it: pictures and shapes, over the rest
@@ -160,7 +166,7 @@ internal object SlidesEdit {
                 val text = edit.texts[e.uid to a.id]?.let { lines -> SlideText(lines.map { SlidePara.plain(it, 18f, 0, align = if (box) DocAlign.Start else DocAlign.Center) }, if (box) 't' else 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
                 // a text box: no fill, no border, as tall as its words (PowerPoint's "resize shape to fit text")
                 // shortcut: without Android's text layout (the JVM tests) a line a paragraph, 1.2 × 18 pt each
-                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
+                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[e.uid to a.id]?.autofit != 'n' }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
                 else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), text, id = a.id)
             }).also { it.anim = a.id } // what it is chosen and animated by
         }
@@ -244,7 +250,7 @@ internal object SlidesEdit {
     /** The boxes on [e]'s slide that grow to their words (Home's autofit): where they stand now, their height as their words make it. */
     fun grown(deck: Deck, edit: Edit, e: Entry): Map<String, List<Float>> {
         val ids = (edit.looks.filter { (k, l) -> k.first == e.uid && l.autofit == 'g' }.keys.map { it.second } +
-            edit.added[e.uid].orEmpty().filter { it.prst == TEXT_BOX }.map { it.id }).ifEmpty { return emptyMap() }
+            edit.added[e.uid].orEmpty().filter { it.prst == TEXT_BOX && edit.looks[e.uid to it.id]?.autofit != 'n' }.map { it.id }).ifEmpty { return emptyMap() }
         val shown = slide(deck, edit, e).items.filterIsInstance<SlideItem.Shape>()
         return ids.mapNotNull { id -> shown.firstOrNull { it.id == id || it.anim == id }?.let { id to listOf(it.x, it.y, it.w, it.h) } }.toMap()
     }
@@ -318,6 +324,15 @@ internal object SlidesEdit {
                 l.text?.let { c -> listOf("noFill", "gradFill", "blipFill", "pattFill", "grpFill").forEach { n -> rPr.kids().filter { it.localName == n }.forEach { rPr.removeChild(it) } }; place(rPr, rgb(c, "solidFill"), RPR) }
                 l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }
+                // WordArt: the letters' outline (a:ln) and their glow and shadow (a:effectLst), as PowerPoint writes them; none said too, over inherited ones
+                l.effects?.let { fx ->
+                    rPr.kids().filter { it.localName in setOf("ln", "effectLst", "effectDag") }.forEach { rPr.removeChild(it) }
+                    place(rPr, a("ln", "w" to "12700").also { ln -> ln.appendChild(fx.outline?.let { rgb(it, "solidFill") } ?: a("noFill")) }, RPR)
+                    place(rPr, a("effectLst").also { fl ->
+                        fx.glow?.let { g -> fl.appendChild(a("glow", "rad" to "101600").also { it.appendChild(a("srgbClr", "val" to "%06X".format(g and 0xFFFFFF)).also { c -> c.appendChild(a("alpha", "val" to "40000")) }) }) }
+                        if (fx.shadow) fl.appendChild(a("outerShdw", "blurRad" to "38100", "dist" to "38100", "dir" to "2700000", "algn" to "tl", "rotWithShape" to "0").also { it.appendChild(a("srgbClr", "val" to "000000").also { c -> c.appendChild(a("alpha", "val" to "60000")) }) })
+                    }, RPR)
+                }
                 // Link: its relationship ([link]: its rId, and " slide" for a jump to a slide, as PowerPoint's); "" taken off
                 if (l.link != null && rPr.localName == "rPr") {
                     rPr.kids().filter { it.localName == "hlinkClick" }.forEach { rPr.removeChild(it) }
@@ -347,6 +362,9 @@ internal object SlidesEdit {
         }
         val bodyPr = body.kids().firstOrNull { it.localName == "bodyPr" } ?: a("bodyPr").also { body.insertBefore(it, body.firstChild) }
         l.anchor?.let { bodyPr.setAttribute("anchor", when (it) { 'c' -> "ctr"; 'b' -> "b"; else -> "t" }) }
+        // WordArt's bend: PowerPoint's preset text warp, first in the body's settings
+        l.warp?.let { w -> bodyPr.kids().filter { it.localName == "prstTxWarp" }.forEach { bodyPr.removeChild(it) }
+            if (w.isNotEmpty()) { place(bodyPr, a("prstTxWarp", "prst" to w).also { it.appendChild(a("avLst")) }, BODY); bodyPr.setAttribute("fromWordArt", "1") } else bodyPr.removeAttribute("fromWordArt") }
         l.autofit?.let { f -> place(bodyPr, a(when (f) { 's' -> "normAutofit"; 'g' -> "spAutoFit"; else -> "noAutofit" }), BODY)
             BODY.subList(1, 4).filter { it != (when (f) { 's' -> "normAutofit"; 'g' -> "spAutoFit"; else -> "noAutofit" }) }.forEach { n -> bodyPr.kids().filter { it.localName == n }.forEach { bodyPr.removeChild(it) } } }
     }

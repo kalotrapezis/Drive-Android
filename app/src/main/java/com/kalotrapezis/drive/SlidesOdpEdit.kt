@@ -193,8 +193,10 @@ internal object SlidesOdpEdit {
                     t.kids().filter { k -> k.localName == "char-complex-color" }.forEach { k -> t.removeChild(k) }
                 }
                 l.highlight?.let { t.setAttributeNS(FO, "fo:background-color", if (it == SlidesEdit.NONE) "transparent" else hex(it)) }
+                // WordArt: hollow letters and a shadow, as LibreOffice has them (no glow on letters)
+                l.effects?.let { fx -> t.setAttributeNS(STYLE, "style:text-outline", "${fx.outline != null}"); t.setAttributeNS(FO, "fo:text-shadow", if (fx.shadow) "1pt 1pt" else "none") }
             }
-            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null || l.text != null || l.highlight != null
+            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null || l.text != null || l.highlight != null || l.effects != null
             for (p in paras(h)) {
                 if (l.cleared) {
                     // the letters' own looks gone: the spans' words put back in the paragraph, its own text looks taken off
@@ -221,6 +223,16 @@ internal object SlidesOdpEdit {
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
                 })
             }
+            // WordArt's bend on a shape: LibreOffice's fontwork geometry (straight: a rectangle again); a frame keeps its words in lines
+            // shortcut: a frame (a text box of the file's own) is not made fontwork, which needs a custom shape
+            l.warp?.let { w -> s.kids().firstOrNull { it.localName == "enhanced-geometry" }?.let { g ->
+                val bend = TextWarp.entries.firstOrNull { it.word == w }
+                g.attributes.let { at -> (0 until at.length).map { at.item(it) as org.w3c.dom.Attr }.filter { it.namespaceURI == DRAW && it.localName != "viewBox" } }.forEach { g.removeAttributeNode(it) }
+                while (g.firstChild != null) g.removeChild(g.firstChild)
+                if (bend == null) g.setAttributeNS(DRAW, "draw:type", "rectangle")
+                // as Impress writes one ("path": the words stretched along the whole bend)
+                else { g.setAttributeNS(DRAW, "draw:text-path", "true"); g.setAttributeNS(DRAW, "draw:text-path-mode", "path"); g.setAttributeNS(DRAW, "draw:text-path-scale", "path"); g.setAttributeNS(DRAW, "draw:type", bend.fontwork) }
+            } }
             // Insert › Link: each paragraph's words in a link (a slide's named once every page is in place); "" a link taken off
             l.link?.let { to -> for (p in paras(h)) {
                 for (a in p.all().filter { it.localName == "a" && it.namespaceURI == TEXT }) { while (a.firstChild != null) a.parentNode.insertBefore(a.firstChild, a); a.parentNode.removeChild(a) }
@@ -358,6 +370,13 @@ internal object SlidesOdpEdit {
             } else if (a.image != null) {
                 val st = derive("graphic", null, "picture") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none") } }
                 """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:image xlink:href="${picture(a)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"><text:p/></draw:image></draw:frame>"""
+            } else if (a.prst == SlidesEdit.TEXT_BOX && !look?.warp.isNullOrEmpty()) {
+                // WordArt bent: LibreOffice's fontwork, which paints its letters in the shape's fill (and outlines them in its line)
+                val col = look?.text ?: 0xFF000000.toInt(); val outline = look?.effects?.outline
+                val st = derive("graphic", null, "fontwork $col $outline") { st -> props(st, "graphic-properties").apply {
+                    setAttributeNS(DRAW, "draw:fill", "solid"); setAttributeNS(DRAW, "draw:fill-color", hex(col))
+                    if (outline == null) setAttributeNS(DRAW, "draw:stroke", "none") else { setAttributeNS(DRAW, "draw:stroke", "solid"); setAttributeNS(SVG, "svg:stroke-color", hex(outline)) } } }
+                """<draw:custom-shape $ns draw:style-name="$st" draw:layer="layout" $box><text:p/><draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle"/></draw:custom-shape>"""
             } else if (a.prst == SlidesEdit.TEXT_BOX) {
                 // LibreOffice's text box: a frame with no fill or line, growing to its words
                 val st = derive("graphic", null, "text box") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none")

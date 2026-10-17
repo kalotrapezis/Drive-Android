@@ -138,6 +138,38 @@ class SlidesTest {
         }
     }
 
+    /** Insert › WordArt (Words' looks and bends): an arch with an outline and a shadow, and a straight one; their colour, effects and bend saved and read back. */
+    @Test fun `WordArt put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val bent = SlidesEdit.Added("9200", 100f, 100f, 360f, 130f, prst = SlidesEdit.TEXT_BOX)
+            val flat = SlidesEdit.Added("9201", 100f, 300f, 360f, 55f, prst = SlidesEdit.TEXT_BOX)
+            fun art(c: Int, fx: TextEffects, warp: String) = SlidesEdit.Look(text = 0xFF000000.toInt() or c, size = 36f, bold = true, align = DocAlign.Center, effects = fx, warp = warp, autofit = if (warp.isEmpty()) null else 'n')
+            val e = SlidesEdit.start(deck).copy(added = mapOf(0 to listOf(bent, flat)), texts = mapOf((0 to "9200") to listOf("Arched words"), (0 to "9201") to listOf("Flat words")),
+                looks = mapOf((0 to "9200") to art(0xED7D31, TextEffects(0x000000, true), "textArchUp"), (0 to "9201") to art(0x4472C4, TextEffects(glow = 0xFFC000), "")))
+            fun check(d: Deck, how: String, lo: Boolean = false) {
+                val shapes = d.slides[0].items.filterIsInstance<SlideItem.Shape>()
+                val a = shapes.first { words(it) == "Arched words" }; val f = shapes.first { words(it) == "Flat words" }
+                assertEquals(how, TextWarp.ArchUp, a.text!!.warp); assertEquals(how, null, f.text!!.warp)
+                val r = a.text!!.paras[0].runs[0]
+                assertEquals(how, 0xED7D31, r.color); assertEquals(how, 130f, a.h, 2f) // a bent one keeps its box
+                if (!lo || name.endsWith("pptx")) { assertTrue(how, r.bold); assertEquals(how, 36f, r.sizePt!!, 0.5f) }
+                if (!lo) { assertEquals(how, TextEffects(0x000000.takeIf { name.endsWith("pptx") } ?: 0, true), TextEffects.of(r.font))
+                    if (name.endsWith("pptx")) assertEquals(how, 0xFFC000, TextEffects.of(f.text!!.paras[0].runs[0].font).glow) }
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("wordart-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = java.nio.file.Files.createTempDirectory("lo").toFile(); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name", true)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -288,6 +288,27 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         put(a); typing = SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, null, null, id = a.id).also { it.anim = a.id } to androidx.compose.ui.text.input.TextFieldValue("")
         WriterLog.i("Slides: a text box put on")
     }
+    /**
+     * Insert › WordArt (Words' looks and bends) on [b]'s slide [cc]: on the chosen box with words, else a new text box of Words'
+     * "Your text here" (its size, bold, centred), as big as its words and, bent, with room for the bend as Words makes one. The edit and the box's id.
+     */
+    fun wordArt(b: SlidesEdit.Edit, cc: Int, style: ArtStyle, bend: ArtBend): Pair<SlidesEdit.Edit, String>? {
+        val d = base ?: return null; val uid = b.order[cc].uid
+        val fx = TextEffects(if (style.outline) artOutline(style.color) else null, style.shadow, if (style.glow && !odp) artGlow(style.color) else null)
+        val colour = 0xFF000000.toInt() or style.color
+        val warp = bend.warp?.word ?: ""
+        val own = item?.let { id -> SlidesEdit.slide(d, b, b.order[cc]).items.lastOrNull { it.anim == id } as? SlideItem.Shape }?.takeIf { it.text != null && it.id != null && !it.grouped }
+        if (own != null) { val k = uid to item!!; val l = b.looks[k] ?: SlidesEdit.Look()
+            return b.copy(looks = b.looks + (k to l.copy(text = colour, effects = fx, warp = warp, autofit = if (bend.warp != null) 'n' else l.autofit))) to item!! }
+        val words = "Your text here"
+        val (w, h) = android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }.measureText(words).let { it * 1.1f + 30f to PictureXml.ART_PT * 1.25f + 10f }
+            .let { (w0, h0) -> when (bend.warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
+        val id = b.newId(uid, taken(b, cc))
+        val a = SlidesEdit.Added(id, (d.width - w) / 2, (d.height - h) / 2, w, h, prst = SlidesEdit.TEXT_BOX)
+        return b.copy(added = b.added + (uid to (b.added[uid].orEmpty() + a)), texts = b.texts + ((uid to id) to listOf(words)),
+            looks = b.looks + ((uid to id) to SlidesEdit.Look(text = colour, size = PictureXml.ART_PT, bold = true, align = DocAlign.Center, effects = fx, warp = warp,
+                autofit = if (bend.warp != null) 'n' else null))) to id
+    }
     /** Insert › Symbol, Date, Line break (Words'): [words] where the typing cursor is — the chosen box opened to type in first (at its end), else a new text box. */
     fun putWords(words: String) {
         if (typing == null) {
@@ -562,6 +583,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Drop cap", w, R.drawable.ic_drop_cap) { if (chosenWords() != null) strip = DesignGallery.DropCap else message = "Choose a box with words first" }
                 // Text box (as PowerPoint's): a box of words alone across the slide's middle, typed into at once
                 RibbonButton("Text box", w, R.drawable.ic_text_box) { newTextBox() }
+                // WordArt (Words' strip of looks and bends): a new one, or the chosen box's words in the look tapped
+                RibbonButton("WordArt", w, R.drawable.ic_format_color_text) { strip = DesignGallery.WordArt }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                 // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
@@ -1027,7 +1050,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // Home › Font and Insert › Drop cap: Words' strips, a card tapped shown at once; Cancel puts the words back
                     var stripShown by remember { mutableStateOf(DesignGallery.Font) } // kept while it slides away
                     strip?.let { stripShown = it }
-                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && item != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && (item != null || strip == DesignGallery.WordArt), Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val fonts = remember(base) { ((base?.slides.orEmpty().flatMap { s -> s.items.filterIsInstance<SlideItem.Shape>().flatMap { sh -> sh.text?.paras.orEmpty().flatMap { pp -> pp.runs.mapNotNull { r -> DocStyles.Plain.fontName(r.font) } } } })
                             .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
                         val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
@@ -1035,6 +1058,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         DesignGalleryStrip(stripShown, stripPicked, cancel = { stripBefore?.let { edit = it }; close() }, ok = {
                             val made = edit; stripBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: ${stripShown.title} chosen")
                         }, pick = { ch ->
+                            if (stripShown == DesignGallery.WordArt) {
+                                // a look and a bend make the WordArt, as in Words: the one not tapped stays as it was
+                                val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip
+                                val last = stripPicked as? Pair<*, *>
+                                val style = ch as? ArtStyle ?: last?.first as? ArtStyle ?: ART_STYLES[0]
+                                val bend = ch as? ArtBend ?: last?.second as? ArtBend ?: ArtBend(null)
+                                stripBefore = b; stripPicked = style to bend
+                                wordArt(b, cc, style, bend)?.let { (made, id) -> edit = made; item = id }
+                                return@DesignGalleryStrip
+                            }
                             val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip
                             val k = b.order[cc].uid to id; val l = b.looks[k] ?: SlidesEdit.Look()
                             val size = wordsSize(chosenWords())
@@ -1045,7 +1078,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 else -> l.copy(raise = 0f) // None
                             }))
                         }, more = if (stripShown == DesignGallery.DropCap) { { stripBefore?.let { edit = it }; close(); dropOptions = true } } else null,
-                            fonts = fonts, now = now, drops = listOf(DropKind.None, DropKind.Dropped, DropKind.Raised), dropLines = dropLines, dropLinesChange = { n ->
+                            glow = !odp, fonts = fonts, now = now, drops = listOf(DropKind.None, DropKind.Dropped, DropKind.Raised), dropLines = dropLines, dropLinesChange = { n ->
                                 dropLines = n
                                 // the letter tapped shown again at its new height
                                 val b = stripBefore ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip; val id = item ?: return@DesignGalleryStrip

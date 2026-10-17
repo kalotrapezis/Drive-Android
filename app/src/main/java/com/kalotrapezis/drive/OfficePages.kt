@@ -1012,12 +1012,15 @@ internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val in
     override fun draw(canvas: Canvas) {
         val b = bounds
         (frame ?: ShapePicture("rect", 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f)).drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat())
-        warp?.let { (bend, words, look) ->
-            val bw = b.width().toFloat(); val bh = b.height().toFloat()
-            // Letters as tall as the bend allows, smaller when the words would not fit along it; the line placed for them.
+        warp?.let { (bend, words, look) -> bent(canvas, bend, words, look, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat()); return }
+        framed(canvas, text, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat(), inset.first, inset.second, inset.first, inset.second, anchor, true)
+    }
+    companion object {
+        /** WordArt's [words] along [bend] in a box [bw] × [bh] at [x], [y], in [look]: letters as tall as the bend allows, smaller when they would not fit along it. */
+        fun bent(canvas: Canvas, bend: TextWarp, words: String, look: android.text.TextPaint, x: Float, y: Float, bw: Float, bh: Float) {
             val paint = android.text.TextPaint(look)
             var m = bend.letters(bw, bh)
-            fun along(m: Float) = android.graphics.Path().apply { val pts = bend.line(bw, bh, m); moveTo(b.left + pts[0].first, b.top + pts[0].second); pts.drop(1).forEach { (x, y) -> lineTo(b.left + x, b.top + y) } }
+            fun along(m: Float) = android.graphics.Path().apply { val pts = bend.line(bw, bh, m); moveTo(x + pts[0].first, y + pts[0].second); pts.drop(1).forEach { (px, py) -> lineTo(x + px, y + py) } }
             var path = along(m)
             repeat(3) {
                 paint.textSize = m / 0.72f // a letter's cap height is about 0.72 of its size
@@ -1026,14 +1029,10 @@ internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val in
                 if (needs <= length * 0.96f) return@repeat
                 m *= length * 0.96f / needs; path = along(m)
             }
-            canvas.save(); canvas.clipRect(b)
+            canvas.save(); canvas.clipRect(x, y, x + bw, y + bh)
             canvas.drawTextOnPath(words, path, ((android.graphics.PathMeasure(path, false).length - paint.measureText(words)) / 2).coerceAtLeast(0f), 0f, paint)
             canvas.restore()
-            return
         }
-        framed(canvas, text, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat(), inset.first, inset.second, inset.first, inset.second, anchor, true)
-    }
-    companion object {
         /**
          * Words laid out in a frame (a text box, a slide's box or shape, a cell): [text] [left]…[bottom] in from the box's
          * sides, at its top, middle or bottom ([anchor] 't', 'c', 'b'); cut at the box when [clip] (PowerPoint lets it overflow).

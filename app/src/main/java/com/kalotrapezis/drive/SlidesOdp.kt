@@ -250,7 +250,12 @@ internal object SlidesOdp {
                         val own = if (preset == null && geo != null) ShapeGeometry.ofOdf(xml(geo)) else null
                         val f = fill() ?: if (g("fill") == null) 0xFF729FCF.toInt() else null; val l = line()
                         val shape = if (preset != null || own != null) ShapePicture(preset ?: "custom", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f, own, adjust) else null
-                        out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, text(e, null, gr), gradient = gradient(), id = path)
+                        // LibreOffice's fontwork (WordArt): its words along the bend, in the shape's fill (LibreOffice paints its letters so), no shape drawn
+                        val warp = geo?.takeIf { it.a(DRAW, "text-path") == "true" }?.let { TextWarp.entries.firstOrNull { w -> w.fontwork == type } }
+                        val words = text(e, null, gr)
+                        if (warp != null && words != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, null, SlideText(words.paras.map { p ->
+                            SlidePara(p.para.copy(runs = p.runs.map { r -> r.copy(color = f?.and(0xFFFFFF) ?: r.color) }), p.look, p.bullet, p.base) }, words.anchor, words.insets, warp = warp), id = path)
+                        else out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, words, gradient = gradient(), id = path)
                     }
                     "g" -> shapes(e, out, master, path, top ?: path)
                 }

@@ -44,6 +44,8 @@ How to write here:
       Done here: Dropped (5bf71af), Chart (1617bd3), Link (6ae8501), Header & footer (9578abf), Symbol/Date/Line break/Equation
       (4e68384). Unit suite 415/0/7; sweep 349 + 29, none failing (after 9578abf). Tablet still Crunchyroll at 16:22: all on the
       emulator only. Handing on (notes: office-B-17oct.md in the group's notes folder); next WordArt, Comment, then Arrange.
+- [~] (office-C session, 17 Oct, from office-B's hand-over) B on from WordArt: Comment, Arrange, Slide, Design, Draw, Review, View,
+      File, Slide show, References; then C, then A's walk.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -283,7 +285,18 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       `OfficeMath.mathml`) with the picture as its replacement; read back from either with the equation kept (also
       LibreOffice's own a14:m with an EMF fallback), so Edit equation works on a deck's own ones too; the tab is "Equation".
       `an equation put on saved`, `a line break typed saved` (both formats, LibreOffice's conversions); emulator: x²+1=√y put on,
-      saved — LibreOffice draws its picture; a date put in Plan's words. Link (to a web page or to a
+      saved — LibreOffice draws its picture; a date put in Plan's words. WordArt — done 17 Oct (office-C session): Words' WordArt
+      strip (`DesignGalleryStrip` › WordArt: `ART_STYLES`, `ArtBend`; glow offered in .pptx only, as Words offers it in .docx only),
+      a look and a bend making it as in Words: Words' "Your text here" in a text box (Insert › Text box's) at Words' size, bold,
+      centred, as big as Words makes one (room for the bend); with a box with words chosen, its words take the look instead. Held in
+      `Look.effects` (Words' `TextEffects`, in the runs in Word's w14 form, drawn by Words' `EffectSpan`) and `Look.warp`
+      (`SlideText.warp`, Words' `TextWarp`, drawn along the bend by Words' `TextBoxDrawable.bent` — pulled out of Words' drawing,
+      fingerprint unchanged); saved as PowerPoint writes it (rPr a:ln + a:effectLst glow/outerShdw, bodyPr prstTxWarp fromWordArt)
+      and LibreOffice (style:text-outline, fo:text-shadow; bent: a fontwork custom shape, mode and scale "path" as Impress writes
+      it, the letters in its fill, the outline its line); read back from both (prstTxWarp; fontwork's fill as the letters' colour).
+      `WordArt put on saved` (both, LibreOffice's conversions); emulator: outlined blue, arched, saved — LibreOffice draws the arch
+      with its outline. Not drawn (as in Words): a bent WordArt's outline/shadow/glow in Tetra; an .odp fontwork's shadow. Unit suite 416/0/7; sweep 349 + 29, none
+      failing; Words' fingerprint unchanged (emulator; the tablet not connected). Link (to a web page or to a
       slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
       Audio and video (later).
 - [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /

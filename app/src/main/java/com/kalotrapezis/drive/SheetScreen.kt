@@ -701,7 +701,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
-                OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx, contextualColour = Color(0xFF6FCF97)) {
+                OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
                     if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                 }
                 val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }

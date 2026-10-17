@@ -123,7 +123,8 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
 /** The ribbon's tab row, one for Words, Tables and Slides: the chosen tab under a bubble or over a dash (OfficeUi.marker),
  *  scrolled clear of the edge's shade. [contextual] (Picture, Column, …) has a colour of its own; [lead] goes before the tabs. */
 @Composable internal fun <T> OfficeTabRow(tabs: List<T>, shown: T, w: Color, dash: Color, pick: (T) -> Unit, contextual: T? = null,
-    contextualColour: Color = dash, label: (T) -> String = { it.toString() }, lead: @Composable () -> Unit = {}) {
+    // the contextual tab: last, in a lighter tone of the app's colour, in every app (17 Oct)
+    contextualColour: Color = androidx.compose.ui.graphics.lerp(dash, Color.White, 0.45f), label: (T) -> String = { it.toString() }, lead: @Composable () -> Unit = {}) {
     val bubble = OfficeUi.marker == "bubble" && !OfficeUi.compact
     Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         lead()

@@ -178,13 +178,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
     var notesTyping by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a slide's (uid) speaker notes being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
-    var ribbonTab by remember { mutableStateOf("Slide") }
+    var ribbonTab by remember { mutableStateOf("Home") } // "Item": the contextual tab of what is chosen on the slide
     var themesPage by remember { mutableStateOf(false) } // Design › Themes: the panel of them
     var effectOptions by remember { mutableStateOf(false) } // Transitions or Animations › Options: the strip of sides and speeds
     var effectKinds by remember { mutableStateOf(false) } // Animations › Effect: the catalog of entrances, emphases and exits, a line each
     LaunchedEffect(ribbonTab, item) { effectOptions = false; effectKinds = false }
     // something chosen on the slide: its tab, unless Transitions or Animations is in use (they work on it too)
-    LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Slide", "Insert")) ribbonTab = "Selection" }
+    LaunchedEffect(item) { if (item != null && ribbonTab in setOf("Home", "Insert")) ribbonTab = "Item" }
     /** [a] put on the chosen slide, then chosen. */
     fun put(a: SlidesEdit.Added) {
         val e = edit ?: return; val c = chosen ?: return; val uid = e.order[c].uid
@@ -300,7 +300,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         val entry = e.order[c]; val uid = entry.uid
         val sl = view?.slides?.getOrNull(c)
         when (tab) {
-            "Selection" -> {
+            "Item" -> {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 if (a == null && it0 is SlideItem.Shape && !it0.grouped && it0.id != null && it0.text != null) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0) }
@@ -325,7 +325,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (it0 != null) RibbonDivider(w)
                 if (a != null || it0 != null) RibbonButton("Delete", w, R.drawable.ic_delete) { deleteItem() }
             }
-            "Slide" -> {
+            "Home" -> {
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { layouts = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
@@ -749,12 +749,21 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         exit = if (OfficeUi.top) androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut() else SLIDE_OUT) {
                         val c = (chosen ?: 0).coerceIn(0, (e?.order?.size ?: 1) - 1)
                         val w = islandContentColor()
-                        val tabs = listOfNotNull("Selection".takeIf { item != null }, "File", "Slide", "Insert", "Design", "Transitions", "Animations", "Slide show")
-                        val shown = ribbonTab.takeIf { it in tabs } ?: "Slide"
+                        // tabs as Words' (17 Oct): File, Home, Insert, …; what is chosen on the slide last, named by what it is
+                        val tabs = listOfNotNull("File", "Home", "Insert", "Design", "Transitions", "Animations", "Slide show", "Item".takeIf { item != null })
+                        val shown = ribbonTab.takeIf { it in tabs } ?: "Home"
+                        val itemKind = e?.let { e1 ->
+                            val a = e1.added[e1.order[c].uid]?.firstOrNull { it.id == item }
+                            when (val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }) {
+                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> "Picture"; is SlideItem.Chart -> "Chart"
+                                is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
+                                null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Picture" else "Shape"
+                            }
+                        } ?: "Shape"
                         // a phone: solid across the bottom, as Excel's ribbon; a tablet: Words' floating island
                         Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
                             Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) {
-                                OfficeTabRow(tabs, shown, w, POWERPOINT_ORANGE, { ribbonTab = it }) {
+                                OfficeTabRow(tabs, shown, w, POWERPOINT_ORANGE, { ribbonTab = it }, contextual = "Item", label = { if (it == "Item") itemKind else it }) {
                                     // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
                                     if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                                 }

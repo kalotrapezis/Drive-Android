@@ -1,3 +1,5 @@
+> **Start at [Plan.md](Plan.md)** (17 Oct): the common notepad — what is planned, being done, done and dropped, for every agent. Write your line there when you start and finish.
+
 > **Latest — 15 October 2026, evening: finishing Word** (branch `writer-library`). The task: every item left in Word
 > done or deferred by the user, one commit each, each checked with a unit test, in LibreOffice where Writer writes files,
 > and on the phone (208c8192, Print layout, Mobile view off). `UserDocsSweepTest` (run with `TETRA_SWEEP=1`) reads, writes

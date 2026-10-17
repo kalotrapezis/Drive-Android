@@ -28,14 +28,14 @@ import androidx.compose.ui.unit.dp
 /** Formulas › Insert function (Excel's): the cell bar's functions ([SheetFunctions.all]) by Excel's categories. */
 internal object FunctionCategories {
     val ALL: List<Pair<String, Set<String>>> = listOf(
-        "Maths" to setOf("SUM", "SUMIF", "SUMIFS", "PRODUCT", "ABS", "ROUND", "ROUNDUP", "ROUNDDOWN", "MROUND", "INT", "TRUNC", "CEILING", "CEILING.MATH", "FLOOR", "FLOOR.MATH",
+        "Maths" to setOf("SUM", "SEQUENCE", "SUMIF", "SUMIFS", "PRODUCT", "ABS", "ROUND", "ROUNDUP", "ROUNDDOWN", "MROUND", "INT", "TRUNC", "CEILING", "CEILING.MATH", "FLOOR", "FLOOR.MATH",
             "MOD", "POWER", "SQRT", "EXP", "LN", "LOG10", "PI", "SIGN"),
         "Statistics" to setOf("AVERAGE", "AVERAGEIF", "AVERAGEIFS", "MEDIAN", "MAX", "MAXIFS", "MIN", "MINIFS", "LARGE", "SMALL", "COUNT", "COUNTA", "COUNTBLANK", "COUNTIF", "COUNTIFS",
             "RANK", "RANK.EQ", "STDEV", "STDEV.S", "STDEV.P", "STDEVP", "VAR", "VAR.S", "VAR.P", "VARP"),
         "Logical" to setOf("IF", "IFERROR", "IFNA", "AND", "OR", "NOT"),
         "Text" to setOf("CONCAT", "CONCATENATE", "TEXTJOIN", "LEFT", "RIGHT", "MID", "LEN", "FIND", "SEARCH", "SUBSTITUTE", "TRIM", "UPPER", "LOWER", "PROPER", "REPT", "EXACT", "TEXT", "VALUE"),
         "Date and time" to setOf("TODAY", "NOW", "DATE", "YEAR", "MONTH", "DAY", "WEEKDAY", "HOUR", "MINUTE", "SECOND", "DAYS", "EDATE", "EOMONTH"),
-        "Lookup" to setOf("XLOOKUP", "VLOOKUP", "HLOOKUP", "INDEX", "MATCH", "CHOOSE", "ROW", "ROWS", "COLUMN", "COLUMNS"),
+        "Lookup" to setOf("XLOOKUP", "VLOOKUP", "HLOOKUP", "INDEX", "MATCH", "CHOOSE", "ROW", "ROWS", "COLUMN", "COLUMNS", "FILTER", "SORT", "UNIQUE"),
         "Information" to setOf("ISBLANK", "ISNUMBER", "ISTEXT", "ISERROR", "ISNA", "NA"),
     )
     /** The bar's functions in [category]; the ones no category names go under "Other". */

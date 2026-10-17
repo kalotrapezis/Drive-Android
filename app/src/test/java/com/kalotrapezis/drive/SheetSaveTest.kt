@@ -572,6 +572,32 @@ class SheetSaveTest {
         }
     }
 
+    /** A spill saved: Excel's array formula over its cells (_xlfn._xlws.SORT), LibreOffice's matrix — read back as a spill, and by LibreOffice. */
+    @Test fun `a spill saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("spill").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b = Sheets.read(f, ',', '.'); val s = b.sheet(0)
+            // numbers, so the order is plain (words in two scripts sort by each app's own language)
+            SheetHistory().apply(b, 0, mapOf(Sheet.key(1, 5) to SheetInput.cell("=SORT(B2:B3,1,1)", null, 0, "General", b.format)))
+            assertEquals(name, listOf(-42.0, 1234.5), listOf(s[1, 5]?.value, s[2, 5]?.value))
+            val saved = File(dir, "saved.${f.extension}"); SheetSave.save(b, f, saved)
+            val xml = String(OfficeFormats.unzip(saved.readBytes()).getValue(if (name.endsWith("xlsx")) "xl/worksheets/sheet1.xml" else "content.xml"))
+            if (name.endsWith("xlsx")) assertTrue(name, Regex("""<f t="array" ref="F2:F3">_xlfn._xlws.SORT\(""").containsMatchIn(xml))
+            else assertTrue(name, xml.contains("table:number-matrix-rows-spanned=\"2\"") && xml.contains("COM.MICROSOFT.SORT("))
+            fun check(file: File, how: String) { val t = Sheets.read(file, ',', '.').sheet(0)
+                assertEquals(how, listOf(-42.0, 1234.5), listOf(t[1, 5]?.value, t[2, 5]?.value))
+                assertEquals(how, SheetRange(1, 5, 2, 5), t[1, 5]?.spill); assertEquals(how, Sheet.key(1, 5), t[2, 5]?.spilledFrom) }
+            check(saved, "saved in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, saved.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "saved.$other"), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

@@ -111,6 +111,10 @@ internal data class SheetCell(
     val format: String? = null,
     /** Rich text (Excel's runs): its words in pieces of their own looks, drawn by the Office engine; null: one look, the style's. */
     val runs: List<DocRun>? = null,
+    /** A formula whose result spills (FILTER, SORT…; Excel's array formula): the cells it fills, itself first. */
+    val spill: SheetRange? = null,
+    /** A cell holding part of another's spilled result: that cell's key (-1: none). */
+    val spilledFrom: Long = -1,
 ) {
     /** Its runs while they still are its words (a cell whose text was changed another way has its style's look only). */
     val rich get() = runs?.takeIf { rs -> rs.joinToString("") { it.text } == text }
@@ -960,13 +964,15 @@ internal object Sheets {
                             val shown = runCatching { format.format(n, style.format) }.getOrElse { SheetFormat.Shown(format.general(n)) }
                             SheetCell(shown.text, SheetKind.Number, n, style = s, color = shown.color)
                         } ?: empties.getOrPut(s) { SheetCell("", SheetKind.Empty, style = s) } // one for every empty cell of a look
-                    }.let { if (formula != null) it.copy(formula = "=" + SheetCalc.fromFile(formula!!), link = hyperlink(formula!!)) else it }
+                    }.let { if (formula != null) it.copy(formula = "=" + SheetCalc.fromFile(formula!!), link = hyperlink(formula!!),
+                        spill = fAttrs?.takeIf { a -> a.first == "array" }?.third?.let(::rangeRef)?.takeIf { g -> g.r2 > g.r1 || g.c2 > g.c1 }) else it }
                     if (cell.kind == SheetKind.Empty && cell.formula == null && !style.boxed) return
                     cells[Sheet.key(r, c)] = cell
                     if (cell.kind != SheetKind.Empty) { maxRow = max(maxRow, r); maxCol = max(maxCol, c) } else boxed.add(r, c)
                 }
             })
             links.forEach { (k, target) -> cells[k]?.let { cells[k] = it.copy(link = target) } }
+            Sheets.markSpills(cells)
             runCatching { notes(rels).forEach { (k, note) -> cells[k] = (cells[k] ?: SheetCell("", SheetKind.Empty)).copy(note = note) } }
                 .onFailure { WriterLog.w("Sheets: comments could not be read", it) }
             val looks = ArrayList<SheetStyle>()
@@ -1664,11 +1670,14 @@ internal object Sheets {
                         else -> SheetKind.Empty
                     }
                     val formula = a["formula"]?.let(::odfFormula)
+                    // an array formula's cells (LibreOffice's matrix; FILTER's spill as LibreOffice keeps it)
+                    val matrix = if (formula == null) null else (a["number-matrix-rows-spanned"]?.toIntOrNull() ?: 1).let { mr -> (a["number-matrix-columns-spanned"]?.toIntOrNull() ?: 1).let { mc ->
+                        if (mr > 1 || mc > 1) SheetRange(row, col, row + mr - 1, col + mc - 1) else null } }
                     // its runs, when a span gave some of its words a look of their own
                     val runs = if (cuts.none { it.second != DocRun("") }) null else (listOf(0 to DocRun("")) + cuts + listOf(shown.length to DocRun(""))).zipWithNext { (from, look), (to, _) ->
                         look.copy(text = shown.substring(from.coerceAtMost(shown.length), to.coerceIn(from.coerceAtMost(shown.length), shown.length))) }
                         .filter { it.text.isNotEmpty() }.fold(ArrayList<DocRun>()) { out, r -> if (out.isNotEmpty() && out.last().sameLook(r)) out[out.lastIndex] = out.last().copy(text = out.last().text + r.text) else out += r; out }
-                    val cell = SheetCell(shown, kind, value, formula, s, link = link, color = value?.let { numberColor(styleName, it) }, runs = runs,
+                    val cell = SheetCell(shown, kind, value, formula, s, link = link, color = value?.let { numberColor(styleName, it) }, runs = runs, spill = matrix,
                         note = note.toString().trim().takeIf { it.isNotEmpty() }?.let { n -> author.toString().trim().takeIf { it.isNotEmpty() }?.let { "$it: $n" } ?: n })
                     val boxed = styles[s].boxed
                     val n = min(cellRepeat, 16384 - col)
@@ -1694,6 +1703,7 @@ internal object Sheets {
                 }
 
                 fun endTable() {
+                    Sheets.markSpills(cells)
                     val looks = ArrayList<SheetStyle>()
                     val icons = HashMap<Long, SheetIcon>(); val ruleBase = HashMap<Long, Int>()
                     val bars = runCatching { SheetRules.apply(rules, cells, { i -> (if (i >= Sheet.LOOKS) looks.getOrNull(i - Sheet.LOOKS) else styles.getOrNull(i)) ?: SheetStyle() }, looks, icons, ruleBase) }
@@ -1758,6 +1768,13 @@ internal object Sheets {
                 Settings(tables, active, grid, headings)
             }.getOrElse { Settings(emptyMap(), null, null) }
         }
+    }
+
+    /** Each spilling formula's other cells marked as its ([SheetCell.spilledFrom]): a file's array formulas as Tetra's spills. */
+    fun markSpills(cells: CellMap) {
+        val marks = ArrayList<Pair<Long, Long>>()
+        cells.forEach { k, c -> c.spill?.let { g -> for (r in g.r1..minOf(g.r2, g.r1 + 9_999)) for (cc in g.c1..minOf(g.c2, g.c1 + 199)) Sheet.key(r, cc).let { t -> if (t != k) marks += t to k } } }
+        marks.forEach { (t, k) -> cells[t]?.let { cells[t] = it.copy(spilledFrom = k) } }
     }
 
     /** LibreOffice's "of:=SUM([.A1:.B2])" as Excel writes it: "=SUM(A1:B2)". */

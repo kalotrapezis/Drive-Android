@@ -75,11 +75,12 @@ How to write here:
       and tab colour (a7f9980), cells shifted (ce1b197),
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
-      Trace and error checking (b924d9c), newer functions' file names. Checks at a925139: unit
+      Trace and error checking (b924d9c), newer functions' file names (51544bb),
+      dynamic arrays. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -803,6 +804,14 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       bare (Excel shows #NAME? then), and a file's prefixed ones read as unknown functions (never worked out again). Now read without,
       written with them (`SheetCalc.fromFile/toXlsx/toOds`, names as LibreOffice 26.2 writes them). `newer functions named as files name
       them` (both formats); full run after it: unit 474, 0 failing, 2 skipped; sweep 349 + 29, none failing.
+      Dynamic arrays done (office-F session, 18 Oct): FILTER, SORT, UNIQUE and SEQUENCE (with XLOOKUP, already there) — their results
+      spill into the cells below and right (`SheetCalc.Arr`; comparisons and arithmetic on ranges work cell by cell, so FILTER(A:A,
+      B:B>5) works; SUM(FILTER(…)) too); a spill follows its data, a value in its way gives #SPILL!, cleared it goes
+      (`SheetCell.spill`/`spilledFrom`, `SheetRecalc`). Saved as Excel's array formula over its cells (Excel shows {=…}) and
+      LibreOffice's matrix, and those read back as spills. `results spilled`, `a spill saved` (both formats, LibreOffice's conversions
+      — it works them out again itself); emulator: =SEQUENCE(4) down F2:F5. Full run after it: unit 476, 0 failing, 2 skipped; sweep
+      349 + 29, none failing. shortcut: a formula reading a spill's lower cells is worked out again at the next change, not at once;
+      SORT by columns and SORTBY not yet.
 - [~] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
       duplicates; text to columns; data validation; group and outline rows; subtotals.
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row

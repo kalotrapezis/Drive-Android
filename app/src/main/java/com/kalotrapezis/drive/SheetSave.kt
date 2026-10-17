@@ -32,7 +32,9 @@ internal object SheetSave {
     /** A cell as SpreadsheetML: its value by kind, a formula with its value, words inline; null: no cell at all. */
     fun cellXml(ref: String, style: Int, cell: SheetCell): String? {
         val s = if (style > 0) " s=\"$style\"" else ""
-        val f = cell.formula?.removePrefix("=")?.let { "<f>${esc(SheetCalc.toXlsx(it))}</f>" } ?: ""
+        // a spilling formula as Excel's array formula over its cells (Excel shows {=…}; LibreOffice its matrix)
+        val array = cell.spill?.let { g -> " t=\"array\" ref=\"${Sheets.colName(g.c1)}${g.r1 + 1}:${Sheets.colName(g.c2)}${g.r2 + 1}\"" } ?: ""
+        val f = cell.formula?.removePrefix("=")?.let { "<f$array>${esc(SheetCalc.toXlsx(it))}</f>" } ?: ""
         return when {
             cell.formula != null -> when (cell.kind) {
                 SheetKind.Number -> "<c r=\"$ref\"$s>$f<v>${num(cell.value ?: 0.0)}</v></c>"
@@ -368,6 +370,9 @@ internal object SheetSave {
         var child = target.firstChild
         while (child != null) { val nx = child.nextSibling; if (child is org.w3c.dom.Element && child.namespaceURI == TEXT && child.localName == "p") target.removeChild(child); child = nx }
         cell.formula?.let { target.setAttributeNS(TABLE, "table:formula", odfFormula(it)) }
+        // a spilling formula as LibreOffice's matrix over its cells
+        target.removeAttributeNS(TABLE, "number-matrix-rows-spanned"); target.removeAttributeNS(TABLE, "number-matrix-columns-spanned")
+        cell.spill?.takeIf { cell.formula != null }?.let { g -> target.setAttributeNS(TABLE, "table:number-matrix-rows-spanned", "${g.r2 - g.r1 + 1}"); target.setAttributeNS(TABLE, "table:number-matrix-columns-spanned", "${g.c2 - g.c1 + 1}") }
         fun type(t: String) { target.setAttributeNS(OFFICE, "office:value-type", t); target.setAttributeNS(CALCEXT, "calcext:value-type", t) }
         when (cell.kind) {
             SheetKind.Number -> {

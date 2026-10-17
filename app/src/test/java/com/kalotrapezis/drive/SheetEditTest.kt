@@ -209,6 +209,25 @@ class SheetEditTest {
         assertEquals(listOf(k(1, 2), k(2, 0)), SheetTrace.errors(s))
     }
 
+    /** FILTER, SORT, UNIQUE, SEQUENCE: their results spill below; a value in the way gives #SPILL!; cleared, the spill goes; an aggregate of one. */
+    @Test fun `results spilled`() {
+        val b = Sheets.csv("ann,3\nbob,1\nann,5\ncid,4".toByteArray()); val s = b.sheet(0); val h = SheetHistory()
+        fun put(r: Int, c: Int, f: String) = h.apply(b, 0, mapOf(Sheet.key(r, c) to SheetInput.cell(f, s[r, c], 0, "General", b.format)))
+        fun col(c: Int, rows: IntRange) = rows.map { s[it, c]?.text.orEmpty() }
+        put(0, 3, "=FILTER(A1:A4,B1:B4>2)"); assertEquals(listOf("ann", "ann", "cid", ""), col(3, 0..3))
+        assertEquals(Sheet.key(0, 3), s[1, 3]?.spilledFrom); assertEquals(SheetRange(0, 3, 2, 3), s[0, 3]?.spill)
+        put(0, 4, "=SORT(B1:B4,1,-1)"); assertEquals(listOf("5", "4", "3", "1"), col(4, 0..3))
+        put(0, 5, "=UNIQUE(A1:A4)"); assertEquals(listOf("ann", "bob", "cid", ""), col(5, 0..3))
+        put(0, 6, "=SEQUENCE(2,2,10,5)"); assertEquals(listOf("10", "20"), col(6, 0..1)); assertEquals(listOf("15", "25"), col(7, 0..1))
+        put(5, 0, "=SUM(FILTER(B1:B4,A1:A4=\"ann\"))"); assertEquals(8.0, s[5, 0]?.value)
+        // the data changes: the spill follows (bob now passes)
+        put(1, 1, "9"); assertEquals(listOf("ann", "bob", "ann", "cid"), col(3, 0..3))
+        // a value in the way: #SPILL!, the spill's cells emptied
+        put(2, 5, "x"); assertEquals("#SPILL!", s[0, 5]?.text); assertEquals("", s[1, 5]?.text.orEmpty())
+        // the formula cleared: its spill goes
+        put(0, 3, ""); assertEquals(listOf("", "", "", ""), col(3, 0..3))
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

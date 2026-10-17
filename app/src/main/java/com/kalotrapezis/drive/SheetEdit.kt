@@ -193,16 +193,25 @@ internal object SheetRecalc {
                 if (refs.any { r -> if (r.sheet == null || r.sheet.equals(name, true)) hits(r.range) else hitsElsewhere(r.sheet, r.range) }) { affected += k; mark(k); grew = true }
             }
         }
-        if (affected.isEmpty()) return emptyMap()
+        // spills by the formula they come from (one look over the sheet, when needed)
+        val spillIndex by lazy { HashMap<Long, MutableList<Long>>().also { m -> sheet.cells.forEach { k, c -> if (c.spilledFrom >= 0) m.getOrPut(c.spilledFrom) { ArrayList() } += k } } }
+        fun spilled(from: Long): List<Long> = spillIndex[from].orEmpty()
+        fun emptied(t: Long) = (sheet.cells[t] ?: SheetCell("", SheetKind.Empty)).copy(text = "", kind = SheetKind.Empty, value = null, color = null, spilledFrom = -1)
+        val out = LinkedHashMap<Long, SheetCell>()
+        // a spilling formula typed over or cleared: its spill's cells emptied
+        for (k in changed) if (sheet.cells[k]?.formula == null) spilled(k).forEach { t -> out[t] = emptied(t) }
+        if (affected.isEmpty()) return out
         // worked out in the order they need each other (a cell's formula first when another reads it)
         val done = HashMap<Long, Any>()
         val working = HashSet<Long>()
         val unknown = HashSet<Long>() // a function the engine does not know: the cell is left as the file has it
+        val spills = HashMap<Long, SheetCalc.Arr>() // a formula's several values, to spill
         lateinit var ctx: SheetCalc.Context
         fun result(k: Long): Any? {
             done[k]?.let { return it }
             if (!working.add(k)) return SheetCalc.Err("#REF!") // a circle: Excel warns; here it is an error
-            val v = try { SheetCalc.eval(sheet.cells[k]!!.formula!!, ctx) } catch (_: SheetCalc.Unknown) { unknown += k; valueOf(sheet.cells[k]) ?: "" }
+            val v = try { SheetCalc.evalSpill(sheet.cells[k]!!.formula!!, ctx).let { r -> if (r is SheetCalc.Arr) { spills[k] = r; r.rows.firstOrNull()?.firstOrNull() ?: 0.0 } else r } } // an empty cell in a spill shows 0, as Excel's
+                catch (_: SheetCalc.Unknown) { unknown += k; valueOf(sheet.cells[k]) ?: "" }
             working -= k; done[k] = v
             return v
         }
@@ -210,19 +219,34 @@ internal object SheetRecalc {
             if (s == null || s.equals(name, true)) { val k = Sheet.key(r, c); if (k in affected) result(k) else valueOf(sheet.cells[k]) }
             else book.tabs.indexOfFirst { it.name.equals(s, true) }.let { i -> if (i < 0) SheetCalc.Err("#REF!") else valueOf(book.sheet(i)[r, c]) }
         }, format = book.format, names = book.names)
-        val out = LinkedHashMap<Long, SheetCell>()
-        for (k in affected) {
-            val old = sheet.cells[k] ?: continue
-            val v = result(k)
-            if (k in unknown) continue
+        fun shown(old: SheetCell, v: Any?): SheetCell {
             val code = old.format ?: (sheet.look(old.style, book.styles)?.format ?: "General")
-            out[k] = when (v) {
+            return when (v) {
                 is Double -> book.format.format(v, code).let { old.copy(text = it.text, kind = SheetKind.Number, value = v, color = it.color) }
                 is Boolean -> old.copy(text = if (v) "TRUE" else "FALSE", kind = SheetKind.Bool, value = if (v) 1.0 else 0.0, color = null)
                 is SheetCalc.Err -> old.copy(text = v.code, kind = SheetKind.Error, value = null, color = null)
                 null -> old.copy(text = "", kind = SheetKind.Empty, value = null, color = null)
                 else -> old.copy(text = v.toString(), kind = if (v.toString().isEmpty()) SheetKind.Empty else SheetKind.Text, value = null, color = null)
             }
+        }
+        // a spill's cells: each the cell below or right of its formula (the old spill's cells it no longer covers emptied);
+        // a cell in the way with something of its own: Excel's #SPILL! instead
+        for (k in affected) {
+            val old = sheet.cells[k] ?: continue
+            val v = result(k)
+            if (k in unknown) continue
+            val arr = spills[k]
+            val r0 = Sheet.row(k); val c0 = Sheet.col(k)
+            val area = arr?.let { SheetRange(r0, c0, r0 + it.rows.size - 1, c0 + it.width - 1) }?.takeIf { it.r2 > it.r1 || it.c2 > it.c1 }
+            val before = if (old.spill != null) spilled(k) else emptyList()
+            val blocked = area != null && (area.r1..area.r2).any { r -> (area.c1..area.c2).any { c -> val t = Sheet.key(r, c)
+                t != k && sheet.cells[t]?.let { it.spilledFrom != k && (it.kind != SheetKind.Empty || it.formula != null) } == true } }
+            before.forEach { t -> if (area == null || blocked || (Sheet.row(t) to Sheet.col(t)) !in area) out[t] = emptied(t) }
+            if (area != null && !blocked) {
+                out[k] = shown(old, v).copy(spill = area)
+                for (r in area.r1..area.r2) for (c in area.c1..area.c2) { val t = Sheet.key(r, c); if (t == k) continue
+                    out[t] = shown((sheet.cells[t] ?: SheetCell("", SheetKind.Empty)).copy(formula = null, spill = null, spilledFrom = k), arr.rows[r - r0][c - c0] ?: 0.0) }
+            } else out[k] = (if (blocked) shown(old, SheetCalc.Err("#SPILL!")) else shown(old, v)).copy(spill = null)
         }
         return out
     }
@@ -342,8 +366,10 @@ internal class SheetHistory {
         if (changes.keys.any { locked(book, sheet, it) }) { refused?.invoke(); return }
         val before = LinkedHashMap<Long, SheetCell>()
         fun was(k: Long) = sheet.cells[k] ?: SheetCell("", SheetKind.Empty)
+        // a cell typed into another's spill: that formula worked out again (#SPILL! now)
+        val spilling = changes.keys.mapNotNull { k -> sheet.cells[k]?.spilledFrom?.takeIf { it >= 0 && changes[k]?.spilledFrom != it } }
         changes.forEach { (k, c) -> before[k] = was(k); book.edit(index, k, c) }
-        val worked = SheetRecalc.run(book, index, sheet, changes.keys)
+        val worked = SheetRecalc.run(book, index, sheet, changes.keys + spilling)
         worked.forEach { (k, c) -> before.putIfAbsent(k, was(k)); book.edit(index, k, c) }
         SheetRules.again(sheet, book.styles) // a value crossing a rule's line changes its look
         undos.addLast(Step(index, before, changes + worked)); if (undos.size > 200) undos.removeFirst()
@@ -431,6 +457,10 @@ object SheetFunctions {
         Fn("VLOOKUP", "key, table, column, [FALSE]", "Finds a row by its first cell; a cell of it"),
         Fn("HLOOKUP", "key, table, row, [FALSE]", "Finds a column by its top cell; a cell of it"),
         Fn("XLOOKUP", "key, look in, return from, [if none]", "Finds a key and returns what is beside it"),
+        Fn("FILTER", "cells, keep (e.g. B2:B9>5), [if none]", "The rows that pass, spilled below"),
+        Fn("SORT", "cells, [by column], [1 up or -1 down]", "The rows sorted, spilled below"),
+        Fn("UNIQUE", "cells, [by column], [only once]", "Each row once, spilled below"),
+        Fn("SEQUENCE", "rows, [columns], [start], [step]", "Numbers in order, spilled below"),
         Fn("MATCH", "key, range, [0]", "Where a value is in a range"),
         Fn("INDEX", "range, row, [column]", "The cell at a row and column of a range"),
         Fn("CHOOSE", "n, value1, value2, …", "The n-th of the values"),

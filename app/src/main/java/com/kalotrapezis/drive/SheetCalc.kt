@@ -21,6 +21,8 @@ internal object SheetCalc {
     data class Err(val code: String)
     /** A range given to a function: its sheet (null: the formula's) and cells. */
     data class Area(val sheet: String?, val range: SheetRange)
+    /** Values in rows (FILTER's, SORT's, B2:B9>5's): a formula giving one spills it into the cells below and right. */
+    data class Arr(val rows: List<List<Any?>>) { val width get() = rows.firstOrNull()?.size ?: 0 }
     /** A formula this engine cannot work out (an unknown function): its file value stays. */
     class Unknown(what: String) : Exception(what)
 
@@ -178,8 +180,18 @@ internal object SheetCalc {
 
     fun eval(formula: String, ctx: Context): Any = try { value(parse(formula), ctx) } catch (e: Unknown) { throw e } catch (e: StackOverflowError) { Err("#NUM!") }
 
+    /** A formula's whole result: an [Arr] when it gives several values (a range of cells, FILTER…), to spill; else its value. */
+    fun evalSpill(formula: String, ctx: Context): Any = try {
+        when (val v = calc(parse(formula), ctx)) { is Area -> if (v.range.r1 == v.range.r2 && v.range.c1 == v.range.c2) value(Ref(v.sheet, v.range, true), ctx) else grid(v, ctx); else -> v }
+    } catch (e: Unknown) { throw e } catch (e: StackOverflowError) { Err("#NUM!") }
+
+    /** A range's values in rows (up to 10,000 rows and 200 columns). */
+    private fun grid(a: Area, ctx: Context) = Arr((a.range.r1..min(a.range.r2, a.range.r1 + 9_999)).map { r -> (a.range.c1..min(a.range.c2, a.range.c1 + 199)).map { c -> ctx.cell(a.sheet, r, c) } })
+    private fun arr(v: Any?, ctx: Context): Arr = when (v) { is Arr -> v; is Area -> grid(v, ctx); else -> Arr(listOf(listOf(v))) }
+
     private fun value(n: Node, ctx: Context): Any = when (val v = calc(n, ctx)) {
         is Area -> if (v.range.r1 == v.range.r2 && v.range.c1 == v.range.c2) ctx.cell(v.sheet, v.range.r1, v.range.c1) ?: 0.0 else Err("#VALUE!")
+        is Arr -> v.rows.firstOrNull()?.firstOrNull() ?: 0.0 // an array where one value is wanted: its first
         else -> v
     }
 
@@ -191,7 +203,17 @@ internal object SheetCalc {
         is Name -> ctx.names[n.name.lowercase()]?.let { runCatching { parse(it) }.getOrNull() }?.let { calc(it, ctx) } ?: throw Unknown("name ${n.name}")
         is Ref -> if (n.single) (ctx.cell(n.sheet, n.range.r1, n.range.c1) ?: 0.0) else Area(n.sheet, n.range)
         is Unary -> { val x = num(value(n.x, ctx)); if (x is Err) x else if (n.op == '-') -(x as Double) else x }
-        is Binary -> binary(n.op, value(n.a, ctx), value(n.b, ctx), ctx)
+        is Binary -> {
+            // a range or array on either side: worked out cell by cell (B2:B9>5, A1:A3*2), a single value meeting each
+            val x = calc(n.a, ctx); val y = calc(n.b, ctx)
+            fun many(v: Any) = v is Arr || (v is Area && (v.range.r1 != v.range.r2 || v.range.c1 != v.range.c2))
+            if (many(x) || many(y)) {
+                val ax = arr(x, ctx); val ay = arr(y, ctx)
+                val rows = max(ax.rows.size, ay.rows.size); val cols = max(ax.width, ay.width)
+                fun at(a: Arr, r: Int, c: Int) = a.rows.getOrNull(if (a.rows.size == 1) 0 else r)?.getOrNull(if (a.width == 1) 0 else c)
+                Arr((0 until rows).map { r -> (0 until cols).map { c -> binary(n.op, at(ax, r, c) ?: 0.0, at(ay, r, c) ?: 0.0, ctx) } })
+            } else binary(n.op, value(n.a, ctx), value(n.b, ctx), ctx)
+        }
         is Call -> call(n, ctx)
     }
 
@@ -259,6 +281,7 @@ internal object SheetCalc {
     private fun flat(args: List<Node>, ctx: Context, each: (Any?, Boolean) -> Unit) {
         for (a in args) when (val v = calc(a, ctx)) {
             is Area -> cellsOf(v, ctx) { x -> each(x, true) }
+            is Arr -> v.rows.forEach { row -> row.forEach { x -> each(x, true) } }
             else -> each(v, false)
         }
     }
@@ -396,6 +419,36 @@ internal object SheetCalc {
                 val across = area.range.r1 == area.range.r2
                 val count = if (across) area.range.c2 - area.range.c1 + 1 else min(area.range.r2 - area.range.r1, 200_000) + 1
                 find(count, { if (across) ctx.cell(area.sheet, area.range.r1, area.range.c1 + it) else ctx.cell(area.sheet, area.range.r1 + it, area.range.c1) }, key, type)?.let { it + 1.0 } ?: Err("#N/A")
+            }
+            // Excel's dynamic arrays: their results spill (see [Arr])
+            "SEQUENCE" -> {
+                need(1)
+                val rows = (d(0) as? Double)?.toInt() ?: return Err("#VALUE!"); val cols = if (a.size > 1) (d(1) as? Double)?.toInt() ?: return Err("#VALUE!") else 1
+                val start = if (a.size > 2) d(2) as? Double ?: return Err("#VALUE!") else 1.0; val step = if (a.size > 3) d(3) as? Double ?: return Err("#VALUE!") else 1.0
+                if (rows < 1 || cols < 1 || rows.toLong() * cols > 1_000_000) Err("#VALUE!") else Arr((0 until rows).map { r -> (0 until cols).map { c -> start + step * (r * cols + c) } })
+            }
+            "UNIQUE" -> {
+                need(1)
+                val rows = arr(calc(a[0], ctx), ctx).rows
+                val once = a.size > 2 && truthy(v(2)) == true
+                fun key(row: List<Any?>) = row.map { x -> if (x is String) x.lowercase() else x }
+                val counts = rows.groupingBy(::key).eachCount()
+                rows.distinctBy(::key).filter { !once || counts.getValue(key(it)) == 1 }.let { if (it.isEmpty()) Err("#CALC!") else Arr(it) }
+            }
+            "SORT" -> {
+                need(1)
+                val rows = arr(calc(a[0], ctx), ctx).rows
+                val col = (if (a.size > 1) (d(1) as? Double)?.toInt() ?: 1 else 1) - 1
+                val down = a.size > 2 && (d(2) as? Double ?: 1.0) < 0
+                if (col !in 0 until (rows.firstOrNull()?.size ?: 0)) Err("#VALUE!")
+                else Arr(rows.sortedWith { x, y -> compare(x[col], y[col]).let { if (down) -it else it } })
+            }
+            "FILTER" -> {
+                need(2)
+                val rows = arr(calc(a[0], ctx), ctx).rows; val keep = arr(calc(a[1], ctx), ctx).rows
+                if (keep.size != rows.size) return Err("#VALUE!")
+                val kept = rows.filterIndexed { i, _ -> keep[i].firstOrNull().let { k -> k == true || (k is Double && k != 0.0) } }
+                if (kept.isNotEmpty()) Arr(kept) else if (a.size > 2) v(2) else Err("#CALC!")
             }
             "XLOOKUP" -> {
                 need(3)

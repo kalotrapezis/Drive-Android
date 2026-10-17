@@ -669,6 +669,33 @@ class SheetSaveTest {
         }
     }
 
+    /** A drawing moved to another cell, sized, taken away — found by its place in the file; both formats, and LibreOffice. */
+    @Test fun `drawings moved sized and taken away`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("drawings").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(op: (File, File) -> Unit) { val next = File(dir, "${System.nanoTime()}.${f.extension}"); op(f, next); f = next }
+            step { a, b -> if (name.endsWith("xlsx")) SheetChart.pictureXlsx(a, b, parts.getValue("0"), 6, 1, 120f, 90f, png, "png") else SheetChart.pictureOds(a, b, 0, 6, 1, 120f, 90f, png, "png") }
+            step { a, b -> if (name.endsWith("xlsx")) SheetChart.textBoxXlsx(a, b, parts.getValue("0"), 6, 4, 144f, 60f, "Hello") else SheetChart.textBoxOds(a, b, 0, 6, 4, 144f, 60f, "Hello") }
+            fun drawings() = Sheets.read(f, ',', '.').sheet(0).drawings
+            fun change(d: SheetDrawing, c: SheetDrawings.Change) = step { a, b -> if (name.endsWith("xlsx")) SheetDrawings.xlsx(a, b, parts.getValue("0"), d.ordinal, c) else SheetDrawings.ods(a, b, 0, d.ordinal, c) }
+            change(drawings().first { it.image != null }, SheetDrawings.Move(10, 3))
+            drawings().first { it.image != null }.let { assertEquals(name, 10 to 3, it.row to it.col) }
+            change(drawings().first { it.text == "Hello" }, SheetDrawings.Size(216f, 108f))
+            drawings().first { it.text == "Hello" }.let { assertEquals(name, 288f, it.width, 2f); assertEquals(name, 144f, it.height, 2f); assertEquals(name, 6 to 4, it.row to it.col) }
+            change(drawings().first { it.image != null }, SheetDrawings.Delete)
+            drawings().let { d -> assertTrue(name, d.none { it.image != null }); assertTrue(name, d.any { it.text == "Hello" }) }
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                Sheets.read(conv.listFiles()!!.single { it.extension == other }, ',', '.').sheet(0).drawings.let { d -> assertTrue("LibreOffice's $other of $name", d.size == 1 && d[0].text == "Hello") }
+            }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

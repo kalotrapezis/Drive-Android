@@ -76,11 +76,12 @@ How to write here:
       Picture and Text box (5001224), Sort (d275c8d),
       AutoFilter kept (22bebc0), Names (2ab13f5),
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
-      dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes. Checks at a925139: unit
+      dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
+      drawings moved/sized/deleted. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape.
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -780,7 +781,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       300 pt wide) and Text box (its words asked; 2 × 0.8 in) at the chosen cell — Excel's pic and txBox shapes in the sheet's drawing,
       LibreOffice's frame with its image (Pictures/, in the manifest) and rectangle shape with its words. `SheetChart`'s drawing code
       shared by chart, picture and text box (`anchored`). `a picture and a text box put on a sheet` (both formats, LibreOffice's
-      conversions); emulator: a text box at B7, a picture at C14. Not yet: moving, resizing or deleting drawings on the sheet.
+      conversions); emulator: a text box at B7, a picture at C14.
+      Drawings moved, sized, taken away done (office-F session, 18 Oct): while editing, a picture, chart, shape or text box tapped is
+      chosen (Excel's green frame; its own tab, named for what it is): dragged, it moves to the cell its corner is dropped on; Size
+      (width and height in Words' unit); Delete. Found by its place in the file (`SheetDrawing.ordinal`: Excel's anchors, LibreOffice's
+      frames and shapes as the reader counts them); `SheetDrawings`. `drawings moved sized and taken away` (both formats, LibreOffice's
+      conversions); emulator: a shape dragged from C8 to G13, deleted. shortcut: a move lands on a cell's corner (its offset in the
+      cell not kept); Size keeps no aspect lock.
       Shape done (office-F session, 18 Oct): Insert › Shape — Words' and Slides' `ShapesDialog` (styles, fill, outline, every preset),
       the shape at the chosen cell sized as Words sizes it: Excel's preset shape (prstGeom, arrows' line ends), LibreOffice's custom
       shape with Words' geometry (`ShapeGeometry.odfGeometry`) and a graphic style of its own. `shapes put on a sheet` (both formats,

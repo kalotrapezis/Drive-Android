@@ -54,7 +54,10 @@ internal class SheetDrawing(
     /** A shape in its own outline (an arrow, a star: Excel's presets, LibreOffice's paths); null: a box. */
     val shape: ShapePicture? = null, val textColor: Int? = null, /** its words in the middle (Excel's shapes), not from the top left (a text box) */ val centred: Boolean = false,
     /** A picture's crop (a:srcRect), as [Slides.crop] takes it. */ val crop: FloatArray? = null,
-)
+) {
+    /** Its place among the file's drawings (Excel's anchors in the sheet's drawing; LibreOffice's frames and shapes in the sheet), to change it by. */
+    var ordinal = -1
+}
 
 /**
  * A drop-down list on cells (Excel's Data Validation › List, LibreOffice's Validity › Cell range or list): its values, or
@@ -1021,8 +1024,10 @@ internal object Sheets {
             val rels = rels(path)
             val emu = 9525f // EMUs in a pixel
             val out = ArrayList<SheetDrawing>()
+            var ordinal = -1
             for (a in OfficeFormats.parse(bytes).documentElement.elements()) {
                 if (a.localName !in setOf("twoCellAnchor", "oneCellAnchor", "absoluteAnchor")) continue
+                ordinal++
                 fun at(e: Element?, name: String) = e?.kid(name)?.textContent?.trim()?.toLongOrNull() ?: 0L
                 val from = a.kid("from"); val to = a.kid("to"); val ext = a.kid("ext"); val pos = a.kid("pos")
                 val body = a.elements().firstOrNull { it.localName in setOf("pic", "graphicFrame", "sp") } ?: continue
@@ -1069,12 +1074,12 @@ internal object Sheets {
                 val centred = body.kid("txBody")?.kid("bodyPr")?.attr("anchor") == "ctr"
                 if (body.localName == "sp" && text.isNullOrEmpty() && fillC == null && shape == null) continue
                 val x = at(from, "colOff") / emu; val y = at(from, "rowOff") / emu
-                out += if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
+                out += (if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
                     width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu, chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
                 else if (to != null) SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, at(to, "row").toInt(), at(to, "col").toInt(), at(to, "colOff") / emu, at(to, "rowOff") / emu,
                     chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
                 else SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu,
-                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)).also { it.ordinal = ordinal }
             }
             if (out.isNotEmpty()) WriterLog.i("Sheets: ${out.size} drawings (${out.count { it.chart != null }} charts, ${out.count { it.image != null }} pictures)")
             return out
@@ -1442,7 +1447,7 @@ internal object Sheets {
                 // a cell's annotation: its author and words
                 var inNote = false; var inNoteP = false; var inCreator = false; val note = StringBuilder(); val author = StringBuilder()
                 // a picture or chart: where it is, and what it holds
-                var frameDepth = 0; var frame: SheetDrawing? = null; var frameObject: String? = null; var frameImage: String? = null
+                var frameDepth = 0; var frame: SheetDrawing? = null; var frameObject: String? = null; var frameImage: String? = null; var drawOrdinal = -1
                 // a shape (draw:custom-shape): its style, its geometry's attributes and equations, its words
                 var shapeStyle: String? = null; var shapeGeo: HashMap<String, String>? = null; val shapeEqs = ArrayList<Pair<String, String>>()
                 val shapeText = StringBuilder(); var shapeSpan: String? = null
@@ -1529,14 +1534,14 @@ internal object Sheets {
                         "frame" -> {
                             frameDepth = 1; frameObject = null; frameImage = null
                             frame = SheetDrawing(if (inCell) row else 0, if (inCell) col else 0, odfPx(at.a("x")) ?: 0f, odfPx(at.a("y")) ?: 0f,
-                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
+                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f).also { it.ordinal = ++drawOrdinal }
                         }
                         // a shape: in its own outline (Excel's presets, LibreOffice's kinds and paths), its words in it
                         "custom-shape" -> {
                             frameDepth = 1; frameObject = null; frameImage = null
                             shapeStyle = at.a("style-name") ?: "Default"; shapeGeo = null; shapeEqs.clear(); shapeText.setLength(0); shapeSpan = null
                             frame = SheetDrawing(if (inCell) row else 0, if (inCell) col else 0, odfPx(at.a("x")) ?: 0f, odfPx(at.a("y")) ?: 0f,
-                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f)
+                                width = odfPx(at.a("width")) ?: 0f, height = odfPx(at.a("height")) ?: 0f).also { it.ordinal = ++drawOrdinal }
                         }
                         "line", "rect", "ellipse", "g" -> skip = 1
                         "conditional-format" -> cfRanges = ranges(at.a("target-range-address"))
@@ -1636,13 +1641,13 @@ internal object Sheets {
                         val width = (odfPx(g["g.stroke-width"]) ?: 1f).coerceAtLeast(0.5f)
                         val shape = if (preset != null && preset != "rect" || own != null) ShapePicture(preset ?: "custom", fill, line, width, own, adjust) else null
                         drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, text = shapeText.toString().trim().ifEmpty { null },
-                            fill = fill, line = line, shape = shape, textColor = shapeSpan?.let { hex(props(it)["t.color"]) }, centred = g["g.textarea-vertical-align"] == "middle")
+                            fill = fill, line = line, shape = shape, textColor = shapeSpan?.let { hex(props(it)["t.color"]) }, centred = g["g.textarea-vertical-align"] == "middle").also { it.ordinal = f.ordinal }
                         return
                     }
                     // A chart is LibreOffice's object ("./Object 1"); a picture its file; a chart we cannot read is left out.
                     val chart = frameObject?.removePrefix("./")?.let { parts("$it/content.xml") }?.let { OfficeCharts.readOdf(it) }
                     val image = frameImage?.removePrefix("./")?.takeIf { chart == null && frameObject == null }?.let { p -> { parts(p) } }
-                    if (chart != null || image != null) drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, chart = chart, image = image)
+                    if (chart != null || image != null) drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, chart = chart, image = image).also { it.ordinal = f.ordinal }
                 }
 
                 override fun characters(ch: CharArray, start: Int, length: Int) {

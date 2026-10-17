@@ -84,6 +84,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -194,6 +195,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
+    var figureSizing by remember { mutableStateOf<SheetDrawing?>(null) } // a drawing's Size: its width and height asked
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -832,6 +834,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             if (bb.kind == "xlsx") SheetOutline.xlsx(baked, next, bb.parts.getValue("$i"), rows.first, rows.last, by, collapse) else SheetOutline.ods(baked, next, i, rows.first, rows.last, by, collapse) }) {
             if (collapse == true) { view.row = rows.last + 1; view.reveal++ } }
     }
+    /** A drawing on this sheet taken away, moved to a cell or sized ([change]); chosen no more after (its place among the file's may change). */
+    fun figureStep(d: SheetDrawing, change: SheetDrawings.Change) { val i = index; val ordinal = d.ordinal
+        fileStep(when (change) { SheetDrawings.Delete -> "drawing taken away"; is SheetDrawings.Move -> "drawing moved"; is SheetDrawings.Size -> "drawing sized" }, { baked, next, bb ->
+            if (bb.kind == "xlsx") SheetDrawings.xlsx(baked, next, bb.parts.getValue("$i"), ordinal, change) else SheetDrawings.ods(baked, next, i, ordinal, change) }) {
+            view.figure = if (change is SheetDrawings.Size) ordinal else -1 }
+    }
     /** Cells [g] (the sheet's) inserted, the rest shifted down ([rows]) or right, or deleted, the rest shifted up or left: one step of Undo. */
     fun shiftCells(g: SheetRange, rows: Boolean, insert: Boolean) {
         val s = sheet ?: return; val b = book ?: return
@@ -896,7 +904,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val h = header
         val g = view.range
         // the tab for what is chosen, named by it; the others only while editing
-        val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> null }
+        // a drawing chosen while editing: its own tab, named for what it is
+        val fig = s.drawings.firstOrNull { it.ordinal == view.figure && view.figure >= 0 }
+        val figName = fig?.let { d -> when { d.chart != null -> "Chart"; d.image != null -> "Picture"; d.shape == null && d.text != null -> "Text box"; else -> "Shape" } }
+        val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> figName }
         // Selection first, as in Words: Cut, Copy, Paste and Clear out of the crowded Home (asked 16 Oct); a cell is
         // always chosen while editing, so it is always there then, but Home stays the tab in use
         val base = listOf("Selection", "File", "Home", "Insert", "Page layout", "Formulas", "Data", "View")
@@ -966,7 +977,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
-                    if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                    if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null; view.figure = -1 }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                 }
                 val scroll = remember(shown, header, g == null) { androidx.compose.foundation.ScrollState(0) }
                 // one sliding line; on a desktop, rows of whole groups (asked 16 Oct)
@@ -1007,6 +1018,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         else RibbonButton("Pin to the start", w, R.drawable.ic_push_pin) { view.pins.add(col); view.x = 0f }
                     }
                     when {
+                        // a drawing's tab: dragged to move it; its size; taken away
+                        fig != null && shown == figName -> {
+                            Text("Drag it to another cell to move it", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
+                            RibbonButton("Size", w, R.drawable.ic_aspect_ratio) { figureSizing = fig }
+                            RibbonButton("Delete", w, R.drawable.ic_delete) { figureStep(fig, SheetDrawings.Delete) }
+                        }
                         shown == "Sheet" -> {
                             Text(b.tabs[index].name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp))
                             RibbonButton("Rename", w, R.drawable.ic_edit) { renamingSheet = true }
@@ -1438,7 +1455,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 d != null -> { commit(false); focusManager.clearFocus(); false }
                                 else -> false
                             }
-                        }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at })
+                        }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at },
+                        figures = if (editing && b.kind != "csv") { d -> view.figure = d?.ordinal ?: -1; if (d != null) { header = null; view.range = null; group = null; WriterLog.i("Sheets: a drawing chosen") } } else null,
+                        dropped = if (editing && b.kind != "csv") { d, r, c -> figureStep(d, SheetDrawings.Move(r, c)) } else null)
                     // a right-click's menu, where it was clicked: the cells' Cut, Copy, Paste, Clear, and their rows and columns
                     cellMenu?.let { at -> OfficeMenu(at, { cellMenu = null }) {
                             @Composable fun item(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() }
@@ -1806,6 +1825,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(onClick = { val v = typed.replace(',', '.').toFloatOrNull()
                 if (v != null && v > 0f) { sizing = null; header = null; resize(cols, at, at, v * WriterUnits.pt * 4 / 3, null) } }) { Text("OK") } },
             dismissButton = { TextButton(onClick = { sizing = null }) { Text("Cancel") } }) }
+    // a drawing's Size: its width and height in Words' unit
+    figureSizing?.let { d -> val s = sheet
+        // as drawn: its own size, or its cells' (an anchor from one cell to another)
+        val (wPx, hPx) = if (d.toRow < 0 || s == null) d.width to d.height
+            else ((d.col until d.toCol).sumOf { s.width(it).toDouble() }.toFloat() - d.dx + d.toDx) to ((d.row until d.toRow).sumOf { s.height(it).toDouble() }.toFloat() - d.dy + d.toDy)
+        fun shown(px: Float) = "%.2f".format(java.util.Locale.ROOT, px * 3 / 4 / WriterUnits.pt)
+        var w by remember(d) { mutableStateOf(shown(wPx)) }; var h by remember(d) { mutableStateOf(shown(hPx)) }
+        AlertDialog(onDismissRequest = { figureSizing = null }, title = { Text("Size") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(w, { w = it }, singleLine = true, label = { Text("Width (${WriterUnits.name})") }, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                OutlinedTextField(h, { h = it }, singleLine = true, label = { Text("Height (${WriterUnits.name})") }, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)) } },
+            confirmButton = { TextButton(onClick = { val a = w.replace(',', '.').toFloatOrNull(); val b2 = h.replace(',', '.').toFloatOrNull()
+                if (a != null && b2 != null && a > 0f && b2 > 0f) { figureSizing = null; figureStep(d, SheetDrawings.Size(a * WriterUnits.pt, b2 * WriterUnits.pt)) } }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { figureSizing = null }) { Text("Cancel") } }) }
     // Insert › Chart: Words' chart editor; done, the chart on the sheet to the right of the cells (Excel's default size, 8 × 15 cells)
     charting?.let { (g, start) -> ChartDialog(start, false, { charting = null }) { ch -> charting = null; val i = index
         fileStep("chart put on", { baked, next, b -> when (b.kind) {
@@ -1869,6 +1902,8 @@ internal class SheetView {
     val pins = mutableStateListOf<Int>()
     val filters = mutableStateMapOf<Int, Set<String>>()
     var fileFilter = false // the file's AutoFilter taken as [filters] once
+    var figure by mutableIntStateOf(-1) // the drawing chosen while editing ([SheetDrawing.ordinal]); -1: none
+    var figureShift by mutableStateOf(Offset.Zero) // how far it is being dragged (on the screen)
     var sort by mutableStateOf<SheetSort?>(null)
     var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
@@ -2119,7 +2154,9 @@ private fun SheetTabs(book: Workbook, index: Int, open: Sheet?, add: (() -> Unit
 @Composable
 private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, view: SheetView, marks: SheetMarks, formulas: Boolean, version: Int,
                       column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null,
-                      filled: ((SheetRange, SheetRange) -> Unit)? = null, menu: ((Offset) -> Unit)? = null) {
+                      filled: ((SheetRange, SheetRange) -> Unit)? = null, menu: ((Offset) -> Unit)? = null,
+                      /** While editing: a drawing tapped (null: a cell), and the chosen one dragged to a cell. */
+                      figures: ((SheetDrawing?) -> Unit)? = null, dropped: ((SheetDrawing, Int, Int) -> Unit)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
@@ -2160,6 +2197,20 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         if (to != null) filled?.invoke(src, to)
                         return@awaitEachGesture
                     }
+                    // the chosen drawing under the finger: dragged to another cell
+                    val grabbed = if (dropped != null && view.figure >= 0) painter.drawingAt(view, down.position)?.takeIf { it.ordinal == view.figure } else null
+                    if (grabbed != null) {
+                        down.consume(); var shift = Offset.Zero
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            val p = e.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!p.pressed) break
+                            shift += p.positionChange(); view.figureShift = shift; p.consume()
+                        }
+                        view.figureShift = Offset.Zero
+                        if (shift.getDistance() > viewConfiguration.touchSlop) painter.dropCell(view, grabbed, shift)?.let { (r, c) -> dropped?.invoke(grabbed, r, c) }
+                        return@awaitEachGesture
+                    }
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
                     var moved = false; var pinched = false; var travel = Offset.Zero; var released = false
@@ -2192,6 +2243,9 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                     if (choosing) WriterLog.i("Sheets: range chosen")
                     else if (!moved) {
                         // a cell tapped while editing may be taken by the edit (a formula's reference, typing again)
+                        val figure = if (figures != null) painter.drawingAt(view, down.position) else null
+                        if (figure != null) { figures?.invoke(figure); return@awaitEachGesture }
+                        figures?.invoke(null)
                         val cell = painter.sheetCellAt(view, down.position)
                         if (cell == null || pick?.invoke(cell.first, cell.second) != true)
                             painter.tap(view, down.position)?.let { (kind, k) -> if (kind == 'c') column(k, down.position.x) else row(k, down.position.y) }
@@ -2210,7 +2264,7 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
     ) {
         // Read here, so a scroll or a zoom redraws without recomposing.
         val x = view.x; val y = view.y; val zoom = view.zoom; val r = view.row; val col = view.col; val range = view.range
-        painter.handle = filled != null; painter.filling = view.fill
+        painter.handle = filled != null; painter.filling = view.fill; painter.figure = view.figure; painter.figureShift = view.figureShift
         drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, r, col, marks, range) }
     }
 }
@@ -2251,6 +2305,30 @@ internal class SheetPainter(
         val r2 = layout.row(d.toRow); val k2 = layout.col(d.toCol)
         if (r2 < 0 || k2 < 0) null else d to android.graphics.RectF(left, top, colX[k2] + d.toDx, rowY[r2] + d.toDy)
     }
+    var figure = -1; var figureShift = Offset.Zero // the chosen drawing, and how far it is being dragged (screen)
+
+    /** The point of the sheet (its pixels) under a point of the screen. */
+    private fun sheetAt(view: SheetView, at: Offset): Pair<Float, Float> {
+        val s = scale(view.zoom)
+        val sx = if (at.x < headerW + colX[fc] * s) (at.x - headerW) / s else colX[fc] + view.x + (at.x - headerW - colX[fc] * s) / s
+        val sy = if (at.y < headerH + rowY[fr] * s) (at.y - headerH) / s else rowY[fr] + view.y + (at.y - headerH - rowY[fr] * s) / s
+        return sx to sy
+    }
+    /** The drawing under a point of the screen (the topmost); null: none. */
+    fun drawingAt(view: SheetView, at: Offset): SheetDrawing? {
+        if (at.x < headerW || at.y < headerH) return null
+        val (sx, sy) = sheetAt(view, at)
+        return drawn.lastOrNull { (_, box) -> box.contains(sx, sy) }?.first
+    }
+    /** The sheet's cell (row, column) a drawing dragged by [shift] (screen) would start in. */
+    fun dropCell(view: SheetView, d: SheetDrawing, shift: Offset): Pair<Int, Int>? {
+        val box = drawn.firstOrNull { it.first === d }?.second ?: return null
+        val s = scale(view.zoom)
+        val sx = box.left + shift.x / s; val sy = box.top + shift.y / s
+        return rAt[find(rowY, max(0f, sy), rows)] to cAt[find(colX, max(0f, sx), cols)]
+    }
+    /** A drawing's size as drawn (sheet pixels). */
+    fun drawnSize(d: SheetDrawing) = drawn.firstOrNull { it.first === d }?.second?.let { it.width() to it.height() }
     private val pictures = HashMap<SheetDrawing, android.graphics.Bitmap?>()
     private val charts = HashMap<SheetDrawing, ChartDrawable>()
     private fun at(r: Int, c: Int) = sheet[rAt[r], cAt[c]]?.let { cell -> if (formulas && cell.formula != null) cell.copy(text = cell.formula, kind = SheetKind.Text) else cell }
@@ -2695,6 +2773,10 @@ internal class SheetPainter(
 
         // Pictures, charts and text boxes over the cells.
         for ((d, box) in drawn) if (box.right >= sx0 && box.left <= sx1 && box.bottom >= sy0 && box.top <= sy1) drawing(c, d, box, s)
+        // the drawing chosen while editing: Excel's frame round it, where it is being dragged to
+        if (!printing && figure >= 0) drawn.firstOrNull { it.first.ordinal == figure }?.second?.let { box ->
+            line.pathEffect = null; line.color = EXCEL_GREEN_ARGB; line.strokeWidth = 2.5f * density / s
+            c.drawRect(box.left + figureShift.x / s, box.top + figureShift.y / s, box.right + figureShift.x / s, box.bottom + figureShift.y / s, line) }
 
         // The chosen cell in Excel's green, search's current find in orange over it.
         line.pathEffect = null

@@ -551,8 +551,15 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       (beside Link above). Slide numbers come with Header & footer.
 - [ ] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline
       colour, besides width and dash above); Save picture as; Edit data on a chart, Edit equation, Edit drawing.
-- [ ] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
+- [~] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
       table; merge and split cells; borders and shading; table styles; Make chart from the table.
+      Done 17 Oct (office-D session), for a table put on in Slides: Make chart (Words' `OfficeCharts.fromTable`: the first row names the
+      series, the first column the categories, into Words' chart editor), Row above / below, Column left / right (round the cell last
+      tapped; the table a row taller, a column wider — keeping its width when it would leave the slide), Delete row, column, table; its
+      fill and words' colour as before. **Shared piece:** Words' Table tab (its labels, icons and order) and `fromTable`; the rows and
+      columns are `SlidesEdit.rowAdded/columnAdded/rowTaken/columnTaken` on the table's cells. `a table's rows and columns`; emulator:
+      2×2 made 3×3, saved — LibreOffice opens it. Not yet: a deck's own tables (their rows and columns are the file's XML: later), merge
+      and split, borders, table styles.
 - [ ] **Layout** for a text box: inner margins; columns in a text box (PowerPoint's `numCol`); no wrap.
 - [x] **Design**: the theme's fonts (Words' Fonts), besides its colours above (office-C session, 17 Oct, with B › Design).
 - [x] **Review**: Read aloud (a slide's words, or its notes), as Words'.

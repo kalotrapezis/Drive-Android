@@ -265,6 +265,18 @@ internal object SlidesEdit {
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
         return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
     }
+    /** Table tab (Words'): a table put on with an empty row before row [at], the table a row taller (as PowerPoint's Insert Above / Below). */
+    fun rowAdded(t: Added, at: Int): Added = t.copy(rows = t.rows + 1, h = t.h + t.h / t.rows.coerceAtLeast(1),
+        cells = (0..t.rows).flatMap { r -> if (r == at) List(t.cols) { "" } else (0 until t.cols).map { c -> t.cells.getOrNull((if (r > at) r - 1 else r) * t.cols + c).orEmpty() } })
+    /** An empty column before column [at], the table a column wider (PowerPoint's Insert Left / Right). */
+    fun columnAdded(t: Added, at: Int): Added = t.copy(cols = t.cols + 1, w = t.w + t.w / t.cols.coerceAtLeast(1),
+        cells = (0 until t.rows).flatMap { r -> (0..t.cols).map { c -> if (c == at) "" else t.cells.getOrNull(r * t.cols + if (c > at) c - 1 else c).orEmpty() } })
+    /** Row [at] taken away, the table shorter by it. */
+    fun rowTaken(t: Added, at: Int): Added = if (t.rows < 2) t else t.copy(rows = t.rows - 1, h = t.h - t.h / t.rows,
+        cells = (0 until t.rows).filter { it != at }.flatMap { r -> (0 until t.cols).map { c -> t.cells.getOrNull(r * t.cols + c).orEmpty() } })
+    /** Column [at] taken away, the table narrower by it. */
+    fun columnTaken(t: Added, at: Int): Added = if (t.cols < 2) t else t.copy(cols = t.cols - 1, w = t.w - t.w / t.cols,
+        cells = (0 until t.rows).flatMap { r -> (0 until t.cols).filter { it != at }.map { c -> t.cells.getOrNull(r * t.cols + c).orEmpty() } })
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
     fun table(a: Added, look: Look? = null): SlideItem.Table {
         fun cell(r: Int, c: Int): Pair<Int?, SlideText?> {

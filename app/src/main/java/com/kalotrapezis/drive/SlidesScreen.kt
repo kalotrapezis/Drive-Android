@@ -201,6 +201,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
     var slideMenu by remember { mutableStateOf<Triple<Boolean, Int, androidx.compose.ui.geometry.Offset>?>(null) } // a right-click's menu: on the sidebar?, which slide, where
     var cellEdit by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a cell of the chosen table being typed
+    var tableCell by remember { mutableStateOf(0) } // the cell of the chosen table last tapped (row × columns + column): where the Table tools work
     var notesTyping by remember { mutableStateOf<Pair<Int, androidx.compose.ui.text.input.TextFieldValue>?>(null) } // a slide's (uid) speaker notes being typed
     var item by remember { mutableStateOf<String?>(null) } // a picture, shape or text box chosen on the chosen slide (its id)
     var ribbonTab by remember { mutableStateOf("Home") } // "Item": the contextual tab of what is chosen on the slide
@@ -833,6 +834,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 ((it0 as? SlideItem.Picture)?.math ?: a?.math)?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equating = item to m }; RibbonDivider(w) }
                 // a chart put on here: its numbers in Words' chart editor again
                 a?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = a.id to ch }; RibbonDivider(w) }
+                // a table put on here: Words' Table tab — rows and columns round the cell last tapped, its numbers a chart (Words' fromTable)
+                if (a?.prst == "table") {
+                    val r0 = (tableCell / a.cols.coerceAtLeast(1)).coerceIn(0, a.rows - 1); val c0 = (tableCell % a.cols.coerceAtLeast(1)).coerceIn(0, a.cols - 1)
+                    fun at(t: SlidesEdit.Added, r: Int, c: Int) = t.cells.getOrNull(r * t.cols + c).orEmpty()
+                    RibbonButton("Make chart", w, R.drawable.ic_bar_chart) {
+                        OfficeCharts.fromTable(DocTable("", "", (0 until a.rows).map { r -> DocRow("", (0 until a.cols).map { c -> DocCell("", listOf(DocPara(listOf(DocRun(at(a, r, c)))))) }) }))
+                            ?.let { charting = null to it } ?: run { message = "The table has no numbers to chart." } }
+                    RibbonDivider(w)
+                    RibbonButton("Row above", w, R.drawable.ic_add_row_above) { alter { t -> SlidesEdit.rowAdded(t, r0) }; tableCell += a.cols }
+                    RibbonButton("Row below", w, R.drawable.ic_add_row_below) { alter { t -> SlidesEdit.rowAdded(t, r0 + 1) } }
+                    RibbonButton("Column left", w, R.drawable.ic_add_column_left) { alter { t -> SlidesEdit.columnAdded(t, c0).let { n -> if (n.x + n.w > (deck?.width ?: Float.MAX_VALUE)) n.copy(w = t.w) else n } }; tableCell += r0 + 1 }
+                    RibbonButton("Column right", w, R.drawable.ic_add_column_right) { alter { t -> SlidesEdit.columnAdded(t, c0 + 1).let { n -> if (n.x + n.w > (deck?.width ?: Float.MAX_VALUE)) n.copy(w = t.w) else n } }; tableCell += r0 }
+                    RibbonButton("Delete row", w, R.drawable.ic_delete_row, enabled = a.rows > 1) { alter { t -> SlidesEdit.rowTaken(t, r0) }; tableCell = 0 }
+                    RibbonButton("Delete column", w, R.drawable.ic_delete_column, enabled = a.cols > 1) { alter { t -> SlidesEdit.columnTaken(t, c0) }; tableCell = 0 }
+                    RibbonButton("Delete table", w, R.drawable.ic_delete) { deleteItem() }
+                    RibbonDivider(w)
+                }
                 if (it0 is SlideItem.Shape || a?.prst == "table") {
                     if (typable(it0, a)) RibbonDivider(w)
                     Swatches(w, R.drawable.ic_format_color_fill, "Fill", SHAPE_COLOURS.map { Color(it) }) { col -> restyle { it.copy(fill = col?.toArgb() ?: SlidesEdit.NONE) } }
@@ -1477,7 +1495,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         a?.prst == "table" && item == a.id -> {
                                             val r = ((y - a.y) / (a.h / a.rows)).toInt().coerceIn(0, a.rows - 1); val c = ((x - a.x) / (a.w / a.cols)).toInt().coerceIn(0, a.cols - 1)
                                             val t = a.cells.getOrNull(r * a.cols + c).orEmpty()
-                                            cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
+                                            cellEdit = (r * a.cols + c) to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); tableCell = r * a.cols + c
                                         }
                                         item == hit.anim && typable(hit, a) -> typeInto(hit as SlideItem.Shape)
                                         else -> { item = hit.anim; typing = null }

@@ -489,6 +489,18 @@ class SlidesTest {
     }
 
     /** Insert › Video (asked 17 Oct): a film from the phone kept in the deck, and an online one linked, each with its picture; saved and read back. */
+    /** Table tab (Words'): rows and columns put in and taken away round a cell of a table put on a slide, the words staying in their cells. */
+    @Test fun `a table's rows and columns`() {
+        val t = SlidesEdit.Added("t", 0f, 0f, 200f, 100f, prst = "table", rows = 2, cols = 2, cells = listOf("a", "b", "c", "d"))
+        val r = SlidesEdit.rowAdded(t, 1)
+        assertEquals(listOf("a", "b", "", "", "c", "d"), r.cells); assertEquals(3, r.rows); assertEquals(150f, r.h, 0.01f)
+        val c = SlidesEdit.columnAdded(t, 0)
+        assertEquals(listOf("", "a", "b", "", "c", "d"), c.cells); assertEquals(3, c.cols); assertEquals(300f, c.w, 0.01f)
+        assertEquals(t, SlidesEdit.rowTaken(r, 1)); assertEquals(t, SlidesEdit.columnTaken(c, 0))
+        assertEquals(listOf("b", "d"), SlidesEdit.columnTaken(t, 0).cells)
+        assertEquals(SlidesEdit.rowTaken(t, 0).let { it.rows to it.cells }, 1 to listOf("c", "d"))
+    }
+
     @Test fun `videos put on saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
         val dir = scratchDir("video")

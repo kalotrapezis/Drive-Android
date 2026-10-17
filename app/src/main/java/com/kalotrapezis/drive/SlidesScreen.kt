@@ -132,6 +132,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var leaving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var layouts by remember { mutableStateOf(false) } // New slide: the deck's layouts to choose from
+    var sectioning by remember { mutableStateOf(false) } // Home › Section: add, rename or remove the one starting at the chosen slide
     var relaying by remember { mutableStateOf(false) } // …for Home › Layout: the chosen slide put on the one tapped
     var source by remember { mutableStateOf<File?>(null) } // File › Versions: the version opened, saved over the file by Save
     var showVersions by remember { mutableStateOf(false) }
@@ -382,6 +383,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
+    /** The name of the section slide [i] starts, if one does (Home › Section). */
+    fun sectionAt(i: Int): String? = edit?.let { ee -> base?.let { d -> ee.order.getOrNull(i)?.uid?.let { uid -> ee.sectionsNow(d).firstOrNull { it.second == uid }?.first } } }
     /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
     fun recomment(f: (List<SlideComment>) -> List<SlideComment>) {
         val e = edit ?: return; val c = chosen ?: return
@@ -665,6 +668,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { relaying = false; layouts = true }
                 // Layout (PowerPoint's): the slide on another of the deck's layouts, its words and what is on it kept
                 if (deck?.relaid != null && deck?.layouts?.isNotEmpty() == true && entry.layout < 0) RibbonButton("Layout", w, R.drawable.ic_view_grid) { relaying = true; layouts = true }
+                // Section (PowerPoint's): slides in named groups, from the chosen one; an .odp has none
+                if (deck?.sections != null) RibbonButton("Section", w, R.drawable.ic_label) { sectioning = true }
                 RibbonButton("Duplicate", w, R.drawable.ic_copy) { duplicateSlide(c) }
                 RibbonDivider(w)
                 RibbonButton("Move up", w, R.drawable.ic_keyboard_arrow_up, enabled = c > 0) { change(e.copy(order = e.order.toMutableList().apply { add(c - 1, removeAt(c)) })); chosen = c - 1 }
@@ -1029,7 +1034,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     SlideCanvas(d, s, Modifier.fillMaxWidth().aspectRatio(d.width / d.height).clip(RoundedCornerShape(4.dp))
                                         .border(if (on) 3.dp else 1.dp, if (on) POWERPOINT_ORANGE else if (over == i) Color.White else Color(0xFF555555), RoundedCornerShape(4.dp))
                                         .then(if (s.hidden) Modifier.alpha(0.5f) else Modifier))
-                                    Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (on) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                                    Text("${i + 1}${if (s.hidden) " · hidden" else ""}${sectionAt(i)?.let { " · $it" }.orEmpty()}", color = if (on) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
                         }
@@ -1142,6 +1147,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (sorter && editing) SlideSorter(d) else if (wide && editing) Row(Modifier.fillMaxSize()) {
                         LazyColumn(Modifier.width(200.dp).fillMaxHeight().background(Color(0xFF1F1F1F)), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 150.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 150.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(d.slides) { i, s ->
+                                Column {
+                                sectionAt(i)?.let { Text(it, color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 6.dp)) }
                                 Row(verticalAlignment = Alignment.Top) {
                                     Text("${i + 1}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(22.dp))
                                     SlideCanvas(d, s, modifier = Modifier.fillMaxWidth().aspectRatio(d.width / d.height).clip(RoundedCornerShape(3.dp))
@@ -1167,6 +1174,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                             }
                                     } }
                                 }
+                                }
                             }
                         }
                         // the chosen slide as big as the room above the floating ribbon lets it be (and above an on-screen keyboard, the notes pane typed in)
@@ -1190,7 +1198,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     LazyColumn(state = list, modifier = Modifier.fillMaxSize(), flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime), contentPadding = PaddingValues(12.dp, if (OfficeUi.top) 130.dp else 12.dp, 12.dp, if (OfficeUi.top) 24.dp else 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         itemsIndexed(d.slides) { i, s ->
                             Column(Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = fit)) {
-                                Text("${i + 1}${if (s.hidden) " · hidden" else ""}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
+                                Text("${i + 1}${if (s.hidden) " · hidden" else ""}${sectionAt(i)?.let { " · $it" }.orEmpty()}", color = if (chosen == i) POWERPOINT_ORANGE else Color.LightGray, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
                                 // viewing: a slide tapped is presented from there; editing: tapped, it is chosen — tapped again on a text box, its words are typed
                                 SlideBox(i, s)
                                 if (editing && chosen == i && OfficeUi.top) NotesPane(i, s)
@@ -1352,6 +1360,18 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (sizing && arranged != null) SizeAndPosition(arranged, { sizing = false }) { x, y, ww, hh -> sizing = false; reframe { listOf(x, y, ww, hh) } }
+                    if (sectioning) edit?.let { ee -> base?.let { d -> chosen?.let { cc ->
+                        val uid = ee.order[cc].uid; val now = ee.sectionsNow(d); val here = now.firstOrNull { it.second == uid }
+                        var typed by remember { mutableStateOf(here?.first ?: "Section ${now.size + 1}") }
+                        fun set(l: List<Pair<String, Int>>) { sectioning = false; change(ee.copy(sections = l)); WriterLog.i("Slides: sections ${l.size}") }
+                        androidx.compose.material3.AlertDialog(onDismissRequest = { sectioning = false }, title = { Text(if (here == null) "New section from slide ${cc + 1}" else "Section") },
+                            text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it.replace("\n", " ") }, label = { Text("Its name") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+                            confirmButton = { androidx.compose.material3.TextButton(enabled = typed.isNotBlank(), onClick = {
+                                set(if (here == null) now + (typed.trim() to uid) else now.map { if (it.second == uid) typed.trim() to uid else it }) }) { Text(if (here == null) "Add" else "Rename") } },
+                            dismissButton = { Row {
+                                if (here != null) androidx.compose.material3.TextButton(onClick = { set(now - here) }) { Text("Remove section") }
+                                androidx.compose.material3.TextButton(onClick = { sectioning = false }) { Text("Cancel") } } })
+                    } } }
                     commentAsk?.let { (how, of) ->
                         val prefs = context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) // the name Words' comments use
                         NewCommentDialog(if (how == 'e') of?.author.orEmpty() else remember { prefs.getString("author", "") ?: "" }, { commentAsk = null },

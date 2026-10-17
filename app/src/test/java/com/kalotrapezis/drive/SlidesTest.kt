@@ -323,6 +323,22 @@ class SlidesTest {
         }
     }
 
+    /** Home › Section (PowerPoint's): two sections saved and read back; a slide deleted afterwards leaves the list right. */
+    @Test fun `sections saved`() {
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        assertEquals(emptyList<Pair<String, Int>>(), deck.sections)
+        assertEquals(null, Slides.read(File("src/test/resources/slides.odp")).sections) // Impress has none
+        val e = SlidesEdit.start(deck).copy(sections = listOf("Intro" to 0, "Body" to 2))
+        val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("sections.pptx")
+        SlidesEdit.save(src, deck, e, out)
+        val saved = Slides.read(out); assertEquals(listOf("Intro" to 0, "Body" to 2), saved.sections)
+        // slide 2 deleted, the sections not touched: "Body" still begins at the same slide, now the second
+        val again = File("build/office-roundtrip").resolve("sections-2.pptx")
+        val e2 = SlidesEdit.start(saved).let { it.copy(order = it.order.filter { en -> en.uid != 1 }) }
+        SlidesEdit.save(out, saved, e2, again)
+        assertEquals(listOf("Intro" to 0, "Body" to 1), Slides.read(again).sections)
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

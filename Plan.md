@@ -334,7 +334,11 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       and what is on it kept (`Edit.relayout`; `Deck.relaid` reads the slide again on it — PowerPoint's slideLayout relationship; in an
       .odp the page's master page, whose boxes keep their own places as LibreOffice's do). `a slide's layout changed saved` (.pptx,
       the test .odp, LibreOffice's .odp of the deck with its many masters); emulator: the title slide put on Section Header.
-      Not yet: Reset slide, sections, copy slides between decks.
+      Sections (office-C session, 17 Oct): Home › Section — a new one from the chosen slide (named), renamed, removed; the name above its
+      first slide in the sidebar and in the sorter's and phone's numbers; PowerPoint 2010's p14:sectionLst read and written (slides
+      before the first in a "Default Section", as PowerPoint makes it; written again whenever the file has some, so moved or deleted
+      slides keep it right). Impress has no sections: the button is not there for an .odp. `sections saved`; LibreOffice opens it.
+      Not yet: Reset slide, copy slides between decks.
 - [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
 - [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.

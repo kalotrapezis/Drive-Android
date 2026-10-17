@@ -110,7 +110,10 @@ internal object SlidesEdit {
         /** a slide's comments as they are now (Review › Comments: added, edited, answered, deleted), the whole list */ val comments: Map<Int, List<SlideComment>> = emptyMap(),
         /** (slide uid, item id) → Arrange's rotation and flips */ val turns: Map<Pair<Int, String>, Turn> = emptyMap(),
         /** a slide's items from the back to the front as arranged (Bring forward, Send backward…), by id */ val stack: Map<Int, List<String>> = emptyMap(),
-        /** Home › Layout: a slide of the file's put on another of the deck's layouts (its index) */ val relayout: Map<Int, Int> = emptyMap()) {
+        /** Home › Layout: a slide of the file's put on another of the deck's layouts (its index) */ val relayout: Map<Int, Int> = emptyMap(),
+        /** Home › Section: the sections as now, each its name and its first slide's uid; null: as the file has them */ val sections: List<Pair<String, Int>>? = null) {
+        /** The sections in the slides' order, each from the slide its first is (one whose first slide is gone, gone). */
+        fun sectionsNow(deck: Deck): List<Pair<String, Int>> = (sections ?: deck.sections.orEmpty()).filter { (_, uid) -> order.any { it.uid == uid } }.sortedBy { (_, uid) -> order.indexOfFirst { it.uid == uid } }
         fun next() = (order.maxOfOrNull { it.uid } ?: -1) + 1
         /** A new shape id on slide [uid]: past the slide's own (theirs are small numbers) and those added. */
         // past every id in use: the slide's own items' ([taken]: a picture or shape saved here before is one of them now) and those put on in this edit
@@ -909,6 +912,25 @@ internal object SlidesEdit {
             fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
             out[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:p="$P">""" + authors.joinToString("") {
                 """<p:cmAuthor id="${it.id}" name="${esc(it.name)}" initials="${esc(it.initials)}" lastIdx="${it.last}" clrIdx="${it.clr}"/>""" } + "</p:cmAuthorLst>").toByteArray()
+        }
+        // Home › Section: PowerPoint 2010's list, each section's slides by their sldId (slides before the first in a "Default Section", as PowerPoint makes it)
+        // (written again whenever the file has some: a slide moved or deleted would leave its list wrong)
+        if (edit.sections != null || !deck.sections.isNullOrEmpty()) {
+            val p14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+            val root = pres.documentElement
+            val extLst = root.kids().firstOrNull { it.localName == "extLst" }
+            extLst?.kids()?.filter { it.getAttribute("uri") == "{521415D9-36F7-43E2-AB2F-B90AF26B5E84}" }?.forEach { extLst.removeChild(it) }
+            val secs = edit.sectionsNow(deck).map { (n, uid) -> n to edit.order.indexOfFirst { it.uid == uid } }.let { l -> if (l.isNotEmpty() && l[0].second > 0) listOf("Default Section" to 0) + l else l }
+            if (secs.isNotEmpty()) {
+                val ids = list.kids().map { it.getAttribute("id") }
+                fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
+                val x = """<p:ext xmlns:p="$P" xmlns:p14="$p14" uri="{521415D9-36F7-43E2-AB2F-B90AF26B5E84}"><p14:sectionLst>""" + secs.withIndex().joinToString("") { (k, s) ->
+                    val end = secs.getOrNull(k + 1)?.second ?: ids.size
+                    """<p14:section name="${esc(s.first)}" id="{${java.util.UUID.randomUUID().toString().uppercase()}}"><p14:sldIdLst>""" + ids.subList(s.second, end).joinToString("") { """<p14:sldId id="$it"/>""" } + "</p14:sldIdLst></p14:section>"
+                } + "</p14:sectionLst></p:ext>"
+                val ext = pres.importNode(OfficeFormats.parse(x.toByteArray()).documentElement, true)
+                (extLst ?: pres.createElementNS(P, "p:extLst").also { root.appendChild(it) }).appendChild(ext)
+            }
         }
         out[presPath] = xml(pres); out[presRels] = xml(rels)
         if (typesOut != types) out["[Content_Types].xml"] = typesOut.toByteArray()

@@ -474,4 +474,30 @@ class SlidesTest {
         assertEquals(box.anim, steps[0].effects.single().target); assertEquals("fade", steps[0].effects.single().kind)
         steps[1].effects.single().let { assertEquals(star.anim, it.target); assertEquals("fly", it.kind); assertEquals('l', it.from); assertEquals(1000, it.ms) }
     }
+
+    /** olive.pptx (python-pptx, 17 Oct): a picture cropped by a:srcRect and a bold title, as LibreOffice shows them; a save keeps the crop. */
+    @Test fun `a cropped picture and a bold title`() {
+        fun check(d: Deck) {
+            val pic = d.slides[0].items.filterIsInstance<SlideItem.Picture>().single()
+            assertEquals(listOf(0.22222f, 0f, 0.22222f, 0f), pic.crop!!.toList())
+            val title = d.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("From grove") == true }.text!!.paras
+            assertTrue(title[0].runs[0].bold); assertTrue(!title[1].runs[0].bold)
+        }
+        val src = File("src/test/resources/olive.pptx")
+        val deck = Slides.read(src); check(deck)
+        val title = deck.slides[0].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("From grove") == true }
+        var e = SlidesEdit.start(deck)
+        e = e.copy(texts = mapOf((0 to title.id!!) to listOf("From grove to bottle", "The 2026 olive harvest")))
+        val out = File.createTempFile("olive", ".pptx")
+        SlidesEdit.save(src, deck, e, out)
+        check(Slides.read(out))
+    }
+
+    /** The crop's maths: a 900 × 600 picture with 2/9 cut from each side shows its middle 500 × 600. */
+    @Test fun `a crop in pixels`() {
+        assertEquals(listOf(199, 0, 700, 600), Slides.crop(900, 600, floatArrayOf(0.22222f, 0f, 0.22222f, 0f)).toList())
+        assertEquals(listOf(0, 0, 900, 600), Slides.crop(900, 600, null).toList())
+        assertEquals(listOf(0, 60, 900, 480), Slides.crop(900, 600, floatArrayOf(-0.1f, 0.1f, 0f, 0.2f)).toList()) // a negative side drawn as none
+        Slides.crop(10, 10, floatArrayOf(0.7f, 0f, 0.7f, 0f)).let { assertTrue(it[2] > it[0]) } // never an empty part
+    }
 }

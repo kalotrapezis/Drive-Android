@@ -39,7 +39,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
         /** An empty placeholder's grey hint (Title, Text): shown only while editing. */ val hint: Boolean = false) : SlideItem(x, y, w, h, rotation)
-    class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
+    /** [crop]: the part of the picture shown (a:srcRect) — how much is cut from its left, top, right and bottom, 0–1 of its size. */
+    class Picture(x: Float, y: Float, w: Float, h: Float, rotation: Float, val crop: FloatArray? = null, val bytes: () -> ByteArray?) : SlideItem(x, y, w, h, rotation)
     class Chart(x: Float, y: Float, w: Float, h: Float, val chart: DocChart) : SlideItem(x, y, w, h, 0f)
     /** A table: its columns' widths and rows' heights, each cell's fill and words. */
     class Table(x: Float, y: Float, w: Float, h: Float, val cols: List<Float>, val rows: List<Float>, val cells: List<List<Pair<Int?, SlideText?>>>,
@@ -346,7 +347,11 @@ internal object Slides {
                             xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad,
                             id = if (ctx != null) e.kid("nvSpPr")?.kid("cNvPr")?.attr("id") else null, hint = empty)
                     }
-                    "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p -> out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { part(p) } }
+                    "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p ->
+                        val src = e.kid("blipFill")?.kid("srcRect")
+                        val crop = src?.let { r -> listOf("l", "t", "r", "b").map { (r.attr(it)?.toFloatOrNull() ?: 0f) / 100_000f }.toFloatArray() }?.takeIf { c -> c.any { it != 0f } }
+                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop) { part(p) }
+                    }
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
                         e.below("tbl").firstOrNull()?.let { out += table(it, box) }
@@ -516,8 +521,11 @@ internal object Slides {
                         android.graphics.ImageDecoder.decodeDrawable(android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(b))) as? android.graphics.drawable.AnimatedImageDrawable
                     } }.getOrNull()?.also { it.repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE; it.start(); gifs.put(item, it) } else null
                     if (gif != null) {
-                        c.save(); c.translate(item.x, item.y); c.scale(item.w / gif.intrinsicWidth.coerceAtLeast(1), item.h / gif.intrinsicHeight.coerceAtLeast(1))
-                        gif.setBounds(0, 0, gif.intrinsicWidth, gif.intrinsicHeight); gif.draw(c); c.restore()
+                        val gw = gif.intrinsicWidth.coerceAtLeast(1); val gh = gif.intrinsicHeight.coerceAtLeast(1)
+                        val src = crop(gw, gh, item.crop)
+                        c.save(); c.clipRect(item.x, item.y, item.x + item.w, item.y + item.h); c.translate(item.x, item.y)
+                        c.scale(item.w / (src[2] - src[0]).coerceAtLeast(1), item.h / (src[3] - src[1]).coerceAtLeast(1)); c.translate(-src[0].toFloat(), -src[1].toFloat())
+                        gif.setBounds(0, 0, gw, gh); gif.draw(c); c.restore()
                         c.restoreToCount(saved); continue
                     }
                     val bmp = pictures.get(item) ?: runCatching { item.bytes()?.let { b ->
@@ -526,7 +534,7 @@ internal object Slides {
                         var sample = 1; while (o.outWidth / (sample * 2) >= item.w * 3) sample *= 2
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                     } }.getOrNull()?.also { pictures.put(item, it) }
-                    bmp?.let { c.drawBitmap(it, null, android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h), paint) }
+                    bmp?.let { val r = crop(it.width, it.height, item.crop); c.drawBitmap(it, android.graphics.Rect(r[0], r[1], r[2], r[3]), android.graphics.RectF(item.x, item.y, item.x + item.w, item.y + item.h), paint) }
                 }
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)
@@ -534,6 +542,17 @@ internal object Slides {
             c.restoreToCount(saved)
         }
         c.restore()
+    }
+
+    /**
+     * The part of a [w] × [h] picture that [crop] leaves (left, top, right, bottom in its pixels), stretched to the frame as
+     * PowerPoint and LibreOffice draw it. shortcut: a negative crop (the frame larger than the picture) is drawn as none on that side.
+     */
+    internal fun crop(w: Int, h: Int, crop: FloatArray?): IntArray {
+        if (crop == null) return intArrayOf(0, 0, w, h)
+        val (l, t, r, b) = crop.map { it.coerceIn(0f, 1f) }
+        val left = (w * l).toInt().coerceIn(0, w - 1); val top = (h * t).toInt().coerceIn(0, h - 1)
+        return intArrayOf(left, top, (w * (1 - r)).toInt().coerceIn(left + 1, w), (h * (1 - b)).toInt().coerceIn(top + 1, h))
     }
 
     /**
@@ -615,7 +634,8 @@ internal object Slides {
                 val style = (if (r.bold) android.graphics.Typeface.BOLD else 0) or (if (r.italic) android.graphics.Typeface.ITALIC else 0)
                 if (style != 0) sb.setSpan(android.text.style.StyleSpan(style), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 if (r.underline) sb.setSpan(android.text.style.UnderlineSpan(), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                OfficeFonts.typeface(r.font ?: "")?.let { tf -> sb.setSpan(android.text.style.TypefaceSpan(tf), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+                // the face in its weight: a TypefaceSpan of the plain face would undo the StyleSpan's bold
+                OfficeFonts.typeface(r.font ?: "")?.let { tf -> sb.setSpan(android.text.style.TypefaceSpan(OfficeFonts.styled(tf, r.bold, r.italic)), s, e, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
             }
             // the first line from marL + indent (a bullet hanging), the rest from marL
             if (sb.isNotEmpty()) sb.setSpan(android.text.style.LeadingMarginSpan.Standard(lead.toInt().coerceAtLeast(0), p.marL.toInt().coerceAtLeast(0)), 0, sb.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)

@@ -57,7 +57,7 @@ internal object SlidesEdit {
         val kx = if (item.w > 0) w / item.w else 1f; val ky = if (item.h > 0) h / item.h else 1f
         return when (item) {
             is SlideItem.Shape -> SlideItem.Shape(x, y, w, h, item.rotation, item.shape, item.text, item.paths, item.flipH, item.flipV, item.gradient, item.id, item.hint)
-            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.bytes)
+            is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
         }.also { it.anim = item.anim; it.grouped = item.grouped }

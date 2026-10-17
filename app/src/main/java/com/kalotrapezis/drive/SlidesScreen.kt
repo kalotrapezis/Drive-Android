@@ -416,6 +416,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sourcesOpen by remember { mutableStateOf(false) } // References › Sources: Words' list of them
     var sourceEdit by remember { mutableStateOf<DocSource?>(null) }; var sourceNew by remember { mutableStateOf(false) } // …one in Words' source page
     var citing by remember { mutableStateOf(false) } // References › Insert citation: Words' dialog
+    var inked by remember { mutableStateOf<Map<Int, List<List<androidx.compose.ui.geometry.Offset>>>?>(null) } // the show's pen ink, to keep or not
     var rehearsing by remember { mutableStateOf(false) } // Slide show › Rehearse timings: the show running with a timer
     var rehearsed by remember { mutableStateOf<Map<Int, Long>?>(null) } // …and the times it took, to keep or not
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
@@ -1889,7 +1890,30 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     presenting?.let { start -> if (d != null) Present(d, start, notes, jump = { l ->
         // a link's slide: one linked here (its uid), or the deck's own part a file's link names
         (if (l.startsWith("slide:")) edit?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else d.slides.indexOfFirst { it.part == l })?.takeIf { it >= 0 }
-    }, loop = edit?.loop ?: deck?.loop ?: false, rehearse = if (rehearsing) { times -> rehearsed = times } else null) { presenting = null; rehearsing = false } }
+    }, loop = edit?.loop ?: deck?.loop ?: false, rehearse = if (rehearsing) { times -> rehearsed = times } else null, keepInk = if (editing) { m -> inked = m } else null) { presenting = null; rehearsing = false } }
+    // PowerPoint's "Keep your ink annotations?": kept, each slide's strokes a drawing on it (Words' picture with its strokes: Edit drawing draws on)
+    inked?.let { m ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { inked = null }, title = { Text("Keep your ink?") },
+            text = { Text("You drew on ${m.size} slide${if (m.size == 1) "" else "s"} during the show. Keep the drawings on them?") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                inked = null
+                val e = edit ?: return@TextButton; val d = view ?: return@TextButton
+                var added = e.added
+                val aspect = d.height / d.width
+                for ((i, strokes) in m) {
+                    val uid = e.order.getOrNull(i)?.uid ?: continue
+                    // the show's pen: red, a 250th of the slide's width
+                    val drawn = strokes.filter { it.isNotEmpty() }.map { st -> InkStroke(st.map { androidx.compose.ui.geometry.Offset(it.x, it.y * aspect) }, 0xFFE53935.toInt(), d.width / 250f / 72f * 25.4f, false) }
+                    val (cut, box) = InkPicture.cut(drawn, aspect, d.width)
+                    val ww = box.width * d.width
+                    val png = runCatching { InkPicture.png(cut, box.height / box.width, ww, (ww * 4).toInt().coerceIn(64, 2400)) }.getOrNull() ?: continue
+                    val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.png").apply { writeBytes(png) }
+                    added = added + (uid to (added[uid].orEmpty() + SlidesEdit.Added(e.copy(added = added).newId(uid), box.left * d.width, box.top * d.width, ww, box.height * d.width, image = f.path, ext = "png")))
+                }
+                change(e.copy(added = added)); WriterLog.i("Slides: show ink kept on ${m.size}")
+            }) { Text("Keep") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { inked = null }) { Text("Discard") } })
+    }
     rehearsed?.let { times ->
         val total = times.values.sum()
         androidx.compose.material3.AlertDialog(onDismissRequest = { rehearsed = null }, title = { Text("Rehearse timings") },
@@ -1943,7 +1967,8 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
 @Composable
 private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> Int? = { null },
     /** Slide show › Loop until Esc: after the last, the first again */ loop: Boolean = false,
-    /** Slide show › Rehearse timings: how long each slide (its index) was shown, given when the show ends */ rehearse: ((Map<Int, Long>) -> Unit)? = null, close0: () -> Unit) {
+    /** Slide show › Rehearse timings: how long each slide (its index) was shown, given when the show ends */ rehearse: ((Map<Int, Long>) -> Unit)? = null,
+    /** the pen's ink at the end (each slide's strokes, 0–1 of its width and height), to keep or not */ keepInk: ((Map<Int, List<List<androidx.compose.ui.geometry.Offset>>>) -> Unit)? = null, close0: () -> Unit) {
     val context = LocalContext.current
     val shown = remember(deck) { deck.slides.indices.filter { !deck.slides[it].hidden || it == start } }
     var page by remember { mutableStateOf(shown.indexOf(start).coerceAtLeast(0)) }
@@ -1958,7 +1983,8 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     val spent = remember { HashMap<Int, Long>() }
     var since by remember { mutableStateOf(System.nanoTime()) }
     fun mark() { if (rehearse != null) { spent[shown[page]] = (spent[shown[page]] ?: 0L) + (System.nanoTime() - since) / 1_000_000; since = System.nanoTime() } }
-    fun close() { mark(); rehearse?.invoke(spent); close0() }
+    val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
+    fun close() { mark(); rehearse?.invoke(spent); ink.filterValues { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.let { m -> keepInk?.invoke(m.mapKeys { shown[it.key] }) }; close0() }
     // a group of effects lasts as long as its latest one
     fun length(g: SlideStep) = g.effects.maxOfOrNull { it.delay + it.ms } ?: 0
     fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}") }
@@ -2089,7 +2115,6 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     // PowerPoint's presenting tools: the pen (ink kept per slide while presenting), the laser (a red dot under the finger), a black screen
     var tool by remember { mutableStateOf<String?>(null) }
     var black by remember { mutableStateOf(false) }
-    val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
     var laser by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) } // as a part of the slide (0–1)
     // a TV (HDMI, a cast screen): the slide shown there, the phone the presenter's — the slide and its notes
     val displays = remember { context.getSystemService(android.hardware.display.DisplayManager::class.java) }

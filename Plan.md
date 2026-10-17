@@ -447,9 +447,13 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       is played today, not set); **Morph** (later: the most used modern transition).
 - [ ] **Animations**: start on click / with previous / after previous; duration and delay; entrance, emphasis and
       exit kinds; the animation list (pane) to reorder; animation painter; motion paths and triggers (later).
-- [ ] **Slide show**: go to a slide by number or from a grid during the show; keyboard keys as PowerPoint's (N/P,
+- [~] **Slide show**: go to a slide by number or from a grid during the show; keyboard keys as PowerPoint's (N/P,
       arrows, B/W screen, number + Enter, Esc); keep or discard the pen's ink at the end, saved into the deck;
       set-up options (loop, without animations, use timings or not); subtitles (later).
+      Done 17 Oct (office-C session): a number + Enter and PowerPoint's keys (with Loop until Esc, B › Slide show above); at the end of a
+      show drawn on with the pen (while editing), "Keep your ink?" — kept, each slide's strokes become a drawing on it where they were
+      (Words' drawing picture, red as the pen, Edit drawing draws on). Emulator: a line under the subtitle, kept. Not yet: a grid to go to
+      a slide during the show, without animations, use timings or not; subtitles later.
 - [ ] **Record** (later): record narration and timings per slide; export the deck as a video.
 - [ ] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
 - [ ] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as

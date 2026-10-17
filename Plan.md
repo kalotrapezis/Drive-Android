@@ -72,7 +72,7 @@ How to write here:
       formatting (17b4bbf), Protect / Unprotect (9f2dd9e), Headings (541d8c9),
       Print titles (420575e), Header and footer (b66a9cb),
       engine step 6 for .ods (rich text) (95a08d5), Home's alignment (aec634f), Clear ▸ (e6b8549), sheet copy
-      and tab colour. Checks at a925139: unit
+      and tab colour (a7f9980), cells shifted. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour.
@@ -715,7 +715,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
   endnotes, captions and cross-references, track changes, content controls, style sets (PowerPoint has none of these).
 
 ### C. Tables — what Excel and Calc have that Tables lacks
-- [ ] **Home**: merge and centre (and unmerge); column width and row height (typed, and AutoFit to the contents);
+- [x] **Home**: merge and centre (and unmerge); column width and row height (typed, and AutoFit to the contents);
       hide and unhide rows, columns and sheets; insert and delete cells shifting the rest; Fill down and right; cell
       styles; **Format as table** (make an Excel Table) — done; **conditional formatting** made here — done;
       Find and **Replace**; Format painter.
@@ -838,7 +838,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
 
 **From Excel's ribbon** (checked online 17 Oct: desktop Excel's tabs and groups, and the tablet app's shorter ribbon);
 what is not already above:
-- [ ] **Home**: vertical alignment (top, middle, bottom); text angle (rotated, vertical); indent in a cell; Clear ▸
+- [x] **Home**: vertical alignment (top, middle, bottom); text angle (rotated, vertical); indent in a cell; Clear ▸
       contents, formats, all; Fill ▸ series (1, 2, 3…, dates, months) besides down and right; AutoSum on Home as
       Excel has it; **cell styles** (Good, Bad, Heading, Total…); sheet ▸ rename, tab colour, move or copy.
       Fill ▸ Series done (office-F session, 18 Oct): Home › Series with cells chosen — Excel's dialog: Linear, Growth, and for a date
@@ -866,6 +866,11 @@ what is not already above:
       charts, notes and tables behind) and Tab colour (Excel's tabColor, LibreOffice's tableooo:tab-color; `SheetVisibility.colourXlsx/
       colourOds` share Hide's table-style code); Home › AutoSum. `a sheet copied and a tab coloured` (both formats; LibreOffice shows the
       copy); emulator: Numbers (2) made and its tab pink.
+      Insert and delete cells shifting the rest done (office-F session, 18 Oct): Selection › Insert ▾ (Shift cells down / right) and
+      Delete ▾ (up / left), and in the right-click menu — cell changes, one step of Undo (`SheetCellShift`): the cells after the chosen
+      ones in their columns (rows) move, every formula on the sheet reading them follows (`SheetShift` given `within`: only those columns
+      or rows; whole rows/columns and ranges partly in them stay); merged cells in the way refused, as Excel. `cells shifted`; emulator:
+      D2 shifted down (B2's merge below refused). shortcut: merges, rules, validations, links, notes and other sheets' formulas stay.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);

@@ -643,3 +643,27 @@ internal object SheetPaste {
         return rows
     }
 }
+
+/**
+ * Excel's Insert ▸ Shift cells down / right and Delete ▸ Shift cells up / left on cells [g] of [sheet]: as cell changes
+ * (one step of Undo) — the cells after them in their columns (rows) moved, [g]'s own gone when deleting, and every
+ * formula on the sheet that reads the moved cells following them ([SheetShift] limited to those columns or rows).
+ * shortcut: merged cells, rules, validations, links, notes and other sheets' formulas stay where they were; upgrade by
+ * giving the file-level SheetShift cell moves across rows.
+ */
+internal object SheetCellShift {
+    fun changes(sheet: Sheet, g: SheetRange, rows: Boolean, insert: Boolean): Map<Long, SheetCell> {
+        val n = if (rows) g.r2 - g.r1 + 1 else g.c2 - g.c1 + 1
+        val shift = SheetShift(sheet.name, rows, if (rows) g.r1 else g.c1, if (insert) n else -n, if (rows) g.c1..g.c2 else g.r1..g.r2)
+        val left = LinkedHashMap<Long, SheetCell>(); val placed = HashMap<Long, SheetCell>()
+        sheet.cells.forEach { k, cell ->
+            val r = Sheet.row(k); val c = Sheet.col(k)
+            val f = cell.formula?.let { shift.formula(it, sheet.name) }
+            val now = if (f != null && f != cell.formula) cell.copy(formula = f, text = "", kind = SheetKind.Empty, value = null) else cell
+            val to = shift.cell(r, c)
+            if (to != r to c) { left[k] = SheetCell("", SheetKind.Empty); to?.let { placed[Sheet.key(it.first, it.second)] = now } }
+            else if (now !== cell) placed[k] = now
+        }
+        return left.apply { putAll(placed) } // a moved cell lands where another left: it wins
+    }
+}

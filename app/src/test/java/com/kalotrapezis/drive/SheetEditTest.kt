@@ -164,6 +164,23 @@ class SheetEditTest {
         assertEquals(listOf(d(2024, 2, 29), d(2025, 2, 28)), SheetFill.stepped(d(2024, 2, 29), 2, 1.0, "Year"))
     }
 
+    /** Insert cells shifting down and Delete cells shifting up in column A: the cells after move, formulas reading them follow, column B's own stay. */
+    @Test fun `cells shifted`() {
+        fun sheet() = Sheets.csv("1,x\n2,y\n3,z\n4,w\n5,v".toByteArray()).sheet(0).also { s ->
+            s.cells[Sheet.key(0, 2)] = SheetCell("", SheetKind.Empty, formula = "=SUM(A1:A5)"); s.cells[Sheet.key(1, 2)] = SheetCell("", SheetKind.Empty, formula = "=A3+B3") }
+        fun after(s: Sheet, ch: Map<Long, SheetCell>) = { r: Int, c: Int -> (ch[Sheet.key(r, c)] ?: s[r, c]) }
+        val s = sheet(); val a = after(s, SheetCellShift.changes(s, SheetRange(1, 0, 1, 0), rows = true, insert = true))
+        assertEquals("", a(1, 0)?.text); assertEquals(listOf("1", "2", "3", "4", "5"), listOf(0, 2, 3, 4, 5).map { a(it, 0)?.text })
+        assertEquals(listOf("x", "y", "z"), listOf(0, 1, 2).map { a(it, 1)?.text }) // column B not moved
+        assertEquals("=SUM(A1:A6)", a(0, 2)?.formula); assertEquals("=A4+B3", a(1, 2)?.formula)
+        val t = sheet(); val d = after(t, SheetCellShift.changes(t, SheetRange(1, 0, 1, 0), rows = true, insert = false))
+        assertEquals(listOf("1", "3", "4", "5", ""), (0..4).map { d(it, 0)?.text.orEmpty() })
+        assertEquals("=SUM(A1:A4)", d(0, 2)?.formula); assertEquals("=A2+B3", d(1, 2)?.formula)
+        // right: row 1's cells from B on move one column over
+        val u = sheet(); val rgt = after(u, SheetCellShift.changes(u, SheetRange(0, 1, 0, 1), rows = false, insert = true))
+        assertEquals("", rgt(0, 1)?.text); assertEquals("x", rgt(0, 2)?.text); assertEquals("=SUM(A1:A5)", rgt(0, 3)?.formula); assertEquals("y", rgt(1, 1)?.text)
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

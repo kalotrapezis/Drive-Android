@@ -800,6 +800,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * that comes by itself, as Writer's Selection tab does.
      */
     /** Clear: the chosen cells' contents gone, their looks kept (one step of Undo). */
+    /** Cells [g] (the sheet's) inserted, the rest shifted down ([rows]) or right, or deleted, the rest shifted up or left: one step of Undo. */
+    fun shiftCells(g: SheetRange, rows: Boolean, insert: Boolean) {
+        val s = sheet ?: return; val b = book ?: return
+        if (s.merges.any { m -> if (rows) m.c1 <= g.c2 && g.c1 <= m.c2 && m.r2 >= g.r1 else m.r1 <= g.r2 && g.r1 <= m.r2 && m.c2 >= g.c1 }) { message = "Merged cells are in the way: unmerge them first"; return }
+        val changes = SheetCellShift.changes(s, g, rows, insert)
+        if (changes.isEmpty()) return
+        history.apply(b, index, changes); version++; view.range = null
+        WriterLog.i("Sheets: cells ${if (insert) "inserted" else "deleted"}, shifted ${if (rows) (if (insert) "down" else "up") else (if (insert) "right" else "left")}")
+    }
     /** Excel's Clear ▾ on the chosen cells: [what] "contents", "formats", "all" (both), "notes" or "links" (changes to the file). */
     fun clearCells(what: String = "contents") {
         val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
@@ -931,6 +940,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             DropdownMenu(open, { open = false }) {
                                 listOf("Clear all" to "all", "Clear formats" to "formats", "Clear contents" to "contents", "Clear notes" to "notes", "Clear hyperlinks" to "links")
                                     .forEach { (name, what) -> if (b.kind != "csv" || what == "contents" || what == "all") DropdownMenuItem(text = { Text(name) }, onClick = { open = false; clearCells(what) }) } } }
+                        // Excel's Insert ▾ and Delete ▾ cells: the chosen cells, the rest shifted
+                        if (editing) for (insert in listOf(true, false)) Box { var open by remember { mutableStateOf(false) }
+                            RibbonButton(if (insert) "Insert" else "Delete", w, if (insert) R.drawable.ic_add_row_above else R.drawable.ic_delete_row) { open = true }
+                            DropdownMenu(open, { open = false }) {
+                                val d = targets(s, l).let { ks -> if (ks.isEmpty()) null else box(ks) }
+                                listOf(true, false).forEach { rows -> DropdownMenuItem(text = { Text(if (insert) (if (rows) "Shift cells down" else "Shift cells right") else (if (rows) "Shift cells up" else "Shift cells left")) },
+                                    onClick = { open = false; d?.let { shiftCells(it, rows, insert) } }) } } }
                         // Words' Copy formatting / Paste formatting (Home's Format painter in Excel): one cell's look onto the cells chosen
                         if (editing) { RibbonDivider(w)
                             RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) { copiedLook = now; message = "Formatting copied — choose cells, then Paste formatting" }
@@ -1367,6 +1383,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 item("Insert column left", R.drawable.ic_add_column_left) { shift(false, cols.first, cols.second) }
                                 item("Insert column right", R.drawable.ic_add_column_right) { shift(false, cols.first + cols.second, cols.second) }
                                 item(if (cols.second > 1) "Delete ${cols.second} columns" else "Delete column", R.drawable.ic_delete_column) { shift(false, cols.first, -cols.second) }
+                                HorizontalDivider()
+                                // Excel's Insert ▸ Shift cells down / right, Delete ▸ Shift cells up / left: the chosen cells only
+                                val cells = SheetRange(rows.first, cols.first, rows.first + rows.second - 1, cols.first + cols.second - 1)
+                                item("Insert cells, shift down", R.drawable.ic_add_row_above) { shiftCells(cells, rows = true, insert = true) }
+                                item("Insert cells, shift right", R.drawable.ic_add_column_left) { shiftCells(cells, rows = false, insert = true) }
+                                item("Delete cells, shift up", R.drawable.ic_delete_row) { shiftCells(cells, rows = true, insert = false) }
+                                item("Delete cells, shift left", R.drawable.ic_delete_column) { shiftCells(cells, rows = false, insert = false) }
                             }
                     } }
                 }

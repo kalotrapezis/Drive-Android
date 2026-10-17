@@ -17,6 +17,11 @@ internal class SheetShift(
     val at: Int,
     /** How many: more than 0 inserted, less than 0 deleted. */
     val count: Int,
+    /**
+     * Only the cells in these columns (rows moving) or rows (columns moving) move — Excel's Insert ▸ Shift cells down or right,
+     * Delete ▸ Shift cells up or left; null: whole rows or columns. A range not wholly in them stays as it is.
+     */
+    val within: IntRange? = null,
 ) {
     private val deleted get() = if (count < 0) at until at - count else IntRange.EMPTY
 
@@ -36,10 +41,17 @@ internal class SheetShift(
         return if (na > nb) null else na..nb
     }
 
-    fun range(g: SheetRange): SheetRange? =
-        if (rows) span(g.r1, g.r2)?.let { SheetRange(it.first, g.c1, it.last, g.c2) } else span(g.c1, g.c2)?.let { SheetRange(g.r1, it.first, g.r2, it.last) }
+    fun range(g: SheetRange): SheetRange? {
+        // shortcut: a range partly in the moving cells' columns (rows) stays; Excel refuses some of those shifts outright
+        if (within != null && !(if (rows) g.c1 >= within.first && g.c2 <= within.last else g.r1 >= within.first && g.r2 <= within.last)) return g
+        return if (rows) span(g.r1, g.r2)?.let { SheetRange(it.first, g.c1, it.last, g.c2) } else span(g.c1, g.c2)?.let { SheetRange(g.r1, it.first, g.r2, it.last) }
+    }
 
-    fun cell(r: Int, c: Int): Pair<Int, Int>? = if (rows) index(r)?.let { it to c } else index(c)?.let { r to it }
+    fun cell(r: Int, c: Int): Pair<Int, Int>? = when {
+        within != null && (if (rows) c !in within else r !in within) -> r to c
+        rows -> index(r)?.let { it to c }
+        else -> index(c)?.let { r to it }
+    }
 
     private fun same(name: String?, own: String) = (name ?: own).trim('\'').replace("''", "'").equals(sheet, ignoreCase = true)
 
@@ -50,6 +62,7 @@ internal class SheetShift(
         val a = cellParts(parts[0]) ?: return ref
         val b = if (parts.size == 2) cellParts(parts[1]) ?: return ref else null
         val bb = b ?: a
+        if (within != null && (a.row == null || bb.row == null || a.col == null || bb.col == null)) return ref // whole rows and columns stay
         if (a.row == null && bb.row == null && a.col != null && bb.col != null) { // whole columns: A:C
             if (rows) return ref
             val s = span(a.col, bb.col) ?: return null

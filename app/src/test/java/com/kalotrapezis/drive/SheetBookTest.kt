@@ -50,6 +50,22 @@ class SheetBookTest {
         }
     }
 
+    /** References › Contents sheet: first, each shown sheet a link to its A1 (the hidden one left out); made again, still one; LibreOffice keeps it. */
+    @Test fun `a contents sheet made`() {
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("contents").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val once = File(dir, "once.${f.extension}"); SheetContents.apply(f, once, Sheets.read(f, ',', '.'), ',', '.')
+            val twice = File(dir, "twice.${f.extension}"); SheetContents.apply(once, twice, Sheets.read(once, ',', '.'), ',', '.')
+            for (file in listOf(once, twice)) { val b = Sheets.read(file, ',', '.'); val s = b.sheet(0)
+                assertEquals(name, listOf("Contents", "Numbers", "Second", "Hidden"), b.tabs.map { it.name })
+                assertEquals(name, listOf("Contents", "Numbers", "Second", null), (0..3).map { s[it, 0]?.text })
+                assertEquals(name, "#Numbers!A1", s[1, 0]?.link?.replace("'", "")); assertEquals(name, "#Second!A1", s[2, 0]?.link?.replace("'", ""))
+                assertEquals(name, "Alpha", b.sheet(1)[1, 0]?.text) }
+            shown(twice)?.let { sheets -> assertTrue("$name: ${sheets.keys}", sheets.keys.any { it.contains("Contents") }) }
+        }
+    }
+
     @Test fun `quoted names`() {
         assertEquals("Rows", SheetBook.quoted("Rows")); assertEquals("'Grades Σ'", SheetBook.quoted("Grades Σ")); assertEquals("'A1'", SheetBook.quoted("A1"))
         assertEquals("SUM('My x'!B3:B12)+Other!A1", SheetBook.renamed("SUM(Rows!B3:B12)+Other!A1", "Rows", "My x"))

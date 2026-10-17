@@ -1151,6 +1151,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Picture", w, R.drawable.ic_gallery) { pickPicture.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                             if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
                             if (b.kind != "csv") RibbonButton("Shape", w, R.drawable.ic_category) { shaping = true }
+                            // References: a first sheet listing every sheet as a link (made again when there is one)
+                            if (b.kind != "csv" && b.tabs.size > 1) RibbonButton("Contents sheet", w, R.drawable.ic_toc) {
+                                fileStep("contents sheet", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetContents.apply(baked, next, bb, sym.decimalSeparator, sym.groupingSeparator) } }) { views.clear(); header = null; index = 0 } }
                             // Excel's notes (LibreOffice's comments): made or changed in Words' comment dialog; taken away
                             val hasNote = s[cr, cc]?.note != null
                             RibbonButton(if (hasNote) "Edit note" else "Note", w, R.drawable.ic_comment) { noting = true }

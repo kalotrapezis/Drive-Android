@@ -121,7 +121,8 @@ internal object SlidesOdp {
                     val size = pt(textProp(span, "font-size")) ?: 18f
                     runs += SlideRun(t, size, textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, textProp(span, "font-style") == "italic",
                         textProp(span, "text-underline-style").let { it != null && it != "none" }, hex(textProp(span, "color")) ?: 0xFF000000.toInt(),
-                        textProp(span, "font-name") ?: textProp(span, "font-family"))
+                        textProp(span, "font-name") ?: textProp(span, "font-family"),
+                        TextEffects(if (textProp(span, "text-outline") == "true") 0 else null, textProp(span, "text-shadow").let { it != null && it != "none" }))
                 }
                 fun walk(n: org.w3c.dom.Node, span: String?) {
                     when {

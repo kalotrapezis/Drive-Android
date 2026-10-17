@@ -11,7 +11,7 @@ internal object SlidesText {
     /** A slide's paragraphs' looks, bullets and their colours; its runs name their face itself. */
     private class Styles(val looks: java.util.IdentityHashMap<DocPara, ParaLook>, val bullets: java.util.IdentityHashMap<DocPara, SlidePara>) : DocStyles() {
         override fun look(p: DocPara) = looks[p] ?: ParaLook()
-        override fun fontName(raw: String?) = raw
+        override fun fontName(raw: String?) = raw?.substringBefore('<')?.takeIf { it.isNotEmpty() } // the face, then its effects as Word writes them
         // a bullet no face here has (Noto Sans Symbols' 🞆): Word's •; one the phone draws as a colour emoji (⚫) asked for as a letter, in its colour
         override fun marker(p: DocPara) = bullets[p]?.bullet?.let { bullet(it) }?.let { b -> if (glyphs.hasGlyph(b)) b + '\uFE0E' else "•" }
         override fun markerLook(p: DocPara) = bullets[p]?.let { MarkerLook(it.bulletColor, it.bulletSize, it.bulletFont) }
@@ -28,14 +28,15 @@ internal object SlidesText {
         val looks = java.util.IdentityHashMap<DocPara, ParaLook>(); val bullets = java.util.IdentityHashMap<DocPara, SlidePara>()
         val paras = t.paras.map { p ->
             val first = p.runs.firstOrNull()
+            val bullet = p.bullet?.takeIf { p.runs.any { it.text.isNotEmpty() } } // an empty paragraph shows none, as PowerPoint's
             // shortcut: a run's colour loses its see-through part (Words' runs are 0xRRGGBB), when one has it: carry alpha in DocRun
             val runs = p.runs.map { r -> DocRun(r.text.replace('\n', LINE_BREAK), bold = r.bold, italic = r.italic, underline = r.underline,
-                sizePt = r.size * k, color = r.color and 0xFFFFFF, font = r.font) }
-            DocPara(runs, list = p.bullet?.let { DocList(it.firstOrNull()?.isDigit() == true, p.level) },
+                sizePt = r.size * k, color = r.color and 0xFFFFFF, font = (r.font ?: "") + (if (r.effects.any) r.effects.docx() else "")) }
+            DocPara(runs, list = bullet?.let { DocList(it.firstOrNull()?.isDigit() == true, p.level) },
                 align = when (p.align) { 'c' -> DocAlign.Center; 'r' -> DocAlign.End; 'j' -> DocAlign.Justify; else -> DocAlign.Start }).also { d ->
                 looks[d] = ParaLook(before = p.before, after = p.after, lineMultiple = p.line * single(first), left = p.marL, firstLine = p.indent, listIndented = true,
                     sizePt = (first?.size ?: 18f) * k, font = first?.font, color = first?.color?.and(0xFFFFFF))
-                if (p.bullet != null) bullets[d] = p
+                if (bullet != null) bullets[d] = p
             }
         }
         val styles = Styles(looks, bullets)

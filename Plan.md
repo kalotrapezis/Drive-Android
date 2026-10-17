@@ -156,8 +156,13 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       none failing. Not the engine's (seen in passing): LibreOffice re-fits normAutofit itself (lecture 3–4 bigger
       there; Tetra keeps PowerPoint's saved fontScale); small caps (cap="small") wait for step 3. Tool:
       `SlidesRenderDeviceTest` draws decks pushed to files/slides-in as PNGs.
-- [ ] 2. Text effects on slides: shadow, glow and outline read from PowerPoint's `a:effectLst`/`a:ln` into Words'
+- [x] 2. Text effects on slides: shadow, glow and outline read from PowerPoint's `a:effectLst`/`a:ln` into Words'
       `TextEffects`; WordArt bends already shared (`TextWarp`). ~40 lines.
+      Done (office-engine session, 17 Oct): `SlideRun.effects` from the nearest effectLst/ln (an empty effectLst — as
+      the user's jamovi decks have on every run — takes inherited ones away), LibreOffice's text-shadow/text-outline;
+      drawn by Words' `EffectSpan` (the run's raw settings carry Word's w14 form). Also: an empty paragraph shows no
+      bullet (PowerPoint's and LibreOffice's way; Slides drew one). `text effects read from a pptx` (text-effects.pptx).
+      LibreOffice 26.2 draws a slide's text glow but not its shadow or outline from a .pptx; PowerPoint draws all three.
 - [ ] 3. Slides read straight into `DocPara`/`DocRun` (`SlideRun`/`SlidePara` gone): slides gain strike, sub- and
       superscript, caps, highlight, links, tabs, exact line spacing. ~150 lines.
 - [ ] 4. Words kept per letter when a slide's text is edited (Words' `PictureXml.relaid`/`relook`, already used for

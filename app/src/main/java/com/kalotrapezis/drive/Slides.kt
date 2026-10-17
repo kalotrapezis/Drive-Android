@@ -10,7 +10,8 @@ import kotlin.math.max
  * they show — text in placeholders and boxes with the looks their layout, master and theme give them, shapes in their
  * outlines, pictures, charts, tables, groups, backgrounds — and each slide's speaker notes. Sizes in points.
  */
-internal class SlideRun(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: Int, val font: String?)
+internal class SlideRun(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val color: Int, val font: String?,
+    /** shadow, glow and outline (PowerPoint's effectLst and ln on the letters, LibreOffice's text-shadow and text-outline) */ val effects: TextEffects = TextEffects())
 internal class SlidePara(val runs: List<SlideRun>, val align: Char, val level: Int, val bullet: String?, val bulletColor: Int?,
     val marL: Float, val indent: Float, val before: Float, val after: Float, val line: Float,
     /** the bullet's size, a share of its letters' (buSzPct); its own face (buFont) */ val bulletSize: Float = 1f, val bulletFont: String? = null)
@@ -459,7 +460,11 @@ internal object Slides {
                     val color = own ?: fontColor ?: rPr.firstNotNullOfOrNull { it.kid("solidFill")?.let(::color) } ?: scheme[map["tx1"] ?: "dk1"]?.or(0xFF000000.toInt()) ?: 0xFF000000.toInt()
                     val face = rPr.firstNotNullOfOrNull { it.kid("latin")?.attr("typeface") }?.let { if (it == "+mj-lt") major else if (it == "+mn-lt") minor else it }
                         ?: if (master?.localName == "titleStyle") major else minor
-                    return SlideRun(t, size, boldAll || rAttr("b") == "1", rAttr("i") == "1", rAttr("u").let { it != null && it != "none" }, color, face)
+                    // the nearest that says any (an empty effectLst takes the inherited ones away)
+                    val fx = rPr.firstOrNull { it.kid("effectLst") != null }?.kid("effectLst")
+                    val ln = rPr.firstNotNullOfOrNull { it.kid("ln") }?.takeIf { it.kid("noFill") == null }
+                    val effects = TextEffects(ln?.kid("solidFill")?.let(::color)?.and(0xFFFFFF), fx?.kid("outerShdw") != null, fx?.kid("glow")?.let(::color)?.and(0xFFFFFF))
+                    return SlideRun(t, size, boldAll || rAttr("b") == "1", rAttr("i") == "1", rAttr("u").let { it != null && it != "none" }, color, face, effects)
                 }
                 val runs = p.kids().mapNotNull { r -> when (r.localName) { "r", "fld" -> runOf(r, r.kid("t")?.textContent.orEmpty()); "br" -> runOf(r, "\n"); else -> null } }
                     .ifEmpty { listOf(runOf(null, "")) }

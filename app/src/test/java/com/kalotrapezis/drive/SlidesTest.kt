@@ -23,6 +23,18 @@ class SlidesTest {
         assertEquals("a\uD83D\uDE4D", OfficeFormats.parse("<p>a&#55357;&#56909;</p>".toByteArray()).documentElement.textContent)
     }
 
+    /**
+     * Words' text effects on a slide (the Office engine, step 2): text-effects.pptx is slides.pptx with a glow on the
+     * rounded box's words and an outline and a shadow on the red ones, as PowerPoint writes them (effectLst, ln).
+     */
+    @Test fun `text effects read from a pptx`() {
+        fun run(d: Deck, words: String) = d.slides[2].items.mapNotNull { (it as? SlideItem.Shape)?.text }.flatMap { t -> t.paras.flatMap { it.runs } }.first { it.text == words }
+        val d = Slides.read(File("src/test/resources/text-effects.pptx"))
+        assertEquals(TextEffects(glow = 0xFFC000), run(d, "A glowing box").effects)
+        assertEquals(TextEffects(outline = 0x002060, shadow = true), run(d, "Bold red words, 28 pt").effects)
+        assertEquals(TextEffects(), run(Slides.read(File("src/test/resources/slides.pptx")), "Bold red words, 28 pt").effects)
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

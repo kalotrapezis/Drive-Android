@@ -75,7 +75,7 @@ internal object SlidesEdit {
                 val look = p?.runs?.firstOrNull { it.text.isNotBlank() } ?: p?.runs?.firstOrNull()
                 // a hint's grey is not the words' colour: those take the theme's text colour
                 val color = if (item.hint) 0xFF000000.toInt() else look?.color ?: 0xFF000000.toInt()
-                val run = SlideRun(line, look?.size ?: 18f, look?.bold == true, look?.italic == true, look?.underline == true, color, look?.font)
+                val run = SlideRun(line, look?.size ?: 18f, look?.bold == true, look?.italic == true, look?.underline == true, color, look?.font, look?.effects ?: TextEffects())
                 if (p == null) SlidePara(listOf(run), 'l', 0, null, null, 0f, 0f, 0f, 0f, 1f)
                 else SlidePara(listOf(run), p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line, p.bulletSize, p.bulletFont)
             }
@@ -123,7 +123,7 @@ internal object SlidesEdit {
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
         val shape = if (l.fill == null && l.line == null) sp else ShapePicture(sp?.geometry ?: "rect", pick(l.fill, sp?.fill), pick(l.line, sp?.line), sp?.lineWidth?.takeIf { it > 0 } ?: 1.5f, sp?.custom, sp?.adjust ?: emptyMap())
-        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.runs.map { r -> SlideRun(r.text, r.size, r.bold, r.italic, r.underline, l.text, r.font) },
+        val text = item.text?.let { t -> if (l.text == null) t else SlideText(t.paras.map { p -> SlidePara(p.runs.map { r -> SlideRun(r.text, r.size, r.bold, r.italic, r.underline, l.text, r.font, r.effects) },
             p.align, p.level, p.bullet, p.bulletColor, p.marL, p.indent, p.before, p.after, p.line, p.bulletSize, p.bulletFont) }, t.anchor, t.insets, t.scale, t.wrap, t.shrink) }
         return SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped }
     }

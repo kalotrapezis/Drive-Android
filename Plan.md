@@ -37,6 +37,8 @@ How to write here:
       go-ahead before building. Builds on its own branch `calendar` (worktree Drive-Android-worktrees/calendar, from
       writer-library) and the desktop's `calendar` (worktree Drive-worktrees/calendar), not in the Office checkout.
 - [~] (office-engine session, 17 Oct) B top-down on the engine, then C, then A's walk (the user: "ok comit and continue to finish office").
+      Done here: Home (0ce3c4d), Insert › Text box (17b9bfb), Drop cap strip + Raised (c9c4683); handing on (notes:
+      office-engine-17oct.md in the group's notes folder). Tablet in use (Crunchyroll) 15:00: these three seen on the emulator only.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

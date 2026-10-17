@@ -632,9 +632,33 @@ internal object Slides {
     /** A slide drawn on [c] at [k] screen pixels a point, from 0,0. */
     /** [look]: an item's state in an animation — null hidden, else its opacity and how far it is moved (points), and (an emphasis) its scale and turn in degrees about a point. */
     /** File › Export PDF and Print: a page a slide, the deck's size in points, the hidden slides left out (as PowerPoint). */
-    fun pdf(deck: Deck, out: java.io.OutputStream): Int {
+    fun pdf(deck: Deck, out: java.io.OutputStream, handouts: Int = 1): Int {
         val pdf = android.graphics.pdf.PdfDocument()
         val shown = deck.slides.filter { !it.hidden }
+        // Print › handouts (PowerPoint's): 2, 3 (lines beside each for notes) or 6 slides on an A4 page, each framed
+        if (handouts > 1) {
+            val pw = 595f; val ph = 842f; val m = 36f
+            val cols = if (handouts == 6) 2 else 1; val rows = handouts / cols
+            val cellW = (pw - 2 * m - (cols - 1) * 18f) / cols; val cellH = (ph - 2 * m - (rows - 1) * 18f) / rows
+            val line = android.graphics.Paint().apply { color = 0xFF9E9E9E.toInt(); strokeWidth = 0.5f; style = android.graphics.Paint.Style.STROKE }
+            shown.chunked(handouts).forEachIndexed { n, group ->
+                val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pw.toInt(), ph.toInt(), n + 1).create())
+                group.forEachIndexed { k, s ->
+                    val cx = m + (k % cols) * (cellW + 18f); val cy = m + (k / cols) * (cellH + 18f)
+                    // three to a page: the slide on the left half, lines for notes on the right
+                    val boxW = if (handouts == 3) cellW / 2 - 9f else cellW
+                    val scale = minOf(boxW / deck.width, cellH / deck.height)
+                    val w = deck.width * scale; val h = deck.height * scale
+                    val x = cx + if (handouts == 3) 0f else (boxW - w) / 2; val y = cy + (cellH - h) / 2
+                    page.canvas.save(); page.canvas.translate(x, y); draw(page.canvas, deck, s, scale); page.canvas.restore()
+                    page.canvas.drawRect(x, y, x + w, y + h, line)
+                    if (handouts == 3) { var ly = y + 18f; while (ly < y + h) { page.canvas.drawLine(cx + cellW / 2 + 9f, ly, cx + cellW, ly, line); ly += 22f } }
+                }
+                pdf.finishPage(page)
+            }
+            pdf.writeTo(out); pdf.close()
+            return shown.size
+        }
         shown.forEachIndexed { i, s ->
             val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(deck.width.toInt(), deck.height.toInt(), i + 1).create())
             draw(page.canvas, deck, s, 1f)

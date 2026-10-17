@@ -522,7 +522,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             .onFailure { WriterLog.e("Slides: a version", it); message = "That version could not be opened." }
     }
     /** File › Export PDF (beside the presentation, never over a file) and Print: the slides as shown, changes included. */
-    fun slidesPdf(to: File): Int = view?.let { d -> to.outputStream().use { Slides.pdf(d, it) } } ?: error("Nothing to export.")
+    fun slidesPdf(to: File, handouts: Int = 1): Int = view?.let { d -> to.outputStream().use { Slides.pdf(d, it, handouts) } } ?: error("Nothing to export.")
     fun exportPdf() {
         val f = file ?: return
         scope.launch {
@@ -551,10 +551,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             message = result.fold({ "Saved the slides as pictures in “${it.name}” beside the presentation" }, { WriterLog.e("Slides: pictures", it); "Could not make the pictures." })
         }
     }
-    fun printIt() {
+    fun printIt(handouts: Int = 1) {
         val title = file?.nameWithoutExtension ?: "Presentation"
         scope.launch {
-            val pdf = withContext(Dispatchers.IO) { runCatching { File(context.cacheDir, "print.pdf").also { slidesPdf(it) } }
+            val pdf = withContext(Dispatchers.IO) { runCatching { File(context.cacheDir, "print.pdf").also { slidesPdf(it, handouts) } }
                 .onFailure { WriterLog.e("Slides: print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
             context.getSystemService(android.print.PrintManager::class.java)?.print(title, PdfPrintAdapter(pdf, title), null)
             WriterLog.i("Slides: print ${pdf.length() / 1024} KB")
@@ -795,7 +795,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                 RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
                 RibbonButton("Export pictures", w, R.drawable.ic_gallery, enabled = file != null) { exportPictures() }
-                RibbonButton("Print", w, R.drawable.ic_print) { printIt() }
+                // Print: full slides, or handouts (PowerPoint's 2, 3 with lines for notes, 6 to a page)
+                Box {
+                    var printing by remember { mutableStateOf(false) }
+                    RibbonButton("Print", w, R.drawable.ic_print) { printing = true }
+                    DropdownMenu(printing, { printing = false }) {
+                        listOf("Full slides" to 1, "Handouts, 2 to a page" to 2, "Handouts, 3 with lines for notes" to 3, "Handouts, 6 to a page" to 6)
+                            .forEach { (label, n) -> DropdownMenuItem(text = { Text(label) }, onClick = { printing = false; printIt(n) }) }
+                    }
+                }
                 file?.let { f ->
                     RibbonDivider(w)
                     RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }

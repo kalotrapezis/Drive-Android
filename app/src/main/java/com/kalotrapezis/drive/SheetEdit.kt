@@ -264,6 +264,44 @@ internal object SheetLook {
         }
     }
 
+    /**
+     * One of Excel's cell styles: its font colour, fill, weight, size, font and borders ([box]: all four) — put over a look,
+     * only the [parts] Excel's style includes ("font", "fill", "border"), the rest of the cell's look kept.
+     */
+    class CellStyle(val name: String, val color: Int?, val fill: Int? = null, val bold: Boolean = false, val italic: Boolean = false,
+                    val size: Float? = null, val font: String? = null, val top: SheetLine? = null, val bottom: SheetLine? = null, val box: SheetLine? = null,
+                    val parts: String = "font fill border")
+    private fun rgb(v: Long) = (0xFF000000 or v).toInt()
+    private fun line(v: Long, width: Float = 1f, double: Boolean = false) = SheetLine(rgb(v), width, double)
+    /** Home › Cell styles: Excel's own (its Office theme's colours), in its gallery's order. */
+    val STYLES = listOf(
+        CellStyle("Normal", null),
+        CellStyle("Good", rgb(0x006100), rgb(0xC6EFCE), parts = "font fill"), CellStyle("Bad", rgb(0x9C0006), rgb(0xFFC7CE), parts = "font fill"),
+        CellStyle("Neutral", rgb(0x9C5700), rgb(0xFFEB9C), parts = "font fill"),
+        CellStyle("Calculation", rgb(0xFA7D00), rgb(0xF2F2F2), bold = true, box = line(0x7F7F7F)),
+        CellStyle("Check cell", rgb(0xFFFFFF), rgb(0xA5A5A5), bold = true, box = line(0x3F3F3F, 3f, double = true)),
+        CellStyle("Explanatory text", rgb(0x7F7F7F), italic = true, parts = "font"),
+        CellStyle("Input", rgb(0x3F3F76), rgb(0xFFCC99), box = line(0x7F7F7F)),
+        CellStyle("Linked cell", rgb(0xFA7D00), bottom = line(0xFF8001, 3f, double = true), parts = "font border"),
+        CellStyle("Note", null, rgb(0xFFFFCC), box = line(0xB2B2B2), parts = "fill border"),
+        CellStyle("Output", rgb(0x3F3F3F), rgb(0xF2F2F2), bold = true, box = line(0x3F3F3F)),
+        CellStyle("Warning text", rgb(0xFF0000), parts = "font"),
+        CellStyle("Title", rgb(0x44546A), size = 18f, font = "Calibri Light", parts = "font"),
+        CellStyle("Heading 1", rgb(0x44546A), bold = true, size = 15f, bottom = line(0x4472C4, 3f), parts = "font border"),
+        CellStyle("Heading 2", rgb(0x44546A), bold = true, size = 13f, bottom = line(0xA2B8E1, 3f), parts = "font border"),
+        CellStyle("Heading 3", rgb(0x44546A), bold = true, bottom = line(0x8EA9DB, 2f), parts = "font border"),
+        CellStyle("Heading 4", rgb(0x44546A), bold = true, parts = "font"),
+        CellStyle("Total", null, bold = true, top = line(0x4472C4), bottom = line(0x4472C4, 3f, double = true), parts = "font border"),
+    )
+    /** [st] in cell style [c]: the parts it includes those of [c] over the workbook's [normal]; the number format, alignment and the rest kept. */
+    fun styled(st: SheetStyle, c: CellStyle, normal: SheetStyle): SheetStyle {
+        var s = st
+        if ("font" in c.parts) s = s.copy(font = c.font ?: normal.font, size = c.size ?: normal.size, bold = c.bold, italic = c.italic, underline = false, strike = false, color = c.color)
+        if ("fill" in c.parts) s = s.copy(fill = c.fill)
+        if ("border" in c.parts) s = s.copy(left = c.box, right = c.box, top = c.box ?: c.top, bottom = c.box ?: c.bottom)
+        return s
+    }
+
     /** A border round a range: each edge where the cell is on the range's edge ([all]: between the cells too). */
     fun edges(st: SheetStyle, k: Long, g: SheetRange, line: SheetLine?, all: Boolean, onlyBottom: Boolean = false): SheetStyle {
         val r = Sheet.row(k); val c = Sheet.col(k)

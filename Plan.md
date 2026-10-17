@@ -799,6 +799,13 @@ what is not already above:
       cells' end (`SheetFill.stepped`; cell changes, one step of Undo). The fill handle now also runs Excel's own lists: month and day
       names, long and short, in their capitals and step (Jan, Mar → May). `month and day names and Fill series`; emulator: 15/03/2023
       by month down C2:C8.
+      Cell styles done (office-F session, 18 Oct): Home › Cell styles — Excel's gallery (Normal, Good, Bad, Neutral, Calculation, Check
+      cell, Explanatory, Input, Linked cell, Note, Output, Warning, Title, Heading 1–4, Total; Office theme colours), each drawn in its
+      look; tapped, the parts Excel's style includes (font, fill, border) put on the chosen cells, the rest of their look kept
+      (`SheetLook.STYLES`/`styled`; cell looks, one step of Undo). Saved as looks, not as named styles (Excel shows them as Normal).
+      Fixed on the way: a double border in .ods written as LibreOffice writes Excel's (1.76pt double-thin — a bare "double" it took
+      as thin) and read back as double. `cell styles xlsx/ods` (LibreOffice's conversions: its .xlsx of an .ods with a themed
+      Default style drops every font colour — a LibreOffice quirk, it shows ours); emulator: Heading 1 on A1:D1.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);

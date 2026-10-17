@@ -395,7 +395,8 @@ internal object SheetSave {
         fun fresh(prefix: String) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { taken += it }
 
         fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
-        fun line(l: SheetLine?) = if (l == null) "none" else "${if (l.width >= 3) "2.5pt" else if (l.width >= 2) "1.5pt" else "0.74pt"} ${if (l.double) "double" else if (l.dots) "dotted" else if (l.dashed) "dashed" else "solid"} ${hex(l.color)}"
+        // a double as LibreOffice writes Excel's (a bare "double" it takes as thin)
+        fun line(l: SheetLine?) = if (l == null) "none" else if (l.double) "1.76pt double-thin ${hex(l.color)}" else "${if (l.width >= 3) "2.5pt" else if (l.width >= 2) "1.5pt" else "0.74pt"} ${if (l.dots) "dotted" else if (l.dashed) "dashed" else "solid"} ${hex(l.color)}"
 
         fun name(style: Int, format: String?): String = made.getOrPut(style to format) {
             val look = book.styles[style]

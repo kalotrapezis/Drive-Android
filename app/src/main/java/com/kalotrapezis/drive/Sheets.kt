@@ -1344,7 +1344,7 @@ internal object Sheets {
             val parts = s.split(' ')
             val w = odfPx(parts.firstOrNull())?.let { if (it < 1.3f) 1f else if (it < 2.6f) 2f else 3f } ?: 1f
             val color = parts.firstNotNullOfOrNull { hex(it) } ?: 0xFF000000.toInt()
-            return SheetLine(color, w, double = "double" in parts, dashed = parts.any { it in setOf("dashed", "dash-dot", "dash-dot-dot", "fine-dashed") }, dots = "dotted" in parts)
+            return SheetLine(color, w, double = parts.any { it == "double" || it == "double-thin" }, dashed = parts.any { it in setOf("dashed", "dash-dot", "dash-dot-dot", "fine-dashed") }, dots = "dotted" in parts)
         }
 
         /** After the first pass every look is made: a name not seen then is the default (formatting adds after them). */

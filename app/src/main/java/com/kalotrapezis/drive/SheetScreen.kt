@@ -96,6 +96,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.graphics.Color
@@ -789,13 +791,23 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     RibbonButton("Thick bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 2f), all = false, onlyBottom = true) } }
                                     RibbonButton("Double bottom", w, R.drawable.ic_border_bottom) { look { st, k -> SheetLook.edges(st, k, g2, SheetLine(0xFF000000.toInt(), 3f, double = true), all = false, onlyBottom = true) } }
                                     RibbonButton("None", w, R.drawable.ic_border_clear) { look { st, k -> SheetLook.edges(st, k, g2, null, all = true) } }
-                                            } else listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
+                                            } else if (name == "Cell styles") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // each drawn in its look, as Excel's gallery
+                SheetLook.STYLES.forEach { cs ->
+                    Text(cs.name, color = Color(cs.color ?: 0xFF000000.toInt()), fontWeight = if (cs.bold) FontWeight.Bold else null,
+                        fontStyle = if (cs.italic) androidx.compose.ui.text.font.FontStyle.Italic else null, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(4.dp)).background(Color(cs.fill ?: 0xFFFFFFFF.toInt()))
+                            .then(cs.box?.let { Modifier.border(1.dp, Color(it.color), RoundedCornerShape(4.dp)) } ?: cs.bottom?.let { e -> Modifier.drawBehind {
+                                drawRect(Color(e.color), Offset(0f, size.height - e.width.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, e.width.dp.toPx())) } } ?: Modifier)
+                            .clickable { look { st, _ -> SheetLook.styled(st, cs, b.styles.getOrNull(0) ?: SheetStyle()) }; WriterLog.i("Sheets: cell style ${cs.name}") }
+                            .wrapContentHeight(Alignment.CenterVertically).padding(horizontal = 12.dp))
+                } } else listOf("General" to "General", "1.234,50" to "#,##0.00", "€" to "#,##0.00 \"€\"", "%" to "0%", "Date" to "d/m/yyyy", "Time" to "h:mm", "Text" to "@")
                 .forEach { (label, code) -> RibbonButton(label, w, on = now.format == code) { look { st, _ -> st.copy(format = code) } } }
         }
         // a phone: solid across the bottom; a tablet: floating, as Words' and Slides' (asked 16 Oct)
         val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
         Surface(color = Color(0xFF16191A), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
-            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" }, label = "ribbon",
+            androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
             Column {
                 OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
@@ -1031,6 +1043,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     look { st, _ -> st.copy(fill = c?.let { (it.value shr 32).toInt() }) }
                                 }
                                 opener("Borders", R.drawable.ic_border_outer)
+                                opener("Cell styles", R.drawable.ic_style)
                                 RibbonDivider(w)
                                 RibbonButton("", w, R.drawable.ic_align_left, on = now.align == SheetAlign.Left) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Left) SheetAlign.General else SheetAlign.Left) } }
                                 RibbonButton("", w, R.drawable.ic_align_center, on = now.align == SheetAlign.Center) { look { st, _ -> st.copy(align = if (now.align == SheetAlign.Center) SheetAlign.General else SheetAlign.Center) } }

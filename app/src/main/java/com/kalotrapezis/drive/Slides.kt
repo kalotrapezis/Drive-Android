@@ -742,12 +742,7 @@ internal object Slides {
             }
             c.restoreToCount(saved)
             // a video's picture: a play mark in its middle (round, so its turn does not matter)
-            if (item.media != null) {
-                val r = minOf(item.w, item.h) * 0.14f; val cx = item.x + item.w / 2; val cy = item.y + item.h / 2
-                val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = 0x99000000.toInt() }
-                c.drawCircle(cx, cy, r, mark)
-                mark.color = 0xF2FFFFFF.toInt(); c.drawPath(android.graphics.Path().apply { moveTo(cx - r * 0.35f, cy - r * 0.5f); lineTo(cx + r * 0.55f, cy); lineTo(cx - r * 0.35f, cy + r * 0.5f); close() }, mark)
-            }
+            if (item.media != null) OfficeVideo.mark(c, item.x, item.y, item.w, item.h)
         }
         c.restore()
     }

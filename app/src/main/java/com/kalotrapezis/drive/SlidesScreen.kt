@@ -22,6 +22,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
@@ -316,39 +317,18 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     // Insert › Video › From this phone: the film copied (kept until Save puts it in the deck), its picture a frame a second in
     val pickVideo = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val made = withContext(Dispatchers.IO) { runCatching {
-                val ext = when (context.contentResolver.getType(uri)) { "video/quicktime" -> "mov"; "video/3gpp" -> "3gp"; "video/webm" -> "webm"; else -> "mp4" }
-                val f = File(File(context.cacheDir, "slide-pictures").apply { mkdirs() }, "${System.nanoTime()}.$ext")
-                context.contentResolver.openInputStream(uri)!!.use { i -> f.outputStream().use { i.copyTo(it) } }
-                val r = android.media.MediaMetadataRetriever().apply { setDataSource(f.path) }
-                val frame = (r.getFrameAtTime(1_000_000) ?: r.getFrameAtTime(0))!!.also { r.release() }
-                Triple(f.path, frame, frame.height / frame.width.coerceAtLeast(1).toFloat())
-            }.onFailure { WriterLog.e("Slides: video", it) }.getOrNull() } ?: run { message = "That video could not be read"; return@launch }
+            val made = withContext(Dispatchers.IO) { OfficeVideo.fromPhone(context, uri, File(context.cacheDir, "slide-pictures")) } ?: run { message = "That video could not be read"; return@launch }
             putVideo(made.first, made.second, made.third)
         }
     }
     /** Insert › Video › Online video: a web address (YouTube's picture fetched for it; else a dark one saying what it is), opened when tapped in a show. */
     fun putOnlineVideo(url: String) = scope.launch {
-        val poster = withContext(Dispatchers.IO) {
-            Regex("""(?:youtu\.be/|v=|/embed/|/shorts/)([A-Za-z0-9_-]{11})""").find(url)?.groupValues?.get(1)?.let { id -> runCatching {
-                (java.net.URL("https://img.youtube.com/vi/$id/hqdefault.jpg").openConnection() as java.net.HttpURLConnection).run { connectTimeout = 5000; readTimeout = 5000
-                    inputStream.use { android.graphics.BitmapFactory.decodeStream(it) } } }.getOrNull() }
-        } ?: android.graphics.Bitmap.createBitmap(1280, 720, android.graphics.Bitmap.Config.ARGB_8888).also { b ->
-            val cv = android.graphics.Canvas(b); cv.drawColor(0xFF202124.toInt())
-            val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); textSize = 44f; textAlign = android.graphics.Paint.Align.CENTER }
-            cv.drawText("Online video", 640f, 560f, p); p.textSize = 30f; p.color = 0xB3FFFFFF.toInt()
-            cv.drawText(runCatching { java.net.URI(url).host }.getOrNull() ?: url.take(40), 640f, 610f, p)
-        }
+        val poster = withContext(Dispatchers.IO) { OfficeVideo.poster(url) }
         putVideo(url, poster, poster.height / poster.width.coerceAtLeast(1).toFloat())
     }
     /** A video's film to play: a web address as it is, a copy on the phone, else its part taken out of the deck's file. */
-    suspend fun filmOf(m: String): String? = withContext(Dispatchers.IO) { when {
-        m.startsWith("http") || File(m).isFile -> m
-        else -> (source ?: file)?.let { f -> runCatching { java.util.zip.ZipFile(f).use { z -> z.getEntry(m)?.let { en ->
-            File(context.cacheDir, "film-${m.substringAfterLast('/')}").also { out -> z.getInputStream(en).use { i -> out.outputStream().use { i.copyTo(it) } } }.path } } }.getOrNull() }
-    } }
-    var filming by remember { mutableStateOf<String?>(null) } // a video playing (its film), while editing
-    var addressing by remember { mutableStateOf(false) } // Insert › Video › Online video: its address
+    suspend fun filmOf(m: String): String? = withContext(Dispatchers.IO) { OfficeVideo.film(m, source ?: file, context.cacheDir) }
+    var filming by remember { mutableStateOf<Pair<Int, OfficeVideo.Spot>?>(null) } // a video playing in its frame while editing (its slide, where, its film)
     /** The chosen picture made [f] (Replace, Edit drawing), in its frame: one put on here takes it as its own, the file's own in its looks. */
     fun repicture(f: File) {
         val e = edit ?: return; val c = chosen ?: return; val id = item ?: return; val uid = e.order[c].uid
@@ -854,8 +834,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         RibbonButton("Flip up and down", w, R.drawable.ic_flip) { turn { it.copy(flipV = !it.flipV) } }
                     }
                     RibbonButton("Size and position", w, R.drawable.ic_aspect_ratio) { sizing = true }
-                    // a video: played here (an online one opened in its app)
-                    it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> if (f.startsWith("http")) openWeb(context, f) else filming = f } ?: run { message = "Its film could not be found" } } } }
+                    // a video: played in its frame on the slide
+                    it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
                     if (it0 is SlideItem.Picture && it0.math == null) {
                         RibbonButton("Crop", w, R.drawable.ic_crop) { scope.launch {
@@ -913,14 +893,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("WordArt", w, R.drawable.ic_format_color_text) { strip = DesignGallery.WordArt }
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                 // Video (asked 17 Oct): from the phone (kept in the deck) or online (a web address), played when tapped in a show
-                Box {
-                    var choosing by remember { mutableStateOf(false) }
-                    RibbonButton("Video", w, R.drawable.ic_play) { choosing = true }
-                    DropdownMenu(choosing, { choosing = false }) {
-                        DropdownMenuItem(text = { Text("From this phone") }, onClick = { choosing = false; pickVideo.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.VideoOnly)) })
-                        DropdownMenuItem(text = { Text("Online video") }, onClick = { choosing = false; addressing = true })
-                    }
-                }
+                VideoButton(w, phone = { pickVideo.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::putOnlineVideo)
                 // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
                 // Link (as Words'): a box's words linked to a web page or a slide; nothing chosen: a text box of words to show
@@ -1476,6 +1449,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
+                        filming?.takeIf { it.first == i }?.second?.let { v -> androidx.compose.foundation.layout.BoxWithConstraints(Modifier.matchParentSize()) { val k = maxWidth / d.width
+                            VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn)) { filming = null } } }
                         // Gridlines: the grid, faint, and the slide's middle lines
                         if (grid && editing) Canvas(Modifier.matchParentSize()) {
                             val k = size.width / d.width; val step = gridStep() * k
@@ -1771,15 +1746,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     if (citing) CitationDialog(sources, pages = false, multiple = false, { citing = false }, { sourceNew = true }) { list, _, _ ->
                         citing = false; list.firstOrNull()?.let { putWords(cite(it, citeStyle)); WriterLog.i("Slides: a citation put in") } }
-                    filming?.let { f -> VideoPlayer(f) { filming = null } }
-                    if (addressing) {
-                        var typed by remember { mutableStateOf("") }
-                        androidx.compose.material3.AlertDialog(onDismissRequest = { addressing = false }, title = { Text("Online video") },
-                            text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it.trim() }, singleLine = true, label = { Text("Its address (YouTube or another site)") },
-                                placeholder = { Text("https://www.youtube.com/watch?v=…") }, modifier = Modifier.fillMaxWidth()) },
-                            confirmButton = { androidx.compose.material3.TextButton(enabled = '.' in typed, onClick = { addressing = false; putOnlineVideo(if (typed.startsWith("http")) typed else "https://$typed") }) { Text("Insert") } },
-                            dismissButton = { androidx.compose.material3.TextButton(onClick = { addressing = false }) { Text("Cancel") } })
-                    }
                     if (sectioning) edit?.let { ee -> base?.let { d -> chosen?.let { cc ->
                         val uid = ee.order[cc].uid; val now = ee.sectionsNow(d); val here = now.firstOrNull { it.second == uid }
                         var typed by remember { mutableStateOf(here?.first ?: "Section ${now.size + 1}") }
@@ -2134,7 +2100,8 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     val ink = remember { androidx.compose.runtime.mutableStateMapOf<Int, List<List<androidx.compose.ui.geometry.Offset>>>() }
     // links followed: where each came from and the object tapped there (to go back out of it); the zoom running (from which slide, the object, in or out and when)
     val visited = remember { ArrayList<Pair<Int, FloatArray>>() }
-    var filmPlaying by remember { mutableStateOf<String?>(null) } // a video tapped, playing over the show
+    var filmPlaying by remember { mutableStateOf<Pair<Int, OfficeVideo.Spot>?>(null) } // a video tapped, playing in its frame on its slide
+    LaunchedEffect(page) { if (filmPlaying?.first != page) filmPlaying = null }
     val scope = rememberCoroutineScope()
     var zooming by remember { mutableStateOf<Triple<Int, FloatArray, Pair<Boolean, Long>>?>(null) }
     fun close() { mark(); rehearse?.invoke(spent); ink.filterValues { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.let { m -> keepInk?.invoke(m.mapKeys { shown[it.key] }) }; close0() }
@@ -2165,9 +2132,9 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     /** A tap at [x], [y] in a [w] × [h] window on words with a link (Insert › Link, a file's own): a web page opened, a slide gone to. True: it was one. */
     fun follow(x: Float, y: Float, w: Float, h: Float): Boolean {
         val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
-        // a video tapped: played (an online one opened in its app)
-        slide(page).items.lastOrNull { it.media != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }?.let { v ->
-            scope.launch { film(v.media!!)?.let { f -> if (f.startsWith("http")) openWeb(context, f) else filmPlaying = f } }; WriterLog.i("Slides: a video played"); return true }
+        // a video tapped: played in its frame, as PowerPoint plays one on the slide
+        slide(page).items.lastOrNull { it.media != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }?.let { v -> val p = page
+            scope.launch { film(v.media!!)?.let { f -> filmPlaying = p to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.rotation) } }; WriterLog.i("Slides: a video played"); return true }
         // an object linked (a picture, a shape: asked 17 Oct, maps that zoom in), else words with a link in a box
         val obj = slide(page).items.lastOrNull { it.link != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }
         val box = if (obj != null) null else slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
@@ -2403,6 +2370,8 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
                     laser?.let { l -> val p = androidx.compose.ui.geometry.Offset(l.x * size.width, l.y * size.height)
                         drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
                 }
+                filmPlaying?.takeIf { it.first == page }?.second?.let { v -> androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) { val k = maxWidth / deck.width
+                    VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn)) { filmPlaying = null } } }
             }
             } }
             val presenter: @Composable (Modifier) -> Unit = { m -> PresenterNotes(s.notes, page, paused, m) {
@@ -2430,7 +2399,6 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             LaunchedEffect(tv) { if (tv != null) while (true) androidx.compose.runtime.withFrameNanos { tv.apply { strokes = if (black) emptyList() else ink[page].orEmpty(); dot = laser.takeIf { !black }; update() } } }
             // black on one screen: the slide covered, taps passing to it (three bring it back); with a second screen only that one goes black
             if (black && tv == null) Box(Modifier.fillMaxSize().background(Color.Black))
-            filmPlaying?.let { f -> VideoPlayer(f) { filmPlaying = null } }
             // Rehearse timings: this slide's time so far, in the corner (PowerPoint's Recording bar)
             if (rehearse != null) Text("Rehearsing · %d:%02d".format(ms(since) / 60_000, ms(since) / 1000 % 60), color = Color.White, style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 10.dp, vertical = 6.dp))
@@ -2642,22 +2610,4 @@ private fun SizeAndPosition(item: SlideItem, dismiss: () -> Unit, set: (Float, F
         } },
         confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { set(WriterUnits.toPt(num(x)!!), WriterUnits.toPt(num(y)!!), WriterUnits.toPt(num(w)!!), WriterUnits.toPt(num(h)!!)) }) { Text("OK") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
-}
-
-/** A web address opened in the app that shows it (YouTube's, a browser). */
-internal fun openWeb(context: android.content.Context, url: String) {
-    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))) }.onFailure { WriterLog.w("open $url", it) }
-}
-
-/** A video played over everything (Slides' Insert › Video): Android's own player with its controls; a tap outside or Back closes it. */
-@Composable
-internal fun VideoPlayer(path: String, close: () -> Unit) {
-    androidx.compose.ui.window.Dialog(close, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black).clickable(onClick = close), contentAlignment = Alignment.Center) {
-            androidx.compose.ui.viewinterop.AndroidView({ c -> android.widget.VideoView(c).apply {
-                setMediaController(android.widget.MediaController(c).also { it.setAnchorView(this) })
-                setVideoPath(path); setOnPreparedListener { start() }; setOnCompletionListener { close() }
-            } }, Modifier.fillMaxWidth())
-        }
-    }
 }

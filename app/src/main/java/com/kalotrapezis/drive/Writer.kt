@@ -31,6 +31,7 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -1879,6 +1880,25 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> picked?.let(::insertPicture) }
+    // Insert › Video (asked 17 Oct, Slides' pieces): [film] a web address (Word's Online Video) or a film from the phone; its picture at the cursor
+    fun insertVideo(film: String, poster: android.graphics.Bitmap) {
+        val bytes = java.io.ByteArrayOutputStream().also { poster.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+        val img = DocImage("n" + java.util.UUID.randomUUID(), null, 360f, 360f * poster.height / poster.width.coerceAtLeast(1), null, bytes, "jpg", film = film)
+        pictures[img.key] = img
+        state.selection = androidx.compose.ui.text.TextRange(placePicture(img) + 1)
+        WriterLog.i("a video put in: ${if (film.startsWith("http")) "online" else "from the phone"}")
+    }
+    fun insertOnlineVideo(url: String) = scope.launch { insertVideo(url, withContext(Dispatchers.IO) { OfficeVideo.poster(url) }) }
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> picked ?: return@rememberLauncherForActivityResult
+        scope.launch { withContext(Dispatchers.IO) { OfficeVideo.fromPhone(context, picked, File(context.cacheDir, "word-videos")) }?.let { insertVideo(it.first, it.second) } ?: run { message = "That video could not be read" } }
+    }
+    var playing by remember { mutableStateOf<Pair<String, String>?>(null) } // Picture › Play: the video playing in its frame while editing (its key, its film)
+    /** A video's film to play: a web address or a copy on the phone as it is, else its part taken out of the file. */
+    suspend fun filmOf(m: String): String? = if (m.startsWith("http") || File(m).isFile) m
+        else withContext(Dispatchers.IO) { packageParts[m]?.let { b -> File(context.cacheDir, "film-${m.substringAfterLast('/')}").apply { writeBytes(b) }.path } }
+    fun play(key: String, m: String) = scope.launch {
+        filmOf(m)?.let { playing = key to it; WriterLog.i("a video played") } ?: run { message = "Its film could not be found" }
+    }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
     fun changePicture(key: String, img: DocImage) = change {
         WriterLog.i("picture $key: ${PictureXml.wrapOf(img)}, ${img.widthPt.toInt()}×${img.heightPt.toInt()} pt${img.onPage?.let { " at ${it.first.toInt()},${it.second.toInt()}" } ?: ""}")
@@ -3214,7 +3234,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (viewing && failed == null) Box(Modifier.weight(1f).fillMaxWidth()) {
                 pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage,
                     covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp,
-                    across = pagesAcross, fitWidth = fitWidth) }
+                    across = pagesAcross, fitWidth = fitWidth, film = ::filmOf) }
                     ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
@@ -3644,6 +3664,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     n.save(); n.scale(k, k); shape.drawAt(n, 0f, 0f, img.widthPt, img.heightPt); n.restore()
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
+                                            if (PictureXml.video(img) != null) androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c -> OfficeVideo.mark(c.nativeCanvas, 0f, 0f, this.size.width, this.size.height) } }
+                                            playing?.takeIf { it.first == img.key }?.let { (_, f) -> VideoFrame(f, Modifier.matchParentSize()) { playing = null } }
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
                                             if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.group == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             // The cells a merge would take, lit up; else the cell the Table tab acts on, outlined.
@@ -3979,6 +4001,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
+                    // Word's Online Video, or a film from the phone kept in the file (LibreOffice's media frame; in a .docx beside its picture)
+                    VideoButton(w, enabled = loaded, phone = { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::insertOnlineVideo)
                 }, {
                     RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
                     RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { openGallery(DesignGallery.WordArt) }
@@ -4028,6 +4052,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     // A drawing made in Writer: drawn on again (its strokes ride in its picture).
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
+                        img?.let(PictureXml::video)?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { play(key, m) } }
                         if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
                         img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
                         img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
@@ -5236,8 +5261,10 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
 @Composable
 private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo: Pair<Int, Long>? = null, covered: Dp = 0.dp,
     /** View › Two pages: pages side by side; View › Fit width: the page as wide as the screen (a tablet's too). */
-    across: Int = 1, fitWidth: Boolean = false) {
+    across: Int = 1, fitWidth: Boolean = false, /** a video's film to play (its part taken out of the file) */ film: suspend (String) -> String? = { null }) {
     var zoom by remember { mutableFloatStateOf(1f) }
+    val scope = rememberCoroutineScope()
+    var playing by remember { mutableStateOf<Pair<LaidPage, OfficeVideo.Spot>?>(null) } // a video tapped, playing in its frame on its page
     val list = androidx.compose.foundation.lazy.rememberLazyListState()
     val coveredPx = with(LocalDensity.current) { covered.toPx() }
     // Navigation: a heading's page. A page as -(n + 1): its foot, clear of a strip [covered] at the bottom (a footer's gallery).
@@ -5276,13 +5303,16 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
                     Row(horizontalArrangement = Arrangement.spacedBy(if (across > 1) between else gap), verticalAlignment = Alignment.Top) {
                         for (laid in pages.subList(row * across, minOf(pages.size, row * across + across))) {
                             if (rulers) VerticalRuler(laid.page, scale, Modifier.width(ruler).height(scale * laid.page.height))
-                            androidx.compose.foundation.Canvas(Modifier.width(scale * laid.page.width).aspectRatio(laid.page.width / laid.page.height).background(Color.White)) {
+                            Box { androidx.compose.foundation.Canvas(Modifier.width(scale * laid.page.width).aspectRatio(laid.page.width / laid.page.height).background(Color.White)
+                                .pointerInput(laid) { detectTapGestures { o -> val k = size.width / laid.page.width; laid.videoAt(o.x / k, o.y / k)?.let { v ->
+                                    scope.launch { film(v.film)?.let { f -> playing = laid to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.turn) } } } } }) {
                                 drawIntoCanvas { c ->
                                     val n = c.nativeCanvas
                                     val k = size.width / laid.page.width
                                     n.save(); n.scale(k, k); laid.draw(n); n.restore()
                                 }
                             }
+                            playing?.takeIf { it.first === laid }?.second?.let { v -> VideoFrame(v.film, Modifier.offset(scale * v.x, scale * v.y).size(scale * v.w, scale * v.h).rotate(v.turn)) { playing = null } } }
                         }
                     }
                 }

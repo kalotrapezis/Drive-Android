@@ -85,6 +85,37 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Insert › Video in Words: Word's Online Video (its picture, a click to the address, webVideoPr) and LibreOffice's media frame (online, or a film in the file). */
+    @Test fun `a video put in Words is saved`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(16, 9, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
+        val url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        val dir = scratchDir("words-video")
+        val film = java.io.File(dir, "film.mp4").apply { writeBytes(ByteArray(2048) { (it % 251).toByte() }) }
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (kind in listOf(OfficeKind.Docx, OfficeKind.Odt)) {
+            val films = listOf(url, film.path)
+            val doc = OfficeDoc(films.map { f -> DocPara(listOf(DocRun("A "), DocRun(OBJECT_MARK.toString(), image = DocImage("n${f.length}", null, 320f, 180f, bytes = png, film = f)))) })
+            val bytes = OfficeFormats.write(doc, kind)
+            val back = OfficeFormats.read(bytes, kind).paras.map { p -> p.runs.single { it.image != null }.image!! }
+            assertEquals(kind.name, url, PictureXml.video(back[0]))
+            assertEquals(kind.name, "Video", PictureXml.kind(back[0]))
+            assertTrue(kind.name, back.all { png.contentEquals(OfficeFormats.unzip(bytes).getValue(it.part!!)) }) // the pictures
+            assertTrue(kind.name, film.readBytes().contentEquals(OfficeFormats.unzip(bytes).getValue(PictureXml.video(back[1])!!))) // the film inside
+            if (kind == OfficeKind.Docx) assertTrue(String(OfficeFormats.unzip(bytes).getValue("word/_rels/document.xml.rels")).contains("Target=\"$url\" TargetMode=\"External\""))
+            // saved again: kept as the file has it
+            assertEquals(kind.name, films.size, OfficeFormats.read(OfficeFormats.write(OfficeDoc(OfficeFormats.read(bytes, kind).paras), kind, bytes), kind).paras.count { p -> p.runs.any { it.image?.let(PictureXml::video) != null } })
+            if (lo) {
+                val f = java.io.File(dir, "v.${kind.name.lowercase()}").apply { writeBytes(bytes) }
+                val other = if (kind == OfficeKind.Odt) "docx" else "odt"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                val conv = OfficeFormats.read(java.io.File(dir, "out/v.$other").readBytes(), if (other == "odt") OfficeKind.Odt else OfficeKind.Docx)
+                val pics = conv.paras.flatMap { p -> p.runs.mapNotNull { it.image } }
+                assertEquals("LibreOffice's $other", films.size, pics.size)
+                if (other == "odt") assertEquals("LibreOffice's odt: Word's Online Video a linked picture", url, PictureXml.video(pics[0]))
+            }
+        }
+    }
+
     @Test fun `a picture's size and wrapping are saved, and can go back in line`() {
         val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(4, 2, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
         for (kind in OfficeKind.entries) {

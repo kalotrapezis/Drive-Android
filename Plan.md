@@ -50,6 +50,8 @@ How to write here:
       Gridlines, Find and Replace, Export pictures, handouts, loop, rehearse, show keys, show ink kept, References (sources, citations,
       References and Contents slides), Read aloud, File (Save a copy/as, Rename, AutoSave, template, Inspect), object links with zoom,
       Video — all on emulator-5554 (the tablet was not connected). Unit 430/0/7, sweep 349 + 29. Handing on (office-C-17oct.md).
+- [~] (office-D session, 17 Oct, from office-C's hand-over) Words' Online video, then B's two long lists, then C (Tables onto the engine),
+      then A's walk. Tablet: Firefox in front at 19:40 — emulator.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -484,6 +486,19 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       beside); online ones as a linked address in both. Read back from both (`SlideItem.media`); LibreOffice keeps both films in its
       conversions. `videos put on saved`; emulator: a 4-second film put on, saved, reopened and played in the show; a YouTube address
       put on with its picture. Unit 430/0/7; sweep 349 + 29, none failing. Not yet: Words' Online Video, sound (audio), a film's start/end.
+      Words done 17 Oct (office-D session; the user: "Word loads it in word, the same with offline from a path and then pass it to slides",
+      "resize rotate line an image like a html embedding a frame"): Insert › Video in Words — Online video and From this phone, in .docx
+      and .odt. The video is a picture (its tab "Video": Play, Size, Crop, Wrap text, turn — as an image's), with a play mark; Play or a
+      tap on it in the pages plays it **in its own frame** where it stands (its size and turn): a film in Android's player, an online one
+      in YouTube's own player in a web frame (an iframe, as Word plays its Online Video) — Slides now does the same, in editing and in the
+      show (no more going out to YouTube's app). Saved as Word's Online Video (wp15:webVideoPr with its player, a click to the address)
+      and LibreOffice's media frame (draw:plugin: the address, or the film in Media/); a film from the phone in a .docx is kept in
+      word/media beside its picture (PowerPoint's media relationship, named in Tetra's own ext — Word has no such video and shows the
+      picture). Read back from all of these, and from LibreOffice's copy of Word's Online Video (a picture linked to the address).
+      **Shared piece:** OfficeVideo.kt (`OfficeVideo.poster`/`fromPhone`/`film`/`mark`, `VideoFrame`, `VideoButton`), moved out of
+      Slides; `DocImage.film`, `PictureXml.video`; `LaidPage.videoAt`. `a video put in Words is saved` (both formats, LibreOffice's
+      conversions); emulator: both kinds in a .docx and an .odt, saved, played on the pages and in Slides' show; LibreOffice draws them.
+      LibreOffice limit: it writes its own media frame into a .docx as an empty shape. Not yet: the film on a show's second screen.
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
   (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 

@@ -889,6 +889,26 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
         fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) = drawTurned(canvas, picture, x, y, w, h, turn)
     }
 
+    /** The video whose picture is at [x], [y] (points from the page's top left), and where it is, else null: a tap on it plays it there. */
+    fun videoAt(x: Float, y: Float): OfficeVideo.Spot? {
+        floats.lastOrNull { it.picture is OfficeVideo.Marked && x in it.x..it.x + it.w && y in it.y..it.y + it.h }?.let { return OfficeVideo.Spot((it.picture as OfficeVideo.Marked).film, it.x, it.y, it.w, it.h, it.turn) }
+        for (p in pieces) {
+            if (p.turn != 0) continue
+            val text = p.layout.text as? Spanned ?: continue
+            val top = p.layout.getLineTop(p.firstLine)
+            for (span in text.getSpans(0, text.length, ImageSpan::class.java)) {
+                val d = span.drawable as? OfficeVideo.Marked ?: continue
+                val at = text.getSpanStart(span); val line = p.layout.getLineForOffset(at)
+                if (line !in p.firstLine..p.lastLine) continue
+                // in twentieths of a point, its foot on the line's (ALIGN_BOTTOM)
+                val left = p.x + p.layout.getPrimaryHorizontal(at) / U; val foot = p.y + (p.layout.getLineBottom(line) - top) / U
+                val w = d.bounds.width() / U; val h = d.bounds.height() / U
+                if (x in left..left + w && y in foot - h..foot) return OfficeVideo.Spot(d.film, left, foot - h, w, h)
+            }
+        }
+        return null
+    }
+
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
     fun draw(canvas: Canvas, skip: String? = null /* a float's key: left out (it is being moved) */) {
         page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
@@ -1587,7 +1607,7 @@ internal object OfficePages {
             else -> ((place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop })
                 .let { y -> if (place.fromV == "page" || place.fromV == "margin") y else minOf(y, page.height - page.bottom - h).coerceAtLeast(0f) }
         }
-        return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes), x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
+        return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes).let { d -> PictureXml.video(img)?.let { OfficeVideo.Marked(d, it) } ?: d }, x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
     }
 
     /** A picture's bitmap as the file shows it: only the part its crop leaves (Word's a:srcRect, LibreOffice's fo:clip on its style). */
@@ -1679,7 +1699,7 @@ internal object OfficePages {
                 val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> croppedPicture(img, b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img)?.let { it.withLine(it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
-                span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
+                span(ImageSpan(PictureXml.video(img)?.let { OfficeVideo.Marked(drawable, it).apply { setBounds(0, 0, w, h) } } ?: drawable, ImageSpan.ALIGN_BOTTOM))
                 continue
             }
             when { // the style's bold and italic are the paint's

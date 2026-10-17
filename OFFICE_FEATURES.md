@@ -431,6 +431,105 @@ LibreOffice works them out).
 - [ ] Present (Slides' Present is built round a deck's slides and effects, not pages as pictures)
 - [ ] Opening a password-protected PDF (Android 15's LoadParams can take a password)
 
+## Parity: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct)
+
+**Why (the user, 17 Oct):** Slides' and Tables' ribbons look empty next to Words'. Words was built over weeks with the
+user at every step; the other two were built by Claude alone. On 17 Oct the ribbons held: Words 12 tabs, 127 buttons;
+Tables about 7 tabs, 74; Slides 8 tabs, 35. The lists below come from what the desktop apps offer (PowerPoint and
+Excel, LibreOffice Impress and Calc), cut to what makes sense on a tablet and phone without a cloud. **Order: the
+UI/UX pass's shared pieces first (so new tools land on one base), then Slides, then Tables, each list top-down.**
+Every item is checked on the tablet and phone and against LibreOffice, as Words' were.
+
+### A. UI/UX pass — how all three are tested, and what is made the same
+**How it is tested** (written up as a TEST_TREE-style walk, ticked per app):
+- [ ] **Every tab, every button**, on the tablet (971f6b37) and the phone: ribbon at the bottom and at the top,
+      normal and compact, finger and mouse. Each must work, show what it did, undo, and survive a save (the saved file
+      opened in LibreOffice).
+- [ ] **Lag**: each action timed in writer.log (Tables already logs slow frames; Words and Slides to do the same) and
+      `dumpsys gfxinfo … framestats` around it. Aims: a tap answered within 100 ms, no frame over 32 ms while
+      scrolling, a slide or sheet switch within 200 ms. The worst ten fixed first.
+- [ ] **Touch points**: a script dumps each screen's layout (uiautomator) and flags any tappable thing smaller than
+      48 dp (compact mode excepted only with a mouse). Plus a hand check of resize handles, small chips and close
+      buttons, things near the screen's edges (Android's back gesture), and gestures that fight (pinch against drag).
+- [ ] **Inconsistencies**: the checklist below, the three apps side by side on the tablet. Each difference is made
+      the same or written down as deliberate.
+
+**Made the same** (one shared component where today each app has its own code):
+- [ ] **The tab indicator**: Words draws a bubble behind the chosen tab (`Writer.kt:3842`); Tables (and, by the
+      user's report, Slides) a dash under it (`SheetScreen.kt:710`). One shared tab row for all three. **Settings ›
+      Office: "Tab marker: Bubble / Dash".** Compact always uses the dash, for the room.
+- [ ] Tab names and order: Selection first when something is chosen, then File, Home, Insert, … as Words'; the
+      contextual tab (Picture, Table, Column, Row, Sheet) comes by itself, in one place and colour in every app.
+- [ ] File holds the same items in every app: Save, Versions, Export PDF, Print, Share, Open in another app, About
+      this file, Send log, Settings. Slides lacks Versions, Export PDF, Print, About and Send log today; the checklist
+      above says Slides' Export PDF is done, but its File tab has no such button, so check that line.
+- [ ] Every button has an icon (memory: ribbon icons); the everyday tools on the ribbon and the rest under ⋯ on a
+      full page (memory: ribbon ⋯ button) — in Slides and Tables too.
+- [ ] Strips (Words' Page numbers, Tables' Borders and Number) open the same way: ‹ back, a title, sliding in.
+- [ ] One colour picker (Words' swatches; Slides has its own `SLIDE_COLOURS`), one font picker, one size picker.
+- [ ] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded
+      alike. View-only on opening with Edit, the Save / Don't save question on leaving, recovery drafts and versions
+      behave the same in all three.
+- [ ] Keyboard shortcuts and right-click menus the same where the action is the same (Ctrl+F, Ctrl+C/V, Delete).
+- [ ] Messages, empty states and dialogs in one style; English only (memory: UI English only).
+
+### B. Slides — what PowerPoint and Impress have that Slides lacks
+Foundation first: **a slide's words as runs** (today an edited paragraph is one line in its first run's look,
+`SlidesEdit.withTexts`) — needed by most of Home and by References.
+- [ ] **Home**: font, size, bold, italic, underline, strike, colour, highlight; align left, centre, right, justify;
+      bullets and numbering, list level in and out; line spacing; text direction and anchor (top, middle, bottom);
+      autofit (shrink on overflow, the box grows to its words); Clear formatting; Format painter.
+- [ ] **Insert**: Text box (plain; today only shapes); Chart (Words' chart editor); Link (to a web page or to a
+      slide); Header & footer (slide number, date, footer text); Symbol; Equation (Words'); WordArt; Icons (later);
+      Audio and video (later).
+- [ ] **Arrange** (on the Selection tab, as PowerPoint's Shape Format): bring forward / send backward / to front /
+      to back; align (left, centre, right, top, middle, bottom, to the slide); distribute; group and ungroup; rotate and
+      flip; exact size and position; a picture's **crop** (drawn since 780a88d), replace, reset, border; a shape's
+      outline width and dash, shadow; Shape styles (Words').
+- [ ] **Slide**: change an existing slide's layout, reset it; sections; a **slide sorter** (a grid, dragged to
+      reorder, many at once); copy slides between decks.
+- [ ] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
+      variants.
+- [ ] **Draw**: pen and highlighter on a slide while editing (Words' Draw tab), saved as ink in the file.
+- [ ] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
+- [ ] **View**: Outline (every slide's words as one list to edit, good on a phone); notes page; editing the slide
+      master; grid and guides with snapping; zoom.
+- [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
+- [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
+      animation list (later).
+- [ ] **References** (the user's choices, 17 Oct): Sources (Words' dialogs, Import, Paste, Ask Claude), kept in a .pptx
+      in Word's bibliography part, which PowerPoint keeps (an .odp needs its own place: to decide); **live**
+      citations, inserted from the typing bar and rewritten when the style or a source changes (PowerPoint has no
+      citation fields, so they are found in the words by the deck's sources and style); References slide(s) at the end
+      in the style (APA 7, MLA 9, Chicago, Harvard, IEEE), spread over more slides when long, with Update; a **Contents
+      slide** after the title slide: each slide's title and number, and in a show a tap on a title goes there
+      (`ppaction://hlinksldjump`); Update after slides move.
+- [ ] Accessibility: alt text for pictures.
+
+### C. Tables — what Excel and Calc have that Tables lacks
+- [ ] **Home**: merge and centre (and unmerge); column width and row height (typed, and AutoFit to the contents);
+      hide and unhide rows, columns and sheets; insert and delete cells shifting the rest; Fill down and right; cell
+      styles; **Format as table** (make an Excel Table); **conditional formatting** made here (it is only read today);
+      Find and **Replace**; Format painter.
+- [ ] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
+      and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
+      (data validation list); sparklines (later); PivotTable (later).
+- [ ] **Formulas**: browse functions by category (the typing row exists); named ranges (Name Manager); show what a
+      cell uses and what uses it; error checking; more functions — the dynamic ones (XLOOKUP, FILTER, SORT, UNIQUE),
+      checked against LibreOffice as the 129 are.
+- [ ] **Data**: a sort that changes the file, by several columns; the filter saved as the file's AutoFilter; remove
+      duplicates; text to columns; data validation; group and outline rows; subtotals.
+- [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
+      and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
+- [ ] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.
+- [ ] **View**: gridlines and headings on or off; split the window (later).
+- [ ] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
+      workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
+      dialogs. In-text citations in cells: not planned unless asked.
+
+### D. Words
+Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.
+
 ## To test on the phone, with the user
 
 Each is done on the emulator; tick when checked on the real phone.

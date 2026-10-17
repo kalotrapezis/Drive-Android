@@ -561,32 +561,12 @@ the PC**, write; papers come and go, so **local** is right. So, in order:
 Editing for Excel and PowerPoint, the smaller Word items left over, en_GB dictionary if wanted (the user: the
 keyboard's own suggestions as one types are fine), anything found in use.
 
-**References and contents in every app (the user, 17 Oct: "future parity for Words, Slides and Tables where it makes
-sense, for each app").** Words has them all (References tab: Table of contents, Insert citation, Sources with Import /
-Paste / Ask Claude, the reference list, five styles: APA 7, MLA 9, Chicago author-date, Harvard, IEEE). The others
-reuse its pieces (`Citations.kt`, `CitationStyles.kt`, `CitationsUi.kt`, `SourcesImport.kt`), not copies of them.
-- **Slides** (asked 17 Oct; the user chose live citations and a linked contents slide). PowerPoint has none of this,
-  so here these features become slides and text:
-  - *Sources*: the same dialogs. In a .pptx they go in Word's bibliography part (customXml), which PowerPoint keeps;
-    LibreOffice drops it, so an .odp needs its own place (to decide).
-  - *Insert citation*: from the text box's typing bar, at the cursor. **Live**: a style change or a source edited
-    rewrites every citation in the deck. PowerPoint has no citation fields, so Tetra finds them in the words by the
-    deck's sources and style.
-  - *References slide(s)*: at the end, in the deck's style (APA: "References", a hanging indent, italics where the
-    style has them), spread over more slides when long; Update brings them up to date. IEEE numbers follow the
-    order in which sources are first cited through the slides.
-  - *Contents slide*: after the title slide, each slide's title and number. In a show a tap on a title goes to that
-    slide (PowerPoint's slide links, `ppaction://hlinksldjump`, kept in the file). Update after slides move.
-  - Needs first: slide words with runs of their own (italics in an entry) and a hanging indent. Today an edited
-    paragraph is one line in its first run's look (`SlidesEdit.withTexts`).
-- **Tables**, where it makes sense:
-  - *Contents*: an index sheet listing every sheet, each a link to it (Excel's `#'Sheet'!A1`), for workbooks with
-    many sheets.
-  - *Sources*: a Sources sheet holding the reference list of where the data came from, in the chosen style, with the
-    same dialogs.
-  - In-text citations in cells: not planned unless asked.
-- **Words**: nothing new for parity. Its own open items stay in Phase 2 (tapping a citation to edit it, more source
-  kinds, Sources › From PDFs).
+**Parity and a UI/UX pass (the user, 17 Oct):** Slides' and Tables' ribbons look empty next to Words'. The plan is in
+OFFICE_FEATURES.md, "Parity: Slides and Tables as full as Words, then a UI/UX pass over all three". The order:
+(A) the UI/UX pass's shared pieces and test walk first: one tab row with Settings › Office › Tab marker (Bubble or
+Dash; compact always Dash), the same File items, lag, touch targets, inconsistencies; (B) Slides' gaps, slide words
+as runs first; (C) Tables' gaps. References and contents are in B and C (the user chose live citations and a linked
+Contents slide for Slides). Words' own items stay in Phase 2.
 
 **Not walked on the phone yet** (do during Phase 1): Position, text box / WordArt insert, line numbers, hyphenation,
 style sets, Format painter.

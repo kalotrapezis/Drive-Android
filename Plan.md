@@ -22,7 +22,8 @@ How to write here:
 - [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
 - [x] (20e0b17) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
 - [x] (f65b50a) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
-- [~] (office-engine session, 17 Oct) The Office engine, steps 0–4 (B's first item below).
+- [x] (1e0160a, be4d2e6, 7549d88, 100300f, 8c052fb) The Office engine, steps 0–4 (office-engine session, 17 Oct); step 5
+      (the pure move to OfficeText.kt) left for a quiet moment; the tablet walk waits for the tablet.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

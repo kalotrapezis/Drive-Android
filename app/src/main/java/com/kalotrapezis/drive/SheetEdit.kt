@@ -487,13 +487,37 @@ object SheetFunctions {
 
 /**
  * Excel's fill handle (asked 16 Oct; on the phone a dot at the chosen cells' corner, dragged): the chosen cells carried
- * on — numbers as their series (1, 2 → 3, 4), a date day by day, "Week 1" → "Week 2", formulas with their relative
- * references moved ($ ones kept), anything else copied over and over.
+ * on — numbers as their series (1, 2 → 3, 4), a date day by day, "Week 1" → "Week 2", month and day names on (January →
+ * February, Mon → Tue), formulas with their relative references moved ($ ones kept), anything else copied over and over.
  */
 internal object SheetFill {
     private val REF = Regex("""(?<![\p{L}\p{N}_.$'])(?:('(?:[^']|'')+'|[\p{L}_][\p{L}\p{N}_.]*)!)?(\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?)(?![\p{L}\p{N}_(!])""")
     private val CELL = Regex("""(\$?)([A-Za-z]{1,3})(\$?)(\d+)""")
     private val NUMBERED = Regex("""^(.*?)(\d+)$""")
+    // Excel's own lists the fill handle runs through (its Custom Lists), long and short
+    private val NAMES = listOf(java.time.format.TextStyle.FULL, java.time.format.TextStyle.SHORT).flatMap { st ->
+        listOf(java.time.Month.entries.map { it.getDisplayName(st, java.util.Locale.ENGLISH) }, java.time.DayOfWeek.entries.map { it.getDisplayName(st, java.util.Locale.ENGLISH) }) }
+    private fun named(t: String) = NAMES.firstOrNull { l -> l.any { it.equals(t.trim(), true) } }?.let { l -> l to l.indexOfFirst { it.equals(t.trim(), true) } }
+    private fun cased(like: String, word: String) = when { like.length > 1 && like == like.uppercase() -> word.uppercase(); like == like.lowercase() -> word.lowercase(); else -> word }
+
+    /**
+     * Excel's Fill ▸ Series: [count] values from [start] on, [step] apart — added ("Linear"), multiplied ("Growth"), or a
+     * date's ("Day", "Weekday": Monday to Friday, "Month", "Year"), [start] and the dates as Excel's day numbers.
+     */
+    fun stepped(start: Double, count: Int, step: Double, type: String): List<Double> {
+        val epoch = LocalDate.of(1899, 12, 30)
+        val day = epoch.plusDays(kotlin.math.floor(start).toLong()); val time = start - kotlin.math.floor(start)
+        fun serial(d: LocalDate) = (d.toEpochDay() - epoch.toEpochDay()) + time
+        var weekday = day
+        return (0 until count).map { i -> when (type) {
+            "Growth" -> start * Math.pow(step, i.toDouble())
+            "Day" -> start + step * i
+            "Weekday" -> { if (i > 0) repeat(kotlin.math.abs(step.toInt())) { do weekday = weekday.plusDays(if (step < 0) -1 else 1) while (weekday.dayOfWeek.value > 5) }; serial(weekday) }
+            "Month" -> serial(day.plusMonths((step * i).toLong()))
+            "Year" -> serial(day.plusYears((step * i).toLong()))
+            else -> start + step * i
+        } }
+    }
 
     /** A formula copied [dr] rows and [dc] columns away: its relative references follow; one moved off the sheet is #REF!. */
     // shortcut: whole columns and rows (A:A, 3:3) stay as they are; move them too if fills of such formulas come up
@@ -525,6 +549,9 @@ internal object SheetFill {
         val slope = if (n < 2) 0.0 else xs.indices.sumOf { (xs[it] - mx) * (ys[it] - my) } / xs.sumOf { (it - mx) * (it - mx) }
         val texts = src.map { c -> c?.takeIf { it.formula == null && it.kind == SheetKind.Text }?.let { NUMBERED.matchEntire(it.text) } }
         val samePrefix = n >= 2 && texts.all { it != null } && texts.map { it!!.groupValues[1] }.distinct().size == 1
+        val names = src.map { c -> c?.takeIf { it.formula == null && it.kind == SheetKind.Text }?.let { named(it.text) } }
+        // names from one list: their step (Jan, Mar → May), else one on
+        val nameStep = if (n >= 2 && names.all { it != null } && names.map { it!!.first }.distinct().size == 1) names.last()!!.second - names[n - 2]!!.second else 1
         val textSlope = if (samePrefix) texts.last()!!.groupValues[2].toDouble() - texts[n - 2]!!.groupValues[2].toDouble() else 1.0
         fun shown(s: SheetCell, v: Double) = f.format(v, codeOf(s)).let { s.copy(value = v, text = it.text, color = it.color, note = null, link = null) }
         return (0 until count).map { i ->
@@ -535,6 +562,8 @@ internal object SheetFill {
                 s.formula != null -> s.copy(formula = move(s.formula, j, i), text = "", kind = SheetKind.Empty, value = null, note = null, link = null)
                 numbers && n >= 2 -> shown(s, my + slope * (at - mx))
                 numbers && f.isDate(codeOf(s)) -> shown(s, s.value!! + at) // a date: the next days
+                names[j] != null -> { val (l, k) = names[j]!!; val from = if (n >= 2 && names.all { it?.first == l }) names.last()!!.second + nameStep * (at - (n - 1)) else k + (i / n + 1)
+                    s.copy(text = cased(s.text.trim(), l[Math.floorMod(from, l.size)]), note = null, link = null) }
                 t != null -> {
                     val digits = t.groupValues[2]
                     // one prefix: its numbers' step on from the last (Week 1, Week 3 → Week 5); else each one up by one a round

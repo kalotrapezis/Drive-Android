@@ -180,6 +180,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
+    var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
@@ -487,6 +488,24 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (changes.isEmpty()) return
         history.apply(b, index, changes); version++
         WriterLog.i("Sheets: filled ${changes.size} cells ${if (vertical) (if (forward) "down" else "up") else (if (forward) "right" else "left")}")
+    }
+
+    /** Excel's Fill ▸ Series on cells [g] (as drawn): down its columns (or along its row), from each first cell's number or date. */
+    fun fillSeries(g: SheetRange, type: String, step: Double) {
+        val s = sheet ?: return; val b = book ?: return; val l = layout ?: return
+        val vertical = g.r2 > g.r1
+        val changes = LinkedHashMap<Long, SheetCell>()
+        for (across in if (vertical) g.c1..g.c2 else g.r1..g.r2) {
+            fun key(along: Int) = if (vertical) Sheet.key(l.rows[along], l.cols[across]) else Sheet.key(l.rows[across], l.cols[along])
+            val along = if (vertical) g.r1..g.r2 else g.c1..g.c2
+            val first = s.cells[key(along.first)]?.takeIf { it.formula == null && it.kind == SheetKind.Number && it.value != null } ?: continue
+            val code = first.format ?: s.look(first.style, b.styles)?.format ?: "General"
+            SheetFill.stepped(first.value!!, along.count(), step, type).drop(1).forEachIndexed { i, v ->
+                changes[key(along.first + 1 + i)] = b.format.format(v, code).let { first.copy(value = v, text = it.text, color = it.color, note = null, link = null) } }
+        }
+        if (changes.isEmpty()) { message = "Start the series with a number or a date in the first cell"; return }
+        history.apply(b, index, changes); version++
+        WriterLog.i("Sheets: series ($type, step $step) in ${changes.size} cells")
     }
 
     /** The chosen cells as drawn: the range, else the chosen cell. */
@@ -1021,6 +1040,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 if (g != null && (g.r2 > g.r1 || g.c2 > g.c1)) {
                                     if (g.r2 > g.r1) RibbonButton("Fill down", w, R.drawable.ic_keyboard_arrow_down) { fillCells(SheetRange(g.r1, g.c1, g.r1, g.c2), g) }
                                     if (g.c2 > g.c1) RibbonButton("Fill right", w, R.drawable.ic_chevron_right) { fillCells(SheetRange(g.r1, g.c1, g.r2, g.c1), g) }
+                                    RibbonButton("Series", w, R.drawable.ic_format_list_numbered) { stepping = g }
                                 }
                                 // Excel's Merge & Centre: the chosen cells one cell; a merged one chosen: Unmerge
                                 s.merge(cr, cc)?.let { m -> RibbonButton("Unmerge", w, R.drawable.ic_cell_merge) { merge(m, false) } }
@@ -1358,6 +1378,22 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 history.apply(b, index, changes); version++; message = "Removed ${rows.size - kept.size} duplicates, ${kept.size - (if (headers) 1 else 0)} left"
                 WriterLog.i("Sheets: ${rows.size - kept.size} duplicates removed") }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { deduping = null }) { Text("Cancel") } }) }
+    // Home › Series: Excel's Fill ▸ Series — its types and step value (the stop: the chosen cells' end)
+    stepping?.let { g -> val first = layout?.let { l -> sheet?.cells?.get(Sheet.key(l.rows[g.r1], l.cols[g.c1])) }
+        val date = first?.let { c -> book?.let { b -> b.format.isDate(c.format ?: sheet?.look(c.style, b.styles)?.format ?: "General") } } == true
+        var type by remember(g) { mutableStateOf(if (date) "Day" else "Linear") }
+        var step by remember(g) { mutableStateOf("1") }
+        AlertDialog(onDismissRequest = { stepping = null }, title = { Text("Series") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (g.r2 > g.r1) "Down each column, from its first cell." else "Along the row, from its first cell.")
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOf("Linear", "Growth") + if (date) listOf("Day", "Weekday", "Month", "Year") else emptyList()).forEach { t ->
+                        androidx.compose.material3.FilterChip(type == t, { type = t }, { Text(t) }) } }
+                OutlinedTextField(step, { step = it }, label = { Text("Step value") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)) } },
+            confirmButton = { TextButton(enabled = step.replace(',', '.').toDoubleOrNull() != null, onClick = { stepping = null
+                fillSeries(g, type, step.replace(',', '.').toDouble()) }) { Text("Fill") } },
+            dismissButton = { TextButton(onClick = { stepping = null }) { Text("Cancel") } }) }
     // Data › Drop-down list: the values, comma-separated (Excel's Source box); Take away when the cells have one
     listing?.let { d -> val was = sheet?.listAt(d.r1, d.c1)
         var typed by remember(d) { mutableStateOf(was?.items?.joinToString(", ").orEmpty()) }

@@ -147,6 +147,23 @@ class SheetEditTest {
         assertEquals("=LOG10(B2)", SheetFill.moved("=LOG10(A2)", 0, 1)) // a function's name is not a cell
     }
 
+    @Test fun `month and day names and Fill series`() {
+        val f = SheetFormat()
+        fun text(t: String) = SheetCell(t, SheetKind.Text)
+        fun fill(src: List<SheetCell?>, count: Int) = SheetFill.series(src, count, f, { "General" }) { fm, _, _ -> fm }
+        assertEquals(listOf("February", "March"), fill(listOf(text("January")), 2).map { it.text })
+        assertEquals(listOf("Jan", "Feb"), fill(listOf(text("Nov"), text("Dec")), 2).map { it.text }) // round the year
+        assertEquals(listOf("MAY", "JUL"), fill(listOf(text("JAN"), text("MAR")), 2).map { it.text }) // its step, its capitals
+        assertEquals(listOf("mon", "tue"), fill(listOf(text("sun")), 2).map { it.text })
+        // Fill ▸ Series
+        assertEquals(listOf(1.0, 3.0, 5.0), SheetFill.stepped(1.0, 3, 2.0, "Linear"))
+        assertEquals(listOf(2.0, 6.0, 18.0), SheetFill.stepped(2.0, 3, 3.0, "Growth"))
+        fun d(y: Int, m: Int, day: Int) = SheetCalc.serial(java.time.LocalDate.of(y, m, day).atStartOfDay())
+        assertEquals(listOf(d(2026, 1, 31), d(2026, 2, 28), d(2026, 3, 31)), SheetFill.stepped(d(2026, 1, 31), 3, 1.0, "Month"))
+        assertEquals(listOf(d(2026, 10, 16), d(2026, 10, 19), d(2026, 10, 20)), SheetFill.stepped(d(2026, 10, 16), 3, 1.0, "Weekday")) // Friday, then Monday
+        assertEquals(listOf(d(2024, 2, 29), d(2025, 2, 28)), SheetFill.stepped(d(2024, 2, 29), 2, 1.0, "Year"))
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

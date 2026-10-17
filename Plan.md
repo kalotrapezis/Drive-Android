@@ -794,6 +794,11 @@ what is not already above:
 - [ ] **Home**: vertical alignment (top, middle, bottom); text angle (rotated, vertical); indent in a cell; Clear ▸
       contents, formats, all; Fill ▸ series (1, 2, 3…, dates, months) besides down and right; AutoSum on Home as
       Excel has it; **cell styles** (Good, Bad, Heading, Total…); sheet ▸ rename, tab colour, move or copy.
+      Fill ▸ Series done (office-F session, 18 Oct): Home › Series with cells chosen — Excel's dialog: Linear, Growth, and for a date
+      Day, Weekday, Month, Year, a step value; down each column (or along the row) from its first cell's number or date to the chosen
+      cells' end (`SheetFill.stepped`; cell changes, one step of Undo). The fill handle now also runs Excel's own lists: month and day
+      names, long and short, in their capitals and step (Jan, Mar → May). `month and day names and Fill series`; emulator: 15/03/2023
+      by month down C2:C8.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
 - [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);

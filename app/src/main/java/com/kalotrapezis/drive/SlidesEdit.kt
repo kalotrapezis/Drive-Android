@@ -162,11 +162,16 @@ internal object SlidesEdit {
     private const val P = "http://schemas.openxmlformats.org/presentationml/2006/main"
     private const val R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
-    private fun xml(doc: org.w3c.dom.Document): ByteArray = java.io.ByteArrayOutputStream().also { out ->
+    private fun xml(doc: org.w3c.dom.Document): ByteArray = domXml(doc, standalone = true)
+
+    /**
+     * A DOM as UTF-8 XML, a letter beyond U+FFFF (an emoji) never written as its two halves ([OfficeFormats.joinHalves]).
+     */
+    fun domXml(doc: org.w3c.dom.Document, standalone: Boolean = false): ByteArray = java.io.ByteArrayOutputStream().also { out ->
         javax.xml.transform.TransformerFactory.newInstance().newTransformer().apply {
-            setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8"); setOutputProperty(javax.xml.transform.OutputKeys.STANDALONE, "yes")
+            setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8"); if (standalone) setOutputProperty(javax.xml.transform.OutputKeys.STANDALONE, "yes")
         }.transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
-    }.toByteArray()
+    }.toString("UTF-8").let(OfficeFormats::joinHalves).toByteArray()
 
     /** A slide's XML with [texts] (shape id → lines) in its shapes: each paragraph keeps its look, its words in its first run; [added] put on it ([rels]: each picture's relationship). */
     fun withTexts(bytes: ByteArray, texts: Map<String, List<String>>, hidden: Boolean?, added: List<Added> = emptyList(), rels: Map<String, String> = emptyMap(),

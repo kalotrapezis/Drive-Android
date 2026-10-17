@@ -35,10 +35,7 @@ internal object SlidesOdpEdit {
         fun ch(s: Int) = (((c shr s) and 255) * 0.7f).toInt() shl s
         return (c and 0xFF000000.toInt()) or ch(16) or ch(8) or ch(0)
     }
-    private fun xml(doc: org.w3c.dom.Document): ByteArray = java.io.ByteArrayOutputStream().also { out ->
-        javax.xml.transform.TransformerFactory.newInstance().newTransformer().apply { setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8") }
-            .transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
-    }.toByteArray()
+    private fun xml(doc: org.w3c.dom.Document): ByteArray = SlidesEdit.domXml(doc)
 
     fun save(source: File, deck: Deck, edit: SlidesEdit.Edit, target: File) {
         val zip = java.util.zip.ZipFile(source)

@@ -1187,7 +1187,22 @@ internal object OfficeFormats {
         f.isNamespaceAware = true
         f.isExpandEntityReferences = false
         runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-        return f.newDocumentBuilder().parse(ByteArrayInputStream(bytes))
+        return try { f.newDocumentBuilder().parse(ByteArrayInputStream(bytes)) }
+        catch (e: org.xml.sax.SAXParseException) {
+            // Google Slides' and Docs' exports write an emoji as its two halves, "&#55357;&#56397;", which XML forbids
+            // (LibreOffice lets it pass; a user's .odp, 17 Oct): read again with the halves joined, else the error as it was
+            val text = String(bytes, Charsets.UTF_8); val joined = joinHalves(text)
+            if (joined == text) throw e
+            f.newDocumentBuilder().parse(ByteArrayInputStream(joined.toByteArray()))
+        }
+    }
+
+    private val HALVES = Regex("""&#(x?)([0-9A-Fa-f]+);&#(x?)([0-9A-Fa-f]+);""")
+    /** "&#55357;&#56420;" (or in hex) → the one letter the two references halve; any other reference as it was. */
+    internal fun joinHalves(xml: String): String = HALVES.replace(xml) { m ->
+        val hi = m.groupValues[2].toIntOrNull(if (m.groupValues[1] == "x") 16 else 10) ?: return@replace m.value
+        val lo = m.groupValues[4].toIntOrNull(if (m.groupValues[3] == "x") 16 else 10) ?: return@replace m.value
+        if (hi in 0xD800..0xDBFF && lo in 0xDC00..0xDFFF) String(charArrayOf(hi.toChar(), lo.toChar())) else m.value
     }
 
     internal fun esc(s: String): String = buildString(s.length) {

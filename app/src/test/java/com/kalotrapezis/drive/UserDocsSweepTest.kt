@@ -78,7 +78,8 @@ class UserDocsSweepTest {
                             return File(dir, "deck.pdf").takeIf { it.exists() }?.readBytes()?.let { Regex("/Type\\s*/Page[^s]").findAll(String(it, Charsets.ISO_8859_1)).count() } ?: -1
                         }
                         val a = pages(f); val b = pages(out)
-                        check(a == b && b > 0) { "LibreOffice: $a pages from the file, $b from the saved one" }
+                        // a file LibreOffice itself cannot open (Google Slides' emoji halves, 17 Oct): the saved one must open
+                        check(b > 0 && (a == b || a < 0)) { "LibreOffice: $a pages from the file, $b from the saved one" }
                     }
                 } finally { out.delete() }
             }.onFailure { failed += "${f.relativeTo(root)}: $it" }

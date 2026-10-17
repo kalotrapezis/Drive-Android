@@ -21,7 +21,7 @@ How to write here:
 - [x] (4ddb8da) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
 - [x] (c00f9ff) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
 - [x] (20e0b17) A: shortcuts alike — Slides' Ctrl+C/X/V, Tables' Delete (office-parity builder, 17 Oct).
-- [x] (next commit) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
+- [x] (f65b50a) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -114,6 +114,48 @@ Foundation first: **a slide's words as runs** (today an edited paragraph is one 
 `SlidesEdit.withTexts`) — needed by most of Home and by References. **The user, 17 Oct, changed this into the shared
 engine** (below, "The Office engine"): no third text model — Words' paragraphs and runs, their layout, drawing and
 effects become one engine that lays text out in any frame (a page, a slide's box or shape, later a cell).
+
+### The Office engine — B's first item (the user, 17 Oct: "build an engine, a base Microsoft feeds off for years; after that we build upon it")
+**What it is:** one way to hold, lay out and draw text, used wherever text is — a Words page, a slide's text box or
+shape, a table cell on a slide, later a spreadsheet cell. Movement, turning and animation belong to the frame (the
+slide's box moves, the text goes with it), as `Slides.draw` already does for items.
+
+**What the study found (17 Oct):** Words already has most of it. `OfficePages.stack()` lays Words' paragraphs and runs
+(`DocPara`/`DocRun`) into any width, and `TextBoxDrawable` puts the result in a frame (insets, top/middle/bottom,
+WordArt bends) — that is how a document's text boxes are drawn today. Slides has its own simpler model (`SlideText`,
+`SlidePara`, `SlideRun`) and its own drawing (Slides.kt `layouts()`/`text()`), which truncates sizes to whole points,
+ignores justify, puts centred no-wrap text far off its box, re-lays all text on every frame, and loses mixed looks in a
+paragraph when it is edited (`withTexts` keeps only the first run). Tables' cells have one look per cell and flatten an
+.xlsx's rich text to plain. Words' typing editor (`WriterBridge`) stays as it is — it is not part of the page drawing.
+
+**Steps, each one commit that leaves Words exactly as it was:**
+- [ ] 0. A check that Words is unchanged: a device test (installed + `am instrument`, never connectedAndroidTest)
+      that lays out the test documents and a few with text boxes, and compares each page's lines and a picture of it
+      with a stored copy. No unit test touches the drawing today, so this comes first (~80 lines).
+- [ ] 1. Slides' text boxes and table cells drawn by Words' engine: `stack` shared; the frame gets four insets, no
+      clipping (PowerPoint lets text overflow its box) and no default border; a list-marker hook so a slide's own
+      bullet character and colour show; a `SlidesText.kt` adapter (a slide's text → `DocPara`s, its own `DocStyles`);
+      laid text cached per box (slides are drawn often: thumbnails, animation). Fixes the four bugs above. ~120 new
+      lines, ~45 removed, ~15 changed in OfficePages. **Risk:** line height — Words spaces lines as Word does, a few
+      percent taller than Slides draws today; checked against LibreOffice's PDFs of real decks before it is committed.
+- [ ] 2. Text effects on slides: shadow, glow and outline read from PowerPoint's `a:effectLst`/`a:ln` into Words'
+      `TextEffects`; WordArt bends already shared (`TextWarp`). ~40 lines.
+- [ ] 3. Slides read straight into `DocPara`/`DocRun` (`SlideRun`/`SlidePara` gone): slides gain strike, sub- and
+      superscript, caps, highlight, links, tabs, exact line spacing. ~150 lines.
+- [ ] 4. Words kept per letter when a slide's text is edited (Words' `PictureXml.relaid`/`relook`, already used for
+      a document's text boxes): an edited paragraph keeps its bold word and its red word; slide-number and date fields
+      and line breaks kept. ~50 lines. This is "a slide's words as runs".
+- [ ] 5. The engine moved into its own file (`OfficeText.kt`): a pure move, nothing changed.
+- [ ] 6. (with C) Tables' wrapped, shrink-to-fit and rich-text cells drawn by the engine; rich text read and written.
+- [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,
+      the user's document sweep (`UserDocsSweepTest`, TETRA_SWEEP=1), the LibreOffice round trips, and a walk of
+      Words, Slides and Tables on the tablet (TEST_TREE.md) — numbers before and after written here.
+      Before (17 Oct, after the emoji fix below): unit suite 402 tests, 0 failing, 7 skipped; sweep 349 documents and
+      29 decks, none failing, none copy-only. (The first sweep found one deck failing: a Google Slides .odp export
+      writes emoji as two halves, "&#55357;&#56397;", which XML forbids — LibreOffice cannot open that file at all;
+      Tetra now reads it and saves it whole, and LibreOffice opens Tetra's copy.)
+- After the engine: Slides' Home (font, size, colours… on runs), then the rest of B, using Words' pickers and strips.
+  A rich typing editor for slides (Words' own) is a later, separate project.
 
 **Rule for A, B and C (the user, 17 Oct: "We made so much work we should use it as much as possible"):** before
 writing anything for Slides or Tables, find Words' version (strips and card galleries, pickers, chart editor,

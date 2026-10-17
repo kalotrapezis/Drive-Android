@@ -166,10 +166,7 @@ internal object SlidesThemes {
                     m.insertBefore(shape, m.firstChild)
                 }
             }
-            val bytes = java.io.ByteArrayOutputStream().also { out ->
-                javax.xml.transform.TransformerFactory.newInstance().newTransformer().apply { setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8") }
-                    .transform(javax.xml.transform.dom.DOMSource(doc), javax.xml.transform.stream.StreamResult(out))
-            }.toByteArray()
+            val bytes = SlidesEdit.domXml(doc)
             // the slides' own text styles (a deck made from a PowerPoint file has its colours and fonts there): the old text colour
             // and fonts made the theme's, the fonts declared
             fun follow(xml: String): String {

@@ -11,6 +11,18 @@ class SlidesTest {
 
     @Test fun `a pptx deck read with its layouts, master and theme`() = check("slides.pptx")
 
+    /** An emoji written as its two halves "&#55357;&#56420;" (Google Slides' .odp export, a user's deck, 17 Oct): read, and saved whole. */
+    @Test fun `a letter beyond U+FFFF saved whole`() {
+        val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+        val words = "Mouse \uD83D\uDDB1 & keys \uD83D\uDE00"
+        (doc.appendChild(doc.createElement("p")) as org.w3c.dom.Element).apply { textContent = words; setAttribute("name", words) }
+        val back = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(SlidesEdit.domXml(doc).inputStream()).documentElement
+        assertEquals(words, back.textContent); assertEquals(words, back.getAttribute("name"))
+        assertEquals("&#65; \uD83D\uDE00 &#xD83D;x", OfficeFormats.joinHalves("&#65; &#xD83D;&#xDE00; &#xD83D;x"))
+        // a file with the halves (as Google Slides' .odp export writes them) read as the letter
+        assertEquals("a\uD83D\uDE4D", OfficeFormats.parse("<p>a&#55357;&#56909;</p>".toByteArray()).documentElement.textContent)
+    }
+
     /** The same deck as LibreOffice keeps it (slides.odp: LibreOffice's of slides.pptx): read the same. */
     @Test fun `an odp deck read with its styles and lists`() = check("slides.odp")
 

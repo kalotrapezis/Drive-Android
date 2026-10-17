@@ -303,6 +303,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
 
     val view = views.getOrPut(index) { SheetView() }
+    // the file's AutoFilter, its values the view's filter (once, when the sheet first shows)
+    LaunchedEffect(sheet) { val s = sheet ?: return@LaunchedEffect
+        if (!view.fileFilter) { view.fileFilter = true; if (view.filters.isEmpty()) view.filters.putAll(s.filterKeep) } }
     DisposableEffect(Unit) { onDispose { file?.let { f -> if (index >= 0) views[index]?.let { SheetPlaces.save(context, f, index, it) } } } }
 
     /** A cell's link: a web or mail address opens in its app; "#Sheet!B3" goes to that sheet's cell. */
@@ -803,6 +806,16 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * that comes by itself, as Writer's Selection tab does.
      */
     /** Clear: the chosen cells' contents gone, their looks kept (one step of Undo). */
+    /** The view's filter kept in the file as its AutoFilter ([keepIt]), or the file's taken away (every row shown, the view's filter cleared). */
+    fun filterStep(s: Sheet, keepIt: Boolean) { val i = index
+        val header = SheetLayout.header(s)
+        val range = SheetRange(header, s.autoFilter?.c1 ?: 0, s.autoFilter?.r2 ?: (s.rows - 1), s.autoFilter?.c2 ?: (s.cols - 1))
+        val keep = view.filters.toMap()
+        val hidden = if (!keepIt) emptySet() else (header + 1..range.r2).filter { r -> !keep.all { (c, values) -> SheetLayout.value(s[r, c]) in values } }.toSet()
+        fileStep(if (keepIt) "filter kept in the file" else "file filter taken away", { baked, next, bb -> val name = bb.tabs[i].name
+            if (bb.kind == "xlsx") SheetAutoFilter.xlsx(baked, next, bb.parts.getValue("$i"), i, name, range.takeIf { keepIt }, keep, hidden, old = s.autoFilter)
+            else SheetAutoFilter.ods(baked, next, i, name, range.takeIf { keepIt }, keep, hidden, old = s.autoFilter) }) { if (!keepIt) view.filters.clear() }
+    }
     /** Cells [g] (the sheet's) inserted, the rest shifted down ([rows]) or right, or deleted, the rest shifted up or left: one step of Undo. */
     fun shiftCells(g: SheetRange, rows: Boolean, insert: Boolean) {
         val s = sheet ?: return; val b = book ?: return
@@ -1160,6 +1173,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             sortFilter(cc)
                             // Excel's Remove duplicates: in the chosen cells (else the cell's whole table of filled cells), the rows alike after the first gone
                             if (editing) { RibbonDivider(w)
+                                // Excel's AutoFilter kept in the file: the view's filter (its buttons, its values, the rows it hides), or taken away
+                                if (b.kind != "csv" && view.filters.isNotEmpty()) RibbonButton("Keep filter in file", w, R.drawable.ic_filter) { filterStep(s, keepIt = true) }
+                                if (b.kind != "csv" && s.autoFilter != null) RibbonButton("Remove file filter", w, R.drawable.ic_filter_off) { filterStep(s, keepIt = false) }
                                 // Excel's Sort dialog: the rows themselves reordered (the file changes), by one column then others
                                 RibbonButton("Sort", w, R.drawable.ic_sort_name) {
                                     sortingRows = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
@@ -1768,6 +1784,7 @@ internal class SheetView {
     var reveal by mutableIntStateOf(0) // counted up to scroll the chosen cell into sight
     val pins = mutableStateListOf<Int>()
     val filters = mutableStateMapOf<Int, Set<String>>()
+    var fileFilter = false // the file's AutoFilter taken as [filters] once
     var sort by mutableStateOf<SheetSort?>(null)
     var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn

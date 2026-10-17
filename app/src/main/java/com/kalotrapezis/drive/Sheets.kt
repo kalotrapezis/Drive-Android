@@ -194,6 +194,8 @@ internal class Sheet(
     var protected = false
     /** Its protection has a password (asked for to unprotect it). */
     var guarded = false
+    /** Its AutoFilter's kept values by column (Excel's filterColumn; "" an empty cell): the view's filter when opened. */
+    var filterKeep: Map<Int, Set<String>> = emptyMap()
     /** View › Headings: its column letters and row numbers shown (Excel's showRowColHeaders, LibreOffice's HasColumnRowHeaders). */
     var headings = true
     /** Its drop-down lists (data validation). */
@@ -806,6 +808,7 @@ internal object Sheets {
             var defaultCol = 64f; var defaultRow = 20f
             var frozenRows = 0; var frozenCols = 0; var grid = true; var views = 0; var protectedSheet = false; var guardedSheet = false; var headings = true
             val dvs = ArrayList<Pair<List<SheetRange>, String>>() // data validation lists: their cells and formula
+            val filterKeep = HashMap<Int, MutableSet<String>>(); var filterCol = 0 // the AutoFilter's kept values by column
             var tab: Int? = null; var autoFilter: SheetRange? = null
             var maxRow = -1; var maxCol = -1
             val boxed = Extent()
@@ -888,6 +891,9 @@ internal object Sheets {
                         "mergeCell" -> at.a("ref")?.let(::rangeRef)?.let { merges += it }
                         "sheetProtection" -> { protectedSheet = at.a("sheet").let { it == "1" || it == "true" }; guardedSheet = at.a("password") != null || at.a("hashValue") != null }
                         "autoFilter" -> autoFilter = at.a("ref")?.let(::rangeRef)
+                        "filterColumn" -> filterCol = (at.a("colId")?.toIntOrNull() ?: 0) + (autoFilter?.c1 ?: 0)
+                        "filters" -> if (at.a("blank").let { it == "1" || it == "true" }) filterKeep.getOrPut(filterCol) { LinkedHashSet() } += ""
+                        "filter" -> at.a("val")?.let { filterKeep.getOrPut(filterCol) { LinkedHashSet() } += it.trim() }
                         "tablePart" -> at.a("id")?.let { rels[it] }?.let { tableParts += it }
                         "drawing" -> drawingPart = at.a("id")?.let { rels[it] }
                         "hyperlink" -> {
@@ -969,10 +975,12 @@ internal object Sheets {
             merges.forEach { maxRow = max(maxRow, it.r2); maxCol = max(maxCol, it.c2) }
             maxRow = boxed.rows(maxRow); maxCol = boxed.cols(maxCol)
             WriterLog.i("Sheets: \"${name.length} letters\" ${cells.size} cells, ${maxRow + 1}×${maxCol + 1}, ${merges.size} merged, frozen $frozenRows/$frozenCols")
+            // rows an AutoFilter hides are the view's filter's to hide (Clear filter shows them), not hidden rows
+            if (filterKeep.isNotEmpty()) autoFilter?.let { g -> hiddenRows.removeAll { it in g.r1 + 1..g.r2 } }
             return Sheet(name, cells, maxRow + 1, maxCol + 1, colWidths, rowHeights, defaultCol, defaultRow, hiddenCols, hiddenRows,
                 merges, frozenRows, frozenCols, grid, colStyles, rowStyles, tab, hidden, autoFilter, looks,
                 drawingPart?.let { p -> runCatching { drawings(p, name, cells) }.onFailure { WriterLog.w("Sheets: drawings could not be read", it) }.getOrNull() }.orEmpty(), bars, icons,
-                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet; it.headings = headings
+                printOf(page, printNames[path])).also { it.rules = rules; it.ruleBase += ruleBase; it.protected = protectedSheet; it.guarded = guardedSheet; it.headings = headings; it.filterKeep = filterKeep
                     it.lists = dvs.mapNotNull { (ranges, f) -> SheetList.of(ranges, f, name) { r, c -> cells[Sheet.key(r, c)]?.text } } }
         }
 

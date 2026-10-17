@@ -499,6 +499,32 @@ class SheetSaveTest {
         }
     }
 
+    /** The view's filter kept as the file's AutoFilter (Excel's autoFilter, LibreOffice's database range): read back, by LibreOffice, taken away. */
+    @Test fun `an AutoFilter kept in the file`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val g = SheetRange(0, 0, 2, 3); val keep = mapOf(0 to setOf("Alpha"))
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("autofilter").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.'); val tab = b0.tabs[0].name
+            val kept = File(dir, "kept.${f.extension}")
+            if (name.endsWith("xlsx")) SheetAutoFilter.xlsx(f, kept, b0.parts.getValue("0"), 0, tab, g, keep, setOf(2)) else SheetAutoFilter.ods(f, kept, 0, tab, g, keep, setOf(2))
+            fun check(file: File, how: String) { val s = Sheets.read(file, ',', '.').sheet(0)
+                if (file.extension == "xlsx") { assertEquals(how, g, s.autoFilter); assertEquals(how, keep, s.filterKeep); assertTrue(how, 2 !in s.hiddenRows) }
+                else assertTrue(how, 2 in s.hiddenRows && 1 !in s.hiddenRows) // shortcut: an .ods's filter values are not read; its filtered rows are hidden
+                assertEquals(how, "Βήτα", s[2, 0]?.text) }
+            check(kept, "kept in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, kept.path).redirectErrorStream(true).start().waitFor()
+                check(File(conv, "kept.$other"), "LibreOffice's $other of $name")
+            }
+            val gone = File(dir, "gone.${f.extension}")
+            if (name.endsWith("xlsx")) SheetAutoFilter.xlsx(kept, gone, b0.parts.getValue("0"), 0, tab, null, emptyMap(), emptySet(), old = g) else SheetAutoFilter.ods(kept, gone, 0, tab, null, emptyMap(), emptySet(), old = g)
+            Sheets.read(gone, ',', '.').sheet(0).let { s -> assertEquals(name, null, s.autoFilter); assertTrue(name, s.hiddenRows.none { it in 1..2 }); assertTrue(name, s.filterKeep.isEmpty()) }
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

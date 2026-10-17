@@ -1809,9 +1809,76 @@ internal object OfficeFonts {
         }
     }
 
-    /** The typeface for a document's font name; null: the phone's own. */
+    /**
+     * The phone's font families (asked 17 Oct: Android's and its maker's — Noto, MiSans, Dancing Script…) by the name in
+     * their files (Android lists the files, not their names), each with its faces, its name as written.
+     */
+    private val phone: Map<String, Pair<String, List<android.graphics.fonts.Font>>> by lazy {
+        runCatching { android.graphics.fonts.SystemFonts.getAvailableFonts().mapNotNull { f -> f.file?.let { runCatching { familyName(it, f.ttcIndex) }.getOrNull() }?.let { it to f } }
+            .groupBy({ it.first.lowercase() }, { it }).mapValues { (_, l) -> l.first().first to l.map { it.second }.distinctBy { it.style.weight to it.style.slant } } }.getOrElse { emptyMap() }
+    }
+    private val phoneFaces = HashMap<String, Typeface?>()
+    /** A family of the phone's by its name, its faces together (bold and italic pick theirs); the phone's other fonts behind it. */
+    private fun phoneTypeface(n: String): Typeface? = synchronized(phoneFaces) {
+        phoneFaces.getOrPut(n) {
+            val faces = phone[n]?.second ?: return@getOrPut null
+            runCatching { Typeface.CustomFallbackBuilder(android.graphics.fonts.FontFamily.Builder(faces[0]).apply { faces.drop(1).forEach { addFont(it) } }.build())
+                .setSystemFallback("sans-serif").build() }.getOrNull()
+        }
+    }
+    /**
+     * The phone's families for the font picker: those whose own letters include Latin ones (not fonts for other scripts
+     * alone, nor emoji or clocks; Noto's "UI" twins left out), by name.
+     */
+    fun phoneFamilies(): List<String> = phone.values.filter { (name, faces) ->
+        !Regex("emoji|clock|symbol|icon| UI$", RegexOption.IGNORE_CASE).containsMatchIn(name) &&
+            faces.first().let { f -> f.file?.let { runCatching { covers(it, f.ttcIndex, 'a'.code) }.getOrNull() } } == true
+    }.map { it.first }.sortedBy { it.lowercase() }
+
+    /** A font file's tables: tag → (offset, length), the [index]th font of a collection; [read] its numbers. */
+    private fun tables(f: java.io.RandomAccessFile, index: Int): Map<String, Long> {
+        f.seek(0); val ttc = f.readInt() == 0x74746366 // "ttcf"
+        val base = if (ttc) { f.seek(12L + 4 * index); f.readInt().toLong() and 0xFFFFFFFFL } else 0L
+        f.seek(base + 4); val n = f.readUnsignedShort()
+        return (0 until n).associate { k -> f.seek(base + 12 + 16L * k); val tag = ByteArray(4).also(f::readFully); f.skipBytes(4); String(tag, Charsets.ISO_8859_1) to (f.readInt().toLong() and 0xFFFFFFFFL) }
+    }
+
+    /** Whether a font file's own letters (its cmap: Unicode format 4 or 12) include [code]. */
+    internal fun covers(file: java.io.File, index: Int, code: Int): Boolean = java.io.RandomAccessFile(file, "r").use { f ->
+        fun u16(at: Long): Int { f.seek(at); return f.readUnsignedShort() }
+        fun u32(at: Long): Long { f.seek(at); return f.readInt().toLong() and 0xFFFFFFFFL }
+        val cmap = tables(f, index)["cmap"] ?: return false
+        val subs = (0 until u16(cmap + 2)).map { cmap + 4 + 8L * it }.filter { r -> u16(r).let { it == 0 || it == 3 } }.map { cmap + u32(it + 4) }
+        subs.any { at -> when (u16(at)) {
+            4 -> { val seg = u16(at + 6) / 2
+                (0 until seg).any { i -> val end = u16(at + 14 + 2L * i); val start = u16(at + 16 + 2L * seg + 2L * i)
+                    code in start..end && end != 0xFFFF } }
+            12 -> (0 until u32(at + 12)).any { g -> code.toLong() in u32(at + 16 + 12 * g)..u32(at + 20 + 12 * g) }
+            else -> false
+        } }
+    }
+
+    /** A font file's family name: its name table's typographic family (else its family), the [index]th font of a collection. */
+    internal fun familyName(file: java.io.File, index: Int = 0): String? = java.io.RandomAccessFile(file, "r").use { f ->
+        fun u16(at: Long): Int { f.seek(at); return f.readUnsignedShort() }
+        fun u32(at: Long): Long { f.seek(at); return f.readInt().toLong() and 0xFFFFFFFFL }
+        val base = if (u32(0) == 0x74746366L) u32(12L + 4 * index) else 0L // "ttcf": where this font starts
+        val name = (0 until u16(base + 4)).map { base + 12 + 16L * it }.firstOrNull { u32(it) == 0x6E616D65L } ?: return null // "name"
+        val at = u32(name + 8); val strings = at + u16(at + 4)
+        // (platform, encoding, language, name id, length, offset): the typographic family (16) before the family (1), Windows' English first
+        val best = (0 until u16(at + 2)).map { at + 6 + 12L * it }.map { r -> IntArray(6) { k -> u16(r + 2L * k) } }.filter { it[3] == 16 || it[3] == 1 }
+            .minByOrNull { (if (it[3] == 16) 0 else 10) + (if (it[0] == 3 && it[2] == 0x409) 0 else if (it[0] == 3 || it[0] == 0) 1 else 2) } ?: return null
+        val bytes = ByteArray(best[4]); f.seek(strings + best[5]); f.readFully(bytes)
+        String(bytes, if (best[0] == 1) Charsets.ISO_8859_1 else Charsets.UTF_16BE).trim().ifEmpty { null }
+    }
+
+    /**
+     * The typeface for a document's font name; null: the phone's default. The phone's own font of that name when it has
+     * one (asked 17 Oct), else Word's fonts' twins (their letter widths keep lines where Word breaks them), else a guess.
+     */
     fun typeface(name: String?): Typeface? {
         val n = name?.lowercase()?.trim() ?: return null
+        phoneTypeface(n)?.let { return it }
         return when {
             "narrow" in n || "condensed" in n -> Typeface.create("sans-serif-condensed", Typeface.NORMAL) // Arial Narrow: no metric twin bundled
             "times" in n || n == "liberation serif" -> load("LiberationSerif", "serif")
@@ -1832,6 +1899,12 @@ internal object OfficeFonts {
      */
     fun family(name: String?): androidx.compose.ui.text.font.FontFamily? {
         val n = name?.lowercase()?.trim() ?: return null
+        // the phone's own font of that name: its faces from their files (a collection's other fonts left to the phone)
+        phone[n]?.second?.filter { it.file != null && it.ttcIndex == 0 }?.takeIf { it.isNotEmpty() }?.let { faces ->
+            synchronized(composeFamilies) { composeFamilies.getOrPut("phone $n") { runCatching { androidx.compose.ui.text.font.FontFamily(faces.map { f ->
+                androidx.compose.ui.text.font.Font(f.file!!, androidx.compose.ui.text.font.FontWeight(f.style.weight.coerceIn(1, 1000)),
+                    if (f.style.slant == android.graphics.fonts.FontStyle.FONT_SLANT_ITALIC) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal) }) }.getOrNull() } }?.let { return it }
+        }
         val file = when {
             "times" in n || n == "liberation serif" -> "LiberationSerif"
             "arial" in n || "helvetica" in n || n == "liberation sans" -> "LiberationSans"

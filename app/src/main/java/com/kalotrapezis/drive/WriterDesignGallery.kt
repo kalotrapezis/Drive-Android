@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -138,12 +141,26 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     @Composable fun face(name: String?, size: Int, weight: FontWeight = FontWeight.Normal, italic: Boolean = false, color: Color = Color(0xFF222222)) =
         TextStyle(fontFamily = OfficeFonts.family(name), fontSize = (size * k).sp, fontWeight = weight, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal, color = color)
     val w = Color.White
+    // Fonts: a search over Words' and the phone's (asked 17 Oct), beside the strip's name (on a phone, over the cards)
+    var query by androidx.compose.runtime.saveable.rememberSaveable(what) { androidx.compose.runtime.mutableStateOf("") }
+    @Composable fun search(m: Modifier) = Row(m.height(36.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF2A2E30)).padding(horizontal = 10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Icon(painterResource(R.drawable.ic_search), null, tint = w.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+        Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            if (query.isEmpty()) Text("Search fonts", color = w.copy(alpha = 0.5f), style = MaterialTheme.typography.bodyMedium)
+            androidx.compose.foundation.text.BasicTextField(query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = w),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(w), modifier = Modifier.fillMaxWidth())
+        }
+        if (query.isNotEmpty()) Icon(painterResource(R.drawable.ic_close), "Clear the search", tint = w, modifier = Modifier.size(18.dp).clickable { query = "" })
+    }
     Column(modifier.fillMaxWidth().bottomBarPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
         if (!phone) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = if (what == DesignGallery.Font) Modifier.padding(end = 12.dp) else Modifier.weight(1f))
+            if (what == DesignGallery.Font) { search(Modifier.width(320.dp)); Box(Modifier.weight(1f)) }
             TextButton(onClick = cancel) { Text("Cancel", color = w) }
             TextButton(onClick = ok, enabled = chosen != null) { Text("OK", color = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }
+        if (phone && what == DesignGallery.Font) search(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp))
         val scroll = androidx.compose.foundation.rememberScrollState()
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         if (phone) IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), "Cancel", tint = w) }
@@ -215,12 +232,23 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     if (layout == HEADER_LAYOUTS.last()) Text(layout.label, modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
                 } }
                 // Fonts (asked 16 Oct: in the ribbon's place, as Page numbers): each written in itself, the one in use marked.
-                DesignGallery.Font -> fonts.forEach { f -> card(chosen == FontChoice(f) || (chosen == null && f == now), click = { pick(FontChoice(f)) }, f) {
-                    Column(Modifier.align(androidx.compose.ui.Alignment.Center), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                        Text("Aa Αα", style = face(f, 22), maxLines = 1)
-                        Text("123 abc", style = face(f, 12, color = Color(0xFF5F6368)), maxLines = 1)
+                // then the phone's own fonts (asked 17 Oct), as WPS and LibreOffice on Android list them
+                DesignGallery.Font -> {
+                    val phoneAll = remember(fonts) { OfficeFonts.phoneFamilies().filter { p -> fonts.none { it.equals(p, true) } } }
+                    fun found(l: List<String>) = l.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
+                    val own = found(fonts); val phoneFonts = found(phoneAll)
+                    if (own.isEmpty() && phoneFonts.isEmpty()) Text("No font called “${query.trim()}”", color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically).padding(16.dp))
+                    (own + phoneFonts).forEachIndexed { i, f ->
+                        if (i == own.size) Text("Phone\nfonts", color = w, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically))
+                        card(chosen == FontChoice(f) || (chosen == null && f == now), click = { pick(FontChoice(f)) }, f) {
+                            Column(Modifier.align(androidx.compose.ui.Alignment.Center), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                Text("Aa Αα", style = face(f, 22), maxLines = 1)
+                                Text("123 abc", style = face(f, 12, color = Color(0xFF5F6368)), maxLines = 1)
+                            }
+                        }
                     }
-                } }
+                }
                 // Multilevel lists: three levels as they read.
                 DesignGallery.Lists -> LIST_SCHEMES.forEach { scheme -> card(chosen == scheme, click = { pick(scheme) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp * k)) {

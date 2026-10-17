@@ -24,6 +24,15 @@ How to write here:
 - [x] (f65b50a) A: messages alike; Slides' ribbon no longer goes after Save on a tablet (office-parity builder, 17 Oct).
 - [x] (1e0160a, be4d2e6, 7549d88, 100300f, 8c052fb) The Office engine, steps 0–4 (office-engine session, 17 Oct); step 5
       (the pure move to OfficeText.kt) left for a quiet moment; the tablet walk waits for the tablet.
+- [x] The phone's own fonts (the user, 17 Oct: "draw a document's font with the phone's own when it has it, and add a
+      Phone fonts group to the shared font picker"; "next to font a search bar would be nice") (office-engine session):
+      `OfficeFonts` finds the phone's families by the name inside each font file (`familyName`, `covers`: the name and
+      cmap tables) and uses one of a document's font's name before Word's twins and the guesses (pages and editor alike);
+      the shared font strip (Words, Tables) lists "Phone fonts" after the document's and Word's — those with Latin
+      letters of their own, ~45 on the tablet (Roboto, Noto Serif, MiSans, Dancing Script, Coming Soon…) — and has a
+      "Search fonts" field beside its name (over the cards on a phone). Words' fingerprint unchanged on the emulator and
+      the tablet; `OfficeFontsTest`; the user tried it on the tablet ("I used it it works"). Not done: a name typed that
+      is not in the list cannot be used as a font (Word allows it); Slides gets the strip with B's Home.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

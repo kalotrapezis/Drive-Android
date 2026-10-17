@@ -1235,7 +1235,7 @@ internal fun writeWriterDraft(file: File, bytes: ByteArray) {
 }
 
 /** A document's earlier versions: a folder per document (by its path), a file per version named by its time. */
-private fun versionsDir(context: Context, file: File) = File(File(context.filesDir, "writer-history"), file.absolutePath.hashCode().toUInt().toString())
+internal fun versionsDir(context: Context, file: File) = File(File(context.filesDir, "writer-history"), file.absolutePath.hashCode().toUInt().toString())
 
 internal fun versions(context: Context, file: File): List<File> =
     versionsDir(context, file).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name.substringBefore('.').toLongOrNull() ?: 0 }.orEmpty()

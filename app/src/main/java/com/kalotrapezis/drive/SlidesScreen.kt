@@ -116,7 +116,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     remember { OfficeFonts.assets = context.applicationContext.assets } // the fonts with Word's letter widths, as Words' and Tables'
 
     val scope = rememberCoroutineScope()
-    val file = remember(open) { Uri.parse(open).path?.let(::File) }
+    var file by remember(open) { mutableStateOf(Uri.parse(open).path?.let(::File)) } // Save as and Rename go on with another
     val odp = file?.extension.equals("odp", true)
     var deck by remember { mutableStateOf<Deck?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
@@ -155,6 +155,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             .onFailure { WriterLog.e("Slides: recovery draft", it) }
     }
     val changed = edit != saved
+    var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' setting, one for both
     // Design › a theme: a copy of the file with it, read once (the deck shown and saved from it while it is chosen)
     val themed = remember { androidx.compose.runtime.mutableStateMapOf<SlideTheme, Pair<File, Deck>>() }
     val base: Deck? = edit?.theme?.let { themed[it]?.second } ?: deck
@@ -169,10 +170,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             ?: run { message = "That theme could not be applied." }
     }
     fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; redos.clear(); edit = to }
-    fun save(then: (() -> Unit)? = null) {
+    /** Save: the edits into the file — or into [to] (Save as: going on with it; [copy], Save a copy: the file and its edits left as they are). */
+    fun save(to: File? = null, copy: Boolean = false, then: (() -> Unit)? = null) {
         val e = edit ?: return
         // with a theme chosen: saved from the themed copy, into the file
-        val f = file ?: return; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: source ?: f
+        val f0 = file ?: return; val f = to ?: f0; val d = base ?: return; val from = e.theme?.let { themed[it]?.first } ?: source ?: f0
         if (e.theme != null && e.theme !in themed) return
         if (saving) return
         saving = true
@@ -181,13 +183,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                 try {
                     WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(from, d, e, temp) else SlidesEdit.save(from, d, e, temp) }
-                    keepPrevious(context, f) // Writer's versions
+                    if (f.exists()) keepPrevious(context, f) // Writer's versions
                     check(temp.renameTo(f)) { "Could not save ${f.name}." }
                 } finally { temp.delete() }
                 Slides.read(f)
             } }
             saving = false
-            result.onSuccess { nd -> slideDraft(context, f).delete(); deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex); message = "Saved"; then?.invoke() }
+            result.onSuccess { nd -> if (copy) { message = "Saved a copy: ${f.name}"; then?.invoke(); return@onSuccess }
+                slideDraft(context, f0).delete(); if (to != null) file = to; deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex); message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -318,11 +321,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     // The app sent to the background with changes not saved (Android may close it then): kept as a draft, as Words' and Tables'.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
+        // (AutoSave's setting is Words', one for both)
         val observer = androidx.lifecycle.LifecycleEventObserver { _, ev ->
             val f = file; val e = edit
             if (ev != androidx.lifecycle.Lifecycle.Event.ON_STOP || f == null || e == null || saving) return@LifecycleEventObserver
             val draft = slideDraft(context, f)
             if (e == saved) { draft.delete(); return@LifecycleEventObserver }
+            // AutoSave on: the file itself saved as the app goes away (saving re-reads the deck, so while one works Undo is kept)
+            if (autoSave) { save(); WriterLog.i("Slides: AutoSave"); return@LifecycleEventObserver }
             val d = e.theme?.let { themed[it]?.second } ?: deck ?: return@LifecycleEventObserver
             val from = e.theme?.let { themed[it]?.first } ?: source ?: f
             scope.launch(Dispatchers.IO) { runCatching {
@@ -421,6 +427,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sourceEdit by remember { mutableStateOf<DocSource?>(null) }; var sourceNew by remember { mutableStateOf(false) } // …one in Words' source page
     var citing by remember { mutableStateOf(false) } // References › Insert citation: Words' dialog
     var inked by remember { mutableStateOf<Map<Int, List<List<androidx.compose.ui.geometry.Offset>>>?>(null) } // the show's pen ink, to keep or not
+    var savingAs by remember { mutableStateOf(false) } // File › Save as: the new name
+    var renaming by remember { mutableStateOf(false) } // File › Rename
+    var inspecting by remember { mutableStateOf(false) } // File › Inspect: notes and comments taken out before sharing
     var rehearsing by remember { mutableStateOf(false) } // Slide show › Rehearse timings: the show running with a timer
     var rehearsed by remember { mutableStateOf<Map<Int, Long>?>(null) } // …and the times it took, to keep or not
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
@@ -879,6 +888,24 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // the same File as Words' and Tables' (17 Oct)
                 RibbonDivider(w)
                 if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
+                // as Words' File: Save a copy, AutoSave, Save as, Rename; PowerPoint's Save as template and Inspect
+                RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = file != null) {
+                    file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).${f.extension}") }.first { !it.exists() }, copy = true) } }
+                RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
+                    autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave; message = if (autoSave) "AutoSave on" else "AutoSave off — Save when you want the file changed" }
+                RibbonButton("Save as", w, R.drawable.ic_save, enabled = file != null) { savingAs = true }
+                RibbonButton("Rename", w, R.drawable.ic_edit, enabled = file != null) { renaming = true }
+                if (!odp) RibbonButton("Save as template", w, R.drawable.ic_palette, enabled = file != null) {
+                    val f = file ?: return@RibbonButton
+                    val temp = File(context.cacheDir, "template-${System.nanoTime()}.pptx")
+                    save(to = temp, copy = true, then = { scope.launch {
+                        val target = generateSequence(1) { it + 1 }.map { File(SlidesTemplates.dir(), if (it == 1) "${f.nameWithoutExtension}.potx" else "${f.nameWithoutExtension} ($it).potx") }.first { !it.exists() }
+                        val ok = withContext(Dispatchers.IO) { runCatching { SlidesTemplates.dir().mkdirs(); SlidesTemplates.template(temp, target); temp.delete() }.onFailure { WriterLog.e("Slides: template", it) }.isSuccess }
+                        message = if (ok) "Saved ${target.name} in Templates: Design › Themes and New presentation offer it" else "Could not make the template."
+                    } })
+                }
+                RibbonButton("Inspect", w, R.drawable.ic_search) { inspecting = true }
+                RibbonDivider(w)
                 RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
                 RibbonButton("Export pictures", w, R.drawable.ic_gallery, enabled = file != null) { exportPictures() }
                 // Print: full slides, or handouts (PowerPoint's 2, 3 with lines for notes, 6 to a page)
@@ -1930,6 +1957,42 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 change(e.copy(added = added)); WriterLog.i("Slides: show ink kept on ${m.size}")
             }) { Text("Keep") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { inked = null }) { Text("Discard") } })
+    }
+    if (savingAs || renaming) file?.let { f ->
+        var typed by remember { mutableStateOf(if (savingAs) "${f.nameWithoutExtension} (2)" else f.nameWithoutExtension) }
+        fun target() = typed.trim().removeSuffix(".${f.extension}").takeIf { it.isNotEmpty() && '/' !in it }?.let { File(f.parentFile, "$it.${f.extension}") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { savingAs = false; renaming = false }, title = { Text(if (savingAs) "Save as" else "Rename") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${f.extension}") })
+                if (savingAs) Text("Beside ${f.name}. Slides goes on with the new one.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                val t = target() ?: run { message = "That is not a file name."; return@TextButton }
+                if (t == f) { savingAs = false; renaming = false; return@TextButton }
+                if (t.exists()) { message = "${t.name} is already there. Choose another name."; return@TextButton }
+                if (savingAs) { savingAs = false; save(to = t); WriterLog.i("Slides: saved as ${t.name}") }
+                else { renaming = false
+                    // the file, its recovery draft and its versions under the new name (as Words renames)
+                    scope.launch { val ok = withContext(Dispatchers.IO) { runCatching {
+                        val draft = slideDraft(context, f); val versions = versionsDir(context, f)
+                        check(f.renameTo(t)) { "Could not rename ${f.name}." }
+                        if (draft.isFile) draft.renameTo(slideDraft(context, t)); if (versions.isDirectory) versions.renameTo(versionsDir(context, t))
+                    }.onFailure { WriterLog.e("Slides: rename", it) }.isSuccess }
+                        if (ok) { file = t; message = "Renamed ${t.name}" } else message = "Could not rename it." } }
+            }) { Text(if (savingAs) "Save" else "Rename") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { savingAs = false; renaming = false }) { Text("Cancel") } })
+    }
+    // PowerPoint's Inspect Document, the part that matters before sharing: the speaker notes and the comments taken out
+    if (inspecting) edit?.let { e ->
+        val v = view?.slides.orEmpty()
+        val notes = v.count { it.notes.isNotBlank() }; val comments = v.sumOf { it.comments.size }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { inspecting = false }, title = { Text("Inspect") },
+            text = { Text(if (notes + comments == 0) "No speaker notes and no comments: nothing to take out before sharing."
+                else "$notes slide${if (notes == 1) " has" else "s have"} speaker notes and there ${if (comments == 1) "is 1 comment" else "are $comments comments"}. Take them out before sharing? (Undo brings them back until you leave.)") },
+            confirmButton = { if (notes + comments > 0) androidx.compose.material3.TextButton(onClick = { inspecting = false
+                change(e.copy(notes = e.notes + e.order.associate { it.uid to "" }, comments = e.comments + e.order.associate { it.uid to emptyList<SlideComment>() }))
+                message = "Notes and comments taken out: Save to keep it so"; WriterLog.i("Slides: inspected, $notes notes and $comments comments out") }) { Text("Take them out") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { inspecting = false }) { Text(if (notes + comments == 0) "Close" else "Cancel") } })
     }
     rehearsed?.let { times ->
         val total = times.values.sum()

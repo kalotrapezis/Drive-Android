@@ -456,8 +456,9 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       a slide during the show, without animations, use timings or not; subtitles later.
 - [ ] **Record** (later): record narration and timings per slide; export the deck as a video.
 - [ ] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
-- [ ] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
+- [~] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
       .odp / .pptx; remove notes and comments before sharing (Inspect); password protection (later).
+      Template and Inspect done 17 Oct (office-C session, with From Words' File above). Not yet: saving as the other format.
 - [ ] **Text**: right-to-left text and text direction (vertical); highlight (planned in Home above).
 - [ ] **Insert**: Zoom (summary and slide zoom — later); action buttons (as Link to a slide); photo album (later).
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
@@ -507,7 +508,13 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Done 17 Oct (office-C session): Review › Read aloud — Words' `ReadAloud` (Android's speech, each paragraph in its own language)
       reads the slides' words from the chosen slide on, box by box top to bottom, the slides following it; Read the notes reads the
       speaker notes instead; Words' `ReadAloudBar` (what is read, Stop) in the top bar meanwhile. Emulator: read, the bar showed the line.
-- [ ] **File**: AutoSave, Save a copy, Save as, Rename (as Words', beside A's list).
+- [x] **File**: AutoSave, Save a copy, Save as, Rename (as Words', beside A's list).
+      Done 17 Oct (office-C session): File › Save a copy ("name (copy)" beside it, the file and its edits left as they are), AutoSave
+      (Words' own setting, one for both; in Slides it saves as the app goes to the background, because a save reads the deck again and
+      would take Undo away while one works), Save as (a name beside it, Slides going on with the new file), Rename (the file, its
+      recovery draft and versions, as Words renames). With PowerPoint's list below: Save as template (.potx into Tetra's Templates, which
+      Design › Themes and New presentation offer; a .pptx only) and Inspect (speaker notes and comments taken out before sharing, Undo
+      brings them back). Emulator: a .potx made in Templates; Save as went on with "sorter (18) (2).pptx".
 - [ ] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.
 - Not for slides: page breaks, blank page, watermark, page borders, line numbers, hyphenation, footnotes and
   endnotes, captions and cross-references, track changes, content controls, style sets (PowerPoint has none of these).

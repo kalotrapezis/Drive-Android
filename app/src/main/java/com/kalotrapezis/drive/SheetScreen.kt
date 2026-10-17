@@ -174,6 +174,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
+    var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
@@ -903,7 +904,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (editing) { RibbonDivider(w)
                                 RibbonButton("Remove duplicates", w, R.drawable.ic_filter_off) {
                                     val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
-                                    if (d == null || d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d } }
+                                    if (d == null || d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d }
+                                // Excel's Text to columns: one column's words cut at a separator into the columns beside it
+                                RibbonButton("Text to columns", w, R.drawable.ic_view_column) {
+                                    val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c1]) } ?: SheetRange(cr, cc, cr, cc)
+                                    splitting = d } }
                         }
                         shown == "View" -> {
                             RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
@@ -1230,6 +1235,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             if (text.isNotBlank() && text != cell?.text) { val (look, format) = lookAt(s, r, c); history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(text, cell, look, format, b.format))); version++ }
             put(if (to.startsWith("#")) to.drop(1).toIntOrNull()?.let { k -> tabs.getOrNull(k)?.name }?.let { n -> "#'${n.replace("'", "''")}'!A1" } ?: to else to)
         } }
+    // Data › Text to columns: Excel's separators; the pieces typed into the cells to the right, as if typed there (numbers stay numbers)
+    splitting?.let { d -> val s = sheet; val b = book
+        AlertDialog(onDismissRequest = { splitting = null }, title = { Text("Text to columns") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("Cut each cell's words at:")
+                listOf("Comma" to ",", "Semicolon" to ";", "Tab" to "\t", "Space" to " ", "Slash" to "/", "Dash" to "-").forEach { (label, by) ->
+                    TextButton(onClick = { splitting = null; if (s == null || b == null) return@TextButton
+                        val changes = LinkedHashMap<Long, SheetCell>()
+                        for (r in d.r1..d.r2) { val cell = s[r, d.c1] ?: continue; if (cell.formula != null || cell.kind != SheetKind.Text) continue
+                            SheetInput.split(cell.text, by).takeIf { it.size > 1 }?.forEachIndexed { k, piece -> val c = d.c1 + k; val (look, format) = lookAt(s, r, c)
+                                changes[Sheet.key(r, c)] = SheetInput.cell(piece, s[r, c], look, format, b.format) } }
+                        if (changes.isEmpty()) message = "Nothing to cut at the ${label.lowercase()}" else { history.apply(b, index, changes); version++; WriterLog.i("Sheets: text to columns, ${changes.size} cells") }
+                    }) { Text(label) } } } },
+            confirmButton = {}, dismissButton = { TextButton(onClick = { splitting = null }) { Text("Cancel") } }) }
     // Data › Remove duplicates: Excel's question (headers?), then the rows alike after the first gone, the rest moved up (one step of Undo)
     deduping?.let { d -> val s = sheet; val b = book
         var headers by remember(d) { mutableStateOf(true) }

@@ -12,6 +12,22 @@ import java.util.TreeMap
  * a cell, what a typed entry becomes, the cells that count on a changed one worked out again, and undo.
  */
 internal object SheetInput {
+    /** Data › Text to columns (Excel's, delimited): [text] cut at each [by] (outside "quotes"), spaces round each piece trimmed; "" for a space: runs of spaces as one. */
+    fun split(text: String, by: String): List<String> {
+        if (by == " ") return text.trim().split(Regex("\\s+"))
+        val out = ArrayList<String>(); val sb = StringBuilder(); var quoted = false; var i = 0
+        while (i < text.length) {
+            val ch = text[i]
+            when {
+                ch == '"' -> quoted = !quoted
+                !quoted && text.startsWith(by, i) -> { out += sb.toString().trim(); sb.setLength(0); i += by.length; continue }
+                else -> sb.append(ch)
+            }
+            i++
+        }
+        out += sb.toString().trim()
+        return out
+    }
     /** Data › Remove duplicates (Excel's): the rows of [rows] kept — each the first of those alike (any case, spaces round words trimmed); a header row always kept. */
     fun unique(rows: List<List<String>>, headers: Boolean): List<Int> {
         val seen = HashSet<List<String>>()

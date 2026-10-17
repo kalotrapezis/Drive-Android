@@ -731,6 +731,9 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Remove duplicates done (office-F session, 17 Oct): Data › Remove duplicates on the chosen rows, Excel's question (the first row
       headers?), the rows alike after the first gone (any case, spaces round trimmed: `SheetInput.unique`), the rest moved up — cell
       changes, one step of Undo; not on formulas. `duplicate rows found`; emulator: a CSV's two duplicates removed.
+      Text to columns done (office-F session, 17 Oct): Data › Text to columns — a column's words cut at a comma, semicolon, tab, space,
+      slash or dash (not inside quotes; spaces: runs as one) into the cells to its right, each typed as if there (numbers stay numbers):
+      `SheetInput.split`, one step of Undo. `text cut into columns`; emulator: Crete/Rhodes/Corfu into three cells.
 - [ ] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
 - [ ] **Review**: protect a sheet (respect a protected one: no typing in locked cells); spelling.

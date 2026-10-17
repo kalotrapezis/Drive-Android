@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
 class SheetEditTest {
+    /** Text to columns: cut at the separator, not inside quotes, pieces trimmed; spaces: runs as one. */
+    @org.junit.Test fun `text cut into columns`() {
+        org.junit.Assert.assertEquals(listOf("Alpha", "12", "Crete"), SheetInput.split("Alpha; 12 ;Crete", ";"))
+        org.junit.Assert.assertEquals(listOf("Smith, J.", "2020"), SheetInput.split("\"Smith, J.\",2020", ","))
+        org.junit.Assert.assertEquals(listOf("a", "b", "c"), SheetInput.split("  a   b c ", " "))
+        org.junit.Assert.assertEquals(listOf("one"), SheetInput.split("one", ","))
+    }
+
     /** Remove duplicates: the first of rows alike kept (any case, spaces round trimmed); a header row is not data (a later row like it stays, as Excel's). */
     @org.junit.Test fun `duplicate rows found`() {
         val rows = listOf(listOf("Name", "Kilos"), listOf("Alpha", "12"), listOf("alpha ", "12"), listOf("Beta", "12"), listOf("Name", "Kilos"), listOf("Alpha", "13"))

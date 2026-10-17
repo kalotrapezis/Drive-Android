@@ -411,9 +411,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var redrawing by remember { mutableStateOf<Pair<SlideItem.Picture, List<InkStroke>>?>(null) } // Edit drawing: a drawing's own strokes, drawn on again
     var sorter by remember { mutableStateOf(false) } // View › Slide sorter: every slide small in a grid
     var outline by remember { mutableStateOf(false) } // View › Outline: every slide's words in one list
+    var grid by remember { mutableStateOf(false) } // View › Gridlines: a grid and the middle guides over the slide, what is dragged snapping to them
     var notesPage by remember { mutableStateOf(false) } // View › Notes page: the notes pane under the slide (a desktop always has it)
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
     var cropping by remember { mutableStateOf<android.graphics.Bitmap?>(null) } // a picture's crop: the whole picture in Words' crop editor
+    /** Gridlines' spacing (pt): half a centimetre, or a quarter inch in Words' inches. */
+    fun gridStep() = if (WriterUnits.inches) 18f else 14.173f
     /** The name of the section slide [i] starts, if one does (Home › Section). */
     fun sectionAt(i: Int): String? = edit?.let { ee -> base?.let { d -> ee.order.getOrNull(i)?.uid?.let { uid -> ee.sectionsNow(d).firstOrNull { it.second == uid }?.first } } }
     /** The chosen slide's comments changed by [f] (Review › Comments), as one step of Undo. */
@@ -781,6 +784,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Normal", w, R.drawable.ic_crop_landscape, on = !sorter && !outline) { sorter = false; outline = false }
                 RibbonButton("Outline", w, R.drawable.ic_view_list, on = outline) { outline = true; sorter = false; item = null; typing = null }
                 RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; outline = false; item = null; marked = setOf(uid) }
+                RibbonButton("Gridlines", w, R.drawable.ic_border_all, on = grid) { grid = !grid }
                 // the speaker notes under the slide, typed there (PowerPoint's Notes); a desktop always shows them
                 if (!OfficeUi.top) RibbonButton("Notes page", w, R.drawable.ic_comment, on = notesPage) { notesPage = !notesPage; sorter = false; outline = false }
                 if (sorter) {
@@ -1170,7 +1174,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         val dx = (ch.position.x - ch.previousPosition.x) * k; val dy = (ch.position.y - ch.previousPosition.y) * k
                                         if (handle) { w = maxOf(12f, w + dx); h = w * a.h / a.w.coerceAtLeast(1f) } else { x += dx; y += dy }
                                         val now = edit ?: break
-                                        edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
+                                        // Gridlines on: its corner to the grid, or its middle to the slide's middle when near it (PowerPoint's smart guides)
+                                        val step = gridStep()
+                                        fun snap(v: Float, size: Float, whole: Float) = if (kotlin.math.abs(v + size / 2 - whole / 2) < step / 2) whole / 2 - size / 2 else Math.round(v / step) * step
+                                        if (grid && !handle) edit = SlidesEdit.framed(now, uid, id, snap(x, w, d.width), snap(y, h, d.height), w, h)
+                                        else if (grid) edit = SlidesEdit.framed(now, uid, id, x, y, maxOf(step, Math.round((x + w) / step) * step - x), h)
+                                        else edit = SlidesEdit.framed(now, uid, id, x, y, w, h)
                                         ch.consume()
                                     }
                                     WriterLog.i("Slides: ${if (handle) "sized" else "moved"} by a finger")
@@ -1206,6 +1215,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
+                        // Gridlines: the grid, faint, and the slide's middle lines
+                        if (grid && editing) Canvas(Modifier.matchParentSize()) {
+                            val k = size.width / d.width; val step = gridStep() * k
+                            var gx = step; while (gx < size.width) { drawLine(Color(0x33000000), androidx.compose.ui.geometry.Offset(gx, 0f), androidx.compose.ui.geometry.Offset(gx, size.height), 1f); gx += step }
+                            var gy = step; while (gy < size.height) { drawLine(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, gy), androidx.compose.ui.geometry.Offset(size.width, gy), 1f); gy += step }
+                            drawLine(Color(0x99E67E22), androidx.compose.ui.geometry.Offset(size.width / 2, 0f), androidx.compose.ui.geometry.Offset(size.width / 2, size.height), 1.5f)
+                            drawLine(Color(0x99E67E22), androidx.compose.ui.geometry.Offset(0f, size.height / 2), androidx.compose.ui.geometry.Offset(size.width, size.height / 2), 1.5f)
+                        }
                         // its comments' markers (PowerPoint's): a tap shows the comment
                         if (s.comments.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.matchParentSize()) {
                             s.comments.filter { it.comment.parent == null }.forEach { sc ->

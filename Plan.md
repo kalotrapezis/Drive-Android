@@ -379,6 +379,10 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       Emulator: "Plan and more" typed there. Not shown there: a paragraph's list level (kept in the file).
       Notes page (office-C session, 17 Oct): View › Notes page — the speaker notes under the slide on a tablet or phone, typed there (the
       desktop's notes pane, which a desktop always shows); emulator: slide 1's notes under it.
+      Gridlines (office-C session, 17 Oct): View › Gridlines — a faint grid (½ cm, or ¼ in in Words' inches) and the slide's middle lines
+      while editing; what is dragged snaps its corner to the grid, or its middle to the slide's middle when near it (PowerPoint's smart
+      guide), and a size dragged ends on the grid. Emulator: the picture dragged, centred on the guide.
+      Not yet: editing the slide master, zoom.
 - [ ] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
 - [ ] **Slide show**: rehearse timings; loop until Esc (kiosk); custom shows (later); more animation kinds and an
       animation list (later).

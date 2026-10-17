@@ -239,6 +239,9 @@ internal object SlidesOdp {
                                 val shape = if (f != null || l != null) ShapePicture("rect", f, l, pt(g("stroke-width"))?.coerceAtLeast(0.5f) ?: 0.75f) else null
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
+                            // a video (Impress's plugin): its picture the frame's image, its film a part of the file or a web address
+                            "plugin" -> e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./").let { p ->
+                                out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } }.also { it.media = inner.a(XLINK, "href")?.removePrefix("./") } }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) },
                                 flipH = g("mirror")?.contains("horizontal") == true, flipV = g("mirror")?.contains("vertical") == true) { part(p) } }
                             "table" -> out += table(inner, b)

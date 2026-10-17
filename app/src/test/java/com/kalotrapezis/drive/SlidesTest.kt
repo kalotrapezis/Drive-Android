@@ -487,6 +487,33 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Video (asked 17 Oct): a film from the phone kept in the deck, and an online one linked, each with its picture; saved and read back. */
+    @Test fun `videos put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val dir = scratchDir("video")
+        val poster = File(dir, "poster.png").apply { writeBytes(Slides.read(File("src/test/resources/slides.pptx")).slides[2].items.filterIsInstance<SlideItem.Picture>().first().bytes()!!) }
+        val film = File(dir, "film.mp4").apply { writeBytes(ByteArray(2048) { (it % 251).toByte() }) }
+        val url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(added = mapOf(1 to listOf(SlidesEdit.Added("9400", 100f, 100f, 320f, 180f, image = poster.path, video = film.path),
+                SlidesEdit.Added("9401", 100f, 300f, 320f, 180f, image = poster.path, video = url))))
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("video-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val films = Slides.read(out).slides[1].items.filterIsInstance<SlideItem.Picture>().filter { it.media != null }
+            assertEquals(name, 2, films.size)
+            val inside = films.first { !it.media!!.startsWith("http") }.media!!
+            assertTrue(name, java.util.zip.ZipFile(out).use { z -> z.getInputStream(z.getEntry(inside)).readBytes().contentEquals(film.readBytes()) })
+            assertEquals(name, url, films.first { it.media!!.startsWith("http") }.media)
+            assertTrue(name, films.all { (it.bytes()?.size ?: 0) > 100 }) // their pictures
+            if (lo) {
+                val d2 = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", d2.path, out.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("LibreOffice's $other of $name", 2, Slides.read(d2.listFiles()!!.single { it.extension == other }).slides[1].items.mapNotNull { it.media }.size)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -470,10 +470,18 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       out of what was tapped; going back it shrinks back into it — Tetra's own zoom (PowerPoint and LibreOffice jump plainly).
       `a picture linked to a slide saved` (both, LibreOffice's conversions); emulator: the flag zoomed into Scores, the chart back out.
       Unit 429/0/7; sweep 349 + 29, none failing. Not yet: PowerPoint's Zoom objects (a slide's picture that is itself the link), photo album.
-- [ ] **Video** (the user, 17 Oct: "Video import, there is no online or offline option on any of the applets"): Insert › Video in
+- [~] **Video** (the user, 17 Oct: "Video import, there is no online or offline option on any of the applets"): Insert › Video in
       Slides — offline (a video from the phone, kept in the deck, played in the show: PowerPoint's p:pic videoFile + p14:media, Impress's
       draw:plugin) and online (a YouTube or web address kept as a link with its picture, opened when tapped in the show: PowerPoint's
-      Online Video); then Words (Word's Online Video). Excel has none, so Tables not. (office-C session: next after object links.)
+      Online Video); then Words (Word's Online Video). Excel has none, so Tables not.
+      Slides done 17 Oct (office-C session): Insert › Video ▾ From this phone (Android's picker; the film copied, its picture a frame a
+      second in) or Online video (an address; YouTube's own picture fetched, else a dark one naming the site). Drawn as its picture with a
+      play mark; its tab is "Video" with Play. In a show a tap plays it over the slides (Android's player; a film in the file is taken out
+      of it to play) or opens an online one in its app. Saved as PowerPoint's Insert › Video makes one (p:pic with a:videoFile, p14:media
+      embedding the film in ppt/media, a tap playing it) and as Impress's (draw:plugin, the film in the package's Media/, its picture
+      beside); online ones as a linked address in both. Read back from both (`SlideItem.media`); LibreOffice keeps both films in its
+      conversions. `videos put on saved`; emulator: a 4-second film put on, saved, reopened and played in the show; a YouTube address
+      put on with its picture. Unit 430/0/7; sweep 349 + 29, none failing. Not yet: Words' Online Video, sound (audio), a film's start/end.
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
   (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 

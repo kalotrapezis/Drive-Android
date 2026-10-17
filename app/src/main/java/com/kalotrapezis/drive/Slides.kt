@@ -64,6 +64,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var alt: String? = null
     /** Where a tap on it goes in a show (Insert › Link on a picture or shape): a slide's part (an .odp's "#page"), a web address, or "back" (the slide it came from). */
     var link: String? = null
+    /** A video (Insert › Video, asked 17 Oct): a part of the file (its path), a copy on the phone, or a web address — this item its picture, played when tapped in a show. */
+    var media: String? = null
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -459,7 +461,10 @@ internal object Slides {
                     "pic" -> e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)?.let { p ->
                         val crop = srcRect(e.kid("blipFill")?.let(OfficeFormats::xml))
                         val flips = e.kid("spPr")?.kid("xfrm")
-                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }
+                        // a video's picture: its film embedded (PowerPoint 2010's p14:media) or linked (a:videoFile: a part, or a web address)
+                        val nv = e.kid("nvPicPr")?.kid("nvPr")
+                        val film = nv?.below("media")?.firstOrNull()?.rid("embed")?.let(rels::get) ?: nv?.kid("videoFile")?.rid("link")?.let(rels::get)
+                        out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }.also { it.media = film }
                     }
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
@@ -736,6 +741,13 @@ internal object Slides {
                 is SlideItem.Table -> table(c, item, paint)
             }
             c.restoreToCount(saved)
+            // a video's picture: a play mark in its middle (round, so its turn does not matter)
+            if (item.media != null) {
+                val r = minOf(item.w, item.h) * 0.14f; val cx = item.x + item.w / 2; val cy = item.y + item.h / 2
+                val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = 0x99000000.toInt() }
+                c.drawCircle(cx, cy, r, mark)
+                mark.color = 0xF2FFFFFF.toInt(); c.drawPath(android.graphics.Path().apply { moveTo(cx - r * 0.35f, cy - r * 0.5f); lineTo(cx + r * 0.55f, cy); lineTo(cx - r * 0.35f, cy + r * 0.5f); close() }, mark)
+            }
         }
         c.restore()
     }

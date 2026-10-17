@@ -18,7 +18,8 @@ internal object SlidesEdit {
         /** a chart (Insert › Chart, Words' chart editor): its kind, numbers and looks */ val chart: DocChart? = null,
         /** an equation (Insert › Equation, Words' editor): [image] is it drawn, PowerPoint's fallback and LibreOffice's replacement */ val math: MathNode? = null,
         /** a text box's words with looks of their own (References' list, Contents): a paragraph each, its runs (italic, a link "slide:uid" or a web address);
-         *  [hang] each paragraph's hanging indent (pt), as a reference list's */ val runs: List<List<DocRun>> = emptyList(), val hang: Float = 0f)
+         *  [hang] each paragraph's hanging indent (pt), as a reference list's */ val runs: List<List<DocRun>> = emptyList(), val hang: Float = 0f,
+        /** Insert › Video: the film (a copy on the phone, or a web address), [image] its picture */ val video: String? = null)
     /** A shape's looks as chosen (asked 16 Oct): its fill, border and words' colour — [NONE] taken away, null as the file has it. */
     data class Look(val fill: Int? = null, val line: Int? = null, val text: Int? = null,
         /** Home (17 Oct, Words' tools): every letter's face, size, bold, italic, underline, strike-through, highlight ([NONE]: taken away) — null: as they are */
@@ -136,7 +137,7 @@ internal object SlidesEdit {
         is SlideItem.Shape -> SlideItem.Shape(item.x, item.y, item.w, item.h, t.deg, item.shape, item.text, item.paths, t.flipH, t.flipV, item.gradient, item.id, item.hint)
         is SlideItem.Picture -> SlideItem.Picture(item.x, item.y, item.w, item.h, t.deg, item.crop, item.math, t.flipH, t.flipV, item.bytes)
         else -> item
-    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
+    }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
     /** [items] in [stack]'s order from the back (the layout's and master's under them all, one not in it on top). */
     fun stacked(items: List<SlideItem>, stack: List<String>?): List<SlideItem> = if (stack == null) items else
         items.sortedBy { i -> i.anim?.let { a -> stack.indexOf(a).let { if (it < 0) Int.MAX_VALUE else it } } ?: -1 }
@@ -167,7 +168,7 @@ internal object SlidesEdit {
             is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.flipH, item.flipV, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
-        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
+        }.also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
     }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
@@ -184,11 +185,11 @@ internal object SlidesEdit {
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp) }
-                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
+                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
-            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f, null, a.math) { runCatching { File(a.image).readBytes() }.getOrNull() }
+            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f, null, a.math) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { it.media = a.video }
             else {
                 // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
                 val box = a.prst == TEXT_BOX
@@ -253,7 +254,7 @@ internal object SlidesEdit {
         l?.objectLink?.let { item.link = it.ifEmpty { null } }
         if ((l?.crop != null || l?.image != null) && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation,
             l.crop?.toFloatArray()?.takeIf { c -> c.any { it != 0f } } ?: item.crop.takeIf { l.crop == null },
-            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
+            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
@@ -261,7 +262,7 @@ internal object SlidesEdit {
         val text = item.text?.let { looked(it, l) }
         // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
-        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link }
+        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.alt = item.alt; it.link = item.link; it.media = item.media }
     }
     /** A table put on a slide, as PowerPoint's default style shows it: the first row in the accent, the others banded. */
     fun table(a: Added, look: Look? = null): SlideItem.Table {
@@ -460,6 +461,10 @@ internal object SlidesEdit {
                         """<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>""" + (a.cells.getOrNull(r * a.cols + c)?.takeIf { it.isNotEmpty() }?.let { """<a:r>$rPr<a:t>${esc(it)}</a:t></a:r>""" } ?: """<a:endParaRPr lang="el-GR" sz="1400"/>""") +
                             "</a:p></a:txBody><a:tcPr>${look?.fill?.takeIf { it != NONE }?.let { solid(cellFill(it, r)) }.orEmpty()}</a:tcPr></a:tc>"
                     } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+                // a video as PowerPoint's Insert › Video makes one: its picture, the film linked (and embedded), a tap playing it
+                else if (a.video != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Video ${a.id}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr>""" +
+                    """<a:videoFile r:link="${rels["video ${a.id}"]}"/>""" + (rels["media ${a.id}"]?.let { """<p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DA1E1DFA6BE}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="$it"/></p:ext></p:extLst>""" } ?: "") +
+                    """</p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 // a text box as PowerPoint's Insert › Text Box makes it: no fill, words from the top left, the box fitting them
                 else if (a.prst == TEXT_BOX) """<p:sp $ns><p:nvSpPr><p:cNvPr id="${a.id}" name="TextBox ${a.id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0"><a:spAutoFit/></a:bodyPr><a:lstStyle/>""" +
@@ -917,7 +922,20 @@ internal object SlidesEdit {
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "object $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
                 else "object $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             } }.toMap()
-            val ids = objectLinks + runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
+            // a video put on: its film a media part (both of PowerPoint's relationships to it), or its web address linked
+            val videos = added.filter { it.video != null }.flatMap { a -> val v = a.video!!
+                fun relTo(type: String, target: String, external: Boolean = false): String {
+                    val taken = relsXml.documentElement.kids().map { it.getAttribute("Id") }.toSet(); val rid = generateSequence(1) { it + 1 }.map { "rId$it" }.first { it !in taken }
+                    relsXml.documentElement.appendChild(relsXml.createElementNS(relsXml.documentElement.namespaceURI, "Relationship").apply { setAttribute("Id", rid); setAttribute("Type", type); setAttribute("Target", target); if (external) setAttribute("TargetMode", "External") })
+                    return rid
+                }
+                if (v.startsWith("http")) listOf("video ${a.id}" to relTo("$relNs/video", v, true))
+                else { val ext = v.substringAfterLast('.', "mp4").lowercase().ifEmpty { "mp4" }; val name = "tetra${nextMedia++}.$ext"
+                    out["ppt/media/$name"] = File(v).readBytes()
+                    if (!Regex("""<Default Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut)) typesOut = typesOut.replace("</Types>", """<Default Extension="$ext" ContentType="video/${if (ext == "mov") "quicktime" else ext}"/></Types>""")
+                    listOf("video ${a.id}" to relTo("$relNs/video", "../media/$name"), "media ${a.id}" to relTo("http://schemas.microsoft.com/office/2007/relationships/media", "../media/$name")) }
+            }.toMap()
+            val ids = videos + objectLinks + runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "link $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }
                 else "link $id" to rel(relsXml, "hyperlink", to).also { rid -> relsXml.documentElement.kids().first { it.getAttribute("Id") == rid }.setAttribute("TargetMode", "External") }
             } }

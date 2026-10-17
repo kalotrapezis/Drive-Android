@@ -96,4 +96,55 @@ internal object SheetVisibility {
             SheetSave.rezip(zip, target, mapOf("settings.xml" to x.toByteArray()), "mimetype")
         }
     }
+
+    /** View › Freeze panes (Excel's): sheet part [sheetPart]'s first view with [rows] rows and [cols] columns kept still (none: unfrozen). */
+    fun freezeXlsx(source: File, target: File, sheetPart: String, rows: Int, cols: Int) {
+        ZipFile(source).use { zip ->
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            val active = when { rows > 0 && cols > 0 -> "bottomRight"; rows > 0 -> "bottomLeft"; else -> "topRight" }
+            val pane = if (rows <= 0 && cols <= 0) "" else "<pane" + (if (cols > 0) " xSplit=\"$cols\"" else "") + (if (rows > 0) " ySplit=\"$rows\"" else "") +
+                " topLeftCell=\"${Sheets.colName(cols)}${rows + 1}\" activePane=\"$active\" state=\"frozen\"/>"
+            val view = Regex("""<sheetView\b[^>]*?(?:/>|>[\s\S]*?</sheetView>)""").find(x)
+            x = if (view != null) {
+                val open = Regex("""<sheetView\b[^>]*?(/?)>""").find(view.value)!!
+                // the old pane and the selections that name panes go; the new pane first, as the schema has it
+                val inner = if (open.groupValues[1] == "/") "" else view.value.substring(open.value.length).removeSuffix("</sheetView>")
+                    .replace(Regex("""<pane\b[^>]*/>"""), "").replace(Regex("""<selection\b[^>]*\bpane="[^"]*"[^>]*/>"""), "")
+                x.replaceRange(view.range, open.value.removeSuffix("/>").removeSuffix(">") + ">" + pane + inner + "</sheetView>")
+            } else if (pane.isEmpty()) x else x.replaceFirst(Regex("""<(sheetFormatPr|cols|sheetData)\b"""), """<sheetViews><sheetView workbookViewId="0">$pane</sheetView></sheetViews><$1""")
+            SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray()), null)
+        }
+    }
+
+    /** LibreOffice: sheet [name]'s view entry with [rows] rows and [cols] columns kept still (its split settings; none: unfrozen). */
+    fun freezeOds(source: File, target: File, name: String, rows: Int, cols: Int) {
+        ZipFile(source).use { zip ->
+            var x = zip.getEntry("settings.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No view settings in this file.")
+            val items = linkedMapOf("HorizontalSplitMode" to ("short" to if (cols > 0) 2 else 0), "VerticalSplitMode" to ("short" to if (rows > 0) 2 else 0),
+                "HorizontalSplitPosition" to ("int" to cols), "VerticalSplitPosition" to ("int" to rows), "ActiveSplitRange" to ("short" to if (rows > 0) 2 else if (cols > 0) 3 else 2),
+                "PositionLeft" to ("int" to 0), "PositionRight" to ("int" to cols), "PositionTop" to ("int" to 0), "PositionBottom" to ("int" to rows))
+            fun item(k: String, t: String, v: Int) = """<config:config-item config:name="$k" config:type="$t">$v</config:config-item>"""
+            // a file LibreOffice wrote without a window has no view's sheets: LibreOffice's Views › Tables made
+            if (!x.contains("""config:name="Tables"""")) {
+                val tablesMap = """<config:config-item-map-named config:name="Tables"></config:config-item-map-named>"""
+                x = when {
+                    Regex("""<config:config-item-map-indexed config:name="Views">\s*<config:config-item-map-entry>""").containsMatchIn(x) ->
+                        x.replaceFirst(Regex("""(<config:config-item-map-indexed config:name="Views">\s*<config:config-item-map-entry>)"""), "$1$tablesMap")
+                    x.contains("""config:name="ooo:view-settings">""") -> x.replaceFirst("""config:name="ooo:view-settings">""",
+                        """config:name="ooo:view-settings"><config:config-item-map-indexed config:name="Views"><config:config-item-map-entry><config:config-item config:name="ViewId" config:type="string">view1</config:config-item>$tablesMap</config:config-item-map-entry></config:config-item-map-indexed>""")
+                    else -> error("No view settings in this file to keep that in.")
+                }
+            }
+            val tables = Regex("""<config:config-item-map-named config:name="Tables">[\s\S]*?</config:config-item-map-named>""").find(x) ?: error("No view settings in this file to keep that in.")
+            val entry = Regex("""(<config:config-item-map-entry config:name="${Regex.escape(OfficeFormats.esc(name))}">)([\s\S]*?)(</config:config-item-map-entry>)""").find(x, tables.range.first)?.takeIf { it.range.last <= tables.range.last }
+            x = if (entry != null) {
+                var body = entry.groupValues[2]
+                for ((k, tv) in items) { val one = Regex("""<config:config-item config:name="$k" config:type="\w+">[^<]*</config:config-item>""")
+                    body = if (one.containsMatchIn(body)) one.replace(body, item(k, tv.first, tv.second)) else body + item(k, tv.first, tv.second) }
+                x.replaceRange(entry.range, entry.groupValues[1] + body + entry.groupValues[3])
+            } else x.replaceRange(tables.range, tables.value.replace("</config:config-item-map-named>",
+                """<config:config-item-map-entry config:name="${OfficeFormats.esc(name)}">""" + items.entries.joinToString("") { (k, tv) -> item(k, tv.first, tv.second) } + "</config:config-item-map-entry></config:config-item-map-named>"))
+            SheetSave.rezip(zip, target, mapOf("settings.xml" to x.toByteArray()), "mimetype")
+        }
+    }
 }

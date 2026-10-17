@@ -696,6 +696,28 @@ class SheetSaveTest {
         }
     }
 
+    /** View › Freeze panes kept in the file: two rows and a column, read back and by LibreOffice; the top row; unfrozen. */
+    @Test fun `panes frozen`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("freeze").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val b0 = Sheets.read(f, ',', '.')
+            fun step(rows: Int, cols: Int) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetVisibility.freezeXlsx(f, next, b0.parts.getValue("0"), rows, cols) else SheetVisibility.freezeOds(f, next, b0.tabs[0].name, rows, cols); f = next }
+            fun frozen(file: File) = Sheets.read(file, ',', '.').sheet(0).let { it.frozenRows to it.frozenCols }
+            step(2, 1); assertEquals(name, 2 to 1, frozen(f))
+            // LibreOffice run without a window writes no view settings into an .ods: only its .xlsx can carry a freeze
+            if (lo && name.endsWith("ods")) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("LibreOffice's $other of $name", 2 to 1, frozen(conv.listFiles()!!.single { it.extension == other }))
+            }
+            step(1, 0); assertEquals(name, 1 to 0, frozen(f))
+            step(0, 0); assertEquals(name, 0 to 0, frozen(f))
+        }
+    }
+
     @Test fun xlsx() = edit("sheet.xlsx")
     @Test fun ods() = edit("sheet.ods")
 

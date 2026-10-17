@@ -1286,8 +1286,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Workbook statistics", w, R.drawable.ic_numbers) { counting = true }
                         }
                         shown == "View" -> {
-                            RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
-                            if (l.frozenRows > 0) RibbonButton("Let them scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
+                            if (editing && b.kind != "csv") {
+                                // Excel's Freeze panes, kept in the file: the rows above and columns left of the chosen cell, the top row, the first column
+                                fun freeze(rows: Int, cols: Int) { val i = index
+                                    fileStep(if (rows + cols > 0) "panes frozen" else "panes unfrozen", { baked, next, bb -> if (bb.kind == "xlsx") SheetVisibility.freezeXlsx(baked, next, bb.parts.getValue("$i"), rows, cols)
+                                        else SheetVisibility.freezeOds(baked, next, bb.tabs[i].name, rows, cols) }) { view.freeze = null; view.y = 0f; view.x = 0f } }
+                                RibbonButton("Freeze panes", w, R.drawable.ic_push_pin) { freeze(cr, cc) }
+                                RibbonButton("Freeze top row", w, R.drawable.ic_push_pin) { freeze(1, 0) }
+                                RibbonButton("Freeze first column", w, R.drawable.ic_push_pin) { freeze(0, 1) }
+                                if (s.frozenRows > 0 || s.frozenCols > 0) RibbonButton("Unfreeze", w, R.drawable.ic_close) { freeze(0, 0) }
+                            } else {
+                                RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
+                                if (l.frozenRows > 0) RibbonButton("Let them scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
+                            }
                             RibbonDivider(w)
                             RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
                             RibbonDivider(w)

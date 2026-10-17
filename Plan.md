@@ -78,11 +78,12 @@ How to write here:
       Trace and error checking (b924d9c), newer functions' file names (51544bb),
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
-      Sources sheet (116c4d6), Review tab. Checks at a925139: unit
+      Sources sheet (116c4d6), Review tab (b39004e),
+      freeze panes. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics).
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics), View › Freeze panes.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -905,6 +906,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       HasColumnRowHeaders (the whole file's: its headings are one setting); read too (`Sheet.headings`), and off the grid has no
       letters and numbers, the cells from the edge, as Excel. `SheetVisibility.gridXlsx`/`gridOds` take the setting's name.
       `headings off and on` (both formats; LibreOffice carries them both ways); emulator: an .ods's off and on.
+      Freeze panes kept in the file done (office-F session, 18 Oct): View › Freeze panes (the rows above and columns left of the chosen
+      cell), Freeze top row, Freeze first column, Unfreeze while editing — Excel's frozen pane in the sheet view, LibreOffice's split
+      settings in the sheet's view entry (its Views › Tables made when a file has none, as LibreOffice run without a window writes
+      them). Viewing alone keeps the view-only "Keep rows above at the top". `panes frozen` (both formats; LibreOffice's .xlsx of the
+      .ods keeps it — its .ods made without a window keeps no view at all); emulator: C3 frozen in an .ods.
 - [x] **References**, where it makes sense: a **contents sheet** listing every sheet as a link (`#'Sheet'!A1`), for
       workbooks with many sheets; a **Sources sheet** of where the data came from, in the chosen style, with Words'
       dialogs. In-text citations in cells: not planned unless asked.

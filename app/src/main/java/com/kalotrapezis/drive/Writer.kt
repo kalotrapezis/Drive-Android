@@ -3189,7 +3189,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 if (!phone && loaded) {
                     Text((if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
                         else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces))
-                        + (if (file != null && !viewing) " · " + saveState(saving, dirty) + (if (autoSave && dirty && !saving) " (AutoSave on)" else "") else ""),
+                        + (if (file != null && !viewing) " · " + saveState(saving, dirty) + (if (autoSave && dirty && !saving) " (AutoSave on)" else "") else "")
+                        + (file?.extension?.let { " · .$it" } ?: ""),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
@@ -3205,11 +3206,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
                     RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
                 } else {
-                Tool(R.drawable.ic_visibility, "Pages", w, enabled = loaded) { commitCell(); viewing = true }
                 Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
                 Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }
                 Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo || redone.isNotEmpty()) { redo() }
                 Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
+                // Done at the far right, back to the pages, as Tables' and Slides' (17 Oct; it was an eye, "Pages", before Find)
+                Tool(R.drawable.ic_check, "Done", w, enabled = loaded) { commitCell(); viewing = true }
                 }
             }
             if (loaded && meta.unsupported.isNotEmpty()) {

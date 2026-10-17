@@ -18,7 +18,8 @@ How to write here:
 - [x] (4a6d7b1) A: the same File in all three; Slides gets Versions, Export PDF, Print, About, Send log (office-parity builder, 17 Oct).
 - [x] (5e8b4e8) A: an icon on every action in Tables' and Slides' ribbons (office-parity builder, 17 Oct).
 - [x] (66b4b5a) A: strips open alike, ‹ and a name in the ribbon's place (office-parity builder, 17 Oct).
-- [x] (next commit) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
+- [x] (4ddb8da) A: one set of colours, one font button, one size stepper (office-parity builder, 17 Oct).
+- [x] (next commit) A: the top bar alike; Slides keeps a recovery draft (office-parity builder, 17 Oct).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -81,9 +82,15 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       (white added, for dark fills and slides), `HIGHLIGHT_COLOURS`, `CELL_FILLS` (Words' table shading and Tables'
       Fill) and Words' `SHAPE_COLOURS` for a slide's shapes (`SLIDE_COLOURS` gone); `FontButton` and `SizeStepper` in
       Words and Tables (Tables: font then size, as Words'). Slides gets them with B's Home. Emulator 17 Oct.
-- [ ] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded
+- [x] The top bar: Undo, Redo, Save and Done in the same places; the status text (counts, Saved / Not saved) worded
       alike. View-only on opening with Edit, the Save / Don't save question on leaving, recovery drafts and versions
       behave the same in all three.
+      Done: Words' eye ("Pages", before Find) is Done ✓ at the far right, where Edit stands when viewing, as in Tables
+      and Slides; the unsaved dot before the name in all three (Words' "• name"); Words' status ends with the file type
+      as the others' (".docx"); **Slides keeps a recovery draft** when sent to the background with changes (it had
+      none): reopened, "Your unsaved changes are back", unsaved — Save keeps them, Don't save drops them. View-only on
+      opening, the leave question and Versions were already alike. Emulator 17 Oct (draft: hid a slide, Home, killed
+      the app, reopened, saved — LibreOffice skips the hidden slide).
 - [ ] Keyboard shortcuts and right-click menus the same where the action is the same (Ctrl+F, Ctrl+C/V, Delete).
 - [ ] Messages, empty states and dialogs in one style; English only (memory: UI English only).
 

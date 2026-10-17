@@ -903,7 +903,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                     val unsaved = version >= 0 && history.unsaved > 0
                     Column(Modifier.weight(1f)) {
-                        Text((file?.name ?: "New spreadsheet") + if (unsaved) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text((if (unsaved) "• " else "") + (file?.name ?: "New spreadsheet"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(if (saving) "Saving…" else if (editing) "Editing" else "View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
                     }
                     val b0 = book

@@ -136,6 +136,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         WriterLog.i("Slides: open .${f.extension} of ${f.length() / 1024} KB")
         load(f).onSuccess { deck = it; edit = SlidesEdit.start(it); saved = edit; WriterLog.i("Slides: ${it.slides.size} slides, ${it.slides.sumOf { s -> s.items.size }} shapes") }
             .onFailure { WriterLog.e("Slides: could not open", it); failed = "This presentation could not be opened." }
+        // Changes not saved when the app was closed: the draft opened in their place, unsaved; one older than the file (saved since) goes.
+        val kept = slideDraft(context, f).takeIf { it.isFile } ?: return@LaunchedEffect
+        if (deck == null || kept.lastModified() <= f.lastModified()) { kept.delete(); return@LaunchedEffect }
+        val copy = withContext(Dispatchers.IO) { kept.copyTo(File(context.cacheDir, "slide-draft-${System.nanoTime()}.${f.extension}"), overwrite = true) }
+        load(copy).onSuccess { d -> source = copy; deck = d; edit = SlidesEdit.start(d); saved = null; editing = true
+            message = "Your unsaved changes are back. Leave without saving to have the file as saved."; WriterLog.i("Slides: recovery draft opened") }
+            .onFailure { WriterLog.e("Slides: recovery draft", it) }
     }
     val changed = edit != saved
     // Design › a theme: a copy of the file with it, read once (the deck shown and saved from it while it is chosen)
@@ -170,7 +177,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 Slides.read(f)
             } }
             saving = false
-            result.onSuccess { nd -> deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
+            result.onSuccess { nd -> slideDraft(context, f).delete(); deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = null; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -239,7 +246,28 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::putPicture) }
-    fun leave() { if (changed) leaving = true else back() }
+    fun leave() { if (changed) leaving = true else { file?.let { slideDraft(context, it).delete() }; back() } }
+    // The app sent to the background with changes not saved (Android may close it then): kept as a draft, as Words' and Tables'.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            val f = file; val e = edit
+            if (ev != androidx.lifecycle.Lifecycle.Event.ON_STOP || f == null || e == null || saving) return@LifecycleEventObserver
+            val draft = slideDraft(context, f)
+            if (e == saved) { draft.delete(); return@LifecycleEventObserver }
+            val d = e.theme?.let { themed[it]?.second } ?: deck ?: return@LifecycleEventObserver
+            val from = e.theme?.let { themed[it]?.first } ?: source ?: f
+            scope.launch(Dispatchers.IO) { runCatching {
+                draft.parentFile?.mkdirs()
+                val temp = File(draft.parentFile, ".${draft.name}.saving")
+                if (f.extension.equals("odp", true)) SlidesOdpEdit.save(from, d, e, temp) else SlidesEdit.save(from, d, e, temp)
+                check(temp.renameTo(draft)) { "Could not keep the draft." }
+                WriterLog.i("Slides: recovery draft kept, ${draft.length() / 1024} KB")
+            }.onFailure { WriterLog.e("Slides: recovery draft", it) } }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     fun typeInto(hit: SlideItem.Shape) { val t = if (hit.hint) "" else SlidesEdit.lines(hit).joinToString("\n"); typing = hit to androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }
     // a desktop's notes pane let go when a shape or another slide is clicked: the keys are the slide's again (Delete deletes the shape)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -541,7 +569,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
-                    Text((file?.name ?: "Presentation") + if (changed) " •" else "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text((if (changed) "• " else "") + (file?.name ?: "Presentation"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     view?.let { Text(if (editing) "Editing" else "${it.slides.size} slide${if (it.slides.size == 1) "" else "s"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
                 }
                 if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) view?.let { v ->
@@ -930,10 +958,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     if (themesPage) ThemesDialog(edit?.theme, { themesPage = false }) { t -> themesPage = false; edit?.let { change(it.copy(theme = t)) } }
     if (leaving) androidx.compose.material3.AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
-        text = { Text(if (source != null) "The version opened is not saved over ${file?.name ?: "this presentation"}." else "${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
+        text = { Text(if (undos.isEmpty()) "Your changes to ${file?.name ?: "this presentation"} are not saved." else "${undos.size} change${if (undos.size == 1) "" else "s"} to ${file?.name ?: "this presentation"} are not saved.") },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
         dismissButton = { Row {
-            androidx.compose.material3.TextButton(onClick = { leaving = false; WriterLog.i("Slides: left without saving"); back() }) { Text("Don't save") }
+            androidx.compose.material3.TextButton(onClick = { leaving = false; file?.let { slideDraft(context, it).delete() }; WriterLog.i("Slides: left without saving"); back() }) { Text("Don't save") }
             androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text("Cancel") }
         } })
     val d = view
@@ -1375,3 +1403,7 @@ internal fun ThemeCard(t: SlideTheme, chosen: Boolean, modifier: Modifier = Modi
         }
     }
 }
+
+/** Changes not yet saved, kept when the app went to the background: one per presentation (by its path), in the app's storage. */
+private fun slideDraft(context: android.content.Context, file: File) =
+    File(File(context.filesDir, "slide-drafts"), "${file.absolutePath.hashCode().toUInt()}.${file.extension}")

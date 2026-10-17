@@ -79,10 +79,10 @@ How to write here:
       dynamic arrays (dc739be), row groups (40132d5), subtotals (ed52400), shapes (8bf77b9),
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
       Sources sheet (116c4d6), Review tab (b39004e),
-      freeze panes. Checks at a925139: unit
+      freeze panes (e621ff6). Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
-      failing. Emulator only. For the tablet too: Tables › Page
+      failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics), View › Freeze panes.
 - Other sessions: add your line here when you start.
 

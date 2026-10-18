@@ -215,9 +215,12 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       Show › Notes, a toggle of its own beside the views.
 - [x] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers. Now each line at its level, its
       bullet or number before it (drawn only; the words typed as before).
-- [ ] 15. Shadow "Offset: bottom right" barely visible in Slides, clear in Words — draw the same.
-- [ ] 16. Slides › Ungroup leaves nothing chosen (PowerPoint keeps the pieces); Undo after Paragraph drops the choice.
-- [ ] 17. Slides: a table cell being typed is not marked on the slide.
+- [-] 15. Shadow "Offset: bottom right" barely visible in Slides, clear in Words — draw the same. They are drawn by one function
+      (`ShapePicture.shadowOf`: 3 pt down-right, 40 % black, as the file says); a slide is ~1.6× a page's width, so on screen the same 3 pt
+      looks smaller — as in PowerPoint next to Word. Kept as the file has it (deliberate; ask the user if a stronger look is wanted).
+- [x] 16. Slides › Ungroup leaves nothing chosen (PowerPoint keeps the pieces); Undo after Paragraph drops the choice. Now the pieces
+      stay chosen; Undo and Redo keep what is chosen while it is still on the slide.
+- [x] 17. Slides: a table cell being typed is not marked on the slide. Now outlined and tinted in the app's colour.
 - [ ] 18. The ribbon's height jumps a few px between tabs (Slides Home vs Group/Shape; Tables Home vs View).
 - [ ] 19. Some ribbons centred (Design, Arrange, Sheet), others from the left (View) when they fit — one.
 - [ ] 20. Words' contextual tab row lacks Selection / × at its start when a shape is chosen (Slides and Tables have it).

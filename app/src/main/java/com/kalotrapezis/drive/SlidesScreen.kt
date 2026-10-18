@@ -851,8 +851,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         look?.let { l -> edit?.let { now -> edit = now.copy(looks = now.looks + ((uid to id) to l)) } }
         WriterLog.i("Slides: an item pasted")
     }
-    fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
-    fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; item = null; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)) } }
+    // what is chosen stays chosen when it is still on the slide (the tablet walk, 18 Oct: Undo after Paragraph let it go)
+    fun stillThere(e: SlidesEdit.Edit) { val d = deck; val c = chosen; val id = item
+        if (d == null || c == null || id == null || SlidesEdit.slide(d, e, e.order.getOrNull(c) ?: return).items.none { it.anim == id }) { item = null } }
+    fun undoEdit() { undos.removeLastOrNull()?.let { edit?.let(redos::add); edit = it; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)); stillThere(it) } }
+    fun redoEdit() { redos.removeLastOrNull()?.let { edit?.let(undos::add); edit = it; chosen = chosen?.coerceAtMost((it.order.size - 1).coerceAtLeast(0)); stillThere(it) } }
     /** The tools of the ribbon's tab [tab], for slide [c] of [e]. */
     /** Aa on [box]: its lines in [case] (Words' change case), as one step of Undo; each letter keeps its look (as typed words do). */
     fun recase(box: SlideItem.Shape, case: WriterBridge.Case) {
@@ -997,7 +1000,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 // a group (the file's or made here): taken apart, each thing where it is
                 if (it0?.grouped == true) { RibbonButton("Ungroup", w, R.drawable.ic_group_objects) { val d = base ?: return@RibbonButton
-                    change(SlidesEdit.ungrouped(d, e, entry, item!!)); item = null; WriterLog.i("Slides: ungrouped") }; RibbonDivider(w) }
+                    // the pieces stay chosen, as PowerPoint leaves them (the tablet walk, 18 Oct)
+                    val gid = item!!; val pieces = e.groups[entry.uid]?.get(gid) ?: view?.slides?.getOrNull(c)?.items?.filter { it.anim == gid }?.mapNotNull { it.own }?.distinct().orEmpty()
+                    change(SlidesEdit.ungrouped(d, e, entry, gid)); item = pieces.firstOrNull(); more = pieces.drop(1); WriterLog.i("Slides: ungrouped") }; RibbonDivider(w) }
                 if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
                 // a shape of the deck's with no words: Add text (PowerPoint's), typed as a box's words are
                 else if (a == null && it0 is SlideItem.Shape && it0.text == null && it0.id != null && !it0.grouped) RibbonButton("Add text", w, R.drawable.ic_text_fields) { typeInto(it0) }
@@ -1811,6 +1816,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             drawRect(POWERPOINT_ORANGE, androidx.compose.ui.geometry.Offset(a.x * k, a.y * k), androidx.compose.ui.geometry.Size(a.w * k, a.h * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                             val c = androidx.compose.ui.geometry.Offset((a.x + a.w) * k, (a.y + a.h) * k)
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
+                            // the table's cell being typed in, marked (the tablet walk, 18 Oct)
+                            cellEdit?.let { (n, _) -> edit?.let { ee -> ee.added[ee.order[i].uid]?.firstOrNull { it.id == item && it.prst == "table" } }?.let { t ->
+                                val cw = t.w / t.cols; val ch = t.h / t.rows
+                                val at = androidx.compose.ui.geometry.Offset((t.x + n % t.cols * cw) * k, (t.y + n / t.cols * ch) * k); val sz = androidx.compose.ui.geometry.Size(cw * k, ch * k)
+                                drawRect(POWERPOINT_ORANGE.copy(alpha = 0.2f), at, sz); drawRect(POWERPOINT_ORANGE, at, sz, style = androidx.compose.ui.graphics.drawscope.Stroke(2.5f.dp.toPx())) } }
                         } }
                         filming?.takeIf { it.first == i }?.second?.let { v -> androidx.compose.foundation.layout.BoxWithConstraints(Modifier.matchParentSize()) { val k = maxWidth / d.width
                             VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn), v.trim) { filming = null } } }

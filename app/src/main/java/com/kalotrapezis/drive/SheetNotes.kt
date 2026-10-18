@@ -38,6 +38,10 @@ internal object SheetNotes {
                 comments = comments.replace(Regex("""<commentList\s*/>"""), "<commentList></commentList>").replace("</commentList>", "$body</commentList>")
             }
             out[commentsPath] = comments.toByteArray()
+            // Excel 365's threaded comment on the cell (read with its replies) goes with it: the note takes its place, else Excel
+            // would show the old thread over it. shortcut: no replies written (no Excel here to check them); upgrade when one is asked for
+            target("threadedComment")?.let { p -> read(p)?.let { t ->
+                out[p] = t.replace(Regex("""<threadedComment\b[^>]*\bref="$ref"[^>]*?(?:/>|>[\s\S]*?</threadedComment>)"""), "").toByteArray() } }
             // the VML drawing Excel shows notes by: a note shape per comment
             val vmlPath = target("vmlDrawing") ?: generateSequence(1) { it + 1 }.map { "xl/drawings/vmlDrawing$it.vml" }.first { zip.getEntry(it) == null }.also { p ->
                 val id = freeId()

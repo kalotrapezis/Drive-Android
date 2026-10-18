@@ -316,6 +316,24 @@ class SheetSaveTest {
         }
     }
 
+    /** Excel 365's threaded comment, read with its replies; a note put on its cell takes its place (the thread gone, not left stale). */
+    @Test fun `a threaded comment read and a note put in its place`() {
+        val parts = OfficeFormats.unzip(resource("sheet.xlsx"))
+        val rels = "xl/worksheets/_rels/sheet1.xml.rels"
+        parts[rels] = String(parts.getValue(rels)).replace("</Relationships>",
+            """<Relationship Id="rId9" Type="http://schemas.microsoft.com/office/2017/10/relationships/threadedComment" Target="../threadedComments/threadedComment1.xml"/></Relationships>""").toByteArray()
+        parts["xl/threadedComments/threadedComment1.xml"] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ThreadedComments xmlns="http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><threadedComment ref="A2" dT="2026-10-01T10:00:00.00" personId="{11111111-1111-1111-1111-111111111111}" id="{22222222-2222-2222-2222-222222222222}"><text>Is this right?</text></threadedComment><threadedComment ref="A2" dT="2026-10-01T11:00:00.00" personId="{33333333-3333-3333-3333-333333333333}" id="{44444444-4444-4444-4444-444444444444}" parentId="{22222222-2222-2222-2222-222222222222}"><text>Yes</text></threadedComment></ThreadedComments>""".toByteArray()
+        parts["xl/persons/person.xml"] = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><personList xmlns="http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments"><person displayName="Ann" id="{11111111-1111-1111-1111-111111111111}" userId="Ann" providerId="None"/><person displayName="Bob" id="{33333333-3333-3333-3333-333333333333}" userId="Bob" providerId="None"/></personList>""".toByteArray()
+        val dir = Files.createTempDirectory("thread").toFile()
+        val f = File(dir, "t.xlsx").apply { writeBytes(OfficeFormats.zip(parts)) }
+        val b = Sheets.read(f, ',', '.')
+        assertEquals("Ann: Is this right?\nBob: Yes", b.sheet(0)[1, 0]?.note)
+        val next = File(dir, "n.xlsx"); SheetNotes.xlsx(f, next, b.parts.getValue("0"), 1, 0, "Teo", "Fixed")
+        val note = Sheets.read(next, ',', '.').sheet(0)[1, 0]?.note.orEmpty()
+        assertTrue(note, "Fixed" in note && "Is this right" !in note)
+        assertFalse(String(OfficeFormats.unzip(next.readBytes()).getValue("xl/threadedComments/threadedComment1.xml")).contains("<threadedComment "))
+    }
+
     /** Notes on cells (Excel's comments and VML note shapes, LibreOffice's annotations): made where there were some and where none, one taken away. */
     @Test fun `notes made and taken away`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

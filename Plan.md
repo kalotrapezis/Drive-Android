@@ -987,7 +987,7 @@ what is not already above:
       working-out tried by the secant method, then put back; the found value one change). `goal sought`; emulator: B3 made 765.5 so
       B5 is 2000; sort.csv imported at F8. Clear filter was there (a column's tab, its chip); Data › Reapply (while a filter or sort is
       on) works them out again on the cells as they are now, as Excel's.
-- [~] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
+- [x] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
       Done (office-F session, 18 Oct): Previous / Next note, Workbook statistics, Protect sheet (above); Show all notes (each
       note in Excel's yellow box beside its cell, drawn over the cells, frozen rows' and columns' too). Emulator: A2's note shown.
@@ -995,6 +995,10 @@ what is not already above:
       a password or none): Excel's workbookProtection lockStructure (SHA-512 as Protect sheet), LibreOffice's structure-protected
       (`SheetProtect.bookXlsx` / `bookOds`; `a workbook's structure protected and unprotected`). LibreOffice keeps it in an .ods,
       but its .xlsx filter neither reads nor writes Excel's lock (26.2). Emulator: + refused while protected, then unprotected.
+      Threaded comments (Excel 365's) are read with their replies ("Ann: …" a line each); a note put on, changed or cleared on
+      such a cell now takes the thread away too, so Excel shows the note, not the old thread over it (`a threaded comment read
+      and a note put in its place`). Not written: replies (none of the user's 29 workbooks has a thread, and no Excel here to
+      check one) — later, when asked. Accessibility check: later, as planned.
 - [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
       columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
       Done (office-F session, 18 Oct) but the page views: freezing (above, kept in the file); View › Zoom to selection (the chosen

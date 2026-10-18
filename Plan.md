@@ -186,6 +186,8 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 **The tablet walk, 18 Oct 07:10–07:50 (main session, build 19781a2 on 971f6b37)** — fixed by the office-strips session in this order:
 - [x] 1. Slides › Home › Paragraph: OK with only Line spacing changed puts the first paragraph's indent on every paragraph (sub-points
       lose their level). Only the fields changed are applied.
+- [x] (the user, 18 Oct: "add a select mode in tables under selection") Tables › Selection › Select cells: while on, one finger dragged
+      chooses cells at once (no long press); two fingers still move and zoom. Off: a long press, then drag, as before.
 - [ ] 2. Slides › Multilevel: the "1. / 1.1. / 1.1.1." card gives "1." at level 2 — draw what the card shows, or drop the card for slides.
 - [ ] 3. Slides: no gap between a number and its words ("1.Read") in the editor while unsaved; saved, level 2 has it, level 1 not. One renderer.
 - [ ] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares

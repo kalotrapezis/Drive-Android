@@ -1198,6 +1198,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                             copyClear()
                             RibbonButton("Select all", w, R.drawable.ic_select_all) { header = null; view.range = SheetRange(0, 0, l.rows.lastIndex, l.cols.lastIndex) }
+                            // Select cells (the user, 18 Oct): while on, a finger dragged across the sheet chooses cells at once, no long press;
+                            // two fingers still move and zoom it
+                            RibbonButton("Select cells", w, R.drawable.ic_select_all, on = view.selectMode) {
+                                view.selectMode = !view.selectMode; message = if (view.selectMode) "Drag a finger to choose cells; two fingers move the sheet" else null }
                             // whole rows or columns chosen: put in or taken out together
                             if (g != null && editing && g.c1 == 0 && g.c2 == l.cols.lastIndex && view.filters.isEmpty() && view.sort == null) {
                                 RibbonDivider(w)
@@ -2239,6 +2243,7 @@ internal class SheetView {
     var sort by mutableStateOf<SheetSort?>(null)
     var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
+    var selectMode by mutableStateOf(false) // Selection › Select cells: one finger's drag chooses cells without the long press
     var fill by mutableStateOf<SheetRange?>(null) // the fill handle being dragged: the cells it would fill, as drawn
 }
 
@@ -2556,7 +2561,8 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                     tracker.addPosition(down.uptimeMillis, down.position)
                     var moved = false; var pinched = false; var travel = Offset.Zero; var released = false
                     // Held still a moment: a long press, which chooses cells as the finger then moves.
-                    val held = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    // Select cells on: no long press — the first move of one finger chooses cells from where it went down
+                    val held = withTimeoutOrNull(if (view.selectMode) Long.MAX_VALUE else viewConfiguration.longPressTimeoutMillis) {
                         while (true) {
                             val e = awaitPointerEvent()
                             if (e.changes.none { it.pressed }) { released = true; return@withTimeoutOrNull false }
@@ -2566,11 +2572,13 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         }
                         @Suppress("UNREACHABLE_CODE") false
                     } == null
-                    val choosing = held && painter.startRange(view, down.position)
+                    var choosing = (held || (view.selectMode && moved)) && painter.startRange(view, down.position)
                     if (choosing) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     while (!released) {
                         val e = awaitPointerEvent()
                         if (e.changes.none { it.pressed }) break
+                        // a second finger in Select cells: the sheet moved instead
+                        if (choosing && view.selectMode && e.changes.count { it.pressed } > 1) { choosing = false; moved = true }
                         if (choosing) { e.changes.firstOrNull { it.pressed }?.let { painter.extendRange(view, it.position) }; e.changes.forEach { it.consume() }; continue }
                         val zoom = e.calculateZoom(); val pan = e.calculatePan()
                         if (!moved) { travel += pan; if (travel.getDistance() > viewConfiguration.touchSlop || zoom != 1f) moved = true }

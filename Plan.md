@@ -267,8 +267,12 @@ as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbe
 - [x] 5. Search forgives a wrong letter ("Hello" finds "Yellow fill"); Replace / Replace all must change exact matches only. They did
       change only exact ones, but said so badly; now Replace takes the one shown or the next exact one, Replace all every exact one and
       says how many near matches it left as found.
-- [ ] 6. Two strip forms: "‹ title … × ✓" (Slide size, Themes) and "title … Cancel OK" (Colours, Multilevel, Line numbers cards) — one form.
-- [ ] 7. Slide size: the size picked is not shown on the slide before ✓ (Themes and Colours are).
+- [x] 6. Two strip forms: "‹ title … × ✓" (Slide size, Themes) and "title … Cancel OK" (Colours, Multilevel, Line numbers cards) — one form.
+      Now the card strips (`DesignGalleryStrip`: Colours, Fonts, Font, Style sets, WordArt, Page and Line numbers, Header & footer,
+      Multilevel, Drop cap) have the same head: ‹ and the name, × and ✓ at the end; on a phone the head on its own line over the cards.
+- [x] 7. Slide size: the size picked is not shown on the slide before ✓ (Themes and Colours are). Now shown (fitted) at the tap; ✓ asks
+      Maximize or Ensure fit; × puts it back. With other changes unsaved it is only marked (✓ offers Save first, as before).
+      Unit 506, 0 failing, 7 skipped (at this commit). Emulator only; the tablet was not touched.
 
 **Made the same** (one shared component where today each app has its own code):
 - [x] **The tab indicator**: Words drew a bubble behind the chosen tab; Tables and Slides a dash under it. Now one

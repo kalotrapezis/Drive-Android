@@ -143,7 +143,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     // the last card: a page of its own (Page numbers' "Your own…", Drop cap's "More…" as the user named it)
     val moreLabel = if (what == DesignGallery.DropCap) "More…" else "Your own…"
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
-    // The phone (asked 15 Oct): one thin row — smaller cards, Cancel and OK at its ends — and no keyboard over it.
+    // The phone (asked 15 Oct): smaller cards, the head on its own line above them — and no keyboard over it.
     val phone = LocalConfiguration.current.screenWidthDp < 700
     val k = if (phone) 0.7f else 1f
     val keyboard = LocalSoftwareKeyboardController.current
@@ -180,18 +180,21 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
         Tool(R.drawable.ic_add, "More lines", w, enabled = dropLines < 10) { dropLinesChange?.invoke(dropLines + 1) }
     }
     Column(modifier.fillMaxWidth().bottomBarPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
-        if (!phone) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text(what.title, color = w, style = MaterialTheme.typography.titleSmall, modifier = if (what == DesignGallery.Font) Modifier.padding(end = 12.dp) else Modifier.weight(1f))
-            if (what == DesignGallery.Font) { search(Modifier.width(320.dp)); Box(Modifier.weight(1f)) }
-            if (what == DesignGallery.DropCap && dropLinesChange != null) { lines(Modifier.padding(start = 12.dp)); Box(Modifier.weight(1f)) }
-            TextButton(onClick = cancel) { Text("Cancel", color = w) }
-            TextButton(onClick = ok, enabled = chosen != null) { Text("OK", color = if (chosen != null) w else w.copy(alpha = 0.4f)) }
+        // the head every strip has (the second walk, 18 Oct: one form): ‹ and the name first, × and ✓ at the end; a phone's on its own line
+        Row(Modifier.fillMaxWidth().padding(horizontal = if (phone) 2.dp else 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            StripHead(what.title, w, cancel)
+            if (!phone && what == DesignGallery.Font) search(Modifier.width(320.dp))
+            if (!phone && what == DesignGallery.DropCap && dropLinesChange != null) lines(Modifier.padding(start = 12.dp))
+            Box(Modifier.weight(1f))
+            RibbonTools {
+                Tool(R.drawable.ic_close, "Cancel", w) { cancel() }
+                Tool(R.drawable.ic_check, "OK", w, enabled = chosen != null) { ok() }
+            }
         }
         if (phone && what == DesignGallery.Font) search(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp))
         if (phone && what == DesignGallery.DropCap && dropLinesChange != null) lines(Modifier.padding(horizontal = 8.dp))
         val scroll = androidx.compose.foundation.rememberScrollState()
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        if (phone) IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), "Cancel", tint = w) }
         Row(Modifier.weight(1f).scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = if (phone) 0.dp else 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(if (phone) 8.dp else 10.dp)) {
             when (what) {
                 // Each set as a small page: its title, a heading, a line of text, in their own looks.
@@ -331,7 +334,6 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
             if (more != null) Box(Modifier.width(110.dp * k).height(104.dp * k).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2A2E30)).clickable(onClick = more).padding(10.dp * k),
                 contentAlignment = androidx.compose.ui.Alignment.Center) { Text(moreLabel, color = w, style = MaterialTheme.typography.labelLarge) }
         }
-        if (phone) IconButton(onClick = ok, enabled = chosen != null) { Icon(painterResource(R.drawable.ic_check), "OK", tint = if (chosen != null) w else w.copy(alpha = 0.4f)) }
         }
     }
 }

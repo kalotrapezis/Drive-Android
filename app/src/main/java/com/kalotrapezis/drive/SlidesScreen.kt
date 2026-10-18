@@ -1388,14 +1388,26 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 fun same(d: Deck?, sw: Float, sh: Float) = d != null && Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f
                 fun resize(sw: Float, sh: Float) {
-                    if (same(base, sw, sh)) return
+                    val e = edit ?: return // as it is now (a strip's preview put back first), not as the ribbon was drawn
+                    val now = e.size?.let { it.w to it.h } ?: deck?.let { it.width to it.height }
+                    if (now != null && Math.abs(now.first - sw) < 0.5f && Math.abs(now.second - sh) < 0.5f) return
                     if (same(deck, sw, sh)) { change(e.copy(size = null)); return } // back to the file's own
                     // everything on the slides is moved from the file as saved: other changes are saved first (asked, 18 Oct)
                     // saved already (Undo kept over the save): the file read again as the start, then the question
                     if (e.copy(theme = null, size = null) == SlidesEdit.start(deck ?: return)) resizing = sw to sh
                     else if (e == saved) save(rebase = true) { resizing = sw to sh } else sizeAfterSave = sw to sh
                 }
-                RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
+                // a tablet or phone: the size tapped shown on the slides (fitted) before ✓, which asks Maximize or Ensure fit (the second walk,
+                // 18 Oct); with other changes unsaved only marked — ✓ offers Save first
+                val clean = e.copy(theme = null, size = null) == SlidesEdit.start(deck ?: return)
+                val sizeStrip = officeStrip("Slide size", ok = { s -> previewDrop(); SlidesSize.PRESETS.firstOrNull { it.first == s.picked }?.second?.let { (sw, sh) -> resize(sw, sh) } }, cancel = { previewDrop() }) { s ->
+                    val strips = LocalOfficeStrips.current
+                    SlidesSize.PRESETS.forEach { (label, z) -> RibbonButton(label, w, on = if (s.picked != null) s.picked == label else same(base, z.first, z.second)) {
+                        s.picked = label; if (clean) preview { it.copy(size = if (same(deck, z.first, z.second)) null else SlidesSize.Size(z.first, z.second, false)) } } }
+                    RibbonButton("Custom…", w, on = s.picked == null && SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }) { strips?.cancel(); slideSizing = true }
+                }
+                if (sizeStrip != null) RibbonButton("Slide size", w, R.drawable.ic_aspect_ratio) { sizeStrip() }
+                else RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
                     MenuChoice("Custom…", checked = SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }, opens = true) { slideSizing = true })
             }
             "Transitions" -> {

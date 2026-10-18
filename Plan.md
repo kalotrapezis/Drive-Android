@@ -264,7 +264,9 @@ as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbe
 - [x] 4. With a keyboard: typing on a chosen cell does nothing, a double tap does not open it — Excel starts typing on both. Now a key
       typed on a chosen cell starts its typing afresh (every key kept), Enter or F2 opens what is in it, the arrows move; a double tap
       opens the cell. Emulator (hardware keys): F3 "4278" Enter; B3 double-tapped → its 1850 in the bar.
-- [ ] 5. Search forgives a wrong letter ("Hello" finds "Yellow fill"); Replace / Replace all must change exact matches only.
+- [x] 5. Search forgives a wrong letter ("Hello" finds "Yellow fill"); Replace / Replace all must change exact matches only. They did
+      change only exact ones, but said so badly; now Replace takes the one shown or the next exact one, Replace all every exact one and
+      says how many near matches it left as found.
 - [ ] 6. Two strip forms: "‹ title … × ✓" (Slide size, Themes) and "title … Cancel OK" (Colours, Multilevel, Line numbers cards) — one form.
 - [ ] 7. Slide size: the size picked is not shown on the slide before ✓ (Themes and Colours are).
 

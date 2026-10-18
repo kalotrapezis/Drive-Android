@@ -1563,7 +1563,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     everywhere = everywhere.takeIf { (book?.tabs?.count { !it.hidden } ?: 0) > 1 }, hits = hits.size,
                     toggle = { if (!everywhere) { everywhere = true; showHits = true } else if (!showHits) showHits = true else { everywhere = false; showHits = false }; WriterLog.i("Sheets: search in all sheets $everywhere") },
                     move = { d -> if (found.isNotEmpty()) { current = (current + d).mod(found.size); found[current].let { view.row = Sheet.row(it); view.col = Sheet.col(it); view.reveal++ } } },
-                    replace = if (editing) { with, all -> replaceFound(if (all) found else listOfNotNull(found.getOrNull(current)), with) } else null,
+                    // only cells with the words exactly (search shows near ones too: "Hello" finds "Yellow"; the second walk, 18 Oct): Replace
+                    // takes the one shown, or the next exact one after it; Replace all every exact one, and says how many near ones it left
+                    replace = if (editing) { with, all -> val exact = sheet?.let { sh -> book?.let { bk -> found.filter { k -> val (_, fmt) = lookAt(sh, Sheet.row(k), Sheet.col(k))
+                            SheetInput.replaced(SheetInput.text(sh[Sheet.row(k), Sheet.col(k)], fmt, bk.format), query, with) != null } } }.orEmpty()
+                        val keys = if (all) exact else listOfNotNull((found.drop(current.coerceAtLeast(0)) + found.take(current.coerceAtLeast(0))).firstOrNull { it in exact })
+                        replaceFound(keys, with)
+                        if (all && exact.size < found.size) message = "Replaced ${exact.size} — ${found.size - exact.size} near ${if (found.size - exact.size == 1) "match" else "matches"} left as found" } else null,
                     close = { searching = false; query = "" })
                 else Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }

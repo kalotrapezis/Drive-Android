@@ -597,7 +597,12 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
 - [~] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
       .odp / .pptx; remove notes and comments before sharing (Inspect); password protection (later).
       Template and Inspect done 17 Oct (office-C session, with From Words' File above). Not yet: saving as the other format.
-- [ ] **Text**: right-to-left text and text direction (vertical); highlight (planned in Home above).
+- [x] **Text**: right-to-left text and text direction (vertical); highlight (planned in Home above).
+      Done 18 Oct (office-F): a shape's Text direction — Horizontal, Rotate all text 90°, 270° (PowerPoint's bodyPr vert / vert270;
+      LibreOffice's loext:writing-mode tb-rl90 / bt-lr, on the shape's style and its paragraphs', as LibreOffice writes them), read
+      and drawn turned (`SlideText.vert`). `text turned 90 and 270 degrees` (both formats, LibreOffice's conversions; its PDF of
+      ours shows them turned). Emulator: arrange.pptx's rounded box turned. Highlight: on Home already. Right-to-left: later —
+      Tetra's languages are Greek and English.
 - [~] **Insert**: Zoom (summary and slide zoom — later); action buttons (as Link to a slide); photo album (later).
       Object links with a zoom done 17 Oct (office-C session; the user: "link from one page to the next … maps with images that zoom in
       … linking slides and objects together", "click to jump slides or objects, textboxes, zoom in and out effects"): Insert › Link with

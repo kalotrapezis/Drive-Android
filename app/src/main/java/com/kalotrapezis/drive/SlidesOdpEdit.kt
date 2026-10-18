@@ -294,9 +294,9 @@ internal object SlidesOdpEdit {
                     }
                 }
             }
-            if (l.anchor != null || l.autofit != null || l.insets != null || l.wrap != null || l.cols != null) {
+            if (l.anchor != null || l.autofit != null || l.insets != null || l.wrap != null || l.cols != null || l.vert != null) {
                 val pr = s.a(PRES, "style-name")
-                val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "box ${l.anchor} ${l.autofit} ${l.insets} ${l.wrap} ${l.cols} ${l.colGap}") { st ->
+                val nm = derive(if (pr != null) "presentation" else "graphic", pr ?: s.a(DRAW, "style-name"), "box ${l.anchor} ${l.autofit} ${l.insets} ${l.wrap} ${l.cols} ${l.colGap} ${l.vert}") { st ->
                     val g = props(st, "graphic-properties")
                     // Layout: LibreOffice's Text attributes — spacing to borders, word wrap, columns
                     l.insets?.let { m -> listOf("left", "top", "right", "bottom").forEachIndexed { i, side -> g.setAttributeNS(FO, "fo:padding-$side", String.format(Locale.ROOT, "%.2fpt", m[i])) } }
@@ -304,6 +304,11 @@ internal object SlidesOdpEdit {
                     l.cols?.let { n -> g.kids().filter { it.localName == "columns" }.forEach { g.removeChild(it) }
                         if (n > 1) g.appendChild(st.ownerDocument.createElementNS(STYLE, "style:columns").apply { setAttributeNS(FO, "fo:column-count", "$n"); setAttributeNS(FO, "fo:column-gap", String.format(Locale.ROOT, "%.2fpt", l.colGap ?: 0f)) }) }
                     l.anchor?.let { g.setAttributeNS(DRAW, "draw:textarea-vertical-align", when (it) { 'c' -> "middle"; 'b' -> "bottom"; else -> "top" }) }
+                    // Text direction: LibreOffice's own (loext:writing-mode), as it writes PowerPoint's vert and vert270
+                    // (and on its paragraphs' properties, which LibreOffice draws by: a copied style's own "lr-tb" there would win)
+                    l.vert?.let { v -> val LOEXT = "urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0"; val mode = when (v) { 90 -> "tb-rl90"; 270 -> "bt-lr"; else -> "lr-tb" }
+                        g.setAttributeNS(LOEXT, "loext:writing-mode", mode)
+                        props(st, "paragraph-properties").apply { removeAttributeNS(STYLE, "writing-mode"); setAttributeNS(LOEXT, "loext:writing-mode", mode) } }
                     l.autofit?.let { f ->
                         g.setAttributeNS(DRAW, "draw:auto-grow-height", if (f == 'g') "true" else "false")
                         g.setAttributeNS(DRAW, "draw:fit-to-size", "false")

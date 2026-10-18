@@ -28,7 +28,7 @@ internal object SlidesEdit {
         /** each paragraph's alignment, list ('n' none, 'b' bullets, '1' numbers) and line spacing (PowerPoint's share of its single line) */
         val align: DocAlign? = null, val list: Char? = null, val spacing: Float? = null,
         /** the box's words at its top, middle or bottom ('t', 'c', 'b'); autofit: 'n' none, 's' shrink on overflow, 'g' the box grows to its words */
-        val anchor: Char? = null, val autofit: Char? = null,
+        val anchor: Char? = null, val autofit: Char? = null, /** Text direction: 0 across, 90 or 270 turned */ val vert: Int? = null,
         /** Clear formatting: the letters' own looks gone, their paragraph's (its level's, the master's) left — the choices above apply after it */
         val cleared: Boolean = false,
         /** Insert › Drop cap, raised: the first letter's size (pt; 0: none, a raised one made plain again), its own face and colour */
@@ -54,7 +54,7 @@ internal object SlidesEdit {
         /** a picture's Transparency (0–1 seen) and Picture style (its outline, shadow and corners; its alpha not used) */ val alpha: Float? = null, val picStyle: PictureLook? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || scheme != null || para != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null
+            align != null || list != null || spacing != null || scheme != null || para != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null || vert != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -102,7 +102,7 @@ internal object SlidesEdit {
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.num != null || bullet?.text?.first()?.isDigit() == true, p.level)),
                 l.spacing?.let { paraLooked.copy(lineMultiple = it, lineExact = null) } ?: paraLooked, bullet, p.base)
         }), l.anchor ?: t.anchor, l.insets?.toFloatArray() ?: t.insets, t.scale, l.wrap ?: t.wrap, l.autofit?.let { it == 's' } ?: t.shrink, if (l.warp == null) t.warp else TextWarp.entries.firstOrNull { it.word == l.warp },
-            l.cols ?: t.cols, l.colGap ?: t.colGap)
+            l.cols ?: t.cols, l.colGap ?: t.colGap, l.vert ?: t.vert)
     }
     /** A run's own text effects, as Word writes them or LibreOffice: what WordArt's replace. */
     private val EFFECTS = Regex("""<w14:(glow|shadow|textOutline)\b[\s\S]*?</w14:\1>|\s?style:text-outline="[^"]*"|\s?fo:text-shadow="[^"]*"""")
@@ -307,7 +307,7 @@ internal object SlidesEdit {
                 if (p == null) SlidePara(SlidePara.plain("", 18f, 0, align = if (old == null) DocAlign.Center else DocAlign.Start).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
             // a shape given words here (Add text): in its middle, as PowerPoint's
-            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap) }
+            SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap, it.vert) }
                 ?: SlideText(paras, 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         }
         // what was put on it: pictures and shapes, over the rest
@@ -572,6 +572,7 @@ internal object SlidesEdit {
         }
         val bodyPr = body.kids().firstOrNull { it.localName == "bodyPr" } ?: a("bodyPr").also { body.insertBefore(it, body.firstChild) }
         l.anchor?.let { bodyPr.setAttribute("anchor", when (it) { 'c' -> "ctr"; 'b' -> "b"; else -> "t" }) }
+        l.vert?.let { v -> if (v == 0) bodyPr.removeAttribute("vert") else bodyPr.setAttribute("vert", if (v == 90) "vert" else "vert270") }
         // Layout: PowerPoint's Format Shape › Text Box — inner margins, Wrap text in shape, Columns
         l.insets?.let { m -> listOf("lIns", "tIns", "rIns", "bIns").forEachIndexed { i, n -> bodyPr.setAttribute(n, "${Math.round(m[i] * 12700)}") } }
         l.wrap?.let { bodyPr.setAttribute("wrap", if (it) "square" else "none") }

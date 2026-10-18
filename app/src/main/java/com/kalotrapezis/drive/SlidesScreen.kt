@@ -1039,6 +1039,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Size and position", w, R.drawable.ic_aspect_ratio) { sizing = true }
                     // a box with words: PowerPoint's Format Shape › Text Box (inner margins, wrap, columns)
                     (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null }?.let { t -> RibbonButton("Layout", w, R.drawable.ic_margin) { boxLayout = t } }
+                    // PowerPoint's Text Direction: the box's words across, or turned 90° or 270°
+                    (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null && it.warp == null }?.let { t -> Box {
+                        var turning by remember { mutableStateOf(false) }
+                        RibbonButton("Text direction", w, R.drawable.ic_rotate_right, on = t.vert != 0) { turning = true }
+                        DropdownMenu(turning, { turning = false }) {
+                            listOf("Horizontal" to 0, "Rotate all text 90°" to 90, "Rotate all text 270°" to 270).forEach { (label, v) ->
+                                DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (t.vert == v) Icon(painterResource(R.drawable.ic_check), null) },
+                                    onClick = { turning = false; restyle { it.copy(vert = v) }; WriterLog.i("Slides: text direction $v") }) }
+                        } } }
                     // a video: played in its frame on the slide
                     it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)

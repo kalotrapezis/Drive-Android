@@ -207,7 +207,9 @@ internal object SlidesOdp {
             val anchor = when (g("textarea-vertical-align")) { "middle" -> 'c'; "bottom" -> 'b'; else -> 't' }
             return SlideText(SlidePara.numbered(paras), anchor, floatArrayOf(pt(g("padding-left")) ?: 7.2f, pt(g("padding-top")) ?: 3.6f, pt(g("padding-right")) ?: 7.2f, pt(g("padding-bottom")) ?: 3.6f),
                 shrink = g("shrink-to-fit") == "true" || g("fit-to-size") == "shrink-to-fit", wrap = g("wrap-option") != "no-wrap",
-                cols = g("columns.column-count")?.toIntOrNull()?.coerceIn(1, 16) ?: 1, colGap = pt(g("columns.column-gap")) ?: 0f)
+                cols = g("columns.column-count")?.toIntOrNull()?.coerceIn(1, 16) ?: 1, colGap = pt(g("columns.column-gap")) ?: 0f,
+                // LibreOffice's text direction (its loext:writing-mode): tb-rl90 turned 90°, bt-lr 270°
+                vert = when (g("writing-mode")) { "tb-rl90", "tb-rl" -> 90; "bt-lr" -> 270; else -> 0 })
         }
 
         /** A table in its frame's box [b]: its columns' and rows' sizes (from their styles, fitted to the box), each cell's fill and words. */

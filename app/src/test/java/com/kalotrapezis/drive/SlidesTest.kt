@@ -45,6 +45,30 @@ class SlidesTest {
         assertEquals(30f, p.look.lineExact!!, 0.01f); assertEquals(listOf(TabStop(288f, 'r')), p.look.tabs)
     }
 
+    /** Text direction: a box's words turned 90° and another's 270° — PowerPoint's vert / vert270, LibreOffice's writing-mode; read back, and by LibreOffice. */
+    @Test fun `text turned 90 and 270 degrees`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        fun words(i: SlideItem) = (i as? SlideItem.Shape)?.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val items = deck.slides[2].items
+            val red = items.first { words(it) == "Bold red words, 28 pt" }; val box = items.first { words(it)?.startsWith("A rounded") == true }
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((2 to red.anim!!) to SlidesEdit.Look(vert = 270), (2 to box.anim!!) to SlidesEdit.Look(vert = 90)))
+            fun check(d: Deck, how: String) { val s = d.slides[2].items
+                assertEquals(how, 270, (s.first { words(it) == "Bold red words, 28 pt" } as SlideItem.Shape).text!!.vert)
+                assertEquals(how, 90, (s.first { words(it)?.startsWith("A rounded") == true } as SlideItem.Shape).text!!.vert) }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("vert-$name") // kept, for a look
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** Add text: a shape with no words given some — a text body of its own, its words in the middle; read back. */
     @Test fun `words added to a shape that had none`() {
         val xml = """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>""" +

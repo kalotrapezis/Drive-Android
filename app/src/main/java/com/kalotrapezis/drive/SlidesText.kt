@@ -105,6 +105,10 @@ internal object SlidesText {
 
     /** [t] in its box: from the top, the middle or the bottom; made smaller until it fits when it shrinks on overflow. */
     fun draw(c: Canvas, t: SlideText, x: Float, y: Float, w: Float, h: Float) {
+        // Text direction: laid in the box turned (its height across), then turned back with it, as PowerPoint's
+        if (t.vert != 0) { c.save()
+            if (t.vert == 90) { c.translate(x + w, y); c.rotate(90f) } else { c.translate(x, y + h); c.rotate(-90f) }
+            draw(c, SlideText(t.paras, t.anchor, t.insets, t.scale, t.wrap, t.shrink, t.warp, t.cols, t.colGap), 0f, 0f, h, w); c.restore(); return }
         // WordArt bent: its words along the bend, in its first letters' look (as Words draws a document's)
         t.warp?.let { bend ->
             val r = t.paras.flatMap { it.runs }.firstOrNull { it.text.isNotBlank() } ?: return

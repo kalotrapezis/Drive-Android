@@ -106,7 +106,7 @@ How to write here:
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each); (2) copying slides between decks (PowerPoint's Reuse slides); (3) editing the slide master; (4) View › Zoom on the
-  slide being edited; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold);
+  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold);
   (7) character spacing in all three (the shared engine). The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
@@ -512,6 +512,9 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       while editing; what is dragged snaps its corner to the grid, or its middle to the slide's middle when near it (PowerPoint's smart
       guide), and a size dragged ends on the grid. Emulator: the picture dragged, centred on the guide.
       Not yet: editing the slide master, zoom.
+      Zoom done 18 Oct (office-F): View › Zoom — Fit, 150 %, 200 %, 300 % for the slide being edited (a tablet's layout): the slide in a
+      window of the fitted size, moved about by dragging where nothing is chosen; items tapped, dragged and typed in as at Fit (rulers
+      shown at Fit only). Emulator: arrange.pptx at 200 %, panned, the flag chosen.
 - [x] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
       Find and Replace done 17 Oct (office-C session): Words' find bar moved into a shared `FindReplaceBar` (OfficeUi.kt; Words uses it
       as before — checked on the emulator, 1/3 found) and Slides' top bar has it (the search button while editing, Ctrl+F as A planned):

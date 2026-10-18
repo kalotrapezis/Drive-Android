@@ -485,6 +485,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
     var query by remember { mutableStateOf("") }; var replacement by remember { mutableStateOf("") }; var replacing by remember { mutableStateOf(false) }
     var findAt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var slideZoom by remember { mutableStateOf(1f) } // View › Zoom: the slide being edited bigger than fits, moved about by dragging its empty parts
     var rulers by remember { mutableStateOf(false) } // View › Ruler: Words' rulers along the slide's top and side (a tablet's layout)
     // Review › Spelling: the words left to look at (slide, box, line, where in it, the word), suggestions, words ignored
     var spelling by remember { mutableStateOf<Triple<List<SlideSpell>, Map<String, List<String>>, Set<String>>?>(null) }
@@ -1231,7 +1232,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; outline = false; item = null; marked = setOf(uid) }
                 RibbonButton("Gridlines", w, R.drawable.ic_border_all, on = grid) { grid = !grid }
                 // Words' rulers round the slide being edited, in Words' unit from its top left (a tablet's, as Words shows them)
-                if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) RibbonButton("Ruler", w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
+                if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) {
+                    RibbonButton("Ruler", w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
+                    // PowerPoint's Zoom: Fit (the slide as big as the room lets it be), or bigger, moved about by dragging where nothing is
+                    Box { var zooming by remember { mutableStateOf(false) }
+                        RibbonButton(if (slideZoom == 1f) "Zoom" else "Zoom ${Math.round(slideZoom * 100)}%", w, R.drawable.ic_zoom_in, on = slideZoom != 1f) { zooming = true }
+                        DropdownMenu(zooming, { zooming = false }) { listOf("Fit" to 1f, "150%" to 1.5f, "200%" to 2f, "300%" to 3f).forEach { (label, z) ->
+                            DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (slideZoom == z) Icon(painterResource(R.drawable.ic_check), null) },
+                                onClick = { zooming = false; slideZoom = z; WriterLog.i("Slides: zoom $label") }) } } }
+                }
                 // PowerPoint's Reading View: the show from this slide (on a phone or tablet, the screen is its window)
                 RibbonButton("Reading view", w, R.drawable.ic_play) { presenting = c }
                 // the speaker notes under the slide, typed there (PowerPoint's Notes); a desktop always shows them
@@ -1835,10 +1844,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             // as big as it can be; on a desktop, room kept under it for its notes pane
                             // with little room (an on-screen keyboard up) the slide gives way and the pane keeps its height, at least a readable width
                             val withNotes = OfficeUi.top || notesPage
-                            val rule = if (rulers) 20.dp else 0.dp // View › Ruler's room
+                            val rule = if (rulers && slideZoom == 1f) 20.dp else 0.dp // View › Ruler's room
                             val slideW = minOf(maxWidth - rule, (maxHeight - rule - if (withNotes) 96.dp else 0.dp).coerceAtLeast(if (OfficeUi.top) 0.dp else 120.dp) * (d.width / d.height))
                             Column(Modifier.width(if (withNotes) maxOf(slideW + rule, minOf(maxWidth, 480.dp)) else slideW + rule), horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (rulers) {
+                                if (slideZoom > 1f) {
+                                    // zoomed: the slide in a window of the fitted size, scrolled both ways (rulers only at Fit)
+                                    Box(Modifier.width(slideW).height(slideW * (d.height / d.width)).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
+                                        Box(Modifier.width(slideW * slideZoom)) { SlideBox(c, d.slides[c]) } }
+                                } else if (rulers) {
                                     val page = DocPage(d.width, d.height, 0f, 0f, 0f, 0f); val perPt = slideW / d.width
                                     Row { androidx.compose.foundation.layout.Spacer(Modifier.width(rule)); HorizontalRuler(page, perPt, 0.dp, Modifier.width(slideW).height(rule)) }
                                     Row { VerticalRuler(page, perPt, Modifier.width(rule).height(slideW * (d.height / d.width))); Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) } }

@@ -73,7 +73,7 @@ internal object HyperIsland {
      * them (`param_v2.actions` naming `miui.focus.action_<key>` in the `miui.focus.actions` bundle; the format the
      * open-source HyperIsland ToolKit writes).
      */
-    fun reminder(builder: NotificationCompat.Builder, title: String, text: String, time: String, accent: String,
+    fun reminder(builder: NotificationCompat.Builder, title: String, text: String, time: String,
                  done: android.app.PendingIntent, doneIcon: android.graphics.drawable.Icon, snooze: android.app.PendingIntent) {
         runCatching {
             val actions = Bundle().apply {
@@ -90,7 +90,7 @@ internal object HyperIsland {
                 .put("islandFirstFloat", true)
                 .put("baseInfo", JSONObject().put("type", 1).put("title", title).put("content", text))
                 .put("actions", org.json.JSONArray()
-                    .put(JSONObject().put("type", 0).put("action", "miui.focus.action_done").put("actionTitle", "Done").put("actionIntentType", 2).put("actionBgColor", accent))
+                    .put(JSONObject().put("type", 0).put("action", "miui.focus.action_done").put("actionTitle", "Done").put("actionIntentType", 2))
                     .put(JSONObject().put("type", 2).put("action", "miui.focus.action_snooze").put("actionTitle", "Snooze 10 min").put("actionIntentType", 2)))
                 .put("param_island", JSONObject()
                     .put("islandProperty", 1)

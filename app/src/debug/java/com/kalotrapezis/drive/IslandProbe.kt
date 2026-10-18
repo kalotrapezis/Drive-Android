@@ -25,7 +25,7 @@ class IslandProbe : BroadcastReceiver() {
             .setContentTitle("Probe $variant").setContentText("Island probe").setContentIntent(open).setOngoing(ongoing)
         when (variant) {
             "sync" -> HyperIsland.decorate(b, "Probe sync", "Island probe", 1, 2, announce = true, business = "tetra_probe")
-            "reminder" -> HyperIsland.reminder(b, "Probe reminder", "Island probe", "14:30", "#E91E63", open, Icon.createWithResource(c, R.drawable.ic_close), open)
+            "reminder" -> HyperIsland.reminder(b, "Probe reminder", "Island probe", "14:30", open, Icon.createWithResource(c, R.drawable.ic_reminder_done), open)
         }
         NotificationManagerCompat.from(c).notify(9000 + variant.length, b.build())
     }

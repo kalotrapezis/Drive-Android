@@ -129,8 +129,8 @@ internal object CalendarAlarms {
             .setAutoCancel(false)
             .addAction(R.drawable.ic_close, "Done", done)
             .addAction(0, "Snooze 10 min", snooze)
-        if (HyperIsland.isSupported(c)) HyperIsland.reminder(n, title, text, time, CalendarFiles.colorText(color), done,
-            android.graphics.drawable.Icon.createWithResource(c, R.drawable.ic_close), snooze)
+        if (HyperIsland.isSupported(c)) HyperIsland.reminder(n, title, text, time, done,
+            android.graphics.drawable.Icon.createWithResource(c, R.drawable.ic_reminder_done), snooze)
         runCatching { NotificationManagerCompat.from(c).notify(id, n.build()) } // notifications not allowed: nothing to show
     }
 

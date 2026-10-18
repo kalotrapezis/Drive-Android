@@ -33,7 +33,7 @@ internal class SyncJob : JobService() {
                 val error = runCatching { SyncClient(applicationContext, store).scopeOnly(part) }.onFailure { WriterLog.w("Scoped sync $part: ${it.message}") }.exceptionOrNull()
                 // the look carries the Timer's part too: a timer started on the computer reaches a closed Tetra here
                 if (params.jobId == ScopedSync.CALENDAR_LOOK) runCatching { SyncClient(applicationContext, store).scopeOnly("timer") }
-                val tooOld = error?.message?.contains("Unknown request") == true // the whole sync carries it
+                val tooOld = ScopedSync.tooOld(error) // the whole sync carries it
                 jobFinished(params, error != null && !tooOld && params.jobId != ScopedSync.CALENDAR_LOOK) // a change waiting is tried again; a look waits for the next
             }
             return true
@@ -122,6 +122,9 @@ internal object ScopedSync {
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Job>() // a timer's push never cancels an event's
 
+    /** A computer too old for parts ("Unknown request"), or for this part (a Tetra before the Timer: "Unknown scope"). */
+    fun tooOld(e: Throwable?) = e?.message?.let { "Unknown request" in it || "Unknown scope" in it } == true
+
     /** [orWhole]: a change made here, which an older computer then takes by the whole sync (the computer's own "/sync" arranges its own). */
     fun soon(context: Context, scope: String, delayMs: Long = 2_500, orWhole: Boolean = false) {
         val app = context.applicationContext
@@ -130,7 +133,7 @@ internal object ScopedSync {
             delay(delayMs)
             if (SyncService.isRunning) return@launch // the whole sync is carrying it now
             runCatching { SyncClient(app, SyncStore(app)).scopeOnly(scope) }.onFailure {
-                if (it.message?.contains("Unknown request") == true) { // the computer's Tetra is older: the whole sync, now
+                if (tooOld(it)) { // the computer's Tetra is older: the whole sync, now
                     WriterLog.w("Scoped sync $scope: the computer's Tetra is too old; the whole sync carries it")
                     if (orWhole) runCatching { androidx.core.content.ContextCompat.startForegroundService(app, android.content.Intent(app, SyncService::class.java).setAction(SyncService.ACTION_START)) }
                     return@onFailure

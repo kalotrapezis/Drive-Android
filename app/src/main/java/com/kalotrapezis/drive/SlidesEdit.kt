@@ -325,7 +325,8 @@ internal object SlidesEdit {
                         ParaLook(left = a.hang, firstLine = -a.hang, listIndented = true)) }, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
                 // a text box: no fill, no border, as tall as its words (PowerPoint's "resize shape to fit text")
                 // shortcut: without Android's text layout (the JVM tests) a line a paragraph, 1.2 × 18 pt each
-                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[e.uid to a.id]?.autofit != 'n' }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
+                // (one that keeps its size — no autofit, or its words shrunk to fit — as tall as it was made)
+                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[e.uid to a.id]?.autofit !in setOf('n', 's') }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
                 else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), text, id = a.id)
             }).also { it.anim = a.id } // what it is chosen and animated by
         }

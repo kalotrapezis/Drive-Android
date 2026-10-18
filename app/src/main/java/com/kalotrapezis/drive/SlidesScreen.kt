@@ -539,6 +539,22 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         for (n in r.sources) if (!SourcesImport.same(n, sources + added)) added += n.copy(tag = Citations.tagFor(if (odp) OfficeKind.Odt else OfficeKind.Docx, n, (sources + added).map { it.tag }, citeStyle))
         resource(sources + added, citeStyle, "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else ""))
     }
+    // Home › Reuse slides: another deck read (a copy on the phone), its slides to choose
+    var reusing by remember { mutableStateOf<Deck?>(null) }
+    val pickDeck = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u -> u ?: return@rememberLauncherForActivityResult
+        message = "Opening the deck…"
+        scope.launch {
+            val read = withContext(Dispatchers.IO) { runCatching {
+                val mime = context.contentResolver.getType(u).orEmpty()
+                val ext = if ("opendocument" in mime || u.toString().endsWith(".odp", true)) "odp" else "pptx"
+                val f = File(File(context.cacheDir, "reused-decks").apply { mkdirs() }, "${System.nanoTime()}.$ext")
+                context.contentResolver.openInputStream(u)!!.use { i -> f.outputStream().use { i.copyTo(it) } }
+                Slides.read(f)
+            }.onFailure { WriterLog.e("Slides: a deck to reuse could not be read", it) }.getOrNull() }
+            message = if (read == null) "Could not open that deck" else null
+            reusing = read
+        }
+    }
     val pickSources = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
         u?.let { importSources { context.contentResolver.openInputStream(it)?.use { s -> String(s.readBytes(), Charsets.UTF_8) } } } }
     /** A slide's title as the deck shows it: its highest box's words. */
@@ -1110,6 +1126,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 chosenWords()?.let { box -> HomeText(box, w); RibbonDivider(w) }
                 Text("Slide ${c + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (deck?.layouts?.isNotEmpty() == true) RibbonButton("New slide", w, R.drawable.ic_add) { relaying = false; layouts = true }
+                // PowerPoint's Reuse slides: slides of another deck (.pptx or .odp) put in after this one, in this deck's look
+                if (deck?.layouts?.isNotEmpty() == true) RibbonButton("Reuse slides", w, R.drawable.ic_copy) {
+                    pickDeck.launch(arrayOf("application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.oasis.opendocument.presentation")) }
                 // Layout (PowerPoint's): the slide on another of the deck's layouts, its words and what is on it kept
                 if (deck?.relaid != null && deck?.layouts?.isNotEmpty() == true && entry.layout < 0) RibbonButton("Layout", w, R.drawable.ic_view_grid) { relaying = true; layouts = true }
                 // Reset (PowerPoint's Home › Slides): its placeholders back to their layout's place, size and look; Tetra's own changes to them gone too
@@ -2012,6 +2031,28 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
+                    reusing?.let { other ->
+                        val picked = remember(other) { androidx.compose.runtime.mutableStateListOf<Int>() }
+                        androidx.compose.material3.AlertDialog(onDismissRequest = { reusing = null }, title = { Text("Reuse slides") },
+                            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Tap the slides to put in after slide ${(chosen ?: 0) + 1}. They take this deck's look.", style = MaterialTheme.typography.bodySmall)
+                                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(150.dp), Modifier.heightIn(max = 420.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(other.slides.size) { i -> Column(Modifier.clip(RoundedCornerShape(4.dp)).clickable { if (i in picked) picked.remove(i) else picked.add(i) }) {
+                                        SlideCanvas(other, other.slides[i], Modifier.fillMaxWidth().then(if (i in picked) Modifier.border(3.dp, POWERPOINT_ORANGE) else Modifier))
+                                        Text("${i + 1}${if (i in picked) "  ✓" else ""}", style = MaterialTheme.typography.labelMedium, color = if (i in picked) POWERPOINT_ORANGE else Color.Unspecified) } }
+                                } } },
+                            confirmButton = { androidx.compose.material3.TextButton(enabled = picked.isNotEmpty(), onClick = {
+                                val ee = edit; val d = deck; reusing = null
+                                if (ee != null && d != null) {
+                                    val at = chosen ?: 0
+                                    val (made, skipped) = SlidesReuse.reused(ee, d, other, picked.sorted(), at, File(context.cacheDir, "slide-pictures"))
+                                    change(made); chosen = at + 1
+                                    message = "${picked.size} slide${if (picked.size == 1) "" else "s"} put in" + if (skipped > 0) " ($skipped thing${if (skipped == 1) "" else "s"} left out)" else ""
+                                    WriterLog.i("Slides: ${picked.size} slides reused, $skipped left out")
+                                } }) { Text("Insert") } },
+                            dismissButton = { androidx.compose.material3.TextButton(onClick = { reusing = null }) { Text("Cancel") } })
+                    }
                     spelling?.let { (queue, offered, ignored) ->
                         val sp = queue.first()
                         LaunchedEffect(sp) { chosen = sp.slide; item = sp.sel }

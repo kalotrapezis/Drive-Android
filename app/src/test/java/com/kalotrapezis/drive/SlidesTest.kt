@@ -89,6 +89,34 @@ class SlidesTest {
         }
     }
 
+    /** Reuse slides: another deck's slide 3 (a rounded box, an arrow, red words, a picture) put in after slide 1, both ways between .pptx and .odp; read back, and by LibreOffice. */
+    @Test fun `slides reused from another deck`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        fun words(d: Deck, i: Int) = d.slides[i].items.mapNotNull { (it as? SlideItem.Shape)?.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { r -> r.text } } }
+        for ((name, other) in listOf("slides.odp" to "slides.pptx", "slides.pptx" to "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src); val from = Slides.read(File("src/test/resources/$other"))
+            val (e, skipped) = SlidesReuse.reused(SlidesEdit.start(deck), deck, from, listOf(2), 0, scratchDir("reuse-pics"))
+            assertEquals(name, 0, skipped)
+            fun check(d: Deck, how: String) {
+                assertEquals(how, deck.slides.size + 1, d.slides.size)
+                val w = words(d, 1)
+                assertTrue("$how: $w", "Bold red words, 28 pt" in w && w.any { it.startsWith("A rounded box") })
+                assertTrue(how, d.slides[1].items.any { it is SlideItem.Picture })
+                val red = d.slides[1].items.mapNotNull { it as? SlideItem.Shape }.first { s -> s.text?.paras?.any { p -> p.runs.any { it.text.contains("Bold red") } } == true }.text!!.paras.flatMap { it.runs }.first { it.text.isNotBlank() }
+                assertTrue(how, red.bold); assertEquals(how, 0xC00000, red.color)
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = scratchDir("reuse").resolve("reused-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val conv = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", conv, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == conv }), "LibreOffice's $conv of $name")
+            }
+        }
+    }
+
     /** Add text: a shape with no words given some — a text body of its own, its words in the middle; read back. */
     @Test fun `words added to a shape that had none`() {
         val xml = """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>""" +

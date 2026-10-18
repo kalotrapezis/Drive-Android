@@ -105,7 +105,7 @@ How to write here:
   setting starting off? (Undo now goes back past a save, as Word's — 59c9218 — so AutoSave no longer costs Undo.)
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
-  writer for each); (2) copying slides between decks (PowerPoint's Reuse slides); (3) editing the slide master; (4) View › Zoom on the
+  writer for each); (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master; (4) View › Zoom on the
   slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
@@ -454,6 +454,13 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       to save it; Tetra's own moves and looks on its placeholders dropped (`Slide.placeholders`); `Edit.reset`. `a slide reset saved` (a
       title moved and made bold, saved; read again, reset: where and as its layout has it, shown, saved, LibreOffice's conversions; both
       formats); emulator: Plan's title moved, Reset — back. Not yet: copy slides between decks.
+      Copying slides between decks done 18 Oct (office-F): Home › Reuse slides (PowerPoint's, with its Use destination theme) — another
+      .pptx or .odp chosen in the system's picker, its slides shown to tick, Insert puts them after this one on this deck's Blank layout:
+      their words as text boxes keeping their letters' looks, alignment, bullets and levels and shrink-to-fit; shapes with their fill
+      and words; pictures, tables, charts; background colour; notes (`SlidesReuse`; `slides reused from another deck`, both ways
+      between .pptx and .odp, LibreOffice's conversions). The other deck's master decorations stay behind. shortcut: custom outlines,
+      gradients, effects, rotation, groups' insides, animations and films not brought (the count left out is said); a bullet as a
+      mark and spaces. Emulator: owntable.pptx's slides 2 (a table) and 4 (a chart) put into arrange.pptx.
 - [~] **Design**: slide size (16:9, 4:3); format background (colour, gradient, picture); the theme's colour
       variants.
       Colour variants done 17 Oct (office-C session) with the theme's fonts (B's "From Words" Design line): Design › Colours and Fonts

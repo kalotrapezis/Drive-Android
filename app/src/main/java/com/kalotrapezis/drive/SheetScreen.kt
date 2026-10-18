@@ -198,6 +198,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
     var allNotes by remember { mutableStateOf(false) } // Review › Show all notes
+    var breaks by remember { mutableStateOf(false) } // View › Page break preview
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
@@ -1416,6 +1417,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     else SheetVisibility.gridOds(baked, next, bb.tabs[i].name, on, "HasColumnRowHeaders", perSheet = false) }) }
                             RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
                             // Excel's Zoom to Selection: the chosen cells fill the screen
+                            // Excel's Page Break Preview: the pages as they print, outlined over the sheet, what is not printed greyed
+                            RibbonButton("Page break preview", w, R.drawable.ic_insert_page_break, on = breaks) { breaks = !breaks; WriterLog.i("Sheets: page break preview ${if (breaks) "on" else "off"}") }
                             RibbonButton("Zoom to selection", w, R.drawable.ic_zoom_in) { view.fitTo = g ?: l.row(cr).takeIf { it >= 0 }?.let { rr -> l.col(cc).takeIf { it >= 0 }?.let { SheetRange(rr, it, rr, it) } } }
                             RibbonDivider(w)
                             RibbonButton("Formula bar", w, R.drawable.ic_functions, on = showBar) { showBar = !showBar }
@@ -1597,7 +1600,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L, allNotes), formulas, version,
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L, allNotes, breaks), formulas, version,
                         column = { col, _ -> header = 'c' to col; group = null }, row = { r, _ -> header = 'r' to r; group = null },
                         pick = { r, c ->
                             header = null
@@ -2282,7 +2285,7 @@ private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets
 /** What a protected sheet's refusal says (Excel's: unprotect it there first). */
 private const val PROTECTED = "This sheet is protected: unprotect it (tap its tab › Unprotect) to change these cells"
 
-internal class SheetMarks(val found: Set<Long>, val current: Long, /** Review › Show all notes */ val notes: Boolean = false)
+internal class SheetMarks(val found: Set<Long>, val current: Long, /** Review › Show all notes */ val notes: Boolean = false, /** View › Page break preview */ val breaks: Boolean = false)
 
 @Composable
 private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, everywhere: Boolean?, hits: Int, toggle: () -> Unit, move: (Int) -> Unit, close: () -> Unit,
@@ -2599,6 +2602,8 @@ internal class SheetPainter(
     private val formulas: Boolean = false,
 ) {
     private val rAt = layout.rows; private val cAt = layout.cols
+    /** The pages as printed (View › Page break preview). */
+    private val pages by lazy { sheetPages(sheet, layout) }
     /** The cells with notes, as drawn (Review › Show all notes). */
     private val noted by lazy { ArrayList<Pair<Int, Int>>().also { l -> sheet.cells.forEach { k, c -> if (c.note != null) {
         val r = layout.row(Sheet.row(k)); val col = layout.col(Sheet.col(k)); if (r >= 0 && col >= 0) l += r to col } } } }
@@ -3140,6 +3145,21 @@ internal class SheetPainter(
             fill.color = 0xFFFFFFE1.toInt(); c.drawRect(x, y, x + 144f, y + maxOf(lay.height + 8f, 40f), fill)
             line.color = 0xFF808080.toInt(); line.strokeWidth = 1f; c.drawRect(x, y, x + 144f, y + maxOf(lay.height + 8f, 40f), line)
             c.save(); c.translate(x + 4f, y + 4f); lay.draw(c); c.restore()
+        }
+        // View › Page break preview (Excel's): each page's cells in a blue frame with its number across them, the rest greyed
+        if (marks.breaks && !printing) {
+            val pg = pages.pages
+            fun box(p: SheetPage) = android.graphics.RectF(colX[p.cols.first], rowY[p.rows.first], colX[p.cols.last + 1], rowY[p.rows.last + 1])
+            c.save(); pg.forEach { c.clipOutRect(box(it)) }
+            fill.color = 0x55808080; c.drawRect(sx0, sy0, sx1, sy1, fill); c.restore()
+            val word = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x40808080; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
+            line.color = 0xFF2F5597.toInt(); line.strokeWidth = 2.5f * density / s; line.pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * density / s, 4f * density / s), 0f)
+            pg.forEachIndexed { n, p -> val b = box(p)
+                if (b.right < sx0 || b.left > sx1 || b.bottom < sy0 || b.top > sy1) return@forEachIndexed
+                c.drawRect(b, line)
+                word.textSize = min(b.width() / 4, b.height() / 3).coerceIn(12f, 120f)
+                c.drawText("Page ${n + 1}", b.centerX(), b.centerY() + word.textSize / 3, word) }
+            line.pathEffect = null
         }
         if (marks.current >= 0) {
             val r = layout.row(Sheet.row(marks.current)); val k = layout.col(Sheet.col(marks.current))

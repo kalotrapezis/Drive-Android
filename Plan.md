@@ -1014,6 +1014,8 @@ what is not already above:
       cells fill the screen: `SheetPainter.fit`), Formula bar and Sheet tabs shown or hidden (the viewer's, as Excel's View
       options; the bar comes back while typing); headings and gridlines kept in the file (above). Emulator: A1:D5 zoomed to, the
       bar and tabs hidden. Not yet: page break preview, page layout view.
+      View › Page break preview (Excel's: the pages as `sheetPages` cuts them for printing and PDF — each framed in blue with
+      "Page n" across it, what is not printed greyed; a print setting changed shows at once). Emulator: a 120-row sheet, pages 1–2.
 - [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
 - [x] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.

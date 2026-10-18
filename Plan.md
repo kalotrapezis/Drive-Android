@@ -109,6 +109,8 @@ How to write here:
   slide being edited; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold);
   (7) character spacing in all three (the shared engine). The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
+  Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
+  (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)

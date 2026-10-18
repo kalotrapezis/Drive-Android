@@ -220,6 +220,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' own setting
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
+    var protectedSaid by remember { mutableStateOf(-1) } // the sheet whose protection was last said on a tap
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
     var sizing by remember { mutableStateOf<Pair<Boolean, Int>?>(null) } // Width (a column, true) or Height (a row): the sheet's index, asked in Words' unit // Insert › Chart: the cells (the sheet's) and Words' chart editor's start
     // Editing (asked 16 Oct): the steps to undo, a count that redraws after each, what the cell bar holds while typing.
@@ -1623,7 +1624,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 }
                                 // what was typed goes in, then the tap chooses; the keyboard goes (asked 16 Oct: a tap chooses, the bar edits)
                                 d != null -> { commit(false); focusManager.clearFocus(); false }
-                                else -> false
+                                // a protected sheet's locked cell: chosen, and said once why it cannot be typed in (the tablet walk, 18 Oct)
+                                else -> { if (editing && b.sheet(index).let { sh -> history.locked(b, sh, Sheet.key(r, c)) } && protectedSaid != index) { protectedSaid = index; message = PROTECTED }; false }
                             }
                         }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at },
                         figures = if (editing && b.kind != "csv") { d -> view.figure = d?.ordinal ?: -1; if (d != null) { header = null; view.range = null; group = null; WriterLog.i("Sheets: a drawing chosen") } } else null,

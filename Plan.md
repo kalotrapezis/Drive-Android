@@ -194,7 +194,10 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares
       values); "The first row is headers" ticked even when row 1 is data. Now: a column's letter takes the column, nothing chosen the table
       round the cell; formulas compared by what they show; headers ticked only for words over numbers.
-- [ ] 5. Tables: on a protected sheet a tap does not choose the cell, nothing says why — choose it, refuse typing with a message.
+- [x] 5. Tables: on a protected sheet a tap does not choose the cell, nothing says why — choose it, refuse typing with a message.
+      Now the first tap on a locked cell says the sheet is protected (once per sheet); typing is refused with it. Found on the way: a tap
+      in the ~1 s while the sheet is read again after a whole-file step (Protect, Hide…) is lost — the grid's gestures restart on the new
+      sheet (`pointerInput(painter)`); [ ] keep them across a reload (the callbacks through rememberUpdatedState).
 - [x] 6. Slides: Save clears Undo — all three keep the history over a save. Slides now keeps the deck and Undo; the file as opened is kept
       aside and each save writes the edits onto it (Tables did so already, Words never cleared it). A new slide size still starts afresh.
 - [x] 7. Tables › Sheet › Unhide popup → strip (7ee3675).

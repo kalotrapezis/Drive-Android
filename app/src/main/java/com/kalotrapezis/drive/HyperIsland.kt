@@ -64,6 +64,49 @@ internal object HyperIsland {
         return JSONObject().put("param_v2", paramV2).put("title", title).put("content", text).toString()
     }
 
+    const val CALENDAR = "tetra_calendar"
+
+    /**
+     * A Calendar reminder in the island (the user, 18 Oct: "make it work with hyper island like the sync does"): the card
+     * opens once with the event and its time, then stays a pill with the time; its X marks the reminder done, Snooze
+     * rings it again in ten minutes. The buttons are the notification's own actions, linked by key, as HyperOS reads
+     * them (`param_v2.actions` naming `miui.focus.action_<key>` in the `miui.focus.actions` bundle; the format the
+     * open-source HyperIsland ToolKit writes).
+     */
+    fun reminder(builder: NotificationCompat.Builder, title: String, text: String, time: String, accent: String,
+                 done: android.app.PendingIntent, doneIcon: android.graphics.drawable.Icon, snooze: android.app.PendingIntent) {
+        runCatching {
+            val actions = Bundle().apply {
+                putParcelable("miui.focus.action_done", android.app.Notification.Action.Builder(doneIcon, "Done", done).build())
+                putParcelable("miui.focus.action_snooze", android.app.Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Snooze 10 min", snooze).build())
+            }
+            val paramV2 = JSONObject()
+                .put("protocol", 3)
+                .put("business", CALENDAR)
+                .put("updatable", true) // as sync's, which the island shows
+                .put("ticker", title)
+                .put("enableFloat", true) // a reminder is the moment: the card opens
+                .put("isShowNotification", true)
+                .put("islandFirstFloat", true)
+                .put("baseInfo", JSONObject().put("type", 1).put("title", title).put("content", text))
+                .put("actions", org.json.JSONArray()
+                    .put(JSONObject().put("type", 0).put("action", "miui.focus.action_done").put("actionTitle", "Done").put("actionIntentType", 2).put("actionBgColor", accent))
+                    .put(JSONObject().put("type", 2).put("action", "miui.focus.action_snooze").put("actionTitle", "Snooze 10 min").put("actionIntentType", 2)))
+                .put("param_island", JSONObject()
+                    .put("islandProperty", 1)
+                    .put("islandPriority", 1)
+                    .put("expandedTime", 5000)
+                    .put("smallIslandArea", JSONObject().put("picInfo", JSONObject().put("type", 1)))
+                    .put("bigIslandArea", JSONObject()
+                        .put("imageTextInfoLeft", JSONObject().put("type", 1).put("picInfo", JSONObject().put("type", 1)))
+                        .put("imageTextInfoRight", JSONObject().put("type", 2).put("textInfo", JSONObject().put("title", time)))))
+            builder.addExtras(Bundle().apply {
+                putString(EXTRA, JSONObject().put("param_v2", paramV2).put("title", title).put("content", text).toString())
+                putBundle("miui.focus.actions", actions)
+            })
+        }
+    }
+
     /** HyperOS only draws an island where the device has one. */
     private fun systemFeature(): Boolean = Class.forName("android.os.SystemProperties")
         .getDeclaredMethod("getBoolean", String::class.java, Boolean::class.javaPrimitiveType)

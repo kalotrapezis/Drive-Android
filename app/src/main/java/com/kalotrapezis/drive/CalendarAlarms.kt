@@ -32,6 +32,7 @@ internal object CalendarAlarms {
     private const val ACTION_RING = "com.kalotrapezis.drive.CALENDAR_RING"
     private const val ACTION_SNOOZE = "com.kalotrapezis.drive.CALENDAR_SNOOZE"
     private const val ACTION_AGAIN = "com.kalotrapezis.drive.CALENDAR_AGAIN"
+    private const val ACTION_DONE = "com.kalotrapezis.drive.CALENDAR_DONE"
     // shortcut: a reminder set more than 120 days before its event is not rung; a longer look when someone needs it.
     private val LEAD: Duration = Duration.ofDays(120)
     private val MISSED: Duration = Duration.ofDays(1)
@@ -64,9 +65,10 @@ internal object CalendarAlarms {
         val cals = CalendarFiles.calendars(root)
         // The first look ever starts now: nothing from before Tetra knew of reminders.
         val upTo = p.getLong("upTo", now.toEpochMilli()).let { Instant.ofEpochMilli(it) }.coerceAtLeast(now.minus(MISSED))
-        reminders(cals, upTo, now.plusSeconds(1)).forEach { show(c, it, late = Duration.between(it.at, now) > Duration.ofMinutes(5)) }
+        val done = doneKeys(c)
+        reminders(cals, upTo, now.plusSeconds(1)).filter { occurrenceKey(it.key) !in done }.forEach { show(c, it, late = Duration.between(it.at, now) > Duration.ofMinutes(5)) }
         p.edit().putLong("upTo", now.plusSeconds(1).toEpochMilli()).apply()
-        val next = reminders(cals, now.plusSeconds(1), now.plus(LEAD)).firstOrNull()
+        val next = reminders(cals, now.plusSeconds(1), now.plus(LEAD)).firstOrNull { occurrenceKey(it.key) !in done }
         if (next == null) { am.cancel(ring); return }
         val at = next.at.toEpochMilli()
         if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, ring)
@@ -90,15 +92,28 @@ internal object CalendarAlarms {
         return time + (o.event.place.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: "")
     }
 
-    private fun show(c: Context, r: DueReminder, late: Boolean) =
-        post(c, r.key.hashCode(), r.occ.event.title.ifEmpty { "(No title)" }, (if (late) "Missed · " else "") + whenText(c, r.occ), r.occ.calendar.color)
+    /** "uid|start": one time of one event; a reminder's key is this and which alarm and repeat. */
+    private fun occurrenceKey(key: String) = key.split('|').take(2).joinToString("|")
 
-    fun post(c: Context, id: Int, title: String, text: String, color: Int) {
+    /** The times of events marked done (X): their remaining reminders do not ring. Kept a week past each. */
+    private fun doneKeys(c: Context): Set<String> {
+        val cutoff = System.currentTimeMillis() - 7 * 86_400_000L
+        return prefs(c).getStringSet("done", emptySet())!!.filter { k -> runCatching { Instant.parse(k.substringAfter('|')).toEpochMilli() > cutoff }.getOrDefault(false) }.toSet()
+    }
+
+    private fun show(c: Context, r: DueReminder, late: Boolean) =
+        post(c, r.key.hashCode(), r.occ.event.title.ifEmpty { "(No title)" }, (if (late) "Missed · " else "") + whenText(c, r.occ), r.occ.calendar.color,
+            occurrenceKey(r.key), if (r.occ.allDay) "All day" else timeText(c, r.occ.start))
+
+    fun post(c: Context, id: Int, title: String, text: String, color: Int, occurrence: String = "", time: String = "") {
         channel(c)
         val open = PendingIntent.getActivity(c, id, Intent(c, MainActivity::class.java).putExtra(Applet.EXTRA, Applet.Calendar.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val snooze = PendingIntent.getBroadcast(c, id, Intent(c, CalendarAlarmReceiver::class.java).setAction(ACTION_SNOOZE)
-            .putExtra("id", id).putExtra("title", title).putExtra("text", text).putExtra("color", color), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            .putExtra("id", id).putExtra("title", title).putExtra("text", text).putExtra("color", color).putExtra("occurrence", occurrence).putExtra("time", time), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        // X: this time of the event is done — the notification goes and its other reminders (a daily repeat) do not ring
+        val done = PendingIntent.getBroadcast(c, id + 1, Intent(c, CalendarAlarmReceiver::class.java).setAction(ACTION_DONE)
+            .putExtra("id", id).putExtra("occurrence", occurrence), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(c, CHANNEL)
             .setSmallIcon(R.drawable.ic_calendar_today)
             .setColor(color)
@@ -107,11 +122,21 @@ internal object CalendarAlarms {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open)
-            .setAutoCancel(true)
+            // ongoing, as Xiaomi's own Clock timer and Tetra's sync: HyperOS gives the island to an ongoing notification; it
+            // stays until ✕ Done or Snooze (the user, 18 Oct: "an X button to consider the reminding complete")
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .addAction(R.drawable.ic_close, "Done", done)
             .addAction(0, "Snooze 10 min", snooze)
-            .build()
-        runCatching { NotificationManagerCompat.from(c).notify(id, n) } // notifications not allowed: nothing to show
+        if (HyperIsland.isSupported(c)) HyperIsland.reminder(n, title, text, time, CalendarFiles.colorText(color), done,
+            android.graphics.drawable.Icon.createWithResource(c, R.drawable.ic_close), snooze)
+        runCatching { NotificationManagerCompat.from(c).notify(id, n.build()) } // notifications not allowed: nothing to show
     }
+
+
+    /** Settings › Calendar's test: a reminder now, as a real one looks (the island, Done, Snooze), nothing written anywhere. */
+    fun test(c: Context) = post(c, 4242, "Test reminder", "Today, now · from Tetra's settings", CalendarFiles.PALETTE[0], "",
+        java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
 
     /** Snooze: the same reminder again in ten minutes (an alarm of its own; a restart forgets it). */
     fun snooze(c: Context, i: Intent) {
@@ -126,7 +151,13 @@ internal object CalendarAlarms {
 
     fun handle(c: Context, i: Intent) = when (i.action) {
         ACTION_SNOOZE -> snooze(c, i)
-        ACTION_AGAIN -> post(c, i.getIntExtra("id", 0), i.getStringExtra("title").orEmpty(), i.getStringExtra("text").orEmpty(), i.getIntExtra("color", CalendarFiles.PALETTE[0]))
+        ACTION_DONE -> {
+            NotificationManagerCompat.from(c).cancel(i.getIntExtra("id", 0))
+            i.getStringExtra("occurrence")?.takeIf { it.isNotEmpty() }?.let { k -> prefs(c).edit().putStringSet("done", doneKeys(c) + k).apply() }
+            plan(c)
+        }
+        ACTION_AGAIN -> post(c, i.getIntExtra("id", 0), i.getStringExtra("title").orEmpty(), i.getStringExtra("text").orEmpty(), i.getIntExtra("color", CalendarFiles.PALETTE[0]),
+            i.getStringExtra("occurrence").orEmpty(), i.getStringExtra("time").orEmpty())
         else -> plan(c) // its alarm, a start, a clock or zone change, an update
     }
 }

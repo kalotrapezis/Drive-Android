@@ -1736,6 +1736,7 @@ private fun SettingsTab(
                 OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
             }
         }
+        item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
         item {
             // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
             SettingsCard("App icons") {

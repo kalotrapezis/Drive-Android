@@ -99,6 +99,9 @@ import kotlinx.coroutines.withContext
 
 internal enum class CalView(val label: String) { Agenda("Agenda"), Day("Day"), ThreeDays("3 days"), Week("Week"), Month("Month"), Year("Year") }
 
+/** The room the floating top (Files' pills) takes; the views start under it, the scrolling ones scroll beneath it. */
+private val HEADER = 72.dp
+
 internal fun calendarRoot() = CalendarFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
 
 /** Which calendars this device hides (the checkboxes) and the last view: this screen's choices, not the files'. */
@@ -386,11 +389,11 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     val body: @Composable (Modifier) -> Unit = { m ->
         Box(m) {
             when (view) {
-                CalView.Month -> MonthGrid(YearMonth.from(selected), days, today, selected, compact = !wide, pick = { selected = it; if (!wide) setView(CalView.Agenda) }, open = open)
-                CalView.Week -> TimeGrid(weekOf(selected), days, today, open, ::create)
-                CalView.ThreeDays -> TimeGrid((0L..2).map { selected.plusDays(it) }, days, today, open, ::create)
-                CalView.Day -> TimeGrid(listOf(selected), days, today, open, ::create)
-                CalView.Agenda -> Agenda(anchor, days, today, selected, { selected = it }, open)
+                CalView.Month -> Box(Modifier.padding(top = HEADER)) { MonthGrid(YearMonth.from(selected), days, today, selected, compact = !wide, pick = { selected = it; if (!wide) setView(CalView.Agenda) }, open = open) }
+                CalView.Week -> Box(Modifier.padding(top = HEADER)) { TimeGrid(weekOf(selected), days, today, open, ::create) }
+                CalView.ThreeDays -> Box(Modifier.padding(top = HEADER)) { TimeGrid((0L..2).map { selected.plusDays(it) }, days, today, open, ::create) }
+                CalView.Day -> Box(Modifier.padding(top = HEADER)) { TimeGrid(listOf(selected), days, today, open, ::create) }
+                CalView.Agenda -> Agenda(anchor, days, today, selected, { selected = it }, open, top = HEADER)
                 CalView.Year -> YearGrid(selected, today, days.keys) { selected = it; setView(CalView.Day) }
             }
         }
@@ -400,7 +403,27 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // 18 Oct: "an island and bottom drawer that opens for the rest like what calendars to see", on the big screen too).
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                if (wide) Row(Modifier.weight(1f)) {
+                    // the user, 18 Oct: on a wide screen the small month and the calendars stay in sight, beside the grid
+                    Column(Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).navigationBarsPadding()
+                        .padding(start = 16.dp, end = 8.dp, top = HEADER, bottom = 84.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MiniMonth(selected, today, days.keys) { selected = it }
+                        CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true },
+                            { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }, settings = false)
+                    }
+                    // the island floats over the last row; the views stop above it
+                    body(Modifier.weight(1f).fillMaxHeight().navigationBarsPadding().padding(end = 8.dp, bottom = 76.dp))
+                } else {
+                    // the user, 18 Oct: the events on top, the small calendar at the bottom within the thumb's reach
+                    body(Modifier.weight(1f).fillMaxWidth())
+                    if (view != CalView.Month) BottomStrip(selected, today, days) { selected = it }
+                    Spacer(Modifier.navigationBarsPadding().height(92.dp)) // the island and its gap below
+                }
+            }
+            // Files' bottom: the island at the left, the one round action at the right (here New event)
+            // the user, 18 Oct: the pills float over the content, as in Files — no solid band behind them
+            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
                 // Files' own top: Back and the title in islands, the dates' controls beside them
                 FilesPageHeader(
                     title = if (wide) title(selected, view) else selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
@@ -419,24 +442,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     },
                 )
                 ReminderNotes()
-                if (wide) Row(Modifier.weight(1f)) {
-                    // the user, 18 Oct: on a wide screen the small month and the calendars stay in sight, beside the grid
-                    Column(Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).navigationBarsPadding()
-                        .padding(start = 16.dp, end = 8.dp, bottom = 84.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        MiniMonth(selected, today, days.keys) { selected = it }
-                        CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true },
-                            { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }, settings = false)
-                    }
-                    // the island floats over the last row; the views stop above it
-                    body(Modifier.weight(1f).fillMaxHeight().navigationBarsPadding().padding(end = 8.dp, bottom = 76.dp))
-                } else {
-                    // the user, 18 Oct: the events on top, the small calendar at the bottom within the thumb's reach
-                    body(Modifier.weight(1f).fillMaxWidth())
-                    if (view != CalView.Month) BottomStrip(selected, today, days) { selected = it }
-                    Spacer(Modifier.navigationBarsPadding().height(92.dp)) // the island and its gap below
-                }
             }
-            // Files' bottom: the island at the left, the one round action at the right (here New event)
             // on a wide screen it starts at the grid, the side column left in sight
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = if (wide) 300.dp else 12.dp, end = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -602,7 +608,7 @@ private fun viewIcon(v: CalView) = when (v) {
     }
 }
 
-@Composable private fun RemindersSwitch() {
+@Composable internal fun RemindersSwitch() {
     val context = LocalContext.current
     var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -614,7 +620,7 @@ private fun viewIcon(v: CalView) = when (v) {
 /** The Year view: the twelve months small, a day tapped opens it. */
 @Composable private fun YearGrid(selected: LocalDate, today: LocalDate, busy: Set<LocalDate>, pick: (LocalDate) -> Unit) {
     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(250.dp), Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 8.dp, end = 8.dp, top = HEADER, bottom = 84.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(12) { m ->
             val month = YearMonth.of(selected.year, m + 1)
             Column {
@@ -705,7 +711,7 @@ private data class AgendaItem(override val day: LocalDate, val o: Occurrence) : 
 private data class AgendaNone(override val day: LocalDate) : AgendaRow
 
 /** Outlook's agenda: every day from a year before to a year after, its events or "No events"; the week row follows it. */
-@Composable private fun Agenda(anchor: Int, days: Map<LocalDate, List<Occurrence>>, today: LocalDate, selected: LocalDate, select: (LocalDate) -> Unit, open: (Occurrence) -> Unit) {
+@Composable private fun Agenda(anchor: Int, days: Map<LocalDate, List<Occurrence>>, today: LocalDate, selected: LocalDate, select: (LocalDate) -> Unit, open: (Occurrence) -> Unit, top: Dp = 0.dp) {
     val context = LocalContext.current
     val rows = remember(anchor, days) {
         val out = mutableListOf<AgendaRow>()
@@ -726,7 +732,7 @@ private data class AgendaNone(override val day: LocalDate) : AgendaRow
     LaunchedEffect(state, rows) {
         snapshotFlow { state.firstVisibleItemIndex to state.isScrollInProgress }.collect { (i, moving) -> if (moving) rows.getOrNull(i)?.day?.let(select) }
     }
-    LazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
+    LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(top = top)) {
         itemsIndexed(rows, key = { i, _ -> i }) { _, r ->
             when (r) {
                 is AgendaHead -> Text(
@@ -963,15 +969,95 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
             ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    val xiaomi = android.os.Build.MANUFACTURER.equals("Xiaomi", true)
-    var xiaomiSeen by remember { mutableStateOf(prefs.getBoolean("xiaomiSeen", false)) }
     fun open(i: android.content.Intent) = runCatching { context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
     val appSettings = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+    // the rest (exact alarms, Hyper Island, Xiaomi's Autostart and battery) is in Settings › Calendar (the user, 18 Oct)
     if (!notifications) Note("Notifications are off for Tetra, so reminders will not show.", "Turn on" to { open(appSettings) })
-    else if (xiaomi && !xiaomiSeen) Note("On a Xiaomi, reminders ring after a restart only with Autostart allowed for Tetra, and on time with Battery saver set to No restrictions.",
-        "Autostart" to { open(android.content.Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")) || open(appSettings) },
-        "Battery" to { open(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))) },
-        "Done" to { xiaomiSeen = true; prefs.edit().putBoolean("xiaomiSeen", true).apply() })
+}
+
+/** What a calendar's import says when done: "Imported: 12 new, 3 updated". Each calendar into the one of its name. */
+internal fun importCalendars(context: Context, uri: android.net.Uri): String {
+    val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+    val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "Imported"
+    val incoming = (if (bytes.size > 1 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) CalendarTransfer.readZip(bytes)
+        else listOf(CalendarTransfer.read(bytes.toString(Charsets.UTF_8), name.removeSuffix(".ics")))).filter { it.events.isNotEmpty() }
+    if (incoming.isEmpty()) return "No events in that file."
+    val root = calendarRoot().apply { mkdirs() }
+    var added = 0; var updated = 0
+    incoming.forEach { inc ->
+        val all = CalendarFiles.calendars(root)
+        val to = all.firstOrNull { it.name.equals(inc.name, true) } ?: CalendarFiles.newCalendar(root, inc.name, inc.color ?: CalendarFiles.PALETTE[all.size % CalendarFiles.PALETTE.size])
+        CalendarTransfer.write(to, inc).let { (a, u) -> added += a; updated += u }
+    }
+    runCatching { CalendarAlarms.plan(context) }
+    return "Imported: $added new" + if (updated > 0) ", $updated updated" else ""
+}
+
+/**
+ * Settings › Calendar (the user, 18 Oct: "We need more permisions in the settings. A calendar section with the import
+ * expot"): each permission reminders need, its state and a button to it; the reminders switch; Import and Export all.
+ */
+@Composable internal fun CalendarSettings() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var version by remember { mutableIntStateOf(0) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) { // back from Android's settings: read the states again
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) version++ }
+        lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
+    }
+    var said by remember { mutableStateOf<String?>(null) }
+    fun open(i: android.content.Intent) = runCatching { context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    val pkg = android.net.Uri.parse("package:${context.packageName}")
+    val appDetails = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
+    val notificationSettings = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { version++ }
+    @Suppress("UNUSED_EXPRESSION") version // read again on each change
+    val notifications = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+    val exact = android.os.Build.VERSION.SDK_INT < 31 || context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms()
+    val battery = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+    val xiaomi = android.os.Build.MANUFACTURER.equals("Xiaomi", true)
+    val island = remember(version) { HyperIsland.isSupported(context) }
+    @Composable fun row(title: String, state: String, ok: Boolean, action: String?, act: () -> Unit) =
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(state, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
+            }
+            if (action != null) TextButton(onClick = act) { Text(action) }
+        }
+    Text("Your calendars are the folders in Tetra/Calendar: they sync with the computer, and Claude can manage them there.", style = MaterialTheme.typography.bodySmall)
+    row("Notifications", if (notifications) "Allowed: reminders show" else "Off: reminders will not show", notifications, if (notifications) "Settings" else "Allow") {
+        if (!notifications && android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) else open(notificationSettings)
+    }
+    row("Alarms on time", if (exact) "Allowed: reminders ring at their minute" else "Not allowed: reminders may come a few minutes late", exact, if (exact) null else "Allow") {
+        if (android.os.Build.VERSION.SDK_INT >= 31) open(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg))
+    }
+    row("Battery", if (battery) "No restrictions: reminders ring on time" else "Restricted: a reminder can be held back", battery, "Settings") {
+        open(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) || open(appDetails)
+    }
+    if (xiaomi) {
+        row("Hyper Island", if (island) "On: a reminder shows in the island, with ✕ for done" else "Off: turn on Tetra's focus notifications", island, "Settings") { open(notificationSettings) }
+        row("Autostart", "Needed for reminders after a restart (Xiaomi; Android does not tell apps whether it is on)", true, "Settings") {
+            open(android.content.Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")) || open(appDetails)
+        }
+    }
+    RemindersSwitch()
+    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder was sent." }) { Text("Send a test reminder") }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } } }
+    }
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching {
+            context.contentResolver.openOutputStream(uri)!!.use { it.write(CalendarTransfer.exportAll(CalendarFiles.calendars(calendarRoot()))) }; "Exported"
+        }.getOrElse { "Not exported: ${it.message}" } } }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.material3.Button(onClick = { pick.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }) { Text("Import") }
+        androidx.compose.material3.Button(onClick = { save.launch("Tetra calendars.zip") }) { Text("Export all") }
+    }
+    Text("Import: an .ics file or Google Takeout's zip; each calendar goes into the one of its name, an event already there is updated. Export: every calendar as an .ics, in a zip.", style = MaterialTheme.typography.bodySmall)
+    said?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable private fun Note(text: String, vararg actions: Pair<String, () -> Unit>) {

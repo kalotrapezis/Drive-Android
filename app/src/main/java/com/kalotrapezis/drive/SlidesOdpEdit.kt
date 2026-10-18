@@ -794,9 +794,12 @@ internal object SlidesOdpEdit {
         for (a in ordered.flatMap { it.all() }.filter { (it.localName == "a" || it.localName == "event-listener") && it.a(XLINK, "href")?.startsWith("#tetra-slide:") == true })
             a.setAttributeNS(XLINK, "xlink:href", a.a(XLINK, "href")!!.removePrefix("#tetra-slide:").toIntOrNull()?.let(pageName::get)?.let { "#$it" } ?: "")
         // Slide show › Loop until Esc: the presentation's settings say endless
-        edit.loop?.let { loop -> val st = pres.kids().firstOrNull { it.localName == "settings" && it.namespaceURI == PRES }
+        if (edit.loop != null || edit.noAnimation != null || edit.manual != null) { val st = pres.kids().firstOrNull { it.localName == "settings" && it.namespaceURI == PRES }
             ?: doc.createElementNS(PRES, "presentation:settings").also { pres.appendChild(it) }
-            if (loop) { st.setAttributeNS(PRES, "presentation:endless", "true"); st.setAttributeNS(PRES, "presentation:pause", "PT0S") } else st.removeAttributeNS(PRES, "endless") }
+            edit.loop?.let { loop -> if (loop) { st.setAttributeNS(PRES, "presentation:endless", "true"); st.setAttributeNS(PRES, "presentation:pause", "PT0S") } else st.removeAttributeNS(PRES, "endless") }
+            // Set Up Slide Show: LibreOffice's Animations allowed and Change slides manually
+            edit.noAnimation?.let { if (it) st.setAttributeNS(PRES, "presentation:animations", "disabled") else st.removeAttributeNS(PRES, "animations") }
+            edit.manual?.let { if (it) st.setAttributeNS(PRES, "presentation:force-manual", "true") else st.removeAttributeNS(PRES, "force-manual") } }
         // the pages in their order where they were (before the presentation's settings)
         pages.forEach { pres.removeChild(it) }
         val after = pres.kids().firstOrNull { it.localName == "settings" }

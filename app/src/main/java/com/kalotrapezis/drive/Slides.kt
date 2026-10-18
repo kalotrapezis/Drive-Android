@@ -146,6 +146,8 @@ internal class Deck(val width: Float, val height: Float, val slides: List<Slide>
     val relaid: ((Int, Int?, Boolean) -> Slide?)? = null,
     /** PowerPoint's sections: each one's name and its first slide; null: the file cannot hold them (an .odp) */ val sections: List<Pair<String, Int>>? = null,
     /** Slide show › Loop until Esc (PowerPoint's showPr loop, LibreOffice's endless) */ val loop: Boolean = false,
+    /** Set Up Slide Show: shown without animation (showPr showAnimation="0", LibreOffice's animations="disabled"); timings not used (useTimings="0", force-manual) */
+    val noAnimation: Boolean = false, val manual: Boolean = false,
     /** References (Words' sources): the deck's sources and their citation style */ val sources: List<DocSource> = emptyList(), val citeStyle: CiteStyle = CiteStyle.APA)
 
 /** A layout a new slide can take: its name, its part, a slide of it with grey hints (Title, Text), the empty slide saved. */
@@ -219,10 +221,12 @@ internal object Slides {
             val sldIds = pres.kid("sldIdLst")?.kids("sldId").orEmpty().map { it.attr("id") }
             val sections = pres.below("section").filter { it.namespaceURI?.contains("powerpoint/2010") == true }.mapNotNull { sec ->
                 sec.below("sldId").firstOrNull()?.attr("id")?.let { sldIds.indexOf(it) }?.takeIf { it >= 0 }?.let { (sec.attr("name") ?: "") to it } }
-            val loop = relType(xml, "ppt/presentation.xml", "presProps")?.let(xml)?.kid("showPr")?.attr("loop").let { it == "1" || it == "true" }
+            val showPr = relType(xml, "ppt/presentation.xml", "presProps")?.let(xml)?.kid("showPr")
+            val loop = showPr?.attr("loop").let { it == "1" || it == "true" }
+            val noAnimation = showPr?.attr("showAnimation").let { it == "0" || it == "false" }; val manual = showPr?.attr("useTimings").let { it == "0" || it == "false" }
             // References: Word's bibliography part, which PowerPoint keeps too (customXml)
             val custom = (1..24).mapNotNull { n -> "customXml/item$n.xml".let { p -> part(p)?.let { p to it } } }.toMap()
-            return Deck(w, h, read, kinds, sections = sections, loop = loop, sources = WordSources.read(custom), citeStyle = CiteStyle.ofWord(WordSources.styleName(custom)), relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) {
+            return Deck(w, h, read, kinds, sections = sections, loop = loop, noAnimation = noAnimation, manual = manual, sources = WordSources.read(custom), citeStyle = CiteStyle.ofWord(WordSources.styleName(custom)), relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) {
                 slides.getOrNull(n)?.let { path -> runCatching { slide(path, defaults, layoutOf = k?.let { kinds[it].part }, fix = if (reset) SlidesEdit::resetSlide else null) }.onFailure { WriterLog.w("Slides: $path on another layout", it) }.getOrNull() } } } })
         }
 

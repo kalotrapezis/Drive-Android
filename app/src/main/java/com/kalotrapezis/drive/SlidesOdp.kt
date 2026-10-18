@@ -421,13 +421,15 @@ internal object SlidesOdp {
         val kinds = masters.values.filterNotNull().map { m -> layout(m, m.a(STYLE, "display-name") ?: odfDisplayName(m.a(STYLE, "name").orEmpty()), placeholders) }.toMutableList()
         if (masters.size == 1) masters.values.first()?.let { m -> kinds += layout(m, "Title Only", setOf("title")); kinds += layout(m, "Blank", emptySet()) }
         val again = HashMap<Triple<Int, Int?, Boolean>, Slide>()
-        val endless = content.getElementsByTagNameNS(PRES, "settings").let { l -> (0 until l.length).any { (l.item(it) as Element).a(PRES, "endless") == "true" } }
+        val settings = content.getElementsByTagNameNS(PRES, "settings").let { l -> (0 until l.length).map { l.item(it) as Element } }
+        val endless = settings.any { it.a(PRES, "endless") == "true" }
+        val noAnimation = settings.any { it.a(PRES, "animations") == "disabled" }; val manual = settings.any { it.a(PRES, "force-manual") == "true" }
         // References: Tetra's sources in the deck's own properties (meta.xml's user-defined, which LibreOffice keeps), in Word's form
         val meta = part("meta.xml")?.let { runCatching { OfficeFormats.parse(it).documentElement }.getOrNull() }
         fun userDefined(n: String) = meta?.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "user-defined")?.let { l -> (0 until l.length).map { l.item(it) as Element } }
             ?.firstOrNull { it.getAttributeNS("urn:oasis:names:tc:opendocument:xmlns:meta:1.0", "name") == n }?.textContent
         val sources = userDefined(SOURCES_NAME)?.let { WordSources.read(mapOf("customXml/item1.xml" to it.toByteArray())) }.orEmpty()
-        Deck(width, height, slides, kinds, loop = endless, sources = sources, citeStyle = userDefined(STYLE_NAME)?.let { n -> CiteStyle.entries.firstOrNull { it.name == n } } ?: CiteStyle.APA, relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) { val name = k?.let { kinds[it].part } ?: pages[n].a(DRAW, "master-page-name")
+        Deck(width, height, slides, kinds, loop = endless, noAnimation = noAnimation, manual = manual, sources = sources, citeStyle = userDefined(STYLE_NAME)?.let { n -> CiteStyle.entries.firstOrNull { it.name == n } } ?: CiteStyle.APA, relaid = { n, k, reset -> synchronized(again) { again.getOrPut(Triple(n, k, reset)) { val name = k?.let { kinds[it].part } ?: pages[n].a(DRAW, "master-page-name")
             pageSlide(n, if (reset) (pages[n].cloneNode(true) as Element).also { resetPage(it, masters[name]) } else pages[n], name) } } })
     }
 }

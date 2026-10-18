@@ -1212,6 +1212,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 val looping = e.loop ?: deck?.loop ?: false
                 RibbonButton("Loop until Esc", w, R.drawable.ic_restore, on = looping) { change(e.copy(loop = !looping)) }
                 RibbonButton("Rehearse timings", w, R.drawable.ic_calendar_today) { rehearsing = true; presenting = 0 }
+                // Set Up Slide Show's Show without animation and Use timings (kept in the file, as Loop)
+                val still = e.noAnimation ?: deck?.noAnimation ?: false; val manual = e.manual ?: deck?.manual ?: false
+                RibbonButton("Without animation", w, R.drawable.ic_visibility_off, on = still) { change(e.copy(noAnimation = !still)) }
+                RibbonButton("Use timings", w, R.drawable.ic_history, on = !manual) { change(e.copy(manual = !manual)) }
                 RibbonDivider(w)
                 val hidden = e.hidden[uid] ?: deck?.slides?.getOrNull(entry.src)?.hidden ?: false
                 RibbonButton(if (hidden) "Show slide" else "Hide slide", w, if (hidden) R.drawable.ic_visibility else R.drawable.ic_visibility_off) { change(e.copy(hidden = e.hidden + (uid to !hidden))) }
@@ -2332,7 +2336,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     presenting?.let { start -> if (d != null) Present(d, start, notes, jump = { l ->
         // a link's slide: one linked here (its uid), or the deck's own part a file's link names
         (if (l.startsWith("slide:")) edit?.order?.indexOfFirst { it.uid == l.removePrefix("slide:").toIntOrNull() } else d.slides.indexOfFirst { it.part == l })?.takeIf { it >= 0 }
-    }, loop = edit?.loop ?: deck?.loop ?: false, rehearse = if (rehearsing) { times -> rehearsed = times } else null, keepInk = if (editing) { m -> inked = m } else null, film = ::filmOf) { presenting = null; rehearsing = false } }
+    }, loop = edit?.loop ?: deck?.loop ?: false, noAnimation = edit?.noAnimation ?: deck?.noAnimation ?: false, manual = edit?.manual ?: deck?.manual ?: false, rehearse = if (rehearsing) { times -> rehearsed = times } else null, keepInk = if (editing) { m -> inked = m } else null, film = ::filmOf) { presenting = null; rehearsing = false } }
     // PowerPoint's "Keep your ink annotations?": kept, each slide's strokes a drawing on it (Words' picture with its strokes: Edit drawing draws on)
     inked?.let { m ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { inked = null }, title = { Text("Keep your ink?") },
@@ -2445,6 +2449,7 @@ private fun SlideCanvas(deck: Deck, slide: Slide, modifier: Modifier, hints: Boo
 @Composable
 private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> Int? = { null },
     /** Slide show › Loop until Esc: after the last, the first again */ loop: Boolean = false,
+    /** Set Up Slide Show: each slide whole at once (no animation); its "after" times not used (on a click only) */ noAnimation: Boolean = false, manual: Boolean = false,
     /** Slide show › Rehearse timings: how long each slide (its index) was shown, given when the show ends */ rehearse: ((Map<Int, Long>) -> Unit)? = null,
     /** the pen's ink at the end (each slide's strokes, 0–1 of its width and height), to keep or not */ keepInk: ((Map<Int, List<List<androidx.compose.ui.geometry.Offset>>>) -> Unit)? = null,
     /** a video's film to play (a file, or a web address) */ film: suspend (String) -> String? = { null }, close0: () -> Unit) {
@@ -2457,6 +2462,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     var from by remember { mutableStateOf<Pair<Int, Long>?>(null) }
     val now by androidx.compose.runtime.produceState(System.nanoTime()) { while (true) androidx.compose.runtime.withFrameNanos { value = System.nanoTime() } }
     fun slide(p: Int) = deck.slides[shown[p]]
+    fun stepsOf(p: Int): List<SlideStep> = if (noAnimation) emptyList() else slide(p).steps
     fun ms(t: Long) = (now - t) / 1_000_000
     // Rehearse timings: the time on each slide, counted from when it came (a slide shown twice, both times)
     val spent = remember { HashMap<Int, Long>() }
@@ -2475,13 +2481,13 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}") }
     // the groups that start by themselves: one after the other, at the slide's start and after a click
     LaunchedEffect(page, step, playing, from) {
-        val steps = slide(page).steps
+        val steps = stepsOf(page)
         playing?.let { (g, t) -> val left = length(steps[g]) - (System.nanoTime() - t) / 1_000_000; if (left > 0) kotlinx.coroutines.delay(left); step = g + 1; playing = null; return@LaunchedEffect }
         from?.let { (_, t) -> val left = (slide(page).transition?.ms ?: 0) - (System.nanoTime() - t) / 1_000_000; if (left > 0) kotlinx.coroutines.delay(left); from = null; return@LaunchedEffect }
         if (step < steps.size && steps[step].auto) play(step)
     }
     fun next() {
-        val steps = slide(page).steps
+        val steps = stepsOf(page)
         when {
             playing != null -> { step = playing!!.first + 1; playing = null } // a click while it plays: it ends at once, as PowerPoint's
             from != null -> from = null
@@ -2491,7 +2497,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             else -> close()
         }
     }
-    fun back() { if (page > 0) { mark(); page--; step = slide(page).steps.size; playing = null; from = null } }
+    fun back() { if (page > 0) { mark(); page--; step = stepsOf(page).size; playing = null; from = null } }
     /** PowerPoint's number + Enter: straight to that slide (as numbered in the show). */
     fun goTo(p: Int) { if (p in shown.indices && p != page) { mark(); from = page to System.nanoTime(); page = p; step = 0; playing = null } }
     /** A tap at [x], [y] in a [w] × [h] window on words with a link (Insert › Link, a file's own): a web page opened, a slide gone to. True: it was one. */
@@ -2506,7 +2512,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
         val link = obj?.link ?: box?.text?.paras?.flatMap { it.runs }?.firstNotNullOfOrNull { it.link } ?: return false
         val tapped = (obj ?: box)!!.let { floatArrayOf(it.x, it.y, it.w, it.h) }
         // the slide it came from (PowerPoint's Last Slide Viewed): back out of the object it was entered by
-        if (link == "back") { visited.removeLastOrNull()?.let { (p, r) -> mark(); zooming = Triple(page, r, false to System.nanoTime()); page = p; step = slide(p).steps.size; playing = null; from = null
+        if (link == "back") { visited.removeLastOrNull()?.let { (p, r) -> mark(); zooming = Triple(page, r, false to System.nanoTime()); page = p; step = stepsOf(p).size; playing = null; from = null
             WriterLog.i("Slides: back to slide ${shown[p] + 1}") }; return true }
         jump(link)?.let { i -> shown.indexOf(i).takeIf { it >= 0 }?.let { mark(); visited += page to tapped; zooming = Triple(page, tapped, true to System.nanoTime()); page = it; step = 0; playing = null; from = null
             WriterLog.i("Slides: link to slide ${i + 1}") }; return true }
@@ -2518,8 +2524,8 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     // Pause (the presenter's notes, asked 17 Oct): a moment aside — slides that go on by themselves wait, the teleprompter stops
     var paused by remember { mutableStateOf(false) }
     LaunchedEffect(page, step, playing, from, paused) {
-        val after = slide(page).transition?.after ?: return@LaunchedEffect
-        if (rehearse != null || paused || playing != null || from != null || step < slide(page).steps.size) return@LaunchedEffect
+        val after = slide(page).transition?.after?.takeIf { !manual } ?: return@LaunchedEffect
+        if (rehearse != null || paused || playing != null || from != null || step < stepsOf(page).size) return@LaunchedEffect
         kotlinx.coroutines.delay(after.toLong()); next()
     }
     /**
@@ -2528,8 +2534,9 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
      */
     fun look(sl: Slide, p: Int): (SlideItem) -> FloatArray? {
         val mine = HashMap<String, MutableList<Pair<Int, SlideEffect>>>()
-        sl.steps.forEachIndexed { g, st -> st.effects.forEach { e -> mine.getOrPut(e.target) { ArrayList() } += g to e } }
-        val done = if (p == page) step else sl.steps.size
+        val steps: List<SlideStep> = if (noAnimation) emptyList() else sl.steps
+        steps.forEachIndexed { g, st -> st.effects.forEach { e -> mine.getOrPut(e.target) { ArrayList() } += g to e } }
+        val done = if (p == page) step else steps.size
         val play = if (p == page) playing else null
         val shown = floatArrayOf(1f, 0f, 0f)
         // an emphasis turns or scales about the middle of what it names (a group's, for a group)

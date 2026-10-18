@@ -130,6 +130,7 @@ internal object SlidesEdit {
         /** Home › Section: the sections as now, each its name and its first slide's uid; null: as the file has them */ val sections: List<Pair<String, Int>>? = null,
         /** Design › Format background: a slide's own, a colour or a picture */ val backgrounds: Map<Int, Back> = emptyMap(),
         /** Slide show › Loop until Esc; null: as the file has it */ val loop: Boolean? = null,
+        /** Slide show › Without animation, Use timings off; null: as the file has them */ val noAnimation: Boolean? = null, val manual: Boolean? = null,
         /** References: the deck's sources and their style as now; null: as the file has them */ val sources: List<DocSource>? = null, val citeStyle: CiteStyle? = null,
         /** Group: a slide's groups made here, each its id and its things' ids (back to front) */ val groups: Map<Int, Map<String, List<String>>> = emptyMap(),
         /** Ungroup: (slide uid, group id) the file's own groups taken apart, their things each on its own (a group in one too) */ val ungrouped: Set<Pair<Int, String>> = emptySet(),
@@ -1240,13 +1241,16 @@ internal object SlidesEdit {
                 """<p:cmAuthor id="${it.id}" name="${esc(it.name)}" initials="${esc(it.initials)}" lastIdx="${it.last}" clrIdx="${it.clr}"/>""" } + "</p:cmAuthorLst>").toByteArray()
         }
         // Slide show › Loop until Esc: the presentation's properties' showPr (made when it has none)
-        edit.loop?.let { loop -> rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/presProps") }?.let { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }?.let { path ->
+        if (edit.loop != null || edit.noAnimation != null || edit.manual != null) rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/presProps") }?.let { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }?.let { path ->
             val props = OfficeFormats.parse(read(path) ?: return@let)
             val showPr = props.documentElement.kids().firstOrNull { it.localName == "showPr" }
                 ?: props.createElementNS(P, "p:showPr").also { sp -> props.documentElement.insertBefore(sp, props.documentElement.firstChild) }
-            if (loop) showPr.setAttribute("loop", "1") else showPr.removeAttribute("loop")
+            edit.loop?.let { loop -> if (loop) showPr.setAttribute("loop", "1") else showPr.removeAttribute("loop") }
+            // Set Up Slide Show's Show without animation and Use timings (their defaults left unsaid, as PowerPoint's)
+            edit.noAnimation?.let { if (it) showPr.setAttribute("showAnimation", "0") else showPr.removeAttribute("showAnimation") }
+            edit.manual?.let { if (it) showPr.setAttribute("useTimings", "0") else showPr.removeAttribute("useTimings") }
             out[path] = xml(props)
-        } }
+        }
         // Home › Section: PowerPoint 2010's list, each section's slides by their sldId (slides before the first in a "Default Section", as PowerPoint makes it)
         // (written again whenever the file has some: a slide moved or deleted would leave its list wrong)
         if (edit.sections != null || !deck.sections.isNullOrEmpty()) {

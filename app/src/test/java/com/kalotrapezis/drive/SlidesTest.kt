@@ -2,6 +2,7 @@ package com.kalotrapezis.drive
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.File
 
@@ -65,6 +66,25 @@ class SlidesTest {
                 val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
                 ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
+            }
+        }
+    }
+
+    /** Set Up Slide Show: Show without animation and Use timings off — PowerPoint's showPr, LibreOffice's settings; read back, and by LibreOffice. */
+    @Test fun `shown without animation and timings`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            assertFalse(name, deck.noAnimation); assertFalse(name, deck.manual)
+            val e = SlidesEdit.start(deck).copy(noAnimation = true, manual = true)
+            val out = scratchDir("setup").resolve("setup-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            Slides.read(out).let { assertTrue(name, it.noAnimation); assertTrue(name, it.manual); assertEquals(name, deck.slides.size, it.slides.size) }
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                // LibreOffice carries Use timings across (its force-manual), not Show without animation (26.2: its .pptx import drops showAnimation)
+                Slides.read(dir.listFiles()!!.single { it.extension == other }).let { assertTrue("LibreOffice's $other of $name", it.manual) }
             }
         }
     }

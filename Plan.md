@@ -585,7 +585,7 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       take away) and **Animation painter** (the chosen thing's effects put on the next thing chosen, in place of its own). **Shared
       piece:** none of Words' (Words has no animations); the format painter's way of working. Emulator: Fade painted from the title onto
       the subtitle, both in the pane. Not yet: motion paths and triggers (later).
-- [~] **Slide show**: go to a slide by number or from a grid during the show; keyboard keys as PowerPoint's (N/P,
+- [x] **Slide show**: go to a slide by number or from a grid during the show; keyboard keys as PowerPoint's (N/P,
       arrows, B/W screen, number + Enter, Esc); keep or discard the pen's ink at the end, saved into the deck;
       set-up options (loop, without animations, use timings or not); subtitles (later).
       Done 17 Oct (office-C session): a number + Enter and PowerPoint's keys (with Loop until Esc, B › Slide show above); at the end of a
@@ -594,6 +594,10 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       a slide during the show, without animations, use timings or not; subtitles later.
       A grid to go to a slide during the show done 18 Oct (office-F): the show's tools › All slides (PowerPoint's See All Slides) —
       every slide shown, the one on screen marked, one tapped goes there (the second screen follows). Emulator: slide 3 from the grid.
+      Without animation and Use timings done 18 Oct (office-F): Slide show › Without animation (each slide whole at once) and Use timings
+      (off: on a click only), kept in the file as Loop is — PowerPoint's showPr showAnimation / useTimings, LibreOffice's settings
+      animations="disabled" / force-manual (`shown without animation and timings`; LibreOffice carries Use timings across, not
+      Without animation). Emulator: both on the Slide show tab. Subtitles: later.
 - [ ] **Record** (later): record narration and timings per slide; export the deck as a video.
 - [x] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
       Done 18 Oct (office-F): View › Ruler (Words' HorizontalRuler and VerticalRuler round the slide being edited, in Words' unit from

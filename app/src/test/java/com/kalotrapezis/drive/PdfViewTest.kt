@@ -38,4 +38,11 @@ class PdfViewTest {
         assert(Pdf.isPdf("Scan 2026-10-17.PDF") && !Pdf.isPdf("notes.pdf.txt"))
         assert(OfficeOpen.isOffice("a.pdf") && OfficeOpen.extensionOf("application/pdf") == "pdf")
     }
+
+    @Test fun ownSharedAddressIsTheFileItself() {
+        val storage = java.io.File("/storage/emulated/0")
+        assert(OfficeOpen.providerFile(listOf("tetra", "Documents", "Reading list.docx"), storage) == java.io.File(storage, "Tetra/Documents/Reading list.docx"))
+        assert(OfficeOpen.providerFile(listOf("drive", "a.pdf"), storage) == java.io.File(storage, "Drive/a.pdf"))
+        assert(OfficeOpen.providerFile(listOf("logs", "writer.log"), storage) == null)
+    }
 }

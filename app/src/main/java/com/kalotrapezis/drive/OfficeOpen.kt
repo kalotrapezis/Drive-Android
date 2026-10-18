@@ -1,5 +1,6 @@
 package com.kalotrapezis.drive
 
+import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -29,27 +30,35 @@ internal object OfficeOpen {
     /** Words', Tables', Slides' and the PDF viewer's kinds, by name. */
     fun isOffice(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("docx", "odt", "doc", "rtf") || Sheets.isSheet(name) || Slides.isSlides(name) || Pdf.isPdf(name)
 
-    /** An address's file on the phone's storage, when it names one: file://, a Files app's (primary:…), Downloads' raw: one. */
+    /** An address's file on the phone's storage, when it names one: file://, a Files app's (primary:…), Downloads' raw: one, Tetra's own. */
     fun localPath(uri: Uri, storage: File): File? = when {
         uri.scheme == "file" -> uri.path?.let(::File)
         uri.authority == "com.android.externalstorage.documents" -> documentId(uri)?.let { id ->
             if (id.startsWith("primary:")) File(storage, id.removePrefix("primary:")) else null
         }
         uri.authority == "com.android.providers.downloads.documents" -> documentId(uri)?.takeIf { it.startsWith("raw:") }?.let { File(it.removePrefix("raw:")) }
+        uri.authority == "com.kalotrapezis.drive.files" -> providerFile(uri.pathSegments, storage)
         else -> null
     }?.takeIf { it.isFile && it.canRead() && it.canWrite() }
+
+    /** Tetra's own share / Open with address (res/xml/local_drive_paths.xml: tetra/…, drive/…) back to its file. */
+    fun providerFile(segments: List<String>, storage: File): File? =
+        mapOf("tetra" to "Tetra", "drive" to "Drive")[segments.firstOrNull()]?.let { File(storage, (listOf(it) + segments.drop(1)).joinToString("/")) }
 
     private fun documentId(uri: Uri) = uri.pathSegments.let { s -> s.indexOf("document").takeIf { it >= 0 }?.let { s.getOrNull(it + 1) } }
 
     /**
-     * A media or Downloads document's own file, from MediaStore (the picker's Recent gives these): a file already on the
-     * phone is opened where it is, not copied. Downloads' plain numbers are its own ids, not MediaStore's: left alone.
+     * A media or Downloads document's own file, from MediaStore (the picker's Recent gives these, and other apps' Open with
+     * a content://media/… one): a file already on the phone is opened where it is, not copied. Downloads' plain numbers are
+     * its own ids, not MediaStore's: left alone.
      */
     private fun mediaPath(context: Context, uri: Uri): File? {
-        val id = documentId(uri) ?: return null
-        val ok = uri.authority == "com.android.providers.media.documents" && ':' in id || uri.authority == "com.android.providers.downloads.documents" && id.startsWith("msf:")
-        val n = id.substringAfter(':').toLongOrNull()?.takeIf { ok } ?: return null
-        return runCatching { context.contentResolver.query(MediaStore.Files.getContentUri("external"), arrayOf(MediaStore.MediaColumns.DATA), "${MediaStore.MediaColumns._ID}=?", arrayOf("$n"), null)
+        val row = if (uri.authority == MediaStore.AUTHORITY) uri else {
+            val id = documentId(uri) ?: return null
+            val ok = uri.authority == "com.android.providers.media.documents" && ':' in id || uri.authority == "com.android.providers.downloads.documents" && id.startsWith("msf:")
+            ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), id.substringAfter(':').toLongOrNull()?.takeIf { ok } ?: return null)
+        }
+        return runCatching { context.contentResolver.query(row, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)
             ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull()?.let(::File)?.takeIf { it.isFile && it.canRead() && it.canWrite() }
     }
 

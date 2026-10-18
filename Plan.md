@@ -145,7 +145,14 @@ How to write here:
       the PDF viewer's ⋯. Emulator: arrange.pptx's heart → in the home's Favourites; Words' favourite filled; the phone's File tab.
       Unit 507, 0 failing, 7 skipped. Not done: a file that is not in Tetra's Files (a PDF opened from another app is read from a copy in
       the app's cache) has no heart. Seen: opening a file of Tetra's own Documents from another app makes a copy in "From other apps"
-      each time ("Reading list (9).docx") — [ ] open the file itself when it is already in Tetra's Files.
+      each time ("Reading list (9).docx") — [x] open the file itself when it is already in Tetra's Files.
+- [x] (open-in-place session, 18 Oct) A Tetra file opened from the picker or another app opens itself, not a copy in "From other
+      apps" (the line above's last [ ]): `OfficeOpen` now also resolves content://media/… (MediaStore's own address, what other apps'
+      Open with gives) and Tetra's own share address (content://com.kalotrapezis.drive.files/tetra/…) to the file; the picker's
+      Files/Documents roots already did. Files outside the phone's storage are copied as before. Emulator: Reading list.docx and
+      Ferry and rooms.pdf by content://media, the own address, the PDF picker (Tetra/Documents) and Words' picker (Documents root) —
+      each opened in place with its heart, no new copy. Unit 508, 0 failing, 7 skipped. Not tried: a save after such an open (it is
+      the same file object Files opens).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

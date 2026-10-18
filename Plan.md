@@ -1524,6 +1524,12 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       drawer and Settings › Calendar: Share (the share sheet) and Save to Files. Desktop, in the Settings drawer: Save as…
       (~/Downloads) and Copy to ~/.claude/skills. "Lets Claude read and change this calendar by editing its files."
 
+- [~] (calendar pickers session, 18 Oct) **Clock and month pickers on the desktop; a repeat's cancelled days follow its
+      time** (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the
+      date not a calendar"): desktop editor's quarter-hour list → a clock that takes any minute (typed too), every date
+      field → a month calendar; moving all of a repeat's times shifts its EXDATEs and RECURRENCE-IDs alike (desktop and
+      Android), so cancelled days stay cancelled.
+
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

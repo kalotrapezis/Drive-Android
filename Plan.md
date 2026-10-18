@@ -1467,6 +1467,21 @@ UIDs, unknown zone, bad RRULE) — run after every edit.
       reboot. Then the user's own calendar: Google Takeout imported.
 - Later, if wanted: drag to move/resize; multi-day events as one bar (Google's) instead of a chip per day.
 
+### Tetra's island instead of Google's panel (the user, 18 Oct, relayed by the main session)
+"After the calendar app is finished try to bring it closer to the UX with an island and bottom drawer that opens for
+the rest like what calendars to see and what not. The same for the big screen not hamburger menu an island that is
+close to the UX we are using to the rest of the Tetra app." And: "The calendar will go to desktop as well. So it can
+sync and you to be able to work with it with a skill just by editing files like normal."
+- [~] (calendar session, 18 Oct) Phone and tablet: no hamburger, no side panel. Tetra's bottom island (Files' and
+      Notes' `IslandBottomBar` / `IslandNavigationItem`): the views (phone: Agenda, Day, Month; tablet: Day, Week, Month,
+      Agenda) and New; pulled up, the drawer (the same `ModalBottomSheet` as Notes' and Files'): the calendars with their
+      coloured boxes (show/hide, ⋯ colour/name/export/delete), New calendar, Import, Export all, the small month on a
+      big screen, 3 days on a phone, Reminders on this device. The top keeps Today, ‹ › and the month's name.
+- [ ] Desktop the same: the bottom island (the `notes-dock` island Files and Photos use) and a drawer for the rest,
+      not the side panel. The desktop part is already files only (no database copy): it reads Files/Calendar on every
+      look and fs.watch shows any edit (Claude's, the skill's, sync's) at once; the skill's paths (~/Tetra/Files/Calendar)
+      are what both apps read and write.
+
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

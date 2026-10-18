@@ -192,6 +192,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
     var equating by remember { mutableStateOf(false) } // Insert › Equation: Words' editor
+    var drawingOn by remember { mutableStateOf(false) } // Draw › Draw on sheet: Words' drawing box over the cells shown
     var artStrip by remember { mutableStateOf<Pair<ArtStyle, ArtBend>?>(null) } // Insert › WordArt: Words' strip, the look and bend tapped
     var artWords by remember { mutableStateOf<Pair<ArtStyle, ArtBend>?>(null) } // then its words asked
     var protectingBook by remember { mutableStateOf(false) } // Review › Protect / Unprotect workbook: its password asked
@@ -1005,7 +1006,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val ctx = when (h?.first) { 'c' -> "Column ${Sheets.colName(h.second)}"; 'r' -> "Row ${l.rows[h.second] + 1}"; 's' -> "Sheet"; else -> figName }
         // Selection first, as in Words: Cut, Copy, Paste and Clear out of the crowded Home (asked 16 Oct); a cell is
         // always chosen while editing, so it is always there then, but Home stays the tab in use
-        val base = listOf("Selection", "File", "Home", "Insert", "Page layout", "Formulas", "Data", "Review", "View")
+        val base = listOf("Selection", "File", "Home", "Insert", "Draw", "Page layout", "Formulas", "Data", "Review", "View")
         val tabs = (if (editing) base else listOfNotNull("Selection".takeIf { g != null })) + listOfNotNull(ctx)
         if (tabs.isEmpty()) return
         LaunchedEffect(ctx) { tab = ctx ?: tab.takeIf { it in base } ?: "Home" }
@@ -1300,6 +1301,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("Print titles", w, R.drawable.ic_title, enabled = g != null, on = p.titles != null) { g?.let { d -> setPrint { it.copy(titles = l.rows[d.r1]..l.rows[d.r2]) } } }
                             if (p.titles != null) RibbonButton("Clear print titles", w, R.drawable.ic_close) { setPrint { it.copy(titles = null) } }
                         }
+                        // Words' Draw (Excel's Draw tab): pens and a highlighter on the sheet itself, the drawing put on where it was drawn
+                        shown == "Draw" -> if (b.kind != "csv") RibbonButton("Draw on sheet", w, R.drawable.ic_draw) { drawingOn = true }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
                             // Excel's Recently Used: the last functions put in, one tapped goes in as Insert function's
@@ -2152,6 +2155,21 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     else SheetChart.wordArtOds(baked, next, i, r, c, aw, ah, words, style.color, PictureXml.ART_PT, fx, bend.warp) }) }) { Text("Insert") } },
             dismissButton = { TextButton(onClick = { artWords = null }) { Text("Cancel") } })
     }
+    // Draw › Draw on sheet: Words' DrawDialog on the cells as the screen shows them (from its top left, 960 × 640 pixels at
+    // 100 %); the drawing a picture (Words' ink PNG, its strokes kept in it) put on where it was drawn
+    if (drawingOn) sheet?.let { s -> book?.let { b -> layout?.let { l ->
+        val density = LocalDensity.current.density
+        val painter = remember(s, l, version) { SheetPainter(s, b.styles, density, l) }
+        val (x0, y0) = remember(painter) { painter.origin(view) }
+        val wPx = 960f; val hPx = 640f
+        DrawDialog(wPx * 0.75f, { drawingOn = false }, slide = Triple(wPx * 0.75f, hPx * 0.75f) { c ->
+            c.save(); c.scale(0.75f, 0.75f); painter.region(c, x0, y0, wPx, hPx); c.restore() }) { png, ww, hh, at, _ ->
+            drawingOn = false
+            val (cell, off) = painter.cellAt(x0 + (at?.first ?: 0f) / 0.75f, y0 + (at?.second ?: 0f) / 0.75f); val (r, c) = cell; val i = index
+            fileStep("drawing put on", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.pictureXlsx(baked, next, bb.parts.getValue("$i"), r, c, ww, hh, png, "png", off.first * 0.75f, off.second * 0.75f)
+                else SheetChart.pictureOds(baked, next, i, r, c, ww, hh, png, "png", off.first * 0.75f, off.second * 0.75f) })
+        }
+    } } }
     // Insert › Equation: Words' equation editor, the equation put on the sheet as a picture at the chosen cell (its letters 16 pt).
     // shortcut: a picture, not Excel's own equation (OMML in a text box): edited again as a picture; upgrade if equations are kept editable
     if (equating) EquationDialog(null, { equating = false }) { m -> equating = false
@@ -2872,6 +2890,14 @@ internal class SheetPainter(
     }
 
     /** One printed page ([SheetPages]): its title rows, then its rows, at the pages' scale, from the margins. */
+    /** Draw's background: the cells from [x0], [y0] (the sheet's units: a pixel at 100 %), [w] × [h], as the sheet shows them. */
+    fun region(c: android.graphics.Canvas, x0: Float, y0: Float, w: Float, h: Float) = pane(c, 0f, 0f, w, h, x0, y0, 1f, null, NO_MARKS, false)
+    /** Where the view's cells begin, in the sheet's units (frozen rows and columns scrolled with the rest: A1 when not scrolled). */
+    fun origin(view: SheetView) = view.x to view.y
+    /** The cell at sheet point [x], [y] (the sheet's row and column) and how far in from its top left (the sheet's units). */
+    fun cellAt(x: Float, y: Float): Pair<Pair<Int, Int>, Pair<Float, Float>> { val r = find(rowY, y, rows); val c = find(colX, x, cols)
+        return (rAt[r] to cAt[c]) to (x - colX[c] to y - rowY[r]) }
+
     fun printPage(c: android.graphics.Canvas, pages: SheetPages, page: SheetPage, grid: Boolean) {
         val k = pages.k
         val x0 = colX[page.cols.first]; val w = (colX[page.cols.last + 1] - x0) * k

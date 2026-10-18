@@ -25,13 +25,13 @@ internal object SheetChart {
             """<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="$REL" r:id="$id"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>""" }
 
     /** Insert › Picture (Words' picture picker): [bytes] ([ext]: "png", "jpg") at cell [row], [col], [widthPt] × [heightPt] — Excel's picture in the sheet's drawing. */
-    fun pictureXlsx(source: File, target: File, sheetPart: String, row: Int, col: Int, widthPt: Float, heightPt: Float, bytes: ByteArray, ext: String) =
+    fun pictureXlsx(source: File, target: File, sheetPart: String, row: Int, col: Int, widthPt: Float, heightPt: Float, bytes: ByteArray, ext: String, dxPt: Float = 0f, dyPt: Float = 0f) =
         anchored(source, target, sheetPart, { zip, out, types ->
             val media = generateSequence(1) { it + 1 }.map { "xl/media/image$it.$ext" }.first { zip.getEntry(it) == null && it !in out }
             out[media] = bytes; types.default(ext, if (ext == "png") "image/png" else "image/jpeg")
             "image" to "../media/${media.substringAfterLast('/')}"
         }) { n, id -> val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
-            """<xdr:oneCellAnchor>${mark("from", row, col)}<xdr:ext cx="$cx" cy="$cy"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="$n" name="Picture $n"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>""" +
+            """<xdr:oneCellAnchor>${mark("from", row, col, dxPt, dyPt)}<xdr:ext cx="$cx" cy="$cy"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="$n" name="Picture $n"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>""" +
             """<xdr:blipFill><a:blip xmlns:r="$REL" r:embed="$id"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>""" }
 
     /** Insert › Text box: [text] in a box at cell [row], [col], [widthPt] × [heightPt] — Excel's text box shape. */
@@ -72,7 +72,9 @@ internal object SheetChart {
             """<xdr:oneCellAnchor>${mark("from", row, col)}<xdr:ext cx="$cx" cy="$cy"/><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="$n" name="Shape $n"/><xdr:cNvSpPr/></xdr:nvSpPr>""" +
             """<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="${if (kind.startsWith("lineArrow")) "line" else kind}"><a:avLst/></a:prstGeom>$fillXml$lineXml</xdr:spPr></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>""" }
 
-    private fun mark(tag: String, r: Int, c: Int) = "<xdr:$tag><xdr:col>$c</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>$r</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:$tag>"
+    /** A corner at cell [r], [c], [dxPt] and [dyPt] in from its top left. */
+    private fun mark(tag: String, r: Int, c: Int, dxPt: Float = 0f, dyPt: Float = 0f) =
+        "<xdr:$tag><xdr:col>$c</xdr:col><xdr:colOff>${(dxPt * 12700).toLong()}</xdr:colOff><xdr:row>$r</xdr:row><xdr:rowOff>${(dyPt * 12700).toLong()}</xdr:rowOff></xdr:$tag>"
 
     /** The workbook's content types, changed as parts are added. */
     private class Types(var xml: String) {
@@ -140,14 +142,14 @@ internal object SheetChart {
     }
 
     /** LibreOffice: a picture in cell [row], [col] of sheet [index]: a frame with its image (Pictures/), [widthPt] × [heightPt]. */
-    fun pictureOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, bytes: ByteArray, ext: String) {
+    fun pictureOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, bytes: ByteArray, ext: String, dxPt: Float = 0f, dyPt: Float = 0f) {
         ZipFile(source).use { zip ->
             val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
             val path = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.$ext" }.first { zip.getEntry(it) == null }
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
-            val frame = OfficeFormats.parse("""<draw:frame xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" draw:z-index="0" draw:name="Picture tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}"><draw:image xlink:href="$path" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>""".toByteArray()).documentElement
+            val frame = OfficeFormats.parse("""<draw:frame xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" draw:z-index="0" draw:name="Picture tetra" svg:x="${cm(dxPt)}" svg:y="${cm(dyPt)}" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}"><draw:image xlink:href="$path" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>""".toByteArray()).documentElement
             val cell = SheetMerge.odsCell(doc, table, row, col)
             cell.insertBefore(doc.importNode(frame, true), cell.firstChild)
             var manifest = zip.getEntry("META-INF/manifest.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No manifest.")

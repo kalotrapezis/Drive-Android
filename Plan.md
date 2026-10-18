@@ -1018,7 +1018,12 @@ what is not already above:
       "Page n" across it, what is not printed greyed; a print setting changed shows at once). Emulator: a 120-row sheet, pages 1–2.
       View › Page layout (Excel's: the sheet as its pages print — Export PDF's pages with margins, header and footer, white on
       grey one under another; a page tapped goes back to the cells at its first). Emulator: page 2 tapped, A54 chosen.
-- [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
+- [x] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
+      Done 18 Oct (office-F): a Draw tab, Draw on sheet — Words' DrawDialog (two pens, the highlighter, eraser, Undo) on the cells
+      as the sheet shows them from its top left (960 × 640 at 100 %), the drawing put on where it was drawn as Words' and Slides'
+      ink: a see-through PNG with its strokes kept in it (pictures now take an offset in their cell: `a drawing put on inside
+      a cell`, both ways through LibreOffice). Emulator: a red stroke from B16 to F19. Not done: drawing on it again (Words'
+      redraw from the kept strokes) — later, when asked.
 - [x] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.
       Keyboard bar done 18 Oct (office-F): Words' KeyboardBar and rememberDictation while a cell is typed in, on tablet and

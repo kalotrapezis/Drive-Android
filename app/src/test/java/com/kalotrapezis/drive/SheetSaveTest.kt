@@ -541,6 +541,27 @@ class SheetSaveTest {
         }
     }
 
+    /** Draw › Draw on sheet: the drawing put on where it was drawn — a cell and how far in from its corner — read back, and by LibreOffice. */
+    @Test fun `a drawing put on inside a cell`() {
+        val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", it) }.toByteArray()
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("ink").toFile()
+            val f = File(dir, name).apply { writeBytes(resource(name)) }; val next = File(dir, "drawn.${f.extension}")
+            if (name.endsWith("xlsx")) SheetChart.pictureXlsx(f, next, Sheets.read(f, ',', '.').parts.getValue("0"), 8, 2, 90f, 45f, png, "png", 12f, 6f)
+            else SheetChart.pictureOds(f, next, 0, 8, 2, 90f, 45f, png, "png", 12f, 6f)
+            fun check(file: File, how: String) { val d = Sheets.read(file, ',', '.').sheet(0).drawings.single { it.image != null }
+                assertEquals(how, 8, d.row); assertEquals(how, 2, d.col)
+                assertEquals(how, 16f, d.dx, 1f); assertEquals(how, 8f, d.dy, 1f) } // in the sheet's pixels: 12 pt and 6 pt
+            check(next, "made in $name")
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, next.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
+            }
+        }
+    }
+
     /** Insert › WordArt: straight (outline and shadow) and bent (an arch) — Excel's WordArt text box, LibreOffice's styled words and fontwork; read back, and by LibreOffice. */
     @Test fun `WordArt put on a sheet`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

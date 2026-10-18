@@ -228,6 +228,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val history = remember { SheetHistory() }
     var version by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf<TextFieldValue?>(null) }
+    // the cell the typing is for, fixed when it starts: Enter writes there whatever is tapped or dragged meanwhile (the walk, 18 Oct: a
+    // drag over B2:B4 while C13 was typed moved the edit to B2 and wrote over it)
+    var editAt by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // a range being dragged out into a formula: where its name is in the typed words
+    var refAt by remember { mutableStateOf<IntRange?>(null) }
     var draftRuns by remember { mutableStateOf<List<DocRun>?>(null) } // the typed words' looks, a part bold (`SheetRich`); null: one look
     var saving by remember { mutableStateOf(false) }
     // The working copy after rows or columns were inserted or deleted (null: the file itself, with edits in memory);
@@ -366,6 +371,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     /** The chosen cell (a merged range's first). */
     fun chosen(s: Sheet) = s.merge(view.row, view.col)?.let { it.r1 to it.c1 } ?: (view.row to view.col)
+    LaunchedEffect(draft == null) { editAt = if (draft == null) null else editAt ?: sheet?.let { chosen(it) } }
 
     /** Starts typing in the chosen cell: the bar holds what it shows for it, the cursor at the end. */
     fun startTyping() {
@@ -374,7 +380,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (history.locked(b, s, Sheet.key(r, c))) { message = PROTECTED; focusManager.clearFocus(); WriterLog.i("Sheets: a protected cell not typed in"); return }
         val t = SheetInput.text(s[r, c], lookAt(s, r, c).second, b.format)
         draftRuns = s[r, c]?.rich?.takeIf { s[r, c]?.formula == null }
-        draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); view.reveal++
+        draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); editAt = r to c; view.reveal++
     }
 
     // The order rows and columns are drawn in: worked out away from the screen (a sort of 300,000 rows takes a moment).
@@ -401,7 +407,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     /** What was typed goes into the chosen cell (and, [move]: the cell below is chosen, as Excel's Enter). */
     fun commit(move: Boolean) {
         val d = draft ?: return; val b = book ?: return; val s = sheet ?: return
-        val (r, c) = chosen(s)
+        val (r, c) = editAt ?: chosen(s)
         val (look, format) = lookAt(s, r, c)
         // a part's own look typed (SheetRich): kept as the cell's runs while they are its words and say something
         val runs = draftRuns?.takeIf { rs -> !d.text.startsWith("=") && rs.joinToString("") { it.text } == d.text && SheetRich.any(rs) }
@@ -1582,7 +1588,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
                 sheet?.takeIf { showBar || editing && draft != null }?.let { s ->
                     if (editing) {
-                        val (r, c) = chosen(s)
+                        val (r, c) = editAt?.takeIf { draft != null } ?: chosen(s)
                         EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
                             change = { v -> draft?.text?.let { was -> draftRuns = draftRuns?.let { SheetRich.edited(it, was, v.text) } }; draft = v }, start = ::startTyping, commit = { commit(true) },
                             runs = draftRuns,
@@ -1631,7 +1637,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             }
                         }, filled = if (editing && draft == null) ::fillCells else null, menu = { at -> if (draft != null) { commit(false); focusManager.clearFocus() }; header = null; group = null; cellMenu = at },
                         figures = if (editing && b.kind != "csv") { d -> view.figure = d?.ordinal ?: -1; if (d != null) { header = null; view.range = null; group = null; WriterLog.i("Sheets: a drawing chosen") } } else null,
-                        dropped = if (editing && b.kind != "csv") { d, r, c -> figureStep(d, SheetDrawings.Move(r, c)) } else null)
+                        dropped = if (editing && b.kind != "csv") { d, r, c -> figureStep(d, SheetDrawings.Move(r, c)) } else null,
+                        // a formula being typed: a drag puts the range's name in at the cursor, growing as the finger goes (Excel's pointing)
+                        pointing = if (draft?.text?.startsWith("=") == true) { a, z, done ->
+                            val d = draft
+                            if (d != null) {
+                                val ref = Sheets.colName(minOf(a.second, z.second)) + (minOf(a.first, z.first) + 1) +
+                                    if (a == z) "" else ":" + Sheets.colName(maxOf(a.second, z.second)) + (maxOf(a.first, z.first) + 1)
+                                val at = refAt ?: (d.selection.min until d.selection.max)
+                                draft = TextFieldValue(d.text.substring(0, at.first) + ref + d.text.substring(at.last + 1), androidx.compose.ui.text.TextRange(at.first + ref.length))
+                                refAt = if (done) null else at.first until at.first + ref.length
+                                if (done) WriterLog.i("Sheets: $ref put in the formula")
+                            }
+                        } else null)
                     // a right-click's menu, where it was clicked: the cells' Cut, Copy, Paste, Clear, and their rows and columns
                     cellMenu?.let { at -> OfficeMenu(at, { cellMenu = null }) {
                             @Composable fun item(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() }
@@ -2510,10 +2528,14 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                       column: (Int, Float) -> Unit, row: (Int, Float) -> Unit, pick: ((Int, Int) -> Boolean)? = null,
                       filled: ((SheetRange, SheetRange) -> Unit)? = null, menu: ((Offset) -> Unit)? = null,
                       /** While editing: a drawing tapped (null: a cell), and the chosen one dragged to a cell. */
-                      figures: ((SheetDrawing?) -> Unit)? = null, dropped: ((SheetDrawing, Int, Int) -> Unit)? = null) {
+                      figures: ((SheetDrawing?) -> Unit)? = null, dropped: ((SheetDrawing, Int, Int) -> Unit)? = null,
+                      /** A formula being typed: a one-finger drag gives the cells from where it went down to where it is (the sheet's), done at the end. */
+                      pointing: ((Pair<Int, Int>, Pair<Int, Int>, Boolean) -> Unit)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
+    // read when a gesture starts: the gestures below are not started again when it changes (a formula's typing begins)
+    val pointingNow by androidx.compose.runtime.rememberUpdatedState(pointing)
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
     var fling by remember { mutableStateOf<Job?>(null) }
@@ -2581,7 +2603,23 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         }
                         @Suppress("UNREACHABLE_CODE") false
                     } == null
-                    var choosing = (held || (view.selectMode && moved)) && painter.startRange(view, down.position)
+                    // a formula being typed: one finger dragged (or held, then dragged) names cells in it; the chosen cell stays
+                    val point = pointingNow
+                    val from = if (point != null && (held || moved) && !released) painter.sheetCellAt(view, down.position) else null
+                    if (point != null && from != null) {
+                        var to: Pair<Int, Int> = from; var two = false
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            if (e.changes.none { it.pressed }) break
+                            if (e.changes.count { it.pressed } > 1) { two = true; break }
+                            e.changes.firstOrNull { it.pressed }?.let { p -> painter.sheetCellAt(view, p.position)?.let { c -> if (c != to) { to = c; point(from, c, false) } } }
+                            e.changes.forEach { it.consume() }
+                        }
+                        point(from, to, true)
+                        if (!two) return@awaitEachGesture
+                        moved = true
+                    }
+                    var choosing = from == null && (held || (view.selectMode && moved)) && painter.startRange(view, down.position)
                     if (choosing) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     while (!released) {
                         val e = awaitPointerEvent()

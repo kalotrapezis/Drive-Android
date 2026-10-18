@@ -247,11 +247,14 @@ Not walked yet: Tables Merge & centre, Replace, Chart, Link, Text to columns, In
 **The tablet walk, second round, 18 Oct 08:48–09:00 (main session, at acb4526 on 971f6b37)** — confirmed there: Slide size strip (3:2 saved
 as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbers' gap, Save keeps Undo, Tables' Find, Select cells, Merge
 & centre, part-bold cell, Insert function's window, touch targets. To fix (office-strips session, in this order):
-- [ ] 1. DATA LOSS — Tables: C13 typing "=SUM(B1," then a long-press drag over B2:B4 moved the edit to B2; ")" and Enter wrote
+- [x] 1. DATA LOSS — Tables: C13 typing "=SUM(B1," then a long-press drag over B2:B4 moved the edit to B2; ")" and Enter wrote
       "=SUM(B1,B4" over B2 (AutoSave saved it). While a formula is typed a drag (plain, long press, Select cells) puts the range in at
       the cursor; it never changes the cell being edited; Enter writes to the cell the edit started in. (The user: "After a formula like
       SUM is in place can the user just click on cells and add them to the formula?" — yes, as Excel.)
-- [ ] 2. A tap adds a cell's name (keep); a drag adds nothing today — the gap.
+- [x] 2. A tap adds a cell's name (keep); a drag adds nothing today — the gap. Now (1, 2): the cell being typed is fixed when typing starts
+      (Enter writes there, the bar names it); while a formula is typed one finger dragged — plainly, after a long press, or in Select
+      cells — names the range at the cursor, growing as it goes ("B2:B4"), the chosen cell untouched; two fingers move the sheet.
+      Emulator: E2 "=SUM(" + drag B2:B4 + "," + tap D2 + ")" ✓ → =SUM(B2:B4,D2) = 5952 in E2.
 - [ ] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
       throws it away; leaving saved "=SUM(" into the cell. It must open the bar for editing, the cursor inside the brackets.
 - [ ] 4. With a keyboard: typing on a chosen cell does nothing, a double tap does not open it — Excel starts typing on both.

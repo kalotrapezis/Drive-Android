@@ -74,6 +74,9 @@
         <activity-alias android:name=".AppTextEditor" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Text" android:icon="@mipmap/applet_text_editor" android:roundIcon="@mipmap/applet_text_editor">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
+        <activity-alias android:name=".AppCalendar" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar" android:roundIcon="@mipmap/applet_calendar">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
         <!-- Office: "Open with › Tetra Office" for documents, spreadsheets, presentations and PDFs (17 Oct) from any app (asked 16 Oct);
              Android's Always makes it the default. -->
         <activity-alias android:name=".OfficeOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Office" android:icon="@drawable/ic_office">

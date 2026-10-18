@@ -618,6 +618,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Codes -> screen = Screen.Codes
             Applet.Office -> screen = Screen.Office
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
+            Applet.Calendar -> screen = Screen.Calendar
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -672,6 +673,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Sheet -> Unit
                 Screen.Slides -> Unit
                 Screen.Pdf -> Unit
+                Screen.Calendar -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -713,6 +715,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                     openOffice = { screen = Screen.Office },
                     pickOffice = pickOffice,
+                    openCalendar = { screen = Screen.Calendar },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -767,6 +770,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                })
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -836,7 +842,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -874,6 +880,7 @@ private fun Home(
     openOffice: () -> Unit,
     pickOffice: (OfficePick) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
+    openCalendar: () -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -935,6 +942,20 @@ private fun Home(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("New file", R.drawable.ic_note_add) { openTextEditor("new") }
                         HomeCompactCard("Open file", R.drawable.ic_folder) { openTextEditor("open") }
+                    }
+                }
+            }
+        },
+        // The Calendar (18 Oct): pink, the user's icon; the next event beside it.
+        {
+            HomeGroup(Category.Calendar.color) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Calendar", R.drawable.calendar_art, openCalendar, Modifier.weight(1f), artSize = 76)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val context = LocalContext.current
+                        val next by produceState<String?>(null) { value = withContext(Dispatchers.IO) { nextEventText(context) } }
+                        HomeCompactCard(next ?: "Nothing coming up", R.drawable.ic_calendar_today, openCalendar)
+                        HomeCompactCard("Today", R.drawable.ic_view_list, openCalendar)
                     }
                 }
             }
@@ -1801,6 +1822,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Scanner(Color(0xFFD32F2F), R.drawable.ic_document_scanner),
     Office(Color(0xFFF76002), R.drawable.ic_office),
     Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
+    Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
 }
 
 @Composable

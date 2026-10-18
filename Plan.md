@@ -968,8 +968,12 @@ what is not already above:
       D2 shifted down (B2's merge below refused). shortcut: merges, rules, validations, links, notes and other sheets' formulas stay.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
-- [ ] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
+- [~] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
       Calculate now and automatic / manual; trace precedents and dependents as arrows; evaluate a formula step by step.
+      Done (office-F session, 18 Oct): Insert function by category with a search (FunctionsDialog); Precedents, Dependents and
+      Error checking (cells marked, `SheetTrace`); Recently used (the last ten functions put in — Insert function, the row of
+      functions while typing, AutoSum's — kept in Words' store; a ribbon menu, and first in Insert function). Emulator: AVERAGE
+      there after Average.
 - [~] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
       Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers

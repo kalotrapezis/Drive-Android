@@ -197,6 +197,12 @@ internal class TextEditorStore(context: Context) {
         get() = prefs.getBoolean("office_autosave", true)
         set(on) { prefs.edit().putBoolean("office_autosave", on).apply() }
 
+    /** Tables › Formulas › Recently used: the functions last put in, newest first (Excel keeps ten). */
+    var recentFunctions: List<String>
+        get() = prefs.getString("recent_functions", "").orEmpty().split(',').filter { it.isNotBlank() }
+        set(v) { prefs.edit().putString("recent_functions", v.distinct().take(10).joinToString(",")).apply() }
+    fun usedFunction(name: String) { recentFunctions = listOf(name) + recentFunctions }
+
     /** Review › Read aloud's speed (Android's speech rate: 1 is normal), Settings › Office (asked 15 Oct). */
     var readAloudSpeed: Float
         get() = prefs.getFloat("read_aloud_speed", 1f)

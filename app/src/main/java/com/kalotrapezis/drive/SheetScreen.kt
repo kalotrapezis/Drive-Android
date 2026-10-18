@@ -856,7 +856,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val t = "=$name($ref)"
         barFocus.requestFocus() // first: taking focus starts typing with the cell's own text, which this replaces
         draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(if (ref.isEmpty()) t.length - 1 else t.length))
-        WriterLog.i("Sheets: $name")
+        TextEditorStore(context).usedFunction(name); WriterLog.i("Sheets: $name")
     }
 
     /**
@@ -1277,6 +1277,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         }
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
+                            // Excel's Recently Used: the last functions put in, one tapped goes in as Insert function's
+                            Box { var open by remember { mutableStateOf(false) }
+                                val recent = remember(open, inserted, draft == null) { TextEditorStore(context).recentFunctions }
+                                RibbonButton("Recently used", w, R.drawable.ic_history, enabled = recent.isNotEmpty()) { open = true }
+                                DropdownMenu(open, { open = false }) { recent.forEach { f -> DropdownMenuItem(text = { Text(f) }, onClick = { open = false; inserted = f }) } } }
                             // Excel's Formula Auditing: the cells a formula reads, those reading this one, the errors one by one; marked on the sheet
                             RibbonDivider(w)
                             RibbonButton("Precedents", w, R.drawable.ic_arrow_upward) { traced = SheetTrace.precedents(s, cr, cc, b.names)
@@ -1651,7 +1656,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 val cur = draft ?: return@clickable
                                 val (t, at) = SheetFunctions.insert(cur.text, cur.selection.min, f)
                                 draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(at))
-                                WriterLog.i("Sheets: function ${f.name} from the row")
+                                TextEditorStore(context).usedFunction(f.name); WriterLog.i("Sheets: function ${f.name} from the row")
                             }.padding(horizontal = 12.dp, vertical = 6.dp)) {
                                 Text(f.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                 Text(f.says, style = MaterialTheme.typography.labelSmall, color = w.copy(alpha = 0.7f), maxLines = 1)
@@ -2077,7 +2082,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (d != null && d.text.startsWith("=")) draft = TextFieldValue(d.text.substring(0, d.selection.min) + "$f(" + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + f.length + 1))
         else { runCatching { barFocus.requestFocus() }; draft = TextFieldValue("=$f(", androidx.compose.ui.text.TextRange(f.length + 2)) }
         runCatching { barFocus.requestFocus() }
-        inserted = null; WriterLog.i("Sheets: function $f") }
+        inserted = null; TextEditorStore(context).usedFunction(f); WriterLog.i("Sheets: function $f") }
     LaunchedEffect(symbol) { val sym = symbol ?: return@LaunchedEffect
         delay(150) // the dialog gone: the bar can take focus (which starts typing with the cell's own words, as AutoSum's)
         runCatching { barFocus.requestFocus() }

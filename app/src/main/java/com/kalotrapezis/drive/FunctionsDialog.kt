@@ -42,18 +42,22 @@ internal object FunctionCategories {
     fun of(category: String) = SheetFunctions.all.filter { f -> ALL.firstOrNull { it.first == category }?.second?.contains(f.name) ?: ALL.none { f.name in it.second } }
 }
 
+private const val RECENT = "Recently used"
+
 /** Excel's Insert Function: categories, a search, each function's arguments and what it does; [pick] gets its name. */
 @Composable
 internal fun FunctionsDialog(dismiss: () -> Unit, pick: (String) -> Unit) {
-    var category by remember { mutableStateOf(FunctionCategories.ALL.first().first) }
+    // Excel's "Most Recently Used" first, when there are any
+    val recent = TextEditorStore(androidx.compose.ui.platform.LocalContext.current).recentFunctions.let { r -> remember { r.mapNotNull { n -> SheetFunctions.all.firstOrNull { it.name == n } } } }
+    var category by remember { mutableStateOf(if (recent.isNotEmpty()) RECENT else FunctionCategories.ALL.first().first) }
     var query by remember { mutableStateOf("") }
-    val shown = if (query.isBlank()) FunctionCategories.of(category)
+    val shown = if (query.isBlank()) (if (category == RECENT) recent else FunctionCategories.of(category))
         else SheetFunctions.all.filter { f -> f.name.contains(query.trim(), true) || f.says.contains(query.trim(), true) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Insert function") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Search, e.g. average") }, modifier = Modifier.fillMaxWidth())
             if (query.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (FunctionCategories.ALL.map { it.first } + "Other").forEach { c -> Choice(c, c == category) { category = c } } }
+                (listOfNotNull(RECENT.takeIf { recent.isNotEmpty() }) + FunctionCategories.ALL.map { it.first } + "Other").forEach { c -> Choice(c, c == category) { category = c } } }
             LazyColumn(Modifier.heightIn(max = 360.dp)) { items(shown, key = { it.name }) { f ->
                 Column(Modifier.fillMaxWidth().clickable { pick(f.name) }.padding(vertical = 8.dp)) {
                     Text("${f.name}(${f.args})", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)

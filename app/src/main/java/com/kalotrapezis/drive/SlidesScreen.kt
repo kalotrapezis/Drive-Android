@@ -941,6 +941,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 ((it0 as? SlideItem.Picture)?.math ?: a?.math)?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equating = item to m }; RibbonDivider(w) }
                 // a chart put on here: its numbers in Words' chart editor again
                 a?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = a.id to ch }; RibbonDivider(w) }
+                // the deck's own chart: its numbers in Words' chart editor, then put on in its place as Slides' own (as an equation is)
+                if (a == null && it0 is SlideItem.Chart) { RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = "deck:$item" to it0.chart }; RibbonDivider(w) }
                 // a table put on here: Words' Table tab — rows and columns round the cell last tapped, its numbers a chart (Words' fromTable)
                 if (a?.prst == "table") {
                     val r0 = (tableCell / a.cols.coerceAtLeast(1)).coerceIn(0, a.rows - 1); val c0 = (tableCell % a.cols.coerceAtLeast(1)).coerceIn(0, a.cols - 1)
@@ -2109,7 +2111,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     charting?.let { (id, start) ->
                         ChartDialog(start, id != null, { charting = null }) { ch ->
                             charting = null
-                            if (id != null) { alter { it.copy(chart = ch) }; WriterLog.i("Slides: a chart's data changed") }
+                            if (id?.startsWith("deck:") == true) { val cc = chosen ?: return@ChartDialog
+                                // shortcut: put on anew in Words' chart look (the file's own styling of it not kept); upgrade by writing the numbers into its own chart part
+                                val was = view?.slides?.getOrNull(cc)?.items?.lastOrNull { it.anim == id.removePrefix("deck:") } ?: return@ChartDialog
+                                deleteItem(); val e2 = edit ?: return@ChartDialog
+                                put(SlidesEdit.Added(e2.newId(e2.order[cc].uid, taken(e2, cc)), was.x, was.y, was.w, was.h, prst = "chart", chart = ch))
+                                WriterLog.i("Slides: a deck's chart's data changed") }
+                            else if (id != null) { alter { it.copy(chart = ch) }; WriterLog.i("Slides: a chart's data changed") }
                             else { val d = deck ?: return@ChartDialog; val ee = edit ?: return@ChartDialog; val cc = chosen ?: return@ChartDialog
                                 put(SlidesEdit.Added(ee.newId(ee.order[cc].uid, taken(ee, cc)), d.width * 0.15f, d.height * 0.18f, d.width * 0.7f, d.height * 0.7f, prst = "chart", chart = ch))
                                 WriterLog.i("Slides: a chart put on") }

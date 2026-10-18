@@ -691,7 +691,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       afterwards only un-raises; the letter box is deleted as any box. Date and time
       (fixed, or a field that updates, as PowerPoint's); line break inside a paragraph; Comment; a link's Edit
       (beside Link above). Slide numbers come with Header & footer.
-- [~] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline
+- [x] **Picture / Shape** (Words' Picture tab): Add text to a shape, Edit text; Shape options (fill and outline
       colour, besides width and dash above); Save picture as; Edit data on a chart, Edit equation, Edit drawing.
       Already there (found 18 Oct, office-F): Edit text, Fill / Border / Text colour, Edit equation, Edit drawing, Edit data on a chart
       put on here. Add text done 18 Oct (office-F): a deck's shape with no words gets them (typed as a box's are): in a .pptx a text
@@ -699,6 +699,9 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       Emulator: arrange.pptx's arrow says "Next", LibreOffice reads it there.
       Save picture as done 18 Oct (office-F): Words' own, now shared (`savePictureToPhone`: into Pictures/Tetra, its kind told by its
       first bytes) — on a picture's tab in Slides and Tables. Emulator: arrange.pptx's flag saved as a PNG (Tables' not tried there).
+      Edit data on the deck's own chart done 18 Oct (office-F): Words' chart editor on its numbers, then put on in its place as Slides'
+      own chart (as a deck's equation is). shortcut: the file's own styling of the chart not kept, and its old part stays in the
+      package unreferenced. Emulator: arrange.pptx's bar chart made a line chart; LibreOffice's PDF of it shows the line.
 - [~] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
       table; merge and split cells; borders and shading; table styles; Make chart from the table.
       Done 17 Oct (office-D session), for a table put on in Slides: Make chart (Words' `OfficeCharts.fromTable`: the first row names the

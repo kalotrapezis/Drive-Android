@@ -412,7 +412,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                             { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }, settings = false)
                     }
                     // the island floats over the last row; the views stop above it
-                    body(Modifier.weight(1f).fillMaxHeight().navigationBarsPadding().padding(end = 8.dp, bottom = 76.dp))
+                    body(Modifier.weight(1f).fillMaxHeight().navigationBarsPadding().padding(end = 8.dp, bottom = 92.dp)) // clear of the islands
                 } else {
                     // the user, 18 Oct: the events on top, the small calendar at the bottom within the thumb's reach
                     body(Modifier.weight(1f).fillMaxWidth())
@@ -428,7 +428,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     title = if (wide) title(selected, view) else selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
                     icon = R.drawable.ic_calendar_today, back = back, island = true,
                     modifier = Modifier.padding(horizontal = 16.dp),
-                    trailing = {
+                    // a wide screen has Today and the arrows at the bottom, by the + (the user, 18 Oct); the top keeps the title
+                    trailing = if (wide) null else ({
                         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { selected = today }) { Text("Today", color = islandContentColor()) }
@@ -438,7 +439,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                                 }
                             }
                         }
-                    },
+                    }),
                 )
                 ReminderNotes()
             }
@@ -448,7 +449,18 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     views.forEach { v -> IslandNavigationItem(v.label, view == v, viewIcon(v)) { setView(v) } }
                 }
-                IslandVisibility(!drawer) {
+                IslandVisibility(!drawer) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // the user, 18 Oct: Today and ‹ › in their own island beside the +, within the thumb's reach
+                    if (wide) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(Modifier.height(18.dp)) // the main island's handle row, so both stand the same height
+                            Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
+                                TextButton(onClick = { selected = today }) { Text("Today", color = islandContentColor()) }
+                                IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
+                            }
+                        }
+                    }
                     Box {
                         var kinds by remember { mutableStateOf(false) }
                         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
@@ -458,7 +470,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                             NewKind.entries.forEach { k -> DropdownMenuItem(text = { Text(k.label) }, leadingIcon = { Icon(painterResource(k.icon), contentDescription = null) }, onClick = { kinds = false; start(k) }) }
                         }
                     }
-                }
+                } }
             }
             message?.let { m ->
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,

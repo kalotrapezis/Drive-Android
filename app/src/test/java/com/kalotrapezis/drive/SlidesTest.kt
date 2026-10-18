@@ -45,6 +45,15 @@ class SlidesTest {
         assertEquals(30f, p.look.lineExact!!, 0.01f); assertEquals(listOf(TabStop(288f, 'r')), p.look.tabs)
     }
 
+    /** Add text: a shape with no words given some — a text body of its own, its words in the middle; read back. */
+    @Test fun `words added to a shape that had none`() {
+        val xml = """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>""" +
+            """<p:sp><p:nvSpPr><p:cNvPr id="4" name="Heart"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:prstGeom prst="heart"><a:avLst/></a:prstGeom></p:spPr></p:sp></p:spTree></p:cSld></p:sld>"""
+        val out = String(SlidesEdit.withTexts(xml.toByteArray(), mapOf("4" to listOf("Love", "it")), null))
+        assertTrue(out, Regex("""</p:spPr><p:txBody><a:bodyPr[^>]*anchor="ctr"[^>]*/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr[^>]*/><a:t>Love</a:t></a:r>""").containsMatchIn(out))
+        assertTrue(out, Regex("""<a:t>it</a:t>""").containsMatchIn(out))
+    }
+
     /**
      * A slide's words edited (the Office engine, step 4, "a slide's words as runs"): each letter keeps its run's look, a
      * typed one the look of the one before; a slide number left as it was stays a field, a line break stays one.

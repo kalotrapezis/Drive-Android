@@ -935,6 +935,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (it0?.grouped == true) { RibbonButton("Ungroup", w, R.drawable.ic_group_objects) { val d = base ?: return@RibbonButton
                     change(SlidesEdit.ungrouped(d, e, entry, item!!)); item = null; WriterLog.i("Slides: ungrouped") }; RibbonDivider(w) }
                 if (typable(it0, a)) RibbonButton("Edit text", w, R.drawable.ic_edit) { typeInto(it0 as SlideItem.Shape) }
+                // a shape of the deck's with no words: Add text (PowerPoint's), typed as a box's words are
+                else if (a == null && it0 is SlideItem.Shape && it0.text == null && it0.id != null && !it0.grouped) RibbonButton("Add text", w, R.drawable.ic_text_fields) { typeInto(it0) }
                 // an equation (put on here, or the deck's own): Words' equation editor again
                 ((it0 as? SlideItem.Picture)?.math ?: a?.math)?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equating = item to m }; RibbonDivider(w) }
                 // a chart put on here: its numbers in Words' chart editor again

@@ -304,10 +304,11 @@ internal object SlidesEdit {
             val paras = PictureXml.relaid<SlidePara?, DocRun>(old?.paras.orEmpty().map { p -> p to p.runs.map { it to it.text } }, lines, null, null).map { (p, runs) ->
                 // a hint's grey is not the words' colour: those take the theme's text colour
                 val rs = runs.map { (r, t) -> (r ?: DocRun("", sizePt = 18f)).copy(text = t).let { if (item.hint) it.copy(color = 0) else it } }
-                if (p == null) SlidePara(SlidePara.plain("", 18f, 0).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
+                if (p == null) SlidePara(SlidePara.plain("", 18f, 0, align = if (old == null) DocAlign.Center else DocAlign.Start).para.copy(runs = rs)) else SlidePara(p.para.copy(runs = rs), p.look, p.bullet)
             }
+            // a shape given words here (Add text): in its middle, as PowerPoint's
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap) }
-                ?: SlideText(paras, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+                ?: SlideText(paras, 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         }
         // what was put on it: pictures and shapes, over the rest
         val added = edit.added[e.uid].orEmpty().map { a ->
@@ -687,7 +688,12 @@ internal object SlidesEdit {
         val shapes = root.getElementsByTagNameNS(P, "sp").let { l -> (0 until l.length).map { l.item(it) as Element } }
         for ((id, lines) in texts) {
             val sp = shapes.firstOrNull { s -> s.getElementsByTagNameNS(P, "cNvPr").item(0)?.let { (it as Element).getAttribute("id") } == id } ?: continue
-            val body = sp.kids().firstOrNull { it.localName == "txBody" } ?: continue
+            // a shape with no words yet (Add text): a text body of its own, its words in the middle, as PowerPoint's
+            val body = sp.kids().firstOrNull { it.localName == "txBody" } ?: doc.createElementNS(P, "p:txBody").also { b ->
+                b.appendChild(doc.createElementNS(A, "a:bodyPr").also { it.setAttribute("rtlCol", "0"); it.setAttribute("anchor", "ctr") })
+                b.appendChild(doc.createElementNS(A, "a:lstStyle"))
+                b.appendChild(doc.createElementNS(A, "a:p").also { p -> p.appendChild(doc.createElementNS(A, "a:pPr").also { it.setAttribute("algn", "ctr") }); p.appendChild(doc.createElementNS(A, "a:endParaRPr").also { it.setAttribute("lang", "en-US") }) })
+                sp.insertBefore(b, sp.kids().firstOrNull { it.localName == "extLst" }) }
             val paras = body.kids().filter { it.localName == "p" }.ifEmpty { continue }
             // each line over the paragraph it came from, each letter in its run's look (Words' text boxes' way): a bold
             // word stays bold, a field kept whole stays a field, a line break stays one

@@ -1364,9 +1364,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 // Excel's Sort dialog: the rows themselves reordered (the file changes), by one column then others
                                 RibbonButton("Sort", w, R.drawable.ic_sort_name) {
                                     sortingRows = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols) }
+                                // the cells chosen; a column's letter tapped: that column down to its last row; nothing chosen: the table round the cell, as Excel
                                 RibbonButton("Remove duplicates", w, R.drawable.ic_filter_off) {
                                     val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) }
-                                    if (d == null || d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d }
+                                        ?: h?.takeIf { it.first == 'c' }?.let { (_, c) -> SheetRange(0, c, maxOf(0, s.rows - 1), c) }
+                                        ?: SheetSortRows.region(s, cr, cc, s.rows, s.cols)
+                                    if (d.r2 <= d.r1) message = "Choose the rows to look in first (a long press, then drag)" else deduping = d }
                                 // Excel's Text to columns: one column's words cut at a separator into the columns beside it
                                 RibbonButton("Text to columns", w, R.drawable.ic_view_column) {
                                     val d = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c1]) } ?: SheetRange(cr, cc, cr, cc)
@@ -1854,12 +1857,14 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = {}, dismissButton = { TextButton(onClick = { splitting = null }) { Text("Cancel") } }) }
     // Data › Remove duplicates: Excel's question (headers?), then the rows alike after the first gone, the rest moved up (one step of Undo)
     deduping?.let { d -> val s = sheet; val b = book
-        var headers by remember(d) { mutableStateOf(true) }
+        // Excel's guess: headers when the first row is all words over a column with numbers under them
+        var headers by remember(d) { mutableStateOf(s != null && (d.c1..d.c2).all { c -> s[d.r1, c]?.let { it.value == null && it.text.isNotBlank() } == true } &&
+            (d.c1..d.c2).any { c -> s[d.r1 + 1, c]?.value != null }) }
         AlertDialog(onDismissRequest = { deduping = null }, title = { Text("Remove duplicates") },
             text = { Column { Text("Rows ${d.r1 + 1}–${d.r2 + 1}, columns ${Sheets.colName(d.c1)}–${Sheets.colName(d.c2)}: a row is a duplicate when every cell is alike.")
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { headers = !headers }) { Checkbox(headers, { headers = it }); Text("The first row is headers") } } },
             confirmButton = { TextButton(onClick = { deduping = null; if (s == null || b == null) return@TextButton
-                if ((d.r1..d.r2).any { r -> (d.c1..d.c2).any { c -> s[r, c]?.formula != null } }) { message = "These cells hold formulas: remove duplicates works on values"; return@TextButton }
+                // formulas compared by what they show, as Excel compares their values; a kept one moves up as it is
                 val rows = (d.r1..d.r2).map { r -> (d.c1..d.c2).map { c -> s[r, c]?.text.orEmpty() } }
                 val kept = SheetInput.unique(rows, headers)
                 if (kept.size == rows.size) { message = "No duplicates"; return@TextButton }

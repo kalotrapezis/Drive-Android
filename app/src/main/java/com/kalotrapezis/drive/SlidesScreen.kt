@@ -180,7 +180,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     fun previewKeep() { val b = previewBefore ?: return; val made = edit; previewBefore = null; edit = b; if (made != null && made != b) change(made) }
     fun previewDrop() { previewBefore?.let { edit = it }; previewBefore = null }
     /** Save: the edits into the file — or into [to] (Save as: going on with it; [copy], Save a copy: the file and its edits left as they are). */
-    fun save(to: File? = null, copy: Boolean = false, then: (() -> Unit)? = null) {
+    /** [rebase]: the saved file read again as the new start, Undo gone (a new slide size needs the slides as saved). */
+    fun save(to: File? = null, copy: Boolean = false, rebase: Boolean = false, then: (() -> Unit)? = null) {
         val e = edit ?: return
         // with a theme chosen: saved from the themed copy, into the file
         val f0 = file ?: return; val f = to ?: f0; val d = base ?: return; val from = copyKey(e)?.let { themed[it]?.first } ?: source ?: f0
@@ -188,18 +189,25 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         if (saving) return
         saving = true
         scope.launch {
+            // Undo kept over a save (the tablet walk, 18 Oct; Tables' and Words' way): the edits stay on the deck as opened, so the file
+            // as opened is kept aside the first time and every save writes the edits onto it again
+            val opened = if (!copy && !rebase && source == null) File(context.cacheDir, "slides-opened-${System.nanoTime()}.${f0.extension}") else null
             val result = withContext(Dispatchers.IO) { runCatching {
+                opened?.let { f0.copyTo(it, overwrite = true) }
                 val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                 try {
                     WriterLog.timed("Slides: saved ${e.order.size} slides, ${e.texts.size} text boxes") { if (f.extension.equals("odp", true)) SlidesOdpEdit.save(from, d, e, temp) else SlidesEdit.save(from, d, e, temp) }
                     if (f.exists()) keepPrevious(context, f) // Writer's versions
                     check(temp.renameTo(f)) { "Could not save ${f.name}." }
                 } finally { temp.delete() }
-                Slides.read(f)
+                if (rebase) Slides.read(f) else null
             } }
             saving = false
             result.onSuccess { nd -> if (copy) { message = "Saved a copy: ${f.name}"; then?.invoke(); return@onSuccess }
-                slideDraft(context, f0).delete(); if (to != null) file = to; deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex); message = "Saved"; then?.invoke() }
+                slideDraft(context, f0).delete(); if (to != null) file = to
+                if (nd != null) { deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex) }
+                else { saved = e; opened?.let { source = it } }
+                message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Slides: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -1373,7 +1381,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (same(base, sw, sh)) return
                     if (same(deck, sw, sh)) { change(e.copy(size = null)); return } // back to the file's own
                     // everything on the slides is moved from the file as saved: other changes are saved first (asked, 18 Oct)
-                    if (e.copy(theme = null, size = null) != SlidesEdit.start(deck ?: return)) sizeAfterSave = sw to sh else resizing = sw to sh
+                    // saved already (Undo kept over the save): the file read again as the start, then the question
+                    if (e.copy(theme = null, size = null) == SlidesEdit.start(deck ?: return)) resizing = sw to sh
+                    else if (e == saved) save(rebase = true) { resizing = sw to sh } else sizeAfterSave = sw to sh
                 }
                 RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
                     MenuChoice("Custom…", checked = SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }, opens = true) { slideSizing = true })
@@ -2089,12 +2099,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         dismissButton = { androidx.compose.material3.TextButton(onClick = { resizing = null }) { Text("Cancel") } }) }
                     sizeAfterSave?.let { z -> androidx.compose.material3.AlertDialog(onDismissRequest = { sizeAfterSave = null }, title = { Text("Slide size") },
                         text = { Text("A new slide size moves everything on the slides, so your other changes are saved first. Undo takes the new size back.") },
-                        confirmButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null; save { resizing = z } }) { Text("Save and go on") } },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null; save(rebase = true) { resizing = z } }) { Text("Save and go on") } },
                         dismissButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null }) { Text("Cancel") } }) }
                     if (slideSizing) SlideSizeDialog(base?.width ?: SlidesSize.WIDE_W, base?.height ?: SlidesSize.HEIGHT, { slideSizing = false }) { sw, sh -> slideSizing = false
                         val e = edit ?: return@SlideSizeDialog; val d = deck ?: return@SlideSizeDialog
                         if (Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f) change(e.copy(size = null))
-                        else if (e.copy(theme = null, size = null) != SlidesEdit.start(d)) sizeAfterSave = sw to sh else resizing = sw to sh }
+                        else if (e.copy(theme = null, size = null) == SlidesEdit.start(d)) resizing = sw to sh
+                        else if (e == saved) save(rebase = true) { resizing = sw to sh } else sizeAfterSave = sw to sh }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
                     if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }

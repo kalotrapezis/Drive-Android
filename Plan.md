@@ -191,17 +191,19 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] 2. Slides › Multilevel: the "1. / 1.1. / 1.1.1." card gives "1." at level 2 — dropped for slides (PowerPoint and Impress have no legal numbering).
 - [x] 3. Slides: no gap between a number and its words ("1.Read") in the editor while unsaved; saved, level 2 has it, level 1 not. Now a number
       hangs half an inch (PowerPoint's 457200) and the .pptx gets exactly the indents the editor drew (test `numbered paragraphs drawn and saved alike`).
-- [ ] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares
-      values); "The first row is headers" ticked even when row 1 is data.
+- [x] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares
+      values); "The first row is headers" ticked even when row 1 is data. Now: a column's letter takes the column, nothing chosen the table
+      round the cell; formulas compared by what they show; headers ticked only for words over numbers.
 - [ ] 5. Tables: on a protected sheet a tap does not choose the cell, nothing says why — choose it, refuse typing with a message.
-- [ ] 6. Slides: Save clears Undo — all three keep the history over a save.
+- [x] 6. Slides: Save clears Undo — all three keep the history over a save. Slides now keeps the deck and Undo; the file as opened is kept
+      aside and each save writes the edits onto it (Tables did so already, Words never cleared it). A new slide size still starts afresh.
 - [x] 7. Tables › Sheet › Unhide popup → strip (7ee3675).
 - [x] 8. Slides › View › Zoom popup → strip (7ee3675).
 - [ ] 9. Slides › Insert › Table: "‹ Table" (7ee3675); one shared table-size picker with Words' Insert › Table.
 - [ ] 10. Words › Page numbers in Insert and in Layout, once a strip, once a list — one form.
 - [ ] 11. Duplicates: Tables Sheet › Protect vs Review › Protect sheet; Formulas › Insert function vs Insert › Function; Show formulas
       in Formulas and View; AutoSum in Home and Formulas; Slides' Selection pane in Home and in the Shape tab — one place, or one form.
-- [ ] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.
+- [x] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.
 - [ ] 13. Slides › View: Notes page leaves Normal highlighted; Normal does not hide the notes — exclusive, or a "Notes" toggle.
 - [ ] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers.
 - [ ] 15. Shadow "Offset: bottom right" barely visible in Slides, clear in Words — draw the same.

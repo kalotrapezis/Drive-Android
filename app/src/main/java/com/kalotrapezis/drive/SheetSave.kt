@@ -32,7 +32,9 @@ internal object SheetSave {
     /** A cell as SpreadsheetML: its value by kind, a formula with its value, words inline; null: no cell at all. */
     fun cellXml(ref: String, style: Int, cell: SheetCell): String? {
         val s = if (style > 0) " s=\"$style\"" else ""
-        val f = cell.formula?.removePrefix("=")?.let { "<f>${esc(it)}</f>" } ?: ""
+        // a spilling formula as Excel's array formula over its cells (Excel shows {=…}; LibreOffice its matrix)
+        val array = cell.spill?.let { g -> " t=\"array\" ref=\"${Sheets.colName(g.c1)}${g.r1 + 1}:${Sheets.colName(g.c2)}${g.r2 + 1}\"" } ?: ""
+        val f = cell.formula?.removePrefix("=")?.let { "<f$array>${esc(SheetCalc.toXlsx(it))}</f>" } ?: ""
         return when {
             cell.formula != null -> when (cell.kind) {
                 SheetKind.Number -> "<c r=\"$ref\"$s>$f<v>${num(cell.value ?: 0.0)}</v></c>"
@@ -44,10 +46,17 @@ internal object SheetSave {
             cell.kind == SheetKind.Number -> "<c r=\"$ref\"$s><v>${num(cell.value ?: 0.0)}</v></c>"
             cell.kind == SheetKind.Bool -> "<c r=\"$ref\"$s t=\"b\"><v>${if (cell.value == 1.0) 1 else 0}</v></c>"
             cell.kind == SheetKind.Error -> "<c r=\"$ref\"$s t=\"e\"><v>${esc(cell.text)}</v></c>"
-            cell.kind == SheetKind.Text -> "<c r=\"$ref\"$s t=\"inlineStr\"><is><t xml:space=\"preserve\">${esc(cell.text)}</t></is></c>"
+            cell.kind == SheetKind.Text -> "<c r=\"$ref\"$s t=\"inlineStr\"><is>${cell.rich?.let(::runsXml) ?: "<t xml:space=\"preserve\">${esc(cell.text)}</t>"}</is></c>"
             style > 0 -> "<c r=\"$ref\"$s/>"
             else -> null
         }
+    }
+
+    /** Rich text as Excel writes it: a run each, its look in rPr (font, bold, italic, strike, colour, size, underline: Excel's order). */
+    fun runsXml(runs: List<DocRun>): String = runs.joinToString("") { r ->
+        val pr = listOfNotNull(DocStyles.Plain.fontName(r.font)?.let { "<rFont val=\"${esc(it)}\"/>" }, "<b/>".takeIf { r.bold }, "<i/>".takeIf { r.italic }, "<strike/>".takeIf { r.strike },
+            r.color?.let { "<color rgb=\"FF%06X\"/>".format(it and 0xFFFFFF) }, r.sizePt?.let { "<sz val=\"${num(it.toDouble())}\"/>" }, "<u/>".takeIf { r.underline }).joinToString("")
+        "<r>${if (pr.isEmpty()) "" else "<rPr>$pr</rPr>"}<t xml:space=\"preserve\">${esc(r.text)}</t></r>"
     }
 
     private val CELL = Regex("""<c\b[^>]*?(?:/>|>.*?</c>)""", RegexOption.DOT_MATCHES_ALL)
@@ -104,7 +113,7 @@ internal object SheetSave {
                 var x = m.value
                 // a broken shared formula: written out in full here
                 Regex("""<f\b([^>]*?)(?:/>|>([^<]*)</f>)""").find(x)?.let { f ->
-                    if (attr(f.groupValues[1], "t") == "shared" && attr(f.groupValues[1], "si") in broken) formulaAt(r, c)?.let { full -> x = x.replace(f.value, "<f>${esc(full.removePrefix("="))}</f>") }
+                    if (attr(f.groupValues[1], "t") == "shared" && attr(f.groupValues[1], "si") in broken) formulaAt(r, c)?.let { full -> x = x.replace(f.value, "<f>${esc(SheetCalc.toXlsx(full.removePrefix("=")))}</f>") }
                 }
                 cells[c] = x
             }
@@ -203,11 +212,14 @@ internal object SheetSave {
                     else add("borders", "<border>" + line("left", look.left) + line("right", look.right) + line("top", look.top) + line("bottom", look.bottom) + "<diagonal/></border>")
                 val h = when (look.align) { SheetAlign.Left -> "left"; SheetAlign.Center -> "center"; SheetAlign.Right -> "right"; SheetAlign.Justify -> "justify"; else -> null }
                 val v = when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "center"; else -> null }
-                val align = if (h == null && v == null && !look.wrap && look.indent == 0 && look.rotation == 0) "" else "<alignment" + (h?.let { " horizontal=\"$it\"" } ?: "") +
-                    (v?.let { " vertical=\"$it\"" } ?: "") + (if (look.wrap) " wrapText=\"1\"" else "") + (if (look.indent > 0) " indent=\"${look.indent}\"" else "") +
+                val align = if (h == null && v == null && !look.wrap && !look.shrink && look.indent == 0 && look.rotation == 0) "" else "<alignment" + (h?.let { " horizontal=\"$it\"" } ?: "") +
+                    (v?.let { " vertical=\"$it\"" } ?: "") + (if (look.wrap) " wrapText=\"1\"" else "") + (if (look.shrink) " shrinkToFit=\"1\"" else "") + (if (look.indent > 0) " indent=\"${look.indent}\"" else "") +
                     (if (look.rotation != 0) " textRotation=\"${look.rotation}\"" else "") + "/>"
+                // an unlocked cell (Excel's Format › Lock Cell off): typed in while the sheet is protected
+                val protection = if (look.locked) "" else "<protection locked=\"0\"/>"
                 "<xf numFmtId=\"${ids[code]}\" fontId=\"$font\" fillId=\"$fill\" borderId=\"$border\" xfId=\"0\" applyNumberFormat=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\"" +
-                    (if (align.isEmpty()) "/>" else " applyAlignment=\"1\">$align</xf>")
+                    (if (align.isNotEmpty()) " applyAlignment=\"1\"" else "") + (if (protection.isNotEmpty()) " applyProtection=\"1\"" else "") +
+                    (if (align.isEmpty() && protection.isEmpty()) "/>" else ">$align$protection</xf>")
             }
             val xfsNow = Regex("""(<cellXfs[^>]*>)(.*?)(</cellXfs>)""", RegexOption.DOT_MATCHES_ALL).find(st)!!
             st = st.replaceRange(xfsNow.range, xfsNow.groupValues[1].replace(Regex("""count="\d+""""), "count=\"${list.size + wanted.size}\"") + xfsNow.groupValues[2] + added + xfsNow.groupValues[3])
@@ -264,7 +276,7 @@ internal object SheetSave {
 
     /** An Excel formula in LibreOffice's way: "of:=SUM([.A1:.B2];[$Other.C3])". */
     fun odfFormula(f: String): String {
-        val body = f.removePrefix("=")
+        val body = SheetCalc.toOds(f.removePrefix("="))
         val ref = Regex("""(?:('(?:[^']|'')+'|[\p{L}_][\p{L}\p{N}_.]*)!)?(\$?[A-Za-z]{1,3}\$?\d+)(?::(\$?[A-Za-z]{1,3}\$?\d+))?(?![\p{L}\p{N}_(])""")
         val out = StringBuilder()
         // outside words in quotes: references bracketed, commas as semicolons
@@ -358,6 +370,9 @@ internal object SheetSave {
         var child = target.firstChild
         while (child != null) { val nx = child.nextSibling; if (child is org.w3c.dom.Element && child.namespaceURI == TEXT && child.localName == "p") target.removeChild(child); child = nx }
         cell.formula?.let { target.setAttributeNS(TABLE, "table:formula", odfFormula(it)) }
+        // a spilling formula as LibreOffice's matrix over its cells
+        target.removeAttributeNS(TABLE, "number-matrix-rows-spanned"); target.removeAttributeNS(TABLE, "number-matrix-columns-spanned")
+        cell.spill?.takeIf { cell.formula != null }?.let { g -> target.setAttributeNS(TABLE, "table:number-matrix-rows-spanned", "${g.r2 - g.r1 + 1}"); target.setAttributeNS(TABLE, "table:number-matrix-columns-spanned", "${g.c2 - g.c1 + 1}") }
         fun type(t: String) { target.setAttributeNS(OFFICE, "office:value-type", t); target.setAttributeNS(CALCEXT, "calcext:value-type", t) }
         when (cell.kind) {
             SheetKind.Number -> {
@@ -372,7 +387,17 @@ internal object SheetSave {
             SheetKind.Error -> type("error")
             SheetKind.Empty -> Unit
         }
-        if (cell.text.isNotEmpty()) cell.text.split('\n').forEach { line -> target.appendChild(doc.createElementNS(TEXT, "text:p").apply { textContent = line }) }
+        val rich = cell.rich
+        if (rich != null) {
+            // rich text: LibreOffice's spans, each with a text style of its runs' look; a line break a new paragraph
+            var p = doc.createElementNS(TEXT, "text:p").also { target.appendChild(it) }
+            for (run in rich) run.text.split('\n').forEachIndexed { k, piece ->
+                if (k > 0) p = doc.createElementNS(TEXT, "text:p").also { target.appendChild(it) }
+                if (piece.isEmpty()) return@forEachIndexed
+                val span = looks.span(run)
+                p.appendChild(if (span == null) doc.createTextNode(piece) else doc.createElementNS(TEXT, "text:span").apply { setAttributeNS(TEXT, "text:style-name", span); textContent = piece })
+            }
+        } else if (cell.text.isNotEmpty()) cell.text.split('\n').forEach { line -> target.appendChild(doc.createElementNS(TEXT, "text:p").apply { textContent = line }) }
     }
 
     /** Looks formatting made, as LibreOffice's automatic cell styles (with a number style for their format). */
@@ -386,9 +411,26 @@ internal object SheetSave {
         /** Every style name the file uses, so a new one is never one of them. */
         val taken = HashSet<String>().also { t -> val all = doc.getElementsByTagName("*"); for (i in 0 until all.length) (all.item(i) as org.w3c.dom.Element).getAttributeNS(STYLE, "name").takeIf { it.isNotEmpty() }?.let { t += it } }
         fun fresh(prefix: String) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { taken += it }
+        private val spans = HashMap<DocRun, String?>()
+        /** A rich text run's look as a text style (LibreOffice's for a span); null: no look of its own. */
+        fun span(run: DocRun): String? = spans.getOrPut(run.copy(text = "")) {
+            if (run.copy(text = "") == DocRun("")) return@getOrPut null
+            val e = doc.createElementNS(STYLE, "style:style"); val name = fresh("Tsp")
+            e.setAttributeNS(STYLE, "style:name", name); e.setAttributeNS(STYLE, "style:family", "text")
+            e.appendChild(doc.createElementNS(STYLE, "style:text-properties").apply {
+                if (run.bold) setAttributeNS(FO, "fo:font-weight", "bold"); if (run.italic) setAttributeNS(FO, "fo:font-style", "italic")
+                if (run.underline) { setAttributeNS(STYLE, "style:text-underline-style", "solid"); setAttributeNS(STYLE, "style:text-underline-width", "auto"); setAttributeNS(STYLE, "style:text-underline-color", "font-color") }
+                if (run.strike) setAttributeNS(STYLE, "style:text-line-through-style", "solid")
+                run.sizePt?.let { setAttributeNS(FO, "fo:font-size", "${num(it.toDouble())}pt") }
+                run.color?.let { setAttributeNS(FO, "fo:color", "#%06x".format(it and 0xFFFFFF)) }
+                DocStyles.Plain.fontName(run.font)?.let { setAttributeNS(FO, "fo:font-family", it) }
+            })
+            auto.appendChild(e); name
+        }
 
         fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
-        fun line(l: SheetLine?) = if (l == null) "none" else "${if (l.width >= 3) "2.5pt" else if (l.width >= 2) "1.5pt" else "0.74pt"} ${if (l.double) "double" else if (l.dots) "dotted" else if (l.dashed) "dashed" else "solid"} ${hex(l.color)}"
+        // a double as LibreOffice writes Excel's (a bare "double" it takes as thin)
+        fun line(l: SheetLine?) = if (l == null) "none" else if (l.double) "1.76pt double-thin ${hex(l.color)}" else "${if (l.width >= 3) "2.5pt" else if (l.width >= 2) "1.5pt" else "0.74pt"} ${if (l.dots) "dotted" else if (l.dashed) "dashed" else "solid"} ${hex(l.color)}"
 
         fun name(style: Int, format: String?): String = made.getOrPut(style to format) {
             val look = book.styles[style]
@@ -401,11 +443,16 @@ internal object SheetSave {
                 setAttributeNS(FO, "fo:border-left", line(look.left)); setAttributeNS(FO, "fo:border-right", line(look.right))
                 setAttributeNS(FO, "fo:border-top", line(look.top)); setAttributeNS(FO, "fo:border-bottom", line(look.bottom))
                 if (look.wrap) setAttributeNS(FO, "fo:wrap-option", "wrap")
+                if (look.shrink) setAttributeNS(STYLE, "style:shrink-to-fit", "true")
+                if (!look.locked) setAttributeNS(STYLE, "style:cell-protect", "none")
+                // Excel's angle (91–180: down) as LibreOffice's degrees counterclockwise
+                if (look.rotation in 1..180) { setAttributeNS(STYLE, "style:rotation-angle", "${if (look.rotation <= 90) look.rotation else 360 - (look.rotation - 90)}"); setAttributeNS(STYLE, "style:rotation-align", "none") }
                 setAttributeNS(STYLE, "style:vertical-align", when (look.valign) { SheetVAlign.Top -> "top"; SheetVAlign.Center -> "middle"; else -> "bottom" })
                 if (look.align != SheetAlign.General) setAttributeNS(STYLE, "style:text-align-source", "fix")
             })
-            if (look.align != SheetAlign.General) e.appendChild(doc.createElementNS(STYLE, "style:paragraph-properties").apply {
-                setAttributeNS(FO, "fo:text-align", when (look.align) { SheetAlign.Left -> "start"; SheetAlign.Center -> "center"; SheetAlign.Right -> "end"; else -> "justify" })
+            if (look.align != SheetAlign.General || look.indent > 0) e.appendChild(doc.createElementNS(STYLE, "style:paragraph-properties").apply {
+                if (look.align != SheetAlign.General) setAttributeNS(FO, "fo:text-align", when (look.align) { SheetAlign.Left -> "start"; SheetAlign.Center -> "center"; SheetAlign.Right -> "end"; else -> "justify" })
+                if (look.indent > 0) setAttributeNS(FO, "fo:margin-left", String.format(java.util.Locale.ROOT, "%.3fcm", look.indent * 0.2965))
             })
             e.appendChild(doc.createElementNS(STYLE, "style:text-properties").apply {
                 if (look.bold) setAttributeNS(FO, "fo:font-weight", "bold")

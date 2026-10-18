@@ -50,47 +50,6 @@ internal data class DocPage(val width: Float = 595.3f, val height: Float = 841.9
 internal data class PageBorder(val line: Border, val left: Float, val top: Float, val right: Float, val bottom: Float,
     val sides: String = "tlbr" /* which sides have it: t, l, b, r (Word's and LibreOffice's borders on some sides only) */)
 
-/** How a paragraph is laid out: spacing (pt), line spacing (a multiple, or exact pt), indents (pt), its text's look. */
-internal data class ParaLook(
-    val before: Float = 0f, val after: Float = 0f,
-    val lineMultiple: Float = 1f, val lineExact: Float? = null, val lineAtLeast: Boolean = false,
-    val left: Float = 0f, val right: Float = 0f, val firstLine: Float = 0f, // firstLine < 0: hanging
-    val pageBreakBefore: Boolean = false, val contextual: Boolean = false, val box: ParaBox? = null, val columnBreakBefore: Boolean = false,
-    val sizePt: Float? = null, val bold: Boolean? = null, val italic: Boolean? = null, val color: Int? = null, val font: String? = null,
-    val tabs: List<TabStop> = emptyList(),
-    val listIndented: Boolean = false, // a list item's indent is already in left/firstLine
-    val align: DocAlign? = null, // the style's alignment (a paragraph's own is DocPara.align)
-)
-
-/**
- * Paragraphs are laid out in twentieths of a point (Word's own unit): Android's layout takes whole numbers for widths
- * and indents, and in points a line that fits by a quarter point broke, a number that ends on its tab stop overshot.
- */
-private const val U = 20f
-private fun StaticLayout.topPt(line: Int) = getLineTop(line) / U
-private fun StaticLayout.bottomPt(line: Int) = getLineBottom(line) / U
-
-/** A tab stop: where (pt from the text's left edge), how the text after it lines up ('l', 'r', 'c'), what fills the gap. */
-internal data class TabStop(val pos: Float, val type: Char, val leader: Char? = null)
-
-/** The same left/right/centre tab geometry for the pages and the editable text (points). */
-internal fun tabGap(x: Float, followingWidth: Float, stops: List<TabStop>): Pair<TabStop, Float> {
-    val stop = stops.firstOrNull { it.pos >= x - 0.05f } ?: TabStop((kotlin.math.floor(x / 36f) + 1) * 36f, 'l')
-    val gap = stop.pos - x - when (stop.type) { 'r' -> followingWidth; 'c' -> followingWidth / 2; else -> 0f }
-    return stop to gap.coerceAtLeast(0f)
-}
-
-/** A tab laid out: a gap of its own width, filled with its leader (the dots of a table of contents). */
-private class TabSpan(val width: Float, val leader: Char?) : android.text.style.ReplacementSpan() {
-    override fun getSize(paint: android.graphics.Paint, text: CharSequence?, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?) = Math.round(width)
-    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
-        val c = leader ?: return
-        val dot = paint.measureText(c.toString()).takeIf { it > 0f } ?: return
-        val n = ((width - dot * 0.5f) / dot).toInt()
-        if (n > 0) canvas.drawText(c.toString().repeat(n), x + width - n * dot, y.toFloat(), paint)
-    }
-}
-
 /**
  * A section of the document: its pages' size and margins, headers and footers ("default", "first" for a title page,
  * "even"), where its page numbers start (null: they go on) and their style, and whether it starts a new page.
@@ -171,6 +130,12 @@ internal abstract class DocStyles {
     /** A run's font name from its raw settings (Word's rFonts, ODF's font attributes). */
     open fun fontName(raw: String?): String? = raw?.let { Regex("""(?:w:ascii|w:hAnsi|style:font-name|fo:font-family)="([^"]+)"""").find(it)?.groupValues?.get(1) }
         ?.trim('\'', ' ')?.replace(Regex("""\d+$"""), "")
+    /** A list item's number or bullet where paragraphs are stacked (a header, a cell, a text box, a slide's box). */
+    open fun marker(p: DocPara): String? = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
+    /** Its own look (a slide's bullet); null: its paragraph's first letters'. */
+    open fun markerLook(p: DocPara): MarkerLook? = null
+    /** Its gap to the words a fixed one (the hang less the marker), not the next tab stop: a centred slide list's, as PowerPoint's. */
+    open fun markerHangs(p: DocPara): Boolean = false
     /** A list item's number or bullet as its list writes it ("2.1.", "a)", "iv."), from the counts at each level. */
     open fun listLabel(p: DocPara, counts: IntArray): String? = null
     /** Each level's number format and text ("lowerLetter", "%2.") of the file's numbered lists, for the editor; null: Writer's 1. 2. 3. */
@@ -864,6 +829,26 @@ internal class LaidPage(val page: DocPage, val pieces: List<Piece>, val floats: 
         fun drawAt(canvas: Canvas, x: Float = this.x, y: Float = this.y) = drawTurned(canvas, picture, x, y, w, h, turn)
     }
 
+    /** The video whose picture is at [x], [y] (points from the page's top left), and where it is, else null: a tap on it plays it there. */
+    fun videoAt(x: Float, y: Float): OfficeVideo.Spot? {
+        floats.lastOrNull { it.picture is OfficeVideo.Marked && x in it.x..it.x + it.w && y in it.y..it.y + it.h }?.let { return OfficeVideo.Spot((it.picture as OfficeVideo.Marked).film, it.x, it.y, it.w, it.h, it.turn) }
+        for (p in pieces) {
+            if (p.turn != 0) continue
+            val text = p.layout.text as? Spanned ?: continue
+            val top = p.layout.getLineTop(p.firstLine)
+            for (span in text.getSpans(0, text.length, ImageSpan::class.java)) {
+                val d = span.drawable as? OfficeVideo.Marked ?: continue
+                val at = text.getSpanStart(span); val line = p.layout.getLineForOffset(at)
+                if (line !in p.firstLine..p.lastLine) continue
+                // in twentieths of a point, its foot on the line's (ALIGN_BOTTOM)
+                val left = p.x + p.layout.getPrimaryHorizontal(at) / U; val foot = p.y + (p.layout.getLineBottom(line) - top) / U
+                val w = d.bounds.width() / U; val h = d.bounds.height() / U
+                if (x in left..left + w && y in foot - h..foot) return OfficeVideo.Spot(d.film, left, foot - h, w, h)
+            }
+        }
+        return null
+    }
+
     /** Drawn with the canvas in points, the page's top left at 0,0 (white is the caller's; a page colour is drawn). */
     fun draw(canvas: Canvas, skip: String? = null /* a float's key: left out (it is being moved) */) {
         page.color?.let { canvas.drawRect(0f, 0f, page.width, page.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or it }) }
@@ -980,51 +965,6 @@ private class InLineDrawable(val inner: android.graphics.drawable.Drawable, val 
     override fun setAlpha(alpha: Int) = Unit
     override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
     @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-}
-
-internal class TextBoxDrawable(val frame: ShapePicture?, val text: Block, val inset: Pair<Float, Float>, /** 't', 'c' or 'b': where its words stand */ val anchor: Char = 't',
-    /** WordArt bent: its words and their look, laid along the bend instead of in lines. */ val warp: Triple<TextWarp, String, android.text.TextPaint>? = null) : android.graphics.drawable.Drawable() {
-    override fun draw(canvas: Canvas) {
-        val b = bounds
-        (frame ?: ShapePicture("rect", 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0.75f)).drawAt(canvas, b.left.toFloat(), b.top.toFloat(), b.width().toFloat(), b.height().toFloat())
-        warp?.let { (bend, words, look) ->
-            val bw = b.width().toFloat(); val bh = b.height().toFloat()
-            // Letters as tall as the bend allows, smaller when the words would not fit along it; the line placed for them.
-            val paint = android.text.TextPaint(look)
-            var m = bend.letters(bw, bh)
-            fun along(m: Float) = android.graphics.Path().apply { val pts = bend.line(bw, bh, m); moveTo(b.left + pts[0].first, b.top + pts[0].second); pts.drop(1).forEach { (x, y) -> lineTo(b.left + x, b.top + y) } }
-            var path = along(m)
-            repeat(3) {
-                paint.textSize = m / 0.72f // a letter's cap height is about 0.72 of its size
-                val length = android.graphics.PathMeasure(path, false).length
-                val needs = paint.measureText(words)
-                if (needs <= length * 0.96f) return@repeat
-                m *= length * 0.96f / needs; path = along(m)
-            }
-            canvas.save(); canvas.clipRect(b)
-            canvas.drawTextOnPath(words, path, ((android.graphics.PathMeasure(path, false).length - paint.measureText(words)) / 2).coerceAtLeast(0f), 0f, paint)
-            canvas.restore()
-            return
-        }
-        canvas.save()
-        canvas.clipRect(b)
-        val room = (b.height() - 2 * inset.second - text.height).coerceAtLeast(0f)
-        canvas.translate(b.left + inset.first, b.top + inset.second + when (anchor) { 'c' -> room / 2; 'b' -> room; else -> 0f })
-        LaidPage.drawParts(canvas, text.pieces, text.boxes, text.lines)
-        canvas.restore()
-    }
-    override fun setAlpha(alpha: Int) = Unit
-    override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = Unit
-    @Deprecated("Drawable") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-}
-
-/** Some of a page laid out on its own (a table's row, a cell's contents): what goes where, from its top left. */
-internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val boxes: List<LaidPage.Box>, val lines: List<LaidPage.Line>,
-    val across: Float = 0f /* turned text: how wide it stands */) {
-    fun moved(dx: Float, dy: Float) = Block(height, pieces.map {
-        if (it.turn == 0) LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x + dx, it.y + dy)
-        else LaidPage.Piece(it.layout, it.firstLine, it.lastLine, it.x, it.y, it.turn, it.tx + dx, it.ty + dy) },
-        boxes.map { LaidPage.Box(it.x + dx, it.y + dy, it.w, it.h, it.color) }, lines.map { LaidPage.Line(it.x1 + dx, it.y1 + dy, it.x2 + dx, it.y2 + dy, it.width, it.color) }, across)
 }
 
 internal object OfficePages {
@@ -1412,7 +1352,7 @@ internal object OfficePages {
      * Paragraphs (and tables) one under the other in [width], from 0,0 — a header, a footer, a table's cell. Floating
      * pictures go to [floats] placed from ([left], [top]) when given; else (in a cell) they are left out.
      */
-    private fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
+    internal fun stack(doc: OfficeDoc, paras: List<DocPara>, styles: DocStyles, page: DocPage, width: Float, pictureBytes: (DocImage) -> ByteArray?,
         floats: MutableList<LaidPage.Floating>?, left: Float, top: Float, tableExtraWidth: Float = 0f, under: ParaLook? = null): Block {
         val area = page.copy(width = width, left = 0f, right = 0f)
         val pieces = ArrayList<LaidPage.Piece>(); val boxes = ArrayList<LaidPage.Box>(); val lines = ArrayList<LaidPage.Line>()
@@ -1424,7 +1364,7 @@ internal object OfficePages {
                 return@forEachIndexed
             }
             val look = styles.look(p).let { l -> under?.let { u -> l.copy(bold = l.bold ?: u.bold, italic = l.italic ?: u.italic, color = l.color ?: u.color, sizePt = l.sizePt ?: u.sizePt) } ?: l }
-            val marker = p.list?.let { if (it.ordered) "${it.start ?: 1}." else "•" }
+            val marker = styles.marker(p)
             val floating = ArrayList<Pair<DocImage, PictureXml.Place>>()
             val (layout, shift, lastExtra) = paragraph(doc, p, look, styles, area, marker, pictureBytes, floating)
             if (i > 0) y += look.before
@@ -1554,14 +1494,20 @@ internal object OfficePages {
             else -> ((place.y ?: 0f) + when (place.fromV) { "page" -> 0f; "margin" -> page.top; else -> paraTop })
                 .let { y -> if (place.fromV == "page" || place.fromV == "margin") y else minOf(y, page.height - page.bottom - h).coerceAtLeast(0f) }
         }
-        return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes), x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
+        return LaidPage.Floating(pictureOf(doc, styles, img, pictureBytes).let { d -> PictureXml.video(img)?.let { OfficeVideo.Marked(d, it) } ?: d }, x, y, w, h, place.wrap == PictureWrap.Behind, img.key, PictureXml.zOf(img), Arrange.rotationOf(img))
+    }
+
+    /** A picture's bitmap as the file shows it: only the part its crop leaves (Word's a:srcRect, LibreOffice's fo:clip on its style). */
+    fun croppedPicture(img: DocImage, bytes: ByteArray, max: Int): android.graphics.Bitmap? {
+        val bmp = decodePicture(bytes, max) ?: return null
+        return Slides.cropped(bmp, Slides.srcRect(img.raw) ?: img.look?.let { l -> Regex("""fo:clip="([^"]*)"""").findAll(l).lastOrNull() }?.let { Slides.clip(it.groupValues[1], bytes) })
     }
 
     /** What a floating picture, shape, text box, chart, equation or group draws (a grey box for what Writer cannot draw). */
     fun pictureOf(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): android.graphics.drawable.Drawable =
         img.group?.let { parts -> GroupDrawable(img.widthPt, img.heightPt, parts.map { it to pictureOf(doc, styles, it.img, pictureBytes) }) }
             ?: img.math?.let { MathDrawable(it, doc.basePt) }
-            ?: textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
+            ?: textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) } ?: pictureBytes(img)?.let { b -> croppedPicture(img, b, 1600) }?.let { BitmapDrawable(null, it) } ?: ShapePicture.of(img) ?: ColorDrawable(0xFFE3E3E3.toInt())
 
     /** A text box's picture: its words laid out in it (Word's insets: 0.1" at the sides, 0.05" above and below). */
     fun textBox(doc: OfficeDoc, styles: DocStyles, img: DocImage, pictureBytes: (DocImage) -> ByteArray?): TextBoxDrawable? {
@@ -1620,6 +1566,8 @@ internal object OfficePages {
                 OfficeFonts.typeface(styles.fontName(r.font))?.let { mark(TypefaceSpan(OfficeFonts.styled(it, r.bold, r.italic))) }
                 r.color?.let { mark(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             }
+            // its own look (a slide's bullet): drawn in its colour, size and face, the line as tall as its words make it
+            styles.markerLook(p)?.let { m -> text.setSpan(MarkerSpan(m.color, m.size, OfficeFonts.typeface(m.font)), 0, marker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
         for (r in OfficeFormats.tidy(p.runs)) {
             if (r.image == null && LetterLooks.of(r.font).hidden) continue // hidden text: not on the page, as in Word
@@ -1635,10 +1583,10 @@ internal object OfficePages {
                 val fit = minOf(width / img.widthPt, (page.height - page.top - page.bottom - 20f) / img.heightPt, 1f)
                 val w = Math.round(img.widthPt * fit * U).coerceAtLeast(1); val h = Math.round(img.heightPt * fit * U).coerceAtLeast(1)
                 // In a line the layout counts in twentieths of a point: a shape's outline is given in them too.
-                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> decodePicture(b, 1600) }?.let { BitmapDrawable(null, it) }
+                val drawable = img.math?.let { MathDrawable(it, doc.basePt) } ?: img.group?.let { pictureOf(doc, styles, img, pictureBytes) } ?: (textBox(doc, styles, img, pictureBytes) ?: img.chart?.let { ChartDrawable(it) })?.let { InLineDrawable(it, U) } ?: pictureBytes(img)?.let { b -> croppedPicture(img, b, 1600) }?.let { BitmapDrawable(null, it) }
                     ?: ShapePicture.of(img)?.let { it.withLine(it.lineWidth * U) } ?: ColorDrawable(0xFFE3E3E3.toInt())
                 drawable.setBounds(0, 0, w, h)
-                span(ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM))
+                span(ImageSpan(PictureXml.video(img)?.let { OfficeVideo.Marked(drawable, it).apply { setBounds(0, 0, w, h) } } ?: drawable, ImageSpan.ALIGN_BOTTOM))
                 continue
             }
             when { // the style's bold and italic are the paint's
@@ -1660,6 +1608,8 @@ internal object OfficePages {
             }
             r.sizePt?.let { span(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
+            // Character spacing, after the size is set (only a run that has some: the rest laid out as before)
+            if (letters.spacing != 0f) span(LetterLooks.Spaced(letters.spacing, U))
             (r.color ?: if (web) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
             // Tracked changes, as Word shows all markup: inserted underlined, deleted struck through, in the author's colour.
@@ -1691,7 +1641,8 @@ internal object OfficePages {
         val aligned = p.align.takeIf { it != DocAlign.Start || p.keep?.parts?.any { k -> k.first == "jc" } == true } ?: look.align ?: DocAlign.Start // its own (left said in the file too), else its style's
         val align = when (aligned) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
         // Word's single line is the font's height and its line gap; Android's leaves the gap out (rows came out 4% short).
-        val multiple = if (look.lineExact == null) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
+        // A picture alone in its paragraph keeps its own height, as LibreOffice lays it (asked 17 Oct: 1.15 put a sixth of the picture under it).
+        val multiple = if (look.lineExact == null && !text.all { it == '\uFFFC' || it == '\n' }) look.lineMultiple.coerceIn(0.5f, 5f) else 1f
         // The line gap of the font most of the text is in (a paragraph in Calibri may be all Times, letter by letter).
         val main = p.runs.filter { it.image == null }.groupBy { it.font to it.sizePt }.maxByOrNull { (_, rs) -> rs.sumOf { it.text.length } }?.value?.first()
         val gapPaint = TextPaint(paint).apply {
@@ -1712,6 +1663,11 @@ internal object OfficePages {
         // the stop's side (a table of contents: page numbers right-aligned, dots before them).
         val stops = (look.tabs + if (first < left) listOf(TabStop(left, 'l')) else emptyList()).sortedBy { it.pos }
         for (k in text.indices.filter { text[it] == '\t' }) {
+            if (marker != null && k == marker.length && styles.markerHangs(p)) {
+                val mark = Layout.getDesiredWidth(android.text.SpannableStringBuilder(text, 0, k).also { b -> b.getSpans(0, b.length, android.text.style.ParagraphStyle::class.java).forEach(b::removeSpan) }, paint) / U
+                text.setSpan(TabSpan(maxOf(left - first - mark, size * 0.25f) * U, null), k, k + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                continue
+            }
             val x = build().getPrimaryHorizontal(k) / U - shift // in points from the margin, as tab stops are
             // A stop the text reaches exactly still counts (a number as wide as its hanging indent).
             val end = (k + 1 until text.length).firstOrNull { text[it] == '\t' || text[it] == '\n' } ?: text.length
@@ -1739,7 +1695,8 @@ internal object OfficePages {
             val bounds = android.graphics.Rect(); letterPaint.getTextBounds("H", 0, 1, bounds)
             val capRatio = (bounds.height() / 100f).coerceAtLeast(0.3f)
             val base0 = laid.getLineBaseline(0) / U
-            val lineStep = if (laid.lineCount > 1) (laid.getLineBaseline(1) - laid.getLineBaseline(0)) / U else laid.bottomPt(0) - laid.topPt(0)
+            // a line's step, from the first two — no more than the first line's own height (a picture in the second made the letter huge, 17 Oct)
+            val lineStep = if (laid.lineCount > 1) minOf((laid.getLineBaseline(1) - laid.getLineBaseline(0)) / U, laid.bottomPt(0) - laid.topPt(0)) else laid.bottomPt(0) - laid.topPt(0)
             val baseN = base0 + (drop.lines - 1) * lineStep
             val capTop = base0 - (r0?.sizePt ?: size) * capRatio
             letterPaint.textSize = ((baseN - capTop) / capRatio).coerceAtLeast(size)
@@ -1767,7 +1724,7 @@ internal object OfficeFonts {
 
     private fun load(name: String, fallback: String): Typeface? = synchronized(families) {
         families.getOrPut(name) {
-            val a = assets ?: return@getOrPut null
+            val a = assets ?: return null // not known yet: asked again later, not remembered as missing
             runCatching {
                 fun font(style: String, weight: Int, italic: Boolean) = android.graphics.fonts.Font.Builder(a, "fonts/$name-$style.ttf").setWeight(weight)
                     .setSlant(if (italic) android.graphics.fonts.FontStyle.FONT_SLANT_ITALIC else android.graphics.fonts.FontStyle.FONT_SLANT_UPRIGHT).build()
@@ -1778,9 +1735,76 @@ internal object OfficeFonts {
         }
     }
 
-    /** The typeface for a document's font name; null: the phone's own. */
+    /**
+     * The phone's font families (asked 17 Oct: Android's and its maker's — Noto, MiSans, Dancing Script…) by the name in
+     * their files (Android lists the files, not their names), each with its faces, its name as written.
+     */
+    private val phone: Map<String, Pair<String, List<android.graphics.fonts.Font>>> by lazy {
+        runCatching { android.graphics.fonts.SystemFonts.getAvailableFonts().mapNotNull { f -> f.file?.let { runCatching { familyName(it, f.ttcIndex) }.getOrNull() }?.let { it to f } }
+            .groupBy({ it.first.lowercase() }, { it }).mapValues { (_, l) -> l.first().first to l.map { it.second }.distinctBy { it.style.weight to it.style.slant } } }.getOrElse { emptyMap() }
+    }
+    private val phoneFaces = HashMap<String, Typeface?>()
+    /** A family of the phone's by its name, its faces together (bold and italic pick theirs); the phone's other fonts behind it. */
+    private fun phoneTypeface(n: String): Typeface? = synchronized(phoneFaces) {
+        phoneFaces.getOrPut(n) {
+            val faces = phone[n]?.second ?: return@getOrPut null
+            runCatching { Typeface.CustomFallbackBuilder(android.graphics.fonts.FontFamily.Builder(faces[0]).apply { faces.drop(1).forEach { addFont(it) } }.build())
+                .setSystemFallback("sans-serif").build() }.getOrNull()
+        }
+    }
+    /**
+     * The phone's families for the font picker: those whose own letters include Latin ones (not fonts for other scripts
+     * alone, nor emoji or clocks; Noto's "UI" twins left out), by name.
+     */
+    fun phoneFamilies(): List<String> = phone.values.filter { (name, faces) ->
+        !Regex("emoji|clock|symbol|icon| UI$", RegexOption.IGNORE_CASE).containsMatchIn(name) &&
+            faces.first().let { f -> f.file?.let { runCatching { covers(it, f.ttcIndex, 'a'.code) }.getOrNull() } } == true
+    }.map { it.first }.sortedBy { it.lowercase() }
+
+    /** A font file's tables: tag → (offset, length), the [index]th font of a collection; [read] its numbers. */
+    private fun tables(f: java.io.RandomAccessFile, index: Int): Map<String, Long> {
+        f.seek(0); val ttc = f.readInt() == 0x74746366 // "ttcf"
+        val base = if (ttc) { f.seek(12L + 4 * index); f.readInt().toLong() and 0xFFFFFFFFL } else 0L
+        f.seek(base + 4); val n = f.readUnsignedShort()
+        return (0 until n).associate { k -> f.seek(base + 12 + 16L * k); val tag = ByteArray(4).also(f::readFully); f.skipBytes(4); String(tag, Charsets.ISO_8859_1) to (f.readInt().toLong() and 0xFFFFFFFFL) }
+    }
+
+    /** Whether a font file's own letters (its cmap: Unicode format 4 or 12) include [code]. */
+    internal fun covers(file: java.io.File, index: Int, code: Int): Boolean = java.io.RandomAccessFile(file, "r").use { f ->
+        fun u16(at: Long): Int { f.seek(at); return f.readUnsignedShort() }
+        fun u32(at: Long): Long { f.seek(at); return f.readInt().toLong() and 0xFFFFFFFFL }
+        val cmap = tables(f, index)["cmap"] ?: return false
+        val subs = (0 until u16(cmap + 2)).map { cmap + 4 + 8L * it }.filter { r -> u16(r).let { it == 0 || it == 3 } }.map { cmap + u32(it + 4) }
+        subs.any { at -> when (u16(at)) {
+            4 -> { val seg = u16(at + 6) / 2
+                (0 until seg).any { i -> val end = u16(at + 14 + 2L * i); val start = u16(at + 16 + 2L * seg + 2L * i)
+                    code in start..end && end != 0xFFFF } }
+            12 -> (0 until u32(at + 12)).any { g -> code.toLong() in u32(at + 16 + 12 * g)..u32(at + 20 + 12 * g) }
+            else -> false
+        } }
+    }
+
+    /** A font file's family name: its name table's typographic family (else its family), the [index]th font of a collection. */
+    internal fun familyName(file: java.io.File, index: Int = 0): String? = java.io.RandomAccessFile(file, "r").use { f ->
+        fun u16(at: Long): Int { f.seek(at); return f.readUnsignedShort() }
+        fun u32(at: Long): Long { f.seek(at); return f.readInt().toLong() and 0xFFFFFFFFL }
+        val base = if (u32(0) == 0x74746366L) u32(12L + 4 * index) else 0L // "ttcf": where this font starts
+        val name = (0 until u16(base + 4)).map { base + 12 + 16L * it }.firstOrNull { u32(it) == 0x6E616D65L } ?: return null // "name"
+        val at = u32(name + 8); val strings = at + u16(at + 4)
+        // (platform, encoding, language, name id, length, offset): the typographic family (16) before the family (1), Windows' English first
+        val best = (0 until u16(at + 2)).map { at + 6 + 12L * it }.map { r -> IntArray(6) { k -> u16(r + 2L * k) } }.filter { it[3] == 16 || it[3] == 1 }
+            .minByOrNull { (if (it[3] == 16) 0 else 10) + (if (it[0] == 3 && it[2] == 0x409) 0 else if (it[0] == 3 || it[0] == 0) 1 else 2) } ?: return null
+        val bytes = ByteArray(best[4]); f.seek(strings + best[5]); f.readFully(bytes)
+        String(bytes, if (best[0] == 1) Charsets.ISO_8859_1 else Charsets.UTF_16BE).trim().ifEmpty { null }
+    }
+
+    /**
+     * The typeface for a document's font name; null: the phone's default. The phone's own font of that name when it has
+     * one (asked 17 Oct), else Word's fonts' twins (their letter widths keep lines where Word breaks them), else a guess.
+     */
     fun typeface(name: String?): Typeface? {
         val n = name?.lowercase()?.trim() ?: return null
+        phoneTypeface(n)?.let { return it }
         return when {
             "narrow" in n || "condensed" in n -> Typeface.create("sans-serif-condensed", Typeface.NORMAL) // Arial Narrow: no metric twin bundled
             "times" in n || n == "liberation serif" -> load("LiberationSerif", "serif")
@@ -1801,6 +1825,12 @@ internal object OfficeFonts {
      */
     fun family(name: String?): androidx.compose.ui.text.font.FontFamily? {
         val n = name?.lowercase()?.trim() ?: return null
+        // the phone's own font of that name: its faces from their files (a collection's other fonts left to the phone)
+        phone[n]?.second?.filter { it.file != null && it.ttcIndex == 0 }?.takeIf { it.isNotEmpty() }?.let { faces ->
+            synchronized(composeFamilies) { composeFamilies.getOrPut("phone $n") { runCatching { androidx.compose.ui.text.font.FontFamily(faces.map { f ->
+                androidx.compose.ui.text.font.Font(f.file!!, androidx.compose.ui.text.font.FontWeight(f.style.weight.coerceIn(1, 1000)),
+                    if (f.style.slant == android.graphics.fonts.FontStyle.FONT_SLANT_ITALIC) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal) }) }.getOrNull() } }?.let { return it }
+        }
         val file = when {
             "times" in n || n == "liberation serif" -> "LiberationSerif"
             "arial" in n || "helvetica" in n || n == "liberation sans" -> "LiberationSans"
@@ -1828,6 +1858,41 @@ internal object OfficeFonts {
 }
 
 /**
+ * An outline's dashes as Word and PowerPoint name them (DrawingML's prstDash) and as LibreOffice converts each (its
+ * draw:stroke-dash: dashes, their length, dots after them, their length, the gap — in line widths; checked with
+ * LibreOffice 26.2's conversions, 17 Oct). Shape options offers [CHOICES]; every name is read and drawn.
+ */
+internal object LineDash {
+    private class Dash(val odf: String, val dots1: Int, val len1: Int, val dots2: Int, val len2: Int, val gap: Int)
+    private val ALL = linkedMapOf(
+        "sysDot" to Dash("Dot", 1, 1, 0, 0, 1), "sysDash" to Dash("Dash", 1, 3, 0, 0, 1), "dash" to Dash("Long_20_Dash", 1, 4, 0, 0, 3),
+        "dashDot" to Dash("Long_20_Dash_20_Dot", 1, 4, 1, 1, 3), "lgDash" to Dash("Double_20_Dash", 1, 8, 0, 0, 3),
+        "lgDashDot" to Dash("Double_20_Dash_20_Dot", 1, 8, 1, 1, 3), "lgDashDotDot" to Dash("Double_20_Dash_20_Dot_20_Dot", 1, 8, 2, 1, 3),
+        "dot" to Dash("Long_20_Dot", 1, 1, 0, 0, 3), "sysDashDot" to Dash("Dash_20_Dot", 1, 3, 1, 1, 1), "sysDashDotDot" to Dash("Dash_20_Dot_20_Dot", 1, 3, 2, 1, 1))
+    /** Word's list of dashes (Format Shape › Line › Dash type): its name and the shown word. */
+    val CHOICES = listOf(null to "Solid", "sysDot" to "Round dot", "sysDash" to "Square dot", "dash" to "Dash", "dashDot" to "Dash dot",
+        "lgDash" to "Long dash", "lgDashDot" to "Long dash dot", "lgDashDotDot" to "Long dash dot dot")
+    /** Android's on/off lengths for [name] on a line [width] pt wide; null: solid. */
+    fun intervals(name: String, width: Float): FloatArray? {
+        val d = ALL[name] ?: return null
+        val w = width.coerceAtLeast(0.5f)
+        return (List(d.dots1) { listOf(d.len1 * w, d.gap * w) } + List(d.dots2) { listOf(d.len2 * w, d.gap * w) }).flatten().toFloatArray()
+    }
+    /** LibreOffice's draw:stroke-dash name for [name] (what a style's draw:stroke-dash says). */
+    fun odfName(name: String) = ALL[name]?.odf
+    /** LibreOffice's draw:stroke-dash element for [name], to go into styles.xml's office:styles. */
+    fun odfStyle(name: String): String? = ALL[name]?.let { d -> """<draw:stroke-dash draw:name="${d.odf}" draw:display-name="${d.odf.replace("_20_", " ")}" draw:style="rect" draw:dots1="${d.dots1}" draw:dots1-length="${d.len1 * 100}%"""" +
+        (if (d.dots2 > 0) """ draw:dots2="${d.dots2}" draw:dots2-length="${d.len2 * 100}%"""" else "") + """ draw:distance="${d.gap * 100}%"/>""" }
+    /** A LibreOffice dash by its name (its own names for these; any other a plain dash). */
+    fun fromOdf(odf: String): String = ALL.entries.firstOrNull { it.value.odf == odf }?.key ?: "dash"
+    /** Adds the draw:stroke-dash definitions [names] need to an ODF styles.xml (those it has kept). */
+    fun intoStyles(styles: String, names: Collection<String>): String {
+        val add = names.mapNotNull { n -> odfName(n)?.takeIf { "draw:name=\"$it\"" !in styles }?.let { odfStyle(n) } }.distinct().joinToString("")
+        return if (add.isEmpty() || "</office:styles>" !in styles) styles else styles.replace("</office:styles>", "$add</office:styles>")
+    }
+}
+
+/**
  * A drawn shape (Word's wps:wsp, LibreOffice's draw:custom-shape): its outline path in a w×h box, with its fill (and
  * see-through) and outline as the file sets them (found 2026-09-29: circles around keys on a keyboard picture were grey
  * boxes; Insert › Shapes makes them). A shape of another kind is still a grey box.
@@ -1835,11 +1900,25 @@ internal object OfficeFonts {
 internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?, val lineWidth: Float,
     /** Its own geometry (a LibreOffice shape's enhanced path); else Word's preset [geometry]'s. */
     val custom: ShapeGeometry? = null, /** Word's adjustments (avLst), by name. */ val adjust: Map<String, Double> = emptyMap(),
-    /** a line's arrowheads: 1 at its start, 2 at its end (Word's headEnd, tailEnd) */ val ends: Int = 0) : android.graphics.drawable.Drawable() {
-    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust, ends)
+    /** a line's arrowheads: 1 at its start, 2 at its end (Word's headEnd, tailEnd) */ val ends: Int = 0,
+    /** its outline's dashes ([LineDash]'s names, DrawingML's prstDash; null: solid) and a shadow under it (PowerPoint's "Offset: bottom right") */
+    val dash: String? = null, val shadow: Boolean = false) : android.graphics.drawable.Drawable() {
+    fun withLine(width: Float) = ShapePicture(geometry, fill, line, width, custom, adjust, ends, dash, shadow)
+    /** Its outline's dashes for a Paint (null: solid). */
+    fun dashes() = dash?.let { LineDash.intervals(it, lineWidth) }?.let { android.graphics.DashPathEffect(it, 0f) }
+    /** Its shadow under [path]: the shape 3 pt down and right, 40 % black, softened (PowerPoint's and Word's "Offset: bottom right"). */
+    fun shadowOf(canvas: Canvas, path: android.graphics.Path, filled: Boolean) {
+        if (!shadow) return
+        val shade = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000
+            maskFilter = android.graphics.BlurMaskFilter(2f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            style = if (filled) android.graphics.Paint.Style.FILL else android.graphics.Paint.Style.STROKE; strokeWidth = lineWidth }
+        canvas.drawPath(android.graphics.Path(path).apply { offset(2.12f, 2.12f) }, shade)
+    }
     fun drawAt(canvas: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.strokeJoin = android.graphics.Paint.Join.ROUND
+        val dashes = dashes()
+        fun shadowOf(path: android.graphics.Path, filled: Boolean) = shadowOf(canvas, path, filled)
         // Drawn from its geometry (Word's 187 presets, LibreOffice's paths): each sub-path filled (shaded) and stroked as it says.
         val geo = custom ?: ShapeGeometry.presets[geometry]
         if (geo != null && geometry !in LINES) {
@@ -1852,14 +1931,17 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                     is ShapeGeometry.Op.Quad -> path.quadTo(x + op.x1, y + op.y1, x + op.x, y + op.y)
                     ShapeGeometry.Op.Close -> path.close()
                 }
-                if (sub.fill) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = shaded(it, sub.shade); canvas.drawPath(path, paint) }
-                if (sub.stroke) line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+                shadowOf(path, sub.fill && fill != null)
+                if (sub.fill) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.pathEffect = null; paint.color = shaded(it, sub.shade); canvas.drawPath(path, paint) }
+                if (sub.stroke) line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.pathEffect = dashes; paint.color = it; canvas.drawPath(path, paint) }
             }
             return
         }
         val path = path(geometry, w, h).apply { offset(x, y) }
+        shadowOf(path, geometry !in LINES && fill != null)
         if (geometry !in LINES) fill?.let { paint.style = android.graphics.Paint.Style.FILL; paint.color = it; canvas.drawPath(path, paint) }
-        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.color = it; canvas.drawPath(path, paint) }
+        line?.let { paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = lineWidth; paint.pathEffect = dashes; paint.color = it; canvas.drawPath(path, paint) }
+        paint.pathEffect = null
         // a line's arrowheads: a filled triangle at each end that has one, along the line
         val heads = ends or when (geometry) { "lineArrow" -> 2; "lineArrows" -> 3; else -> 0 }
         if (geometry in LINES && heads != 0) line?.let { c ->
@@ -1958,7 +2040,7 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val fill = when (v("draw:fill")) { "none" -> null; null -> 0xFF729FCF.toInt(); else -> color(v("draw:fill-color")) ?: 0xFF729FCF.toInt() }
             val line = when (v("draw:stroke")) { "none" -> null; null -> 0xFF3465A4.toInt(); else -> color(v("svg:stroke-color")) ?: 0xFF3465A4.toInt() }
             val width = v("svg:stroke-width")?.let { odfLength(it) }?.takeIf { it > 0f } ?: 1f
-            return ShapePicture(kind, fill, line, width)
+            return ShapePicture(kind, fill, line, width, dash = v("draw:stroke-dash")?.takeIf { v("draw:stroke") == "dash" }?.let(LineDash::fromOdf), shadow = v("draw:shadow") == "visible")
         }
 
         /** From a drawing's XML, when it is a shape of those kinds (Word's, or a custom shape Writer made); null otherwise. */
@@ -1970,11 +2052,13 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
                 val own = ShapeGeometry.ofOdf(raw)
                 val type = Regex("""draw:type="([^"]+)"""").find(raw)?.groupValues?.get(1)
                 val kind = type?.let(::presetOf) ?: if (own != null) "custom" else return null
-                fun sized(p: ShapePicture) = if (own != null) ShapePicture(kind, p.fill, p.line, p.lineWidth, own) else p
-                // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>_<wrap>.
-                val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_""").find(raw)
+                fun sized(p: ShapePicture) = if (own != null) ShapePicture(kind, p.fill, p.line, p.lineWidth, own, dash = p.dash, shadow = p.shadow) else p
+                // Writer's own shapes carry their look in their style's name: Tetra_20_shape_<fill|none>_<line|none>_<width×100>[-<dash>][-shadow]_<wrap>.
+                val m = Regex("""draw:style-name="Tetra_20_shape_(\w+?)_(\w+?)_(\d+)((?:-[A-Za-z]+)*)_""").find(raw)
                 fun hex(v: String?) = v?.takeIf { it != "none" }?.let { t -> t.toLongOrNull(16)?.let { if (t.length == 8) it.toInt() else (0xFF000000 or it).toInt() } }
-                return sized(if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f)
+                val extra = m?.groupValues?.get(4)?.split('-')?.filter { it.isNotEmpty() }.orEmpty()
+                return sized(if (m != null) ShapePicture(kind, hex(m.groupValues[1]), hex(m.groupValues[2]), m.groupValues[3].toInt() / 100f,
+                    dash = extra.firstOrNull { it != "shadow" }, shadow = "shadow" in extra)
                     else styledShape(kind, look)) // its style's fill and line, else LibreOffice's own default look
             }
             val sp = Regex("""<wps:spPr>([\s\S]*?)</wps:spPr>""").find(raw)?.groupValues?.get(1) ?: return null
@@ -1996,46 +2080,9 @@ internal class ShapePicture(val geometry: String, val fill: Int?, val line: Int?
             val width = ln?.groupValues?.get(1)?.let { Regex("""w="(\d+)"""").find(it)?.groupValues?.get(1)?.toFloatOrNull() }?.div(12700f) ?: 0.75f
             // its arrowheads (Word's line ends that are not "none")
             fun end(tag: String) = Regex("""<a:$tag\b[^>]*\btype="(\w+)"""").find(ln?.groupValues?.get(2).orEmpty())?.groupValues?.get(1)?.let { it != "none" } == true
-            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust, ends = (if (end("headEnd")) 1 else 0) or (if (end("tailEnd")) 2 else 0))
-        }
-    }
-}
-
-/**
- * Letter looks Writer keeps raw in [DocRun.font] and shows (the user's test suite, 2026-10-01: all four looked plain):
- * capitals, small capitals, double strikethrough, double underline — Word's rPr elements, LibreOffice's attributes.
- */
-internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean, val hidden: Boolean = false) {
-    val any get() = caps || smallCaps || doubleStrike || doubleUnder || hidden
-    /** Two lines (struck through, or under) over its letters, drawn after the line: [drawSecondLines]. */
-    class SecondLine(val strike: Boolean)
-    companion object {
-        private val NONE = LetterLooks(false, false, false, false)
-        private fun on(font: String, tag: String) = Regex("""<w:$tag(\s*/>|\s+w:val="(1|true|on)")""").containsMatchIn(font)
-        fun of(font: String?): LetterLooks = if (font.isNullOrEmpty()) NONE else LetterLooks(
-            on(font, "caps") || "fo:text-transform=\"uppercase\"" in font,
-            on(font, "smallCaps") || "fo:font-variant=\"small-caps\"" in font,
-            on(font, "dstrike") || "style:text-line-through-type=\"double\"" in font,
-            "<w:u w:val=\"double\"" in font || "style:text-underline-type=\"double\"" in font,
-            on(font, "vanish") || "text:display=\"none\"" in font)
-
-        /** The [SecondLine] spans of [layout]'s lines [first]..[last]: two thin lines each, in the text's colour. */
-        fun drawSecondLines(canvas: android.graphics.Canvas, layout: android.text.Layout, first: Int, last: Int) {
-            val text = layout.text as? android.text.Spanned ?: return
-            val spans = text.getSpans(0, text.length, SecondLine::class.java).takeIf { it.isNotEmpty() } ?: return
-            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = layout.paint.color }
-            for (sp in spans) {
-                val a = text.getSpanStart(sp); val z = text.getSpanEnd(sp)
-                for (line in maxOf(first, layout.getLineForOffset(a))..minOf(last, layout.getLineForOffset(z))) {
-                    val s0 = maxOf(a, layout.getLineStart(line)); val s1 = minOf(z, layout.getLineEnd(line))
-                    if (s1 <= s0) continue
-                    val x1 = layout.getPrimaryHorizontal(s0); val x2 = if (s1 >= layout.getLineEnd(line)) layout.getLineRight(line) else layout.getPrimaryHorizontal(s1)
-                    val base = layout.getLineBaseline(line).toFloat(); val h = (layout.getLineDescent(line) - layout.getLineAscent(line)).toFloat()
-                    paint.strokeWidth = h * 0.045f
-                    val ys = if (sp.strike) listOf(base - h * 0.33f, base - h * 0.21f) else listOf(base + h * 0.07f, base + h * 0.17f)
-                    ys.forEach { y -> canvas.drawLine(x1, y, x2, y, paint) }
-                }
-            }
+            val dash = Regex("""<a:prstDash val="(\w+)"""").find(ln?.groupValues?.get(2).orEmpty())?.groupValues?.get(1)?.takeIf { it != "solid" }
+            return ShapePicture(geometry, fill, styleLine ?: color(ln?.groupValues?.get(2)), width, adjust = adjust, ends = (if (end("headEnd")) 1 else 0) or (if (end("tailEnd")) 2 else 0),
+                dash = dash, shadow = "<a:outerShdw" in sp)
         }
     }
 }

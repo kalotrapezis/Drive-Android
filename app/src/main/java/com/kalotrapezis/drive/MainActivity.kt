@@ -140,6 +140,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.geometry.Offset
@@ -183,6 +184,7 @@ import androidx.camera.view.transform.CoordinateTransform
 import androidx.camera.view.transform.ImageProxyTransformFactory
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -211,6 +213,14 @@ private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 private fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageDirectory())
 
 class MainActivity : ComponentActivity() {
+    /** The part an applet icon asked for (Settings › App icons), until Tetra has turned to it. */
+    private val applet = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(Applet.EXTRA)?.let { applet.value = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
@@ -222,9 +232,10 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
         val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
-        DriveRules.chosenFolders = getSharedPreferences("drive", MODE_PRIVATE).getStringSet("systemFolders", null).orEmpty().toSet()
+        SystemFolderChoice.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
-        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office) } }
+        if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA)
+        setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
     }
 }
 
@@ -295,7 +306,7 @@ private sealed interface DriveListState {
 }
 
 @Composable
-private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null) {
+private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia? = null, applet: androidx.compose.runtime.MutableState<String?>) {
     val context = LocalContext.current
     // A MediaStore item opens in the full Gallery viewer; anything else (another app's file) in a single-item viewer.
     val externalMediaId = external?.uri?.takeIf { it.authority == MediaStore.AUTHORITY }?.lastPathSegment
@@ -309,6 +320,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
     var slidesOpen by remember { mutableStateOf<String?>(null) } // the presentation PowerPoint's viewer shows (its back: writerBack)
+    var pdfOpen by remember { mutableStateOf<String?>(null) } // the PDF the viewer shows (its back: writerBack)
     var officeVersion by remember { mutableStateOf(0) } // the Office home lists again after Writer saved
     var editorStart by remember { mutableStateOf<String?>(null) } // the Home cards: "new" a tab, "open" the picker // the home card: true a checklist, false a note, null the list
     val syncStore = remember(context) { SyncStore(context.applicationContext) }
@@ -525,6 +537,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             slidesOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Slides
             return@runCatching
         }
+        // A PDF opens in Office's viewer (its own switch): the scanner's too, as they are saved into Files.
+        if (!forceChooser && Pdf.isPdf(file.name) && TextEditorStore(context).opensPdfs) {
+            WriterLog.i("open from Files: a PDF")
+            driveRecents.record(driveRoot(), relative, System.currentTimeMillis()); recentsVersion++
+            pdfOpen = Uri.fromFile(file).toString(); writerBack = screen; screen = Screen.Pdf
+            return@runCatching
+        }
         val opener = if (file.extension.equals("txt", ignoreCase = true) && TextEditorStore(context).opensTxt) ComponentName(context, TextEditorActivity::class.java)
             else driveOpeners.component(relative)
         if (forceChooser || opener == null) chooser() else runCatching {
@@ -573,19 +592,42 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         if (scanPages.isNotEmpty()) screen = Screen.ScanDocument
         else { unlockScannerOrientation(); screen = Screen.Home }
     }
-    // a file another app opened here: in Words, Tables or Slides, its back to Office
+    /** [f] in Words, Tables, Slides or the PDF viewer, by its kind; Back goes to [from]. */
+    fun openOfficeFile(f: File, from: Screen) {
+        val at = Uri.fromFile(f).toString(); writerBack = from
+        when {
+            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
+            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
+            Pdf.isPdf(f.name) -> { pdfOpen = at; screen = Screen.Pdf }
+            else -> { writerOpen = at; screen = Screen.Writer }
+        }
+    }
+    // Home's Office card: Open Words, Tables, Slides, PDFs — each Android's picker for that kind only (asked 17 Oct)
+    val pickOffice = rememberOfficePicker { openOfficeFile(it, Screen.Home) }
+    // an applet icon's part (Settings › App icons), as its card on Home opens it; Back goes to Home (first-run photo setup stays first)
+    LaunchedEffect(applet.value) {
+        val a = Applet.of(applet.value) ?: return@LaunchedEffect
+        applet.value = null
+        if (screen == Screen.PhotoSetup) return@LaunchedEffect
+        WriterLog.i("App icon: $a")
+        when (a) {
+            Applet.Photos -> { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() }
+            Applet.Files -> { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") }
+            Applet.Notes -> { notesStart = null; screen = Screen.Notes }
+            Applet.Scanner -> { lockScannerPortrait(); clearScanPages(); scannerError = null; screen = Screen.Scanner }
+            Applet.Codes -> screen = Screen.Codes
+            Applet.Office -> screen = Screen.Office
+            Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
+        }
+    }
+    // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
     LaunchedEffect(office) {
         val o = office ?: return@LaunchedEffect
         val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, o.uri, Environment.getExternalStorageDirectory(), File(driveRoot(), "Documents/From other apps"), o.mimeType) }
             .onFailure { WriterLog.e("Office: a file from another app could not be read", it) }.getOrNull() }
         if (f == null) { Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show(); return@LaunchedEffect }
         WriterLog.i("Office: opened from another app (${f.extension})")
-        val at = Uri.fromFile(f).toString(); writerBack = Screen.Office
-        when {
-            Sheets.isSheet(f.name) -> { sheetOpen = at; screen = Screen.Sheet }
-            Slides.isSlides(f.name) -> { slidesOpen = at; screen = Screen.Slides }
-            else -> { writerOpen = at; screen = Screen.Writer }
-        }
+        openOfficeFile(f, Screen.Office)
     }
     LaunchedEffect(external) {
         if (external == null) return@LaunchedEffect
@@ -629,6 +671,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Writer -> Unit
                 Screen.Sheet -> Unit
                 Screen.Slides -> Unit
+                Screen.Pdf -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -669,7 +712,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     newNote = { checklist -> notesStart = checklist; screen = Screen.Notes },
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                     openOffice = { screen = Screen.Office },
-                    newDocument = { writerOpen = null; screen = Screen.Writer },
+                    pickOffice = pickOffice,
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -717,11 +760,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                     }, open = { writerOpen = it; writerBack = Screen.Office; screen = Screen.Writer },
                     openSheet = { sheetOpen = it; writerBack = Screen.Office; screen = Screen.Sheet },
-                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides })
+                    openSlides = { slidesOpen = it; writerBack = Screen.Office; screen = Screen.Slides },
+                    openPdf = { pdfOpen = it; writerBack = Screen.Office; screen = Screen.Pdf })
                 }
                 Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -791,7 +836,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -827,7 +872,7 @@ private fun Home(
     openNotes: () -> Unit,
     openTextEditor: (String?) -> Unit,
     openOffice: () -> Unit,
-    newDocument: () -> Unit,
+    pickOffice: (OfficePick) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
@@ -848,7 +893,7 @@ private fun Home(
         {
             HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeFilesCard(openFiles, Modifier.weight(1f))
+                    HomeArtCard("Files", R.drawable.files_art, openFiles, Modifier.weight(1f), artSize = 76) // the user's own tile (17 Oct), as Office's
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Favorites", R.drawable.ic_favorite_border, openFavorites)
                         HomeCompactCard("Recent", R.drawable.ic_home, openRecent)
@@ -873,9 +918,11 @@ private fun Home(
             HomeGroup(Category.Office.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
+                    // the four apps' Open, two by two (asked 17 Oct): each the picker for its own kind of file
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("New document", R.drawable.ic_note_add, newDocument)
-                        HomeCompactCard("Documents", R.drawable.ic_file_text, openOffice)
+                        listOf(listOf(OfficePick.Words, OfficePick.Tables), listOf(OfficePick.Slides, OfficePick.Pdf)).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeOpenTile(k, wide, Modifier.weight(1f)) { pickOffice(k) } } }
+                        }
                     }
                 }
             }
@@ -899,17 +946,27 @@ private fun Home(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                "Tetra",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
-                ),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
+                val context = LocalContext.current
+                val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
+                icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
+                Text(
+                    "Tetra",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
+                    ),
+                )
+            }
         }
+        // a tablet: Local Sync and Settings side by side on one row (asked 17 Oct); a phone: Sync here, Settings at the end
         item {
             val context = LocalContext.current
             val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
-            HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
+            if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync, Modifier.weight(1f))
+                HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings, Modifier.weight(1f))
+            } else HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
         }
         if (wide) items(groups.chunked(2)) { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -917,7 +974,7 @@ private fun Home(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         } else items(groups) { it() }
-        item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
+        if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
 
@@ -960,19 +1017,21 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
 } }
 
-@Composable private fun HomeFilesCard(click: () -> Unit, modifier: Modifier = Modifier) = Surface(
-    shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-    modifier = modifier.height(156.dp).clickable(onClick = click),
-) { Box(Modifier.fillMaxSize().padding(18.dp)) {
-    Image(
-        painter = painterResource(R.drawable.files_documents), contentDescription = null, contentScale = ContentScale.Fit,
-        alpha = 0.82f, modifier = Modifier.align(Alignment.TopEnd).size(100.dp),
-    )
-    Row(Modifier.align(Alignment.BottomStart), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(painterResource(R.drawable.ic_folder), contentDescription = "Files", modifier = Modifier.size(28.dp))
-        Text("Files", style = MaterialTheme.typography.titleLarge)
+/** One of Home's Office Open tiles: the app's name over its icon in its colour; "Open …" where there is room. */
+@Composable private fun HomeOpenTile(kind: OfficePick, wide: Boolean, modifier: Modifier, click: () -> Unit) {
+    val (name, icon, tint) = when (kind) {
+        OfficePick.Words -> Triple("Words", R.drawable.ic_file_text, Color(0xFF4F86E8))
+        OfficePick.Tables -> Triple("Tables", R.drawable.ic_table, Color(0xFF55A96B))
+        OfficePick.Slides -> Triple("Slides", R.drawable.ic_play, Color(0xFFE0784F))
+        OfficePick.Pdf -> Triple("PDFs", R.drawable.ic_file, PDF_RED)
+    } // the list's lighter colours of the four kinds (driveExtensionColor), for the dark card
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(73.dp).clickable(onClick = click)) {
+        Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            Text(if (wide) "Open $name" else name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
     }
-} }
+}
 
 /** A part's own card on Home: its art at the top, its name at the bottom (Notes, Text editor). */
 @Composable private fun HomeArtCard(title: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier, artSize: Int = 100) = Surface(
@@ -988,26 +1047,27 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 
 @Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PdfToolCard("Scanner", R.drawable.ic_document_scanner, Modifier.weight(1f), openScanner)
-        PdfToolCard("Codes", R.drawable.ic_qr_code, Modifier.weight(1f), openCodes)
+        // the user's own tiles for both (17 Oct), as Office's and the Text editor's art
+        PdfToolCard("Scanner", R.drawable.scanner_art, Modifier.weight(1f), openScanner)
+        PdfToolCard("Codes", R.drawable.codes_art, Modifier.weight(1f), openCodes)
     }
 }
 
 @Composable
-private fun PdfToolCard(label: String, icon: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
+private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = Color(0xFF651B1B),
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
-        Icon(painterResource(icon), contentDescription = label, modifier = Modifier.align(Alignment.TopEnd).size(42.dp))
+        Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
         Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
     }
 }
 
-@Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit) = Surface(
+@Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
-    modifier = Modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
+    modifier = modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
 ) { Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
     Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(28.dp))
     Column {
@@ -1559,9 +1619,10 @@ private fun SettingsTab(
             var opens by remember { mutableStateOf(office.opensOffice) }
             var sheets by remember { mutableStateOf(office.opensSheets) }
             var slides by remember { mutableStateOf(office.opensSlides) }
+            var pdfs by remember { mutableStateOf(office.opensPdfs) }
             SettingsCard("Office", Category.Office) {
                 // Tetra in other apps' Open with (asked 16 Oct): Android's own Always there makes it the default
-                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets and presentations; choose Always there to open them here every time.",
+                Text("Other apps offer Tetra Office in Open with for documents, spreadsheets, presentations and PDFs; choose Always there to open them here every time.",
                     style = MaterialTheme.typography.bodySmall)
                 @Composable fun OpensHere(title: String, on: Boolean, here: String, elsewhere: String, set: (Boolean) -> Unit) =
                     Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
@@ -1582,6 +1643,8 @@ private fun SettingsTab(
                     "Files opens a spreadsheet in the app you chose for it.") { sheets = it; office.opensSheets = it }
                 OpensHere("Open presentations here", slides, "Files opens a .pptx or .odp in Slides. Open with… still offers other apps.",
                     "Files opens a presentation in the app you chose for it.") { slides = it; office.opensSlides = it }
+                OpensHere("Open PDFs here", pdfs, "Files opens a .pdf in Office's PDF viewer. Open with… still offers other apps.",
+                    "Files opens a PDF in the app you chose for it.") { pdfs = it; office.opensPdfs = it }
                 var auto by remember { mutableStateOf(office.autoSave) }
                 Row(Modifier.fillMaxWidth().clickable { auto = !auto; office.autoSave = auto }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1601,6 +1664,9 @@ private fun SettingsTab(
                 Text("Its tools", style = MaterialTheme.typography.titleSmall)
                 Text("By itself: smaller while a mouse is in use.", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact"), OfficeUi.size) { OfficeUi.set(officeContext, size = it) }
+                Text("Tab marker", style = MaterialTheme.typography.titleSmall)
+                Text("The chosen ribbon tab: a bubble behind it or a dash under it. Compact tools always use the dash.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("bubble" to "Bubble", "dash" to "Dash"), OfficeUi.marker) { OfficeUi.set(officeContext, marker = it) }
                 LaunchedEffect(Unit) { WriterUnits.load(officeContext) }
                 Text("Lengths in", style = MaterialTheme.typography.titleSmall)
                 Text("Words' rulers, margins, indents and sizes.", style = MaterialTheme.typography.bodySmall)
@@ -1630,6 +1696,21 @@ private fun SettingsTab(
                 }
                 Text("Save new files in", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        item {
+            // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
+            SettingsCard("App icons") {
+                val iconContext = LocalContext.current
+                Text("Give a part of Tetra its own icon on the home screen and in the app list; it opens straight into that part.", style = MaterialTheme.typography.bodySmall)
+                Applet.entries.forEach { a ->
+                    var on by remember { mutableStateOf(a.shown(iconContext)) }
+                    Row(Modifier.fillMaxWidth().clickable { on = !on; a.show(iconContext, on) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Image(painterResource(a.art), contentDescription = null, modifier = Modifier.size(32.dp))
+                        Text(a.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Switch(checked = on, onCheckedChange = { on = it; a.show(iconContext, it) })
+                    }
+                }
             }
         }
         item {
@@ -1759,6 +1840,7 @@ private fun DriveTab(
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
     var systemFoldersOpen by remember { mutableStateOf(false) }
+    var leftOutAsk by remember { mutableStateOf<Pair<Set<String>, List<String>>?>(null) } // left-out folders with files in them
     var tagsOpen by remember { mutableStateOf(false) }
     var emptyTrashConfirm by remember { mutableStateOf(false) }
     var newOpen by remember { mutableStateOf(false) } // New: a folder, a template's copy, a text file or a Word document here
@@ -1909,11 +1991,40 @@ private fun DriveTab(
         usage = spaceUsage,
         dismiss = { toolsOpen = false },
     )
+    fun saveSystemFolders(chosen: Set<String>, toTrash: Boolean) {
+        val leftOut = DriveRules.chosenFolders - chosen
+        SystemFolderChoice.choose(context, chosen)
+        Thread {
+            val result = runCatching {
+                leftOut.flatMap { DriveRules.clearLeftOut(root, it, toTrash) }.forEach { (from, to) -> metadata.rewritePath(from, to); driveOpeners.rewritePath(from, to) }
+            }
+            Handler(Looper.getMainLooper()).post {
+                result.onFailure { error = it.message ?: "Could not move what was in the folder." }
+                metadataVersion++
+                refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+            }
+        }.start()
+    }
     if (systemFoldersOpen) SystemFoldersSheet(dismiss = { systemFoldersOpen = false }) { chosen ->
-        DriveRules.chosenFolders = chosen
-        context.getSharedPreferences("drive", android.content.Context.MODE_PRIVATE).edit().putStringSet("systemFolders", chosen).apply()
         systemFoldersOpen = false
-        refresh() // makes the chosen ones (ensureSystemFolders) and shows them
+        // A folder left out goes; one with something in it asks first where that goes (asked 17 Oct).
+        val full = (DriveRules.chosenFolders - chosen).filter { File(root, it).list().orEmpty().isNotEmpty() }
+        if (full.isEmpty()) saveSystemFolders(chosen, toTrash = false) else leftOutAsk = chosen to full
+    }
+    leftOutAsk?.let { (chosen, full) ->
+        val one = full.size == 1
+        AlertDialog(
+            onDismissRequest = { leftOutAsk = null },
+            title = { Text(if (one) "“${full[0]}” has files in it" else "${full.dropLast(1).joinToString(", ")} and ${full.last()} have files in them") },
+            text = { Text("Move what is inside to the top of Tetra, or move ${if (one) "the folder" else "the folders"} with everything in ${if (one) "it" else "them"} to Trash. Empty folders left out simply go.") },
+            confirmButton = { TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = false) }) { Text("Move files out") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { leftOutAsk = null }) { Text("Cancel") }
+                    TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = true) }) { Text("Move to Trash") }
+                }
+            },
+        )
     }
     if (tagsOpen) DriveTagsSheet(
         tags = metadata.allTags(root),
@@ -2149,30 +2260,18 @@ private fun DriveBulkSheet(
     performAll: (List<DriveItem>, DriveItemAction) -> Unit,
     dismiss: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf("") }
-    val destinations = remember { DriveRules.destinations(driveRoot()) }
     var selectedTags by remember { mutableStateOf(emptySet<String>()) }
     var newTag by remember { mutableStateOf("") }
     var tagError by remember { mutableStateOf<String?>(null) }
     fun submit(action: DriveItemAction) { performAll(items, action); dismiss() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+    // open all the way: half open, a folder list pushed Move here and Cancel off the screen
+    ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("${items.size} selected", style = MaterialTheme.typography.titleLarge)
             when (panel) {
                 DriveBulkPanel.Copy, DriveBulkPanel.Move -> {
                     val copying = panel == DriveBulkPanel.Copy
-                    Text(if (copying) "Choose where to copy them." else "Choose where to move them.")
-                    LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(destinations, key = { it.relativePath }) { target ->
-                            Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = if (target.relativePath == destination) driveNavigationSelectedColor() else islandColor(),
-                                contentColor = if (target.relativePath == destination) driveNavigationSelectedContentColor() else islandContentColor(),
-                                modifier = Modifier.fillMaxWidth().clickable { destination = target.relativePath },
-                            ) { Text(target.label, modifier = Modifier.padding(14.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        }
-                    }
-                    DriveWideAction(if (copying) R.drawable.ic_copy else R.drawable.ic_move, if (copying) "Copy here" else "Move here") {
+                    DriveFolderPicker(DriveRules.parent(items.first().relativePath), copying, items, dismiss) { destination ->
                         submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination))
                     }
                 }
@@ -2208,11 +2307,10 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
     var selectedTags by remember(item.relativePath) { mutableStateOf(metadata.tags(item.relativePath)) }
     var newTag by remember(item.relativePath) { mutableStateOf("") }
     var tagError by remember(item.relativePath) { mutableStateOf<String?>(null) }
-    var destination by remember(item.relativePath) { mutableStateOf(DriveRules.parent(item.relativePath)) }
-    val destinations = remember(item.relativePath) { DriveRules.destinations(driveRoot()) }
     fun submit(action: DriveItemAction) { perform(item, action); dismiss() }
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
+    // open all the way: half open, Move's folder list pushed its buttons off the screen
+    ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (panel != DriveItemSheetPanel.Menu) IconButton(onClick = { panel = DriveItemSheetPanel.Menu }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to item actions") }
             Text(item.file.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -2244,15 +2342,9 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 }
                 DriveItemSheetPanel.Copy, DriveItemSheetPanel.Move -> {
                     val copying = panel == DriveItemSheetPanel.Copy
-                    Text(if (copying) "Choose where to copy this item." else "Choose where to move this item.")
-                    LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(destinations, key = { it.relativePath }) { target ->
-                            Surface(shape = MaterialTheme.shapes.medium, color = if (target.relativePath == destination) driveNavigationSelectedColor() else islandColor(), contentColor = if (target.relativePath == destination) driveNavigationSelectedContentColor() else islandContentColor(), modifier = Modifier.fillMaxWidth().clickable { destination = target.relativePath }) {
-                                Text(target.label, modifier = Modifier.padding(14.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+                    DriveFolderPicker(DriveRules.parent(item.relativePath), copying, listOf(item), dismiss) { destination ->
+                        submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination))
                     }
-                    DriveWideAction(if (copying) R.drawable.ic_copy else R.drawable.ic_move, if (copying) "Copy here" else "Move here") { submit(if (copying) DriveItemAction.Copy(destination) else DriveItemAction.Move(destination)) }
                 }
                 DriveItemSheetPanel.Tags -> {
                     val availableTags = metadata.allTags(driveRoot()).plus(selectedTags).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
@@ -2306,6 +2398,49 @@ private val DriveTrashAccent = Color(0xFFE3685F)
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
     modifier = Modifier.weight(1f).height(64.dp),
 ) { IconButton(onClick = click, modifier = Modifier.fillMaxWidth().height(64.dp)) { Icon(painterResource(icon), contentDescription = description, modifier = Modifier.size(26.dp)) } }
+
+/**
+ * Where to move or copy to, one level at a time (asked 17 Oct: every folder of every level at once was too much): the
+ * folders inside the one you are in, a tap goes in, Up goes back out; Move here (or Copy here) acts on the folder you
+ * are in, Cancel leaves. A folder being moved is not offered as a way in (not into itself); Move here is off where
+ * everything already is.
+ */
+@Composable
+private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<DriveItem>, cancel: () -> Unit, pick: (String) -> Unit) {
+    var at by remember { mutableStateOf(start) }
+    val inside = remember(at) { DriveRules.subfolders(driveRoot(), at).filterNot { f -> moving.any { it.isDirectory && it.relativePath == f } } }
+    Text(if (copying) "Copy into" else "Move into", style = MaterialTheme.typography.bodyMedium)
+    Text(listOf("Tetra").plus(at.split('/').filter { it.isNotEmpty() }).joinToString(" › "), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (at.isNotEmpty()) item("up") {
+            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { at = DriveRules.parent(at) }) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text("Up to ${DriveRules.parent(at).substringAfterLast('/').ifEmpty { "Tetra" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        items(inside, key = { it }) { f ->
+            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { at = f }) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(painterResource(driveItemIcon(DriveItem(File(driveRoot(), f), f, true))), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Text(f.substringAfterLast('/'), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Open", modifier = Modifier.size(20.dp))
+                }
+            }
+        }
+        if (inside.isEmpty()) item("none") { Text("No folders inside.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
+    }
+    val already = !copying && moving.all { DriveRules.parent(it.relativePath) == at }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = cancel, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) { Text("Cancel") }
+        Button(onClick = { pick(at) }, enabled = !already, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
+            Icon(painterResource(if (copying) R.drawable.ic_copy else R.drawable.ic_move), contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(if (copying) "Copy here" else "Move here", modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+    if (already) Text("It is already here: open a folder to move it into.", style = MaterialTheme.typography.bodySmall)
+}
 
 @Composable internal fun DriveWideAction(icon: Int, description: String, click: () -> Unit) = Surface(
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
@@ -2460,7 +2595,7 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("System folders", style = MaterialTheme.typography.titleLarge)
             Text("Folders Tetra keeps in Files for sorting things into, each with its own picture. Documents is always there. " +
-                "A folder left out later stays, as an ordinary folder, with everything in it.", style = MaterialTheme.typography.bodyMedium)
+                "A folder left out later goes; if it has files in it, you choose where they go.", style = MaterialTheme.typography.bodyMedium)
             androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DriveRules.OPTIONAL_FOLDERS.forEach { name ->
                     val (icon, tint) = systemFolderLook(name) ?: (R.drawable.ic_folder to Color.Gray)
@@ -2675,7 +2810,7 @@ private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "
         "doc", "docx", "odt", "rtf" -> Color(0xFF4F86E8)
         "xls", "xlsx", "xlsm", "ods", "csv" -> Color(0xFF55A96B)
         "ppt", "pptx", "ppsx", "odp" -> Color(0xFFE0784F) // PowerPoint's orange, light enough for the dark list
-        "pdf" -> Color(0xFFE3685F)
+        "pdf" -> PDF_RED
         "txt", "md" -> Color(0xFF9AA3A4)
         "excalidraw" -> Color(0xFFAD68CF)
         "jpg", "jpeg", "png", "webp", "gif", "heic", "heif" -> Color(0xFF88BA6A)

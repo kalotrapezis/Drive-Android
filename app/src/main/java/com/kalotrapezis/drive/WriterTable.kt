@@ -618,10 +618,10 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
             Tool(R.drawable.ic_add, "Bigger text", tint, enabled = pt < 72) { apply { it.copy(sizePt = (pt + 1).toFloat()) } }
         }
     }, {
-        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", listOf(Color.Black, Color(0xFFC00000), Color(0xFF0070C0), Color(0xFF00B050), Color(0xFF7030A0), Color(0xFFED7D31), Color.White)) { c ->
+        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
             apply { it.copy(color = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
-        Swatches(tint, R.drawable.ic_highlighter, "Highlight", listOf(Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF), Color(0xFFFF00FF))) { c ->
+        Swatches(tint, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
             apply { it.copy(highlight = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
     }, {
@@ -637,7 +637,7 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
  * ponytail: Word's own rotation (a:xfrm rot) would keep the original; a turned copy is what LibreOffice and Word show alike.
  */
 internal fun transformedPicture(img: DocImage, bytes: ByteArray, turn: Int, flip: Boolean): DocImage? {
-    val bitmap = decodePicture(bytes, 2400) ?: return null
+    val bitmap = OfficePages.croppedPicture(img, bytes, 2400) ?: return null // a cropped one turns as it shows
     val m = android.graphics.Matrix().apply { if (turn != 0) postRotate(turn.toFloat()); if (flip) postScale(-1f, 1f) }
     val out = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
     val png = img.extension == "png" || img.part?.endsWith(".png", ignoreCase = true) == true
@@ -654,6 +654,45 @@ private val SYMBOLS = listOf(
     "Maths" to "±×÷≠≈≤≥∞√∑∏∫∂∆πµΩ∈∉∩∪⊂⊃∅∀∃¬∧∨½¼¾⅓²³¹",
     "Arrows" to "←→↑↓↔⇐⇒⇔↵",
 )
+
+/**
+ * Insert › Link (Words', shared with Slides 17 Oct): [showText] asks for the words to show (nothing chosen to link); [linked] offers Remove link.
+ * [slides] (Slides): a slide of the deck can be the link's end instead of a web address — [done] then gets "#" and its number from 0.
+ */
+@Composable
+internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?, linked: Boolean, dismiss: () -> Unit, remove: () -> Unit,
+    slides: List<String>? = null, /** Slides: "The slide it came from" offered too (PowerPoint's Last Slide Viewed: "#back") */ back: Boolean = false,
+    /** what [slides] are called (Tables: its sheets) */ place: String = "Slide in this deck", done: (String, String) -> Unit) {
+    val startSlide = if (startUrl == "#back") -1 else startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
+    var url by remember { mutableStateOf(startUrl?.takeIf { startSlide == null } ?: "https://") }
+    var text by remember { mutableStateOf(startText ?: "") }
+    var slide by remember { mutableStateOf(startSlide) } // Slides: a slide chosen, not a web address
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Link") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
+                if (slides != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Choice("Web page", slide == null) { slide = null }
+                    Choice(place, slide != null && slide != -1) { slide = slide?.takeIf { it >= 0 } ?: 0 }
+                    if (back) Choice("The slide it came from", slide == -1) { slide = -1 }
+                }
+                if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
+                else if (slide != -1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    slides.orEmpty().forEachIndexed { i, name -> Choice("${i + 1}. $name", slide == i) { slide = i } }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { val to = slide?.let { if (it == -1) "#back" else "#$it" } ?: url; done(text.ifBlank { slide?.let { if (it == -1) "Back" else slides?.getOrNull(it) } ?: url }, to) }) { Text("OK") } },
+        dismissButton = {
+            Row {
+                if (linked) TextButton(onClick = remove) { Text("Remove link") }
+                TextButton(onClick = dismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
 
 @Composable
 internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
@@ -702,13 +741,13 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", label: String = "Comment", add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
     var text by remember { mutableStateOf(start) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(text, { text = it }, label = { Text("Comment") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(text, { text = it }, label = { Text(label) }, minLines = 3, modifier = Modifier.fillMaxWidth())
         } },
         confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
@@ -775,7 +814,8 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
             TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text("Edit", color = Color(0xFF1A73E8), maxLines = 1) }
             TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text("Reply", color = Color(0xFF1A73E8), maxLines = 1) }
-            TextButton(onClick = { act.resolve(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
+            // Slides' comments have none (PowerPoint's older list and Impress keep no resolved state)
+            if (act.resolve != null) TextButton(onClick = { act.resolve.invoke(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
             TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text("Delete", color = Color(0xFF1A73E8), maxLines = 1) }
         }
     }
@@ -783,7 +823,7 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
 
 /** What a comment card can do: its replies, go to its words, delete it (and its replies), reply, resolve or reopen. */
 internal class CommentActions(val repliesOf: (DocComment) -> List<DocComment>, val open: (DocComment) -> Unit, val delete: (DocComment) -> Unit,
-    val reply: (DocComment) -> Unit, val resolve: (DocComment) -> Unit, val edit: (DocComment) -> Unit = {})
+    val reply: (DocComment) -> Unit, val resolve: ((DocComment) -> Unit)?, val edit: (DocComment) -> Unit = {})
 
 /**
  * A tablet's comments beside the page (as Word shows them): each card at the height of its words, pushed down only
@@ -913,6 +953,15 @@ internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) 
     }
 }
 
+/** A shape's size as put in (pt), Word's way: an inch square; a line two inches across; long ones (sideways arrows, banners, scrolls,
+ *  waves) half as tall as wide; up and down arrows the other way round (the tablet walk, 18 Oct: ⇔ and ⇕ looked like diamonds). */
+internal fun shapeSize(kind: String): Pair<Float, Float> = when {
+    kind == "line" || kind.startsWith("lineArrow") -> 144f to 0.75f
+    Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(kind) -> 108f to 54f
+    Regex("(?i)^(up|down|upDown)Arrow$|^verticalScroll$").matches(kind) -> 54f to 108f
+    else -> 72f to 72f
+}
+
 /**
  * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
  * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
@@ -950,7 +999,10 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
                                     val preview = remember(kind, fill, line) { ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 1.5f) }
                                     androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) }
+                                        // in its proportions as put in, in the middle of the square
+                                        val (sw, sh) = shapeSize(kind).let { (a, b) -> if (kind == "line" || kind.startsWith("lineArrow")) 1f to 1f else a to b }
+                                        val k = minOf((size.width - 4f) / sw, (size.height - 4f) / sh); val pw = sw * k; val ph = sh * k
+                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, (size.width - pw) / 2, (size.height - ph) / 2, pw, ph) }
                                     }
                                 }
                             }
@@ -963,8 +1015,9 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
     }
 }
 
-/** What Picture › Shape options sets: fill and outline (null: none), the outline's width, size, angle, alt text. */
-internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String)
+/** What Picture › Shape options sets: fill and outline (null: none), the outline's width and dash ([LineDash]'s names), size, angle, alt text, a shadow. */
+internal data class ShapeOptions(val fill: Int?, val line: Int?, val lineWidth: Float, val widthPt: Float, val heightPt: Float, val degrees: Float, val alt: String,
+    val dash: String? = null, val shadow: Boolean = false)
 
 /**
  * Picture › Shape options (OnlyOffice's "Advanced settings", Word's Format Shape): the shape's fill and outline, the
@@ -998,6 +1051,8 @@ internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply:
                     if (o.line != null) Section("Outline width") {
                         listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2.25f, 3f, 4.5f, 6f).forEach { w -> Choice("${if (w % 1f == 0f) w.toInt() else w} pt", o.lineWidth == w) { o = o.copy(lineWidth = w) } }
                     }
+                    if (o.line != null) Section("Dash") { LineDash.CHOICES.forEach { (k, name) -> Choice(name, o.dash == k) { o = o.copy(dash = k) } } }
+                    Section("Shadow") { Choice("None", !o.shadow) { o = o.copy(shadow = false) }; Choice("Offset: bottom right", o.shadow) { o = o.copy(shadow = true) } }
                     Section("Size ($unitName)") {
                         OutlinedTextField(wText, { v -> wText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
                             val w = n * unit; o = if (locked) { val h = o.heightPt * w / o.widthPt.coerceAtLeast(0.1f); hText = shown(h); o.copy(widthPt = w, heightPt = h) } else o.copy(widthPt = w) } },

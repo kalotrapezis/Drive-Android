@@ -414,6 +414,26 @@ LibreOffice works them out).
       had stood still until then); **a real TV still to try with the user**
 - [x] Export PDF (File): A4, 2 cm margins, beside the document — laid out by Android, not by Word
 
+## PDF — a viewer only (asked 17 Oct: "just a viewer with share, print and the basics — no editing")
+
+- [x] Opens from Office (its own card: Android's picker; the recent list), Files (the scanner's PDFs too; Settings ›
+      Office › Open PDFs here) and other apps (Open with › Tetra Office) — `PdfScreen.kt`, Android's PdfRenderer
+- [x] Pages one under the other, a swipe a page at a time, "Page X of Y"; pinch to zoom (then one finger moves), a double
+      tap in and out, the zoomed page drawn again sharp; a tablet's thumbnails at the side; pages drawn off the main
+      thread with a small cache (360 pages: 256 ms to open)
+- [x] Find (highlighted, the current one orange) and Copy this page's text — Android 15+ only, hidden before
+- [x] Share, Print (the file as it is), Open in another app; a password-protected or broken file says so
+- [x] A phone's list of pages: the "Page X of Y" label is its button (17 Oct)
+- [x] Office's Open, one kind at a time (17 Oct): Home's Office card has Open Words · Tables · Slides · PDFs, the Office
+      home's cards New on the left and Open on the right — Android's picker showing that kind only; a file already on the
+      phone opens where it is (the picker's Recent gives MediaStore addresses: their file looked up, not copied)
+- [x] The Office home lists the 10 newest of each kind (40 in all; 20 before)
+- [ ] Present (Slides' Present is built round a deck's slides and effects, not pages as pictures)
+- [ ] Opening a password-protected PDF (Android 15's LoadParams can take a password)
+
+## Parity: Slides and Tables as full as Words, then a UI/UX pass
+Moved to **[Plan.md](Plan.md)** on 17 Oct (the user: one common notepad for every agent). Tick items there.
+
 ## To test on the phone, with the user
 
 Each is done on the emulator; tick when checked on the real phone.

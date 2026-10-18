@@ -102,9 +102,10 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
     val chart: DocChart? = null /* a chart: what it shows, read from its part (drawn on the pages; the file keeps it) */,
     val look: String? = null /* an OpenDocument frame's style, its graphic properties as attributes: where it goes, its fill and line (shown only) */,
     val math: MathNode? = null /* an equation (Word's OMML, [raw]): what it shows, drawn by MathDrawable */,
-    val group: List<GroupPart>? = null /* a group (Word's wpg): its pieces where they are in it, drawn one by one */) {
+    val group: List<GroupPart>? = null /* a group (Word's wpg): its pieces where they are in it, drawn one by one */,
+    val film: String? = null /* Insert › Video: a new one's web address or copy on the phone ([PictureXml.video] finds a saved one's in [raw]) */) {
     fun with(raw: String? = this.raw, widthPt: Float = this.widthPt, heightPt: Float = this.heightPt, wrap: PictureWrap? = this.wrap,
-        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math, group)
+        table: DocTable? = this.table, box: List<DocPara>? = this.box, key: String = this.key) = DocImage(key, part, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math, group, film)
     override fun equals(other: Any?) = other is DocImage && other.key == key && other.part == part && other.raw == raw && other.widthPt == widthPt && other.heightPt == heightPt && other.wrap == wrap && other.table == table && other.onPage == onPage
     override fun hashCode() = key.hashCode()
     override fun toString() = "DocImage($key, $part, ${widthPt}x$heightPt)"
@@ -127,10 +128,30 @@ internal object PictureXml {
             else ("<pic:pic" in raw || "<wps:wsp" in raw || img.chart != null) && !raw.startsWith("<mc:") && DOCX_FRAME.containsMatchIn(raw)
     }
 
+    /** A video's film (Insert › Video): a new one's, Word's Online Video (its player's address, YouTube's as its watch page) or
+     *  LibreOffice's media frame (a web address, or the film's part in the file); null: not a video. */
+    fun video(img: DocImage): String? = img.film ?: img.raw?.let { raw ->
+        fun plain(t: String) = t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&")
+        Regex("""<draw:plugin\b[^>]*xlink:href="([^"]+)"""").find(raw)?.let { return plain(it.groupValues[1]).removePrefix("./") }
+        // Word's Online Video as LibreOffice keeps it: its picture linked to the address
+        Regex("""^<draw:a\b[^>]*xlink:href="(https?:[^"]+)"""").find(raw)?.let { m -> plain(m.groupValues[1]).takeIf { OfficeVideo.youtube(it) != null }?.let { return it } }
+        Regex("""webVideoPr\b[^>]*embeddedHtml="([^"]*)"""").find(raw)?.let { m -> Regex("""src="([^"]+)"""").find(plain(m.groupValues[1]))?.groupValues?.get(1)?.let(::plain) }
+            ?.let { src -> OfficeVideo.youtube(src)?.let { "https://www.youtube.com/watch?v=$it" } ?: src }
+    }
+
+    /** Word's Online Video kept in a new picture's drawing (wp15:webVideoPr): its player, as Word writes it — YouTube's own, another site's address framed. */
+    fun webVideo(url: String, w: Float, h: Float): String {
+        fun esc(t: String) = t.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+        val src = OfficeVideo.youtube(url)?.let { "https://www.youtube.com/embed/$it?feature=oembed" } ?: url
+        val html = """<iframe width="${w.toInt()}" height="${h.toInt()}" src="$src" frameborder="0" allowfullscreen></iframe>"""
+        return """<a:extLst><a:ext uri="{C809E66F-F1BF-436E-b5F7-EEA9579F0CBA}"><wp15:webVideoPr xmlns:wp15="http://schemas.microsoft.com/office/word/2012/wordprocessingDrawing" embeddedHtml="${esc(html)}" h="${h.toInt()}" w="${w.toInt()}"/></a:ext></a:extLst>"""
+    }
+
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
     fun kind(img: DocImage): String {
         if (img.table != null) return "Table"
         if (img.math != null) return "Equation"
+        if (video(img) != null) return "Video"
         val raw = img.raw ?: return "Image"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
@@ -193,7 +214,7 @@ internal object PictureXml {
         val raw = img.raw ?: return PictureWrap.InLine
         if (raw.startsWith("<draw:frame") || raw.startsWith("<draw:custom-shape") || raw.startsWith("<draw:g")) return if ("text:anchor-type=\"as-char\"" in raw.substring(0, raw.indexOf('>'))) PictureWrap.InLine
             else Regex("""Tetra_20_wrap_20_(\w+?)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
-            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
+            ?: Regex("""Tetra_20_shape_\w+?_\w+?_\d+(?:-[A-Za-z]+)*_([A-Za-z]+)(?:$ODT_PAGE_REL)?"""").find(raw)?.groupValues?.get(1)?.let { n -> PictureWrap.entries.firstOrNull { it.name == n } }
             // Another's frame: its style's wrap (a letterhead the text runs through no longer pushed the text down).
             ?: img.look?.let { l -> fun v(n: String) = Regex("""\s$n="([^"]*)"""").findAll(l).lastOrNull()?.groupValues?.get(1)
                 when (v("style:wrap")) { "run-through" -> if (v("style:run-through") == "background") PictureWrap.Behind else PictureWrap.InFront; "none" -> PictureWrap.TopBottom; null -> null; else -> PictureWrap.Square } }
@@ -256,7 +277,7 @@ internal object PictureXml {
         // A shape Writer made keeps its look: its style's name changes only in how the text goes around it (and whether
         // it is placed on the page).
         if (xml.startsWith("<draw:custom-shape") && "Tetra_20_shape_" in xml) {
-            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+_)[A-Za-z]+(?:$ODT_PAGE_REL)?"""), "$1${wrap.name}" + if (at.isEmpty()) "" else ODT_PAGE_REL)
+            val head = xml.substring(0, end).replace(Regex("""(Tetra_20_shape_\w+?_\w+?_\d+(?:-[A-Za-z]+)*_)[A-Za-z]+(?:$ODT_PAGE_REL)?"""), "$1${wrap.name}" + if (at.isEmpty()) "" else ODT_PAGE_REL)
                 .replace(Regex("""\s(text:anchor-type|svg:x|svg:y)="[^"]*""""), "") + " text:anchor-type=\"${if (wrap == PictureWrap.InLine) "as-char" else "char"}\"" + at
             return head + xml.substring(end)
         }
@@ -293,7 +314,7 @@ internal object PictureXml {
     /** [img] moved to [x], [y] (pt from its page's top left) — Picture › Position — floating as it was. */
     fun placed(img: DocImage, x: Float, y: Float, file: OfficeKind): DocImage {
         val wrap = wrapOf(img)?.takeIf { it != PictureWrap.InLine } ?: PictureWrap.Square
-        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart, img.look, img.math, img.group), wrap, file)
+        return withWrap(DocImage(img.key, img.part, img.widthPt, img.heightPt, img.raw, img.bytes, img.extension, wrap, img.table, x to y, img.box, img.chart, img.look, img.math, img.group, img.film), wrap, file)
     }
 
     /**
@@ -304,7 +325,7 @@ internal object PictureXml {
     fun newShape(kind: String, file: OfficeKind, fill: Int?, line: Int?, lineWidth: Float, widthPt: Float, heightPt: Float): String {
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (file == OfficeKind.Odt) {
-            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${PictureWrap.InLine.name}"
+            val style = odtShapeName(fill, line, lineWidth, PictureWrap.InLine, false)
             return """<draw:custom-shape draw:style-name="$style" text:anchor-type="as-char" svg:width="${OdtWriter.fmt(widthPt)}pt" svg:height="${OdtWriter.fmt(heightPt)}pt" draw:z-index="0"><text:p/>${ShapeGeometry.odfGeometry(kind, widthPt, heightPt)?.takeIf { kind != "line" } ?: """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="${ShapePicture.odfType(kind)}"/>"""}</draw:custom-shape>"""
         }
         val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
@@ -421,7 +442,10 @@ internal object PictureXml {
         while (suf < was.length - pre && suf < text.length - pre && was[was.length - 1 - suf] == text[text.length - 1 - suf]) suf++
         // Letters typed over others take the first replaced one's look (as Word's typing over a selection); else the one before.
         val typed = when { pre + suf < was.length -> owner[pre]; pre > 0 -> owner[pre - 1]; owner.isNotEmpty() -> owner[0]; else -> runs.firstOrNull()?.first }
+        // the words a piece of what was there (a paragraph split, its first letter taken off): each letter keeps its own
+        val inside = if (pre + suf < text.length && text.length > 1) was.indexOf(text) else -1
         val looks = List(text.length) { k -> when {
+            inside >= 0 -> owner[inside + k]
             k < pre -> owner[k]
             k >= text.length - suf -> owner[was.length - (text.length - k)]
             else -> typed
@@ -445,14 +469,14 @@ internal object PictureXml {
      * fill and a:ln replaced, the geometry kept); in an .odt Writer's own shape style named for them (and its wrap, as
      * placed). Null: not a shape.
      */
-    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float): DocImage? {
+    fun shapeLook(img: DocImage, fill: Int?, line: Int?, lineWidth: Float, dash: String? = null, shadow: Boolean = false): DocImage? {
         val raw = img.raw ?: return null
         fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
         if (raw.startsWith("<draw:custom-shape")) {
             val end = raw.indexOf('>')
             val wrap = wrapOf(img) ?: PictureWrap.InLine
             val page = placeOf(img)?.fromV == "page"
-            val style = "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let(::hex) ?: "none"}_${(lineWidth * 100).toInt()}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+            val style = odtShapeName(fill, line, lineWidth, wrap, page, dash, shadow)
             val head = raw.substring(0, end).replace(Regex("""\sdraw:style-name="[^"]*""""), "") + " draw:style-name=\"$style\""
             return img.with(raw = head + raw.substring(end))
         }
@@ -462,11 +486,17 @@ internal object PictureXml {
             .replace(Regex("""<a:(noFill|solidFill|gradFill|blipFill|pattFill|grpFill)\b[^>]*?(?:/>|>[\s\S]*?</a:\1>)"""), "")
         val fillXml = fill?.let { c -> """<a:solidFill><a:srgbClr val="${hex(c)}">${Math.round((c ushr 24) * 100000 / 255f).takeIf { it < 100000 }?.let { "<a:alpha val=\"$it\"/>" } ?: ""}</a:srgbClr></a:solidFill>""" } ?: "<a:noFill/>"
         // the old outline's dash and arrowheads kept (only its colour and width are chosen here)
-        val kept = Regex("""<a:ln\b[^>]*>([\s\S]*?)</a:ln>""").find(sp.groupValues[1])?.groupValues?.get(1)?.let { o -> Regex("""<a:(prstDash|headEnd|tailEnd)\b[^>]*/>""").findAll(o).joinToString("") { it.value } }.orEmpty()
-        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}$kept</a:ln>"""
+        val kept = Regex("""<a:ln\b[^>]*>([\s\S]*?)</a:ln>""").find(sp.groupValues[1])?.groupValues?.get(1)?.let { o -> Regex("""<a:(headEnd|tailEnd)\b[^>]*/>""").findAll(o).joinToString("") { it.value } }.orEmpty()
+        val lineXml = """<a:ln w="${(lineWidth * 12700).toLong()}">${line?.let { """<a:solidFill><a:srgbClr val="${hex(it)}"/></a:solidFill>""" } ?: "<a:noFill/>"}${dash?.let { """<a:prstDash val="$it"/>""" } ?: ""}$kept</a:ln>"""
+        // the shadow: Word's "Offset: bottom right" in its effects (others there kept)
+        val had = Regex("""<a:effectLst>([\s\S]*?)</a:effectLst>|<a:effectLst/>""").find(inner)
+        val effects = had?.groupValues?.get(1).orEmpty().replace(Regex("""<a:outerShdw\b[\s\S]*?</a:outerShdw>|<a:outerShdw\b[^>]*/>"""), "")
+        if (had != null) inner = inner.removeRange(had.range)
+        val cut = Regex("""<a:(prstShdw|reflection|softEdge)\b""").find(effects)?.range?.first ?: effects.length
+        val effectXml = if (shadow) "<a:effectLst>${effects.substring(0, cut)}$OUTER_SHADOW${effects.substring(cut)}</a:effectLst>" else if (had != null) "<a:effectLst>$effects</a:effectLst>" else ""
         // In spPr's order: the transform, the geometry, then the fill, then the outline.
         val at = Regex("""</a:prstGeom>|</a:custGeom>|<a:prstGeom\b[^>]*/>""").find(inner)?.range?.last?.plus(1) ?: Regex("""</a:xfrm>""").find(inner)?.range?.last?.plus(1) ?: 0
-        inner = inner.substring(0, at) + fillXml + lineXml + inner.substring(at)
+        inner = inner.substring(0, at) + fillXml + lineXml + effectXml + inner.substring(at)
         val open = Regex("""<wps:spPr\b[^>]*>""").find(sp.value)!!.value
         return img.with(raw = raw.replaceRange(sp.range, "$open$inner</wps:spPr>"))
     }
@@ -487,15 +517,23 @@ internal object PictureXml {
         return img.with(raw = raw.replaceRange(doc.range, head))
     }
 
+    /** Writer's own shape's style, named for its look: Tetra_20_shape_<fill|none>_<line|none>_<width×100>[-<dash>][-shadow]_<wrap>[_20_page]. */
+    fun odtShapeName(fill: Int?, line: Int?, lineWidth: Float, wrap: PictureWrap, page: Boolean, dash: String? = null, shadow: Boolean = false) =
+        "Tetra_20_shape_${fill?.let { "%08X".format(it) } ?: "none"}_${line?.let { "%06X".format(it and 0xFFFFFF) } ?: "none"}_${(lineWidth * 100).toInt()}" +
+            "${dash?.let { "-$it" } ?: ""}${if (shadow) "-shadow" else ""}_${wrap.name}${if (page && wrap != PictureWrap.InLine) ODT_PAGE_REL else ""}"
+    private const val OUTER_SHADOW = """<a:outerShdw blurRad="50800" dist="38100" dir="2700000" algn="tl" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="40000"/></a:srgbClr></a:outerShdw>"""
     /** The automatic graphic style a shape Writer made is named for: its fill, outline and wrap. */
     fun odtShapeStyle(name: String): String? {
-        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
-        val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[4] } ?: PictureWrap.InLine
-        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap, m.groupValues[5].isNotEmpty()))?.groupValues?.get(1) ?: ""
+        val m = Regex("""Tetra_20_shape_(\w+?)_(\w+?)_(\d+)((?:-[A-Za-z]+)*)_([A-Za-z]+)($ODT_PAGE_REL)?""").matchEntire(name) ?: return null
+        val wrap = PictureWrap.entries.firstOrNull { it.name == m.groupValues[5] } ?: PictureWrap.InLine
+        val base = Regex("""<style:graphic-properties ([^/]*)/>""").find(odtStyle(wrap, m.groupValues[6].isNotEmpty()))?.groupValues?.get(1) ?: ""
+        val extra = m.groupValues[4].split('-').filter { it.isNotEmpty() }
+        val dash = extra.firstOrNull { it != "shadow" }?.let(LineDash::odfName)
         val fill = m.groupValues[1].takeIf { it != "none" }?.toLong(16)
         val fillXml = if (fill == null) """draw:fill="none"""" else """draw:fill="solid" draw:fill-color="#${"%06X".format(fill and 0xFFFFFF)}"""" +
             Math.round((fill ushr 24) * 100 / 255f).let { if (it < 100) """ draw:opacity="$it%"""" else "" }
-        val lineXml = m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="solid" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none""""
+        val lineXml = (m.groupValues[2].takeIf { it != "none" }?.let { """draw:stroke="${if (dash != null) "dash\" draw:stroke-dash=\"$dash" else "solid"}" svg:stroke-color="#$it" svg:stroke-width="${m.groupValues[3].toInt() / 100f}pt"""" } ?: """draw:stroke="none"""") +
+            if ("shadow" in extra) """ draw:shadow="visible" draw:shadow-offset-x="0.075cm" draw:shadow-offset-y="0.075cm" draw:shadow-color="#000000" draw:shadow-opacity="40%"""" else ""
         // Words in it (a text box) fill its width from the top, Word's insets round them; it keeps its size.
         val textArea = """draw:textarea-horizontal-align="justify" draw:textarea-vertical-align="top" draw:auto-grow-height="false" draw:auto-grow-width="false" fo:wrap-option="wrap" fo:padding-left="7.2pt" fo:padding-right="7.2pt" fo:padding-top="3.6pt" fo:padding-bottom="3.6pt""""
         return """<style:style style:name="$name" style:family="graphic"><style:graphic-properties $fillXml $lineXml $textArea $base/></style:style>"""
@@ -551,7 +589,8 @@ internal data class DocKeep(val style: String? = null, val parts: List<Pair<Stri
  * lines ([margin]: out in the margin), [distance] pt from the text. Kept with the paragraph's own formatting: an ODT's
  * style:drop-cap; in Word the letters are a framed paragraph of their own before it — read in, written out again.
  */
-internal data class DropCap(val lines: Int = 3, val margin: Boolean = false, val distance: Float = 0f, val length: Int = 1) {
+internal data class DropCap(val lines: Int = 3, val margin: Boolean = false, val distance: Float = 0f, val length: Int = 1,
+    /** Slides' (17 Oct): a raised first letter, in its line, not dropped */ val raised: Boolean = false) {
     companion object {
         /** The paragraph's drop cap, from either kind's words; null: none. */
         fun of(keep: DocKeep?): DropCap? {
@@ -1187,7 +1226,22 @@ internal object OfficeFormats {
         f.isNamespaceAware = true
         f.isExpandEntityReferences = false
         runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-        return f.newDocumentBuilder().parse(ByteArrayInputStream(bytes))
+        return try { f.newDocumentBuilder().parse(ByteArrayInputStream(bytes)) }
+        catch (e: org.xml.sax.SAXParseException) {
+            // Google Slides' and Docs' exports write an emoji as its two halves, "&#55357;&#56397;", which XML forbids
+            // (LibreOffice lets it pass; a user's .odp, 17 Oct): read again with the halves joined, else the error as it was
+            val text = String(bytes, Charsets.UTF_8); val joined = joinHalves(text)
+            if (joined == text) throw e
+            f.newDocumentBuilder().parse(ByteArrayInputStream(joined.toByteArray()))
+        }
+    }
+
+    private val HALVES = Regex("""&#(x?)([0-9A-Fa-f]+);&#(x?)([0-9A-Fa-f]+);""")
+    /** "&#55357;&#56420;" (or in hex) → the one letter the two references halve; any other reference as it was. */
+    internal fun joinHalves(xml: String): String = HALVES.replace(xml) { m ->
+        val hi = m.groupValues[2].toIntOrNull(if (m.groupValues[1] == "x") 16 else 10) ?: return@replace m.value
+        val lo = m.groupValues[4].toIntOrNull(if (m.groupValues[3] == "x") 16 else 10) ?: return@replace m.value
+        if (hi in 0xD800..0xDBFF && lo in 0xDC00..0xDFFF) String(charArrayOf(hi.toChar(), lo.toChar())) else m.value
     }
 
     internal fun esc(s: String): String = buildString(s.length) {
@@ -1250,6 +1304,10 @@ private const val REL_NUMBERING = "http://schemas.openxmlformats.org/officeDocum
 private const val REL_STYLES = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
 private const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 private const val REL_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+/** A film in the package (PowerPoint's media relationship): a Words video from the phone, its picture's ext naming it (Word keeps only online videos) */
+/** Tetra's own ext in a picture's cNvPr: the film of a video from the phone (Word reads past it, keeping the picture). */
+internal const val TETRA_VIDEO = "urn:kalotrapezis:tetra:video"
+private const val REL_MEDIA = "http://schemas.microsoft.com/office/2007/relationships/media"
 private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 private const val REL_COMMENTS_EX = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 private const val W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
@@ -1290,6 +1348,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     val links = HashMap<String, String>()
     val images = HashMap<String, String>() // relationship id → the picture's part in the package
     val charts = HashMap<String, String>() // relationship id → a chart's part
+    val films = HashMap<String, String>() // relationship id → a video's film (a part)
     val styleName = HashMap<String, String>() // styleId → name, lowercased
     /** Character styles that change nothing (no formatting of their own, on the plain font): web pages' names pasted along. */
     val emptyCharStyles = HashSet<String>()
@@ -1373,6 +1432,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             when (it.getAttribute("Type")) {
                 REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
                 REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
+                REL_MEDIA -> films[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
             }
         } }
         readStyles(); readNumbering()
@@ -1390,6 +1450,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
                     REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
                     REL_CHART -> charts[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
+                    REL_MEDIA -> films[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
                 }
             }
         }
@@ -1835,7 +1896,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
         // A group (Word's wpg): its pieces, each drawn in its place (only the first piece's picture or words showed before).
         val group = (e.getElementsByTagNameNS("*", "wgp").item(0) as Element?)?.let { groupParts(it, w, h) }
             ?: (e.getElementsByTagNameNS("*", "relIds").item(0) as Element?)?.let { smartArt(it) }
-        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group)
+        // a video from the phone (Words' Insert › Video): its film in the package, named in its picture's ext
+        val film = (e.getElementsByTagNameNS(TETRA_VIDEO, "film").item(0) as Element?)?.getAttributeNS(R, "embed")?.let { films[it] }
+        return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group, film = film)
     }
     /**
      * SmartArt, shown (not edited): the drawing Word saves beside its data (word/diagrams/drawing*.xml — the data part
@@ -2149,7 +2212,24 @@ private object DocxWriter {
                     types = types.replace("</Types>", """<Default Extension="${img.extension}" ContentType="image/${if (img.extension == "jpg") "jpeg" else img.extension}"/></Types>""")
                 val rel = newRel(REL_IMAGE, name.removePrefix(dir), false)
                 val cx = (img.widthPt * 12700).toLong(); val cy = (img.heightPt * 12700).toLong(); val id = docPrId++
-                """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/><wp:docPr id="$id" name="Picture $id"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="$id" name="Picture $id"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$rel" xmlns:r="$R"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"""
+                // an online video as Word's Insert › Online Video makes one: its picture, a click going to the address, the player kept in webVideoPr
+                val web = img.film?.takeIf { it.startsWith("http") }
+                val click = web?.let { """<a:hlinkClick xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="$R" r:id="${newRel(REL_HYPERLINK, it, true)}"/>""" }
+                // a film from the phone: kept in word/media, PowerPoint's media relationship to it, named in Tetra's ext (Word shows the picture)
+                val own = img.film?.takeIf { web == null && java.io.File(it).isFile }?.let { f -> runCatching {
+                    val ext = f.substringAfterLast('.', "mp4").lowercase()
+                    val film = generateSequence(1) { it + 1 }.map { "${dir}media/tetra-film-$it.$ext" }.first { it !in parts }
+                    parts[film] = java.io.File(f).readBytes()
+                    if (!Regex("""Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(types))
+                        types = types.replace("</Types>", """<Default Extension="$ext" ContentType="video/${if (ext == "mov") "quicktime" else ext}"/></Types>""")
+                    """<a:extLst><a:ext uri="$TETRA_VIDEO"><tv:film xmlns:tv="$TETRA_VIDEO" xmlns:r="$R" r:embed="${newRel(REL_MEDIA, film.removePrefix(dir), false)}"/></a:ext></a:extLst>"""
+                }.getOrNull() }
+                val named = if (web != null || own != null) "Video $id" else "Picture $id"
+                """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/>""" +
+                    (if (click == null) """<wp:docPr id="$id" name="$named"/>""" else """<wp:docPr id="$id" name="$named">$click</wp:docPr>""") +
+                    """<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr>""" +
+                    (if (web != null) """<pic:cNvPr id="$id" name="$named">$click${PictureXml.webVideo(web, img.widthPt, img.heightPt)}</pic:cNvPr>""" else if (own != null) """<pic:cNvPr id="$id" name="$named">$own</pic:cNvPr>"""
+                        else """<pic:cNvPr id="$id" name="$named"/>""") + """<pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="$rel" xmlns:r="$R"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"""
             }).let { x -> img.wrap?.let { w -> PictureXml.docx(x, w).let { d -> img.onPage?.takeIf { w != PictureWrap.InLine }?.let { PictureXml.docxOnPage(d, it) } ?: d } } ?: x }
         }
 
@@ -2981,7 +3061,12 @@ private object OdtWriter {
             parts[name] = bytes
             manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name" manifest:media-type="image/${if (img.extension == "jpg") "jpeg" else img.extension}"/></manifest:manifest>""")
             val n = ++frames
-            """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+            // a video as LibreOffice's Insert › Media keeps one: a plugin playing the film (a web address, or the film in the package's Media), its picture beside
+            val film = img.film?.let { v -> if (v.startsWith("http")) v else runCatching { val ext = v.substringAfterLast('.', "mp4").lowercase()
+                val path = generateSequence(1) { it + 1 }.map { "Media/tetra-$it.$ext" }.first { it !in parts }; parts[path] = java.io.File(v).readBytes()
+                manifest = manifest?.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$path" manifest:media-type="video/${if (ext == "mov") "quicktime" else ext}"/></manifest:manifest>"""); path }.getOrNull() }
+            if (film != null) """<draw:frame draw:name="Tetra video $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:plugin xlink:href="${OfficeFormats.esc(film)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad" draw:mime-type="application/vnd.sun.star.media"><draw:param draw:name="Loop" draw:value="false"/><draw:param draw:name="Mute" draw:value="false"/><draw:param draw:name="VolumeDB" draw:value="0"/><draw:param draw:name="Zoom" draw:value="fit"/></draw:plugin><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
+            else """<draw:frame draw:name="Tetra picture $n" text:anchor-type="as-char" svg:width="${fmt(img.widthPt)}pt" svg:height="${fmt(img.heightPt)}pt" draw:z-index="0"><draw:image xlink:href="$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>"""
         }).let { x -> img.wrap?.let { w -> val page = img.onPage != null && w != PictureWrap.InLine
             if (wraps.add(w to page)) auto.append(PictureXml.odtStyle(w, page)); PictureXml.odt(x, w, img.onPage.takeIf { page }) } ?: x }
             .also { x -> Regex("""draw:style-name="(Tetra_20_shape_[^"]+)"""").findAll(x).forEach { m -> m.groupValues[1].let { n -> if (n !in usedNames && shapeStyles.add(n)) PictureXml.odtShapeStyle(n)?.let(auto::append) } } }
@@ -3174,6 +3259,9 @@ private object OdtWriter {
             if ("xmlns:$prefix=" !in head) out = out.replaceFirst("<office:document-content", "<office:document-content xmlns:$prefix=\"$ns\"")
         }
         parts["content.xml"] = out.toByteArray()
+        // a dashed outline names its dash, which LibreOffice keeps in styles.xml
+        shapeStyles.mapNotNull { n -> Regex("""Tetra_20_shape_\w+?_\w+?_\d+-([A-Za-z]+)""").find(n)?.groupValues?.get(1)?.takeIf { it != "shadow" } }.takeIf { it.isNotEmpty() }?.let { dashes ->
+            parts["styles.xml"]?.let { parts["styles.xml"] = LineDash.intoStyles(String(it, Charsets.UTF_8), dashes).toByteArray() } }
         NoteFormats.odt(parts, doc)
         return OfficeFormats.zip(parts, stored = "mimetype")
     }

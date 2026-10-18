@@ -1,6 +1,6 @@
 # Drive Android — product roadmap
 
-Updated: 2026-09-17. `Plan.md` preserves the original product wishlist. This
+Updated: 2026-09-17. `Plan.md` is the common notepad for every agent (since 17 Oct 2026), with the original product wishlist at its bottom. This
 file turns it into one implementable Android product without importing the
 desktop app's wired-beta scope as Android code.
 

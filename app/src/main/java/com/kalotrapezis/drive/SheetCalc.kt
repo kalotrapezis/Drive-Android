@@ -21,8 +21,28 @@ internal object SheetCalc {
     data class Err(val code: String)
     /** A range given to a function: its sheet (null: the formula's) and cells. */
     data class Area(val sheet: String?, val range: SheetRange)
+    /** Values in rows (FILTER's, SORT's, B2:B9>5's): a formula giving one spills it into the cells below and right. */
+    data class Arr(val rows: List<List<Any?>>) { val width get() = rows.firstOrNull()?.size ?: 0 }
     /** A formula this engine cannot work out (an unknown function): its file value stays. */
     class Unknown(what: String) : Exception(what)
+
+    // --- newer functions' names in files ---
+
+    /** Excel's newer functions LibreOffice keeps as "COM.MICROSOFT.<name>" (as its 26.2 writes them). */
+    private val MICROSOFT = setOf("XLOOKUP", "XMATCH", "IFS", "SWITCH", "MAXIFS", "MINIFS", "CONCAT", "TEXTJOIN", "STDEV.S", "STDEV.P", "VAR.S", "VAR.P",
+        "RANK.EQ", "RANK.AVG", "CEILING.MATH", "FLOOR.MATH", "UNIQUE", "SORT", "SORTBY", "FILTER", "SEQUENCE")
+    /** And those Excel keeps as "_xlfn.<name>" (FILTER and SORT "_xlfn._xlws."): without it Excel shows #NAME?. */
+    private val XLFN = MICROSOFT + setOf("IFNA", "DAYS", "XOR", "ISOWEEKNUM", "NUMBERVALUE")
+    private fun outsideQuotes(f: String, change: (String) -> String) = f.split('"').mapIndexed { i, p -> if (i % 2 == 1) p else change(p) }.joinToString("\"")
+    private val CALLED = Regex("""(?<![\p{L}\p{N}_.])([A-Za-z][A-Za-z0-9.]*)\(""")
+
+    /** A formula as a file keeps it ("_xlfn.XLOOKUP(", "COM.MICROSOFT.IFS(") as Excel shows it: "XLOOKUP(". */
+    fun fromFile(f: String) = outsideQuotes(f) { it.replace(Regex("""(?i)_xlfn\.(?:_xlws\.)?|_xlpm\.|COM\.MICROSOFT\."""), "") }
+    /** As Excel's file keeps it. */
+    fun toXlsx(f: String) = outsideQuotes(f) { p -> CALLED.replace(p) { m -> val n = m.groupValues[1].uppercase()
+        if (n in XLFN) "_xlfn." + (if (n == "FILTER" || n == "SORT") "_xlws." else "") + m.value else m.value } }
+    /** As LibreOffice's file keeps it. */
+    fun toOds(f: String) = outsideQuotes(f) { p -> CALLED.replace(p) { m -> if (m.groupValues[1].uppercase() in MICROSOFT) "COM.MICROSOFT." + m.value else m.value } }
 
     // --- the formula as a tree ---
 
@@ -154,14 +174,70 @@ internal object SheetCalc {
     /** Where a formula's cells come from: a cell's value (Double, String, Boolean, Err, or null when empty). */
     fun interface Cells { fun value(sheet: String?, r: Int, c: Int): Any? }
 
-    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat(), val names: Map<String, String> = emptyMap()) {
+    class Context(val cells: Cells, val today: LocalDate = LocalDate.now(), val format: SheetFormat = SheetFormat(), val names: Map<String, String> = emptyMap(),
+                  /** A cell's formula (SUBTOTAL leaves out cells that are subtotals themselves); null: none or not known. */
+                  val formulaOf: (String?, Int, Int) -> String? = { _, _, _ -> null }) {
         fun cell(sheet: String?, r: Int, c: Int): Any? = cells.value(sheet, r, c)
     }
 
     fun eval(formula: String, ctx: Context): Any = try { value(parse(formula), ctx) } catch (e: Unknown) { throw e } catch (e: StackOverflowError) { Err("#NUM!") }
 
+    /** A formula's whole result: an [Arr] when it gives several values (a range of cells, FILTER…), to spill; else its value. */
+    fun evalSpill(formula: String, ctx: Context): Any = try {
+        when (val v = calc(parse(formula), ctx)) { is Area -> if (v.range.r1 == v.range.r2 && v.range.c1 == v.range.c2) value(Ref(v.sheet, v.range, true), ctx) else grid(v, ctx); else -> v }
+    } catch (e: Unknown) { throw e } catch (e: StackOverflowError) { Err("#NUM!") }
+
+    /**
+     * Excel's Evaluate Formula: [formula] as it is worked out, a step at a time — the leftmost innermost part not yet a value
+     * (a cell, a function whose arguments are values, an operation on two values) replaced by its result. Ranges stay as
+     * they are (a function reads them whole); a part giving several values (FILTER, SORT…) is worked out with what reads it.
+     */
+    fun steps(formula: String, ctx: Context, max: Int = 60): List<String> {
+        var n = try { parse(formula) } catch (_: Unknown) { return listOf(formula) }
+        val out = arrayListOf("=" + show(n))
+        // a step that reads the same as the last (a sign put on a number) not shown twice
+        while (out.size < max) { n = try { reduce(n, ctx) } catch (_: Unknown) { null } ?: break; ("=" + show(n)).let { if (it != out.last()) out += it } }
+        return out
+    }
+    private fun literal(v: Any?): Node? = when (v) { null -> Num(0.0); is Number -> Num(v.toDouble()); is String -> Str(v); is Boolean -> Bool(v); is Err -> ErrNode(v); else -> null }
+    private fun reduce(n: Node, ctx: Context): Node? = when (n) {
+        is Num, is Str, is Bool, is ErrNode -> null
+        is Ref -> if (n.single) literal(value(n, ctx)) else null
+        is Name -> literal(value(n, ctx))
+        is Unary -> reduce(n.x, ctx)?.let { Unary(n.op, it) } ?: literal(value(n, ctx))
+        is Binary -> reduce(n.a, ctx)?.let { Binary(n.op, it, n.b) } ?: reduce(n.b, ctx)?.let { Binary(n.op, n.a, it) } ?: literal(value(n, ctx))
+        is Call -> n.args.indices.firstNotNullOfOrNull { i -> reduce(n.args[i], ctx)?.let { r -> Call(n.name, n.args.toMutableList().also { it[i] = r }) } }
+            ?: literal(calc(n, ctx).takeIf { it !is Arr && it !is Area })
+    }
+    private fun rank(n: Node) = when (n) { is Binary -> when (n.op) { "&" -> 2; "+", "-" -> 3; "*", "/" -> 4; "^" -> 5; else -> 1 }; is Unary -> 6; else -> 7 }
+    /** A tree written back as a formula (without "="), brackets where the order needs them. */
+    fun show(n: Node): String {
+        fun wrap(x: Node, at: Int) = show(x).let { if (rank(x) < at || x is Num && x.v < 0) "($it)" else it }
+        fun cell(r: Int, c: Int) = Sheets.colName(c) + (r + 1)
+        return when (n) {
+            is Num -> if (n.v == Math.floor(n.v) && abs(n.v) < 1e15) n.v.toLong().toString() else n.v.toBigDecimal().stripTrailingZeros().toPlainString()
+            is Str -> "\"" + n.v.replace("\"", "\"\"") + "\""
+            is Bool -> if (n.v) "TRUE" else "FALSE"
+            is ErrNode -> n.e.code
+            is Name -> n.name
+            is Ref -> (n.sheet?.let { SheetBook.quoted(it) + "!" } ?: "") + n.range.let { g -> when {
+                n.single -> cell(g.r1, g.c1)
+                g.r1 == 0 && g.r2 >= 1_048_575 -> Sheets.colName(g.c1) + ":" + Sheets.colName(g.c2)
+                g.c1 == 0 && g.c2 >= 16383 -> "${g.r1 + 1}:${g.r2 + 1}"
+                else -> cell(g.r1, g.c1) + ":" + cell(g.r2, g.c2) } }
+            is Call -> n.name + "(" + n.args.joinToString(",") { show(it) } + ")"
+            is Unary -> n.op + wrap(n.x, 6)
+            is Binary -> wrap(n.a, rank(n)) + n.op + wrap(n.b, rank(n) + 1)
+        }
+    }
+
+    /** A range's values in rows (up to 10,000 rows and 200 columns). */
+    private fun grid(a: Area, ctx: Context) = Arr((a.range.r1..min(a.range.r2, a.range.r1 + 9_999)).map { r -> (a.range.c1..min(a.range.c2, a.range.c1 + 199)).map { c -> ctx.cell(a.sheet, r, c) } })
+    private fun arr(v: Any?, ctx: Context): Arr = when (v) { is Arr -> v; is Area -> grid(v, ctx); else -> Arr(listOf(listOf(v))) }
+
     private fun value(n: Node, ctx: Context): Any = when (val v = calc(n, ctx)) {
         is Area -> if (v.range.r1 == v.range.r2 && v.range.c1 == v.range.c2) ctx.cell(v.sheet, v.range.r1, v.range.c1) ?: 0.0 else Err("#VALUE!")
+        is Arr -> v.rows.firstOrNull()?.firstOrNull() ?: 0.0 // an array where one value is wanted: its first
         else -> v
     }
 
@@ -173,7 +249,17 @@ internal object SheetCalc {
         is Name -> ctx.names[n.name.lowercase()]?.let { runCatching { parse(it) }.getOrNull() }?.let { calc(it, ctx) } ?: throw Unknown("name ${n.name}")
         is Ref -> if (n.single) (ctx.cell(n.sheet, n.range.r1, n.range.c1) ?: 0.0) else Area(n.sheet, n.range)
         is Unary -> { val x = num(value(n.x, ctx)); if (x is Err) x else if (n.op == '-') -(x as Double) else x }
-        is Binary -> binary(n.op, value(n.a, ctx), value(n.b, ctx), ctx)
+        is Binary -> {
+            // a range or array on either side: worked out cell by cell (B2:B9>5, A1:A3*2), a single value meeting each
+            val x = calc(n.a, ctx); val y = calc(n.b, ctx)
+            fun many(v: Any) = v is Arr || (v is Area && (v.range.r1 != v.range.r2 || v.range.c1 != v.range.c2))
+            if (many(x) || many(y)) {
+                val ax = arr(x, ctx); val ay = arr(y, ctx)
+                val rows = max(ax.rows.size, ay.rows.size); val cols = max(ax.width, ay.width)
+                fun at(a: Arr, r: Int, c: Int) = a.rows.getOrNull(if (a.rows.size == 1) 0 else r)?.getOrNull(if (a.width == 1) 0 else c)
+                Arr((0 until rows).map { r -> (0 until cols).map { c -> binary(n.op, at(ax, r, c) ?: 0.0, at(ay, r, c) ?: 0.0, ctx) } })
+            } else binary(n.op, value(n.a, ctx), value(n.b, ctx), ctx)
+        }
         is Call -> call(n, ctx)
     }
 
@@ -241,6 +327,7 @@ internal object SheetCalc {
     private fun flat(args: List<Node>, ctx: Context, each: (Any?, Boolean) -> Unit) {
         for (a in args) when (val v = calc(a, ctx)) {
             is Area -> cellsOf(v, ctx) { x -> each(x, true) }
+            is Arr -> v.rows.forEach { row -> row.forEach { x -> each(x, true) } }
             else -> each(v, false)
         }
     }
@@ -378,6 +465,57 @@ internal object SheetCalc {
                 val across = area.range.r1 == area.range.r2
                 val count = if (across) area.range.c2 - area.range.c1 + 1 else min(area.range.r2 - area.range.r1, 200_000) + 1
                 find(count, { if (across) ctx.cell(area.sheet, area.range.r1, area.range.c1 + it) else ctx.cell(area.sheet, area.range.r1 + it, area.range.c1) }, key, type)?.let { it + 1.0 } ?: Err("#N/A")
+            }
+            // Excel's SUBTOTAL: 1 AVERAGE, 2 COUNT, 3 COUNTA, 4 MAX, 5 MIN, 6 PRODUCT, 7 STDEV, 8 STDEVP, 9 SUM, 10 VAR, 11 VARP (and
+            // 101–111 the same); cells that are subtotals themselves left out, so a grand total counts each value once
+            "SUBTOTAL" -> {
+                need(2)
+                val fn = (d(0) as? Double)?.toInt()?.let { if (it > 100) it - 100 else it } ?: return Err("#VALUE!")
+                val name = listOf("AVERAGE", "COUNT", "COUNTA", "MAX", "MIN", "PRODUCT", "STDEV", "STDEVP", "SUM", "VAR", "VARP").getOrNull(fn - 1) ?: return Err("#VALUE!")
+                val values = ArrayList<Any?>()
+                for (arg in a.drop(1)) when (val x = calc(arg, ctx)) {
+                    is Area -> for (r in x.range.r1..min(x.range.r2, x.range.r1 + 200_000)) for (c in x.range.c1..min(x.range.c2, x.range.c1 + 1_000))
+                        if (ctx.formulaOf(x.sheet, r, c)?.contains("SUBTOTAL(", ignoreCase = true) != true) values += ctx.cell(x.sheet, r, c)
+                    else -> values += x
+                }
+                val nums = values.filterIsInstance<Double>()
+                when (name) {
+                    "COUNT" -> nums.size.toDouble(); "COUNTA" -> values.count { it != null && it != "" }.toDouble()
+                    "SUM" -> nums.sum(); "PRODUCT" -> nums.fold(1.0) { p, q -> p * q }
+                    "AVERAGE" -> if (nums.isEmpty()) Err("#DIV/0!") else nums.average()
+                    "MAX" -> nums.maxOrNull() ?: 0.0; "MIN" -> nums.minOrNull() ?: 0.0
+                    else -> { val p = name.endsWith("P"); if (nums.size < (if (p) 1 else 2)) Err("#DIV/0!") else { val m = nums.average(); val v = nums.sumOf { (it - m) * (it - m) } / (nums.size - if (p) 0 else 1); if (name.startsWith("VAR")) v else sqrt(v) } }
+                }
+            }
+            // Excel's dynamic arrays: their results spill (see [Arr])
+            "SEQUENCE" -> {
+                need(1)
+                val rows = (d(0) as? Double)?.toInt() ?: return Err("#VALUE!"); val cols = if (a.size > 1) (d(1) as? Double)?.toInt() ?: return Err("#VALUE!") else 1
+                val start = if (a.size > 2) d(2) as? Double ?: return Err("#VALUE!") else 1.0; val step = if (a.size > 3) d(3) as? Double ?: return Err("#VALUE!") else 1.0
+                if (rows < 1 || cols < 1 || rows.toLong() * cols > 1_000_000) Err("#VALUE!") else Arr((0 until rows).map { r -> (0 until cols).map { c -> start + step * (r * cols + c) } })
+            }
+            "UNIQUE" -> {
+                need(1)
+                val rows = arr(calc(a[0], ctx), ctx).rows
+                val once = a.size > 2 && truthy(v(2)) == true
+                fun key(row: List<Any?>) = row.map { x -> if (x is String) x.lowercase() else x }
+                val counts = rows.groupingBy(::key).eachCount()
+                rows.distinctBy(::key).filter { !once || counts.getValue(key(it)) == 1 }.let { if (it.isEmpty()) Err("#CALC!") else Arr(it) }
+            }
+            "SORT" -> {
+                need(1)
+                val rows = arr(calc(a[0], ctx), ctx).rows
+                val col = (if (a.size > 1) (d(1) as? Double)?.toInt() ?: 1 else 1) - 1
+                val down = a.size > 2 && (d(2) as? Double ?: 1.0) < 0
+                if (col !in 0 until (rows.firstOrNull()?.size ?: 0)) Err("#VALUE!")
+                else Arr(rows.sortedWith { x, y -> compare(x[col], y[col]).let { if (down) -it else it } })
+            }
+            "FILTER" -> {
+                need(2)
+                val rows = arr(calc(a[0], ctx), ctx).rows; val keep = arr(calc(a[1], ctx), ctx).rows
+                if (keep.size != rows.size) return Err("#VALUE!")
+                val kept = rows.filterIndexed { i, _ -> keep[i].firstOrNull().let { k -> k == true || (k is Double && k != 0.0) } }
+                if (kept.isNotEmpty()) Arr(kept) else if (a.size > 2) v(2) else Err("#CALC!")
             }
             "XLOOKUP" -> {
                 need(3)

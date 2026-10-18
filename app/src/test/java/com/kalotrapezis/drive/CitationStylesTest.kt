@@ -86,7 +86,7 @@ class CitationStylesTest {
                 assertTrue(back.paras.first { it.text.startsWith("[1]") }.text.contains("Reading on Screens"))
             } else assertEquals("Screens (Smith and Jones, 2019) and salt (Kurlansky)", first)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "c.docx").apply { writeBytes(bytes) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 val txt = java.io.File(dir, "c.txt").readText()

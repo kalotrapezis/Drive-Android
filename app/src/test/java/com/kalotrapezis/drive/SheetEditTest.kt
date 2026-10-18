@@ -8,7 +8,58 @@ import org.junit.Test
 
 /** Editing: typed entries, the formula bar's text, formulas worked out again, undo. */
 class SheetEditTest {
+    /** Insert function: every category's name is one the bar knows, and every one the bar knows is in a category. */
+    @org.junit.Test fun `functions in categories`() {
+        val known = SheetFunctions.all.map { it.name }.toSet()
+        FunctionCategories.ALL.forEach { (c, names) -> org.junit.Assert.assertTrue("$c: ${names - known}", (names - known).isEmpty()) }
+        org.junit.Assert.assertEquals(emptyList<String>(), FunctionCategories.of("Other").map { it.name })
+    }
+
+    /** Text to columns: cut at the separator, not inside quotes, pieces trimmed; spaces: runs as one. */
+    @org.junit.Test fun `text cut into columns`() {
+        org.junit.Assert.assertEquals(listOf("Alpha", "12", "Crete"), SheetInput.split("Alpha; 12 ;Crete", ";"))
+        org.junit.Assert.assertEquals(listOf("Smith, J.", "2020"), SheetInput.split("\"Smith, J.\",2020", ","))
+        org.junit.Assert.assertEquals(listOf("a", "b", "c"), SheetInput.split("  a   b c ", " "))
+        org.junit.Assert.assertEquals(listOf("one"), SheetInput.split("one", ","))
+    }
+
+    /** Remove duplicates: the first of rows alike kept (any case, spaces round trimmed); a header row is not data (a later row like it stays, as Excel's). */
+    @org.junit.Test fun `duplicate rows found`() {
+        val rows = listOf(listOf("Name", "Kilos"), listOf("Alpha", "12"), listOf("alpha ", "12"), listOf("Beta", "12"), listOf("Name", "Kilos"), listOf("Alpha", "13"))
+        org.junit.Assert.assertEquals(listOf(0, 1, 3, 4, 5), SheetInput.unique(rows, headers = true))
+        org.junit.Assert.assertEquals(listOf(0, 1, 3, 5), SheetInput.unique(rows, headers = false))
+        org.junit.Assert.assertEquals(listOf(0, 1), SheetInput.unique(listOf(listOf("x"), listOf("x"), listOf("y"), listOf("X")), headers = true).take(2))
+    }
+
+    /** Find and Replace: every one, any case; in a formula too (Excel's "Look in: Formulas"); none: nothing to change. */
+    @org.junit.Test fun `words replaced in a cell`() {
+        org.junit.Assert.assertEquals("Gamma and Gamma", SheetInput.replaced("Alpha and alpha", "ALPHA", "Gamma"))
+        org.junit.Assert.assertEquals("=SUM(C1:C9)", SheetInput.replaced("=SUM(B1:B9)", "b", "C"))
+        org.junit.Assert.assertEquals("a\$1 (x)", SheetInput.replaced("a.b (x)", ".b", "\$1"))
+        org.junit.Assert.assertEquals(null, SheetInput.replaced("Beta", "alpha", "x"))
+    }
+
     private val gr = SheetFormat(',', '.', language = java.util.Locale.forLanguageTag("el"))
+
+    /** Enter on a formula (the second walk, 18 Oct): open brackets closed as Excel does; a function with nothing in it yet refused. */
+    @Test fun `a formula closed on Enter`() {
+        assertEquals("=SUM(B1,B4)", SheetInput.closed("=SUM(B1,B4"))
+        assertEquals("=ROUND(SUM(A1:A3),2)", SheetInput.closed("=ROUND(SUM(A1:A3),2"))
+        assertEquals("=TODAY()", SheetInput.closed("=TODAY("))
+        assertEquals("=\"(\"&A1", SheetInput.closed("=\"(\"&A1"))
+        assertEquals("plain (words", SheetInput.closed("plain (words"))
+        assertNull(SheetInput.closed("=SUM("))
+        assertNull(SheetInput.closed("=A1+SUM( )"))
+    }
+
+    /** ✓ on a formula Tables cannot read warns first (Excel's "There's a problem with this formula"); ordinary ones, ";" too, do not. */
+    @Test fun `a formula warned about`() {
+        listOf("=SUM(A1+)", "=A1+", "=A1 B1", "=SUM(A1,B1))").forEach { assertTrue(it, SheetInput.badFormula(it)) }
+        assertTrue(SheetInput.formulaProblem("=A1 B1")!!.contains("comma"))
+        assertTrue(SheetInput.formulaProblem("=SUM(A1,B1))")!!.contains(")"))
+        assertTrue(SheetInput.formulaProblem("=A1+")!!.contains("too soon"))
+        listOf("=SUM(A1:A3)", "=sum(a1;b1)", "='My sheet'!A1", "=IF(A1>0,\"y\",\"n\")", "=FOO(1)", "plain", "=").forEach { assertFalse(it, SheetInput.badFormula(it)) }
+    }
 
     @Test fun `typed entries`() {
         fun cell(s: String, format: String = "General") = SheetInput.cell(s, null, 0, format, gr)
@@ -114,6 +165,139 @@ class SheetEditTest {
         assertEquals("=#REF!+1", SheetFill.moved("=A1+1", -1, 0))
         assertEquals("=C1+\$B2", SheetFill.moved("=B1+\$B1", 1, 1).let { SheetFill.moved("=B1+\$B2", 0, 1) })
         assertEquals("=LOG10(B2)", SheetFill.moved("=LOG10(A2)", 0, 1)) // a function's name is not a cell
+    }
+
+    @Test fun `month and day names and Fill series`() {
+        val f = SheetFormat()
+        fun text(t: String) = SheetCell(t, SheetKind.Text)
+        fun fill(src: List<SheetCell?>, count: Int) = SheetFill.series(src, count, f, { "General" }) { fm, _, _ -> fm }
+        assertEquals(listOf("February", "March"), fill(listOf(text("January")), 2).map { it.text })
+        assertEquals(listOf("Jan", "Feb"), fill(listOf(text("Nov"), text("Dec")), 2).map { it.text }) // round the year
+        assertEquals(listOf("MAY", "JUL"), fill(listOf(text("JAN"), text("MAR")), 2).map { it.text }) // its step, its capitals
+        assertEquals(listOf("mon", "tue"), fill(listOf(text("sun")), 2).map { it.text })
+        // Fill ▸ Series
+        assertEquals(listOf(1.0, 3.0, 5.0), SheetFill.stepped(1.0, 3, 2.0, "Linear"))
+        assertEquals(listOf(2.0, 6.0, 18.0), SheetFill.stepped(2.0, 3, 3.0, "Growth"))
+        fun d(y: Int, m: Int, day: Int) = SheetCalc.serial(java.time.LocalDate.of(y, m, day).atStartOfDay())
+        assertEquals(listOf(d(2026, 1, 31), d(2026, 2, 28), d(2026, 3, 31)), SheetFill.stepped(d(2026, 1, 31), 3, 1.0, "Month"))
+        assertEquals(listOf(d(2026, 10, 16), d(2026, 10, 19), d(2026, 10, 20)), SheetFill.stepped(d(2026, 10, 16), 3, 1.0, "Weekday")) // Friday, then Monday
+        assertEquals(listOf(d(2024, 2, 29), d(2025, 2, 28)), SheetFill.stepped(d(2024, 2, 29), 2, 1.0, "Year"))
+    }
+
+    /** Insert cells shifting down and Delete cells shifting up in column A: the cells after move, formulas reading them follow, column B's own stay. */
+    @Test fun `cells shifted`() {
+        fun sheet() = Sheets.csv("1,x\n2,y\n3,z\n4,w\n5,v".toByteArray()).sheet(0).also { s ->
+            s.cells[Sheet.key(0, 2)] = SheetCell("", SheetKind.Empty, formula = "=SUM(A1:A5)"); s.cells[Sheet.key(1, 2)] = SheetCell("", SheetKind.Empty, formula = "=A3+B3") }
+        fun after(s: Sheet, ch: Map<Long, SheetCell>) = { r: Int, c: Int -> (ch[Sheet.key(r, c)] ?: s[r, c]) }
+        val s = sheet(); val a = after(s, SheetCellShift.changes(s, SheetRange(1, 0, 1, 0), rows = true, insert = true))
+        assertEquals("", a(1, 0)?.text); assertEquals(listOf("1", "2", "3", "4", "5"), listOf(0, 2, 3, 4, 5).map { a(it, 0)?.text })
+        assertEquals(listOf("x", "y", "z"), listOf(0, 1, 2).map { a(it, 1)?.text }) // column B not moved
+        assertEquals("=SUM(A1:A6)", a(0, 2)?.formula); assertEquals("=A4+B3", a(1, 2)?.formula)
+        val t = sheet(); val d = after(t, SheetCellShift.changes(t, SheetRange(1, 0, 1, 0), rows = true, insert = false))
+        assertEquals(listOf("1", "3", "4", "5", ""), (0..4).map { d(it, 0)?.text.orEmpty() })
+        assertEquals("=SUM(A1:A4)", d(0, 2)?.formula); assertEquals("=A2+B3", d(1, 2)?.formula)
+        // right: row 1's cells from B on move one column over
+        val u = sheet(); val rgt = after(u, SheetCellShift.changes(u, SheetRange(0, 1, 0, 1), rows = false, insert = true))
+        assertEquals("", rgt(0, 1)?.text); assertEquals("x", rgt(0, 2)?.text); assertEquals("=SUM(A1:A5)", rgt(0, 3)?.formula); assertEquals("y", rgt(1, 1)?.text)
+    }
+
+    /** Data › Sort: by a column then another, headers kept, blanks last either way, formulas following their row; the current region. */
+    @Test fun `rows sorted`() {
+        val s = Sheets.csv("Name,Score,Year\nbeta,3,2020\nAlpha,5,2021\ngamma,,2019\ndelta,3,2018\n\nlater,1,1".toByteArray()).sheet(0)
+        s.cells[Sheet.key(1, 3)] = SheetCell("", SheetKind.Empty, formula = "=B2*2")
+        val g = SheetSortRows.region(s, 1, 1, s.rows, 4); assertEquals(SheetRange(0, 0, 4, 3), g) // the empty row ends it
+        fun sorted(keys: List<Pair<Int, Boolean>>) = SheetSortRows.changes(s, g, keys, headers = true).let { ch -> (1..4).map { r -> (ch[Sheet.key(r, 0)] ?: s[r, 0])?.text } to ch }
+        assertEquals(listOf("Alpha", "beta", "delta", "gamma"), sorted(listOf(0 to true)).first)
+        val (byScore, ch) = sorted(listOf(1 to false, 2 to true))
+        assertEquals(listOf("Alpha", "delta", "beta", "gamma"), byScore) // 5, then the 3s by year up (2018 before 2020), the blank score last
+        assertEquals("=B4*2", ch[Sheet.key(3, 3)]?.formula) // beta's row went from 2 to 4: its formula follows
+        assertEquals("Name", (ch[Sheet.key(0, 0)] ?: s[0, 0])?.text)
+        assertEquals(listOf("gamma", "delta", "beta", "Alpha"), sorted(listOf(0 to false)).first)
+    }
+
+    /** Trace precedents and dependents, and error checking: the cells a formula reads, those that read a cell, the error cells in order. */
+    @Test fun `formulas traced and errors found`() {
+        val s = Sheets.csv("1,2\n3,4".toByteArray()).sheet(0)
+        s.cells[Sheet.key(0, 2)] = SheetCell("3", SheetKind.Number, 3.0, formula = "=SUM(A1:B1)")
+        s.cells[Sheet.key(1, 2)] = SheetCell("#DIV/0!", SheetKind.Error, formula = "=A2/0")
+        s.cells[Sheet.key(2, 0)] = SheetCell("#REF!", SheetKind.Error, formula = "=#REF!")
+        s.cells[Sheet.key(2, 1)] = SheetCell("4", SheetKind.Number, 4.0, formula = "=Other!A1+B1")
+        fun k(r: Int, c: Int) = Sheet.key(r, c)
+        assertEquals(setOf(k(0, 0), k(0, 1)), SheetTrace.precedents(s, 0, 2))
+        assertEquals(setOf(k(0, 1)), SheetTrace.precedents(s, 2, 1)) // another sheet's cells not marked here
+        assertEquals(setOf(k(0, 2), k(2, 1)), SheetTrace.dependents(s, 0, 1))
+        assertEquals(listOf(k(1, 2), k(2, 0)), SheetTrace.errors(s))
+    }
+
+    /** FILTER, SORT, UNIQUE, SEQUENCE: their results spill below; a value in the way gives #SPILL!; cleared, the spill goes; an aggregate of one. */
+    @Test fun `results spilled`() {
+        val b = Sheets.csv("ann,3\nbob,1\nann,5\ncid,4".toByteArray()); val s = b.sheet(0); val h = SheetHistory()
+        fun put(r: Int, c: Int, f: String) = h.apply(b, 0, mapOf(Sheet.key(r, c) to SheetInput.cell(f, s[r, c], 0, "General", b.format)))
+        fun col(c: Int, rows: IntRange) = rows.map { s[it, c]?.text.orEmpty() }
+        put(0, 3, "=FILTER(A1:A4,B1:B4>2)"); assertEquals(listOf("ann", "ann", "cid", ""), col(3, 0..3))
+        assertEquals(Sheet.key(0, 3), s[1, 3]?.spilledFrom); assertEquals(SheetRange(0, 3, 2, 3), s[0, 3]?.spill)
+        put(0, 4, "=SORT(B1:B4,1,-1)"); assertEquals(listOf("5", "4", "3", "1"), col(4, 0..3))
+        put(0, 5, "=UNIQUE(A1:A4)"); assertEquals(listOf("ann", "bob", "cid", ""), col(5, 0..3))
+        put(0, 6, "=SEQUENCE(2,2,10,5)"); assertEquals(listOf("10", "20"), col(6, 0..1)); assertEquals(listOf("15", "25"), col(7, 0..1))
+        put(5, 0, "=SUM(FILTER(B1:B4,A1:A4=\"ann\"))"); assertEquals(8.0, s[5, 0]?.value)
+        // the data changes: the spill follows (bob now passes)
+        put(1, 1, "9"); assertEquals(listOf("ann", "bob", "ann", "cid"), col(3, 0..3))
+        // a value in the way: #SPILL!, the spill's cells emptied
+        put(2, 5, "x"); assertEquals("#SPILL!", s[0, 5]?.text); assertEquals("", s[1, 5]?.text.orEmpty())
+        // the formula cleared: its spill goes
+        put(0, 3, ""); assertEquals(listOf("", "", "", ""), col(3, 0..3))
+    }
+
+    /** Review › Spelling: the sheet's words in reading order (numbers and formulas left out), checked by Words' English dictionary; one changed. */
+    @Test fun `spelling in a sheet`() {
+        val s = Sheets.csv("Olive harvst,12\nThe ferry,=A1".toByteArray()).sheet(0)
+        s.cells[Sheet.key(1, 1)] = SheetCell("x", SheetKind.Text, formula = "=\"wrongg\"")
+        val words = SheetSpelling.words(s)
+        assertEquals(listOf("Olive", "harvst", "The", "ferry"), words.map { it.third })
+        val dir = java.io.File("src/main/assets/dictionaries")
+        val en = Dictionaries.of(java.io.File(dir, "en_US.aff").inputStream(), java.io.File(dir, "en_US.dic").inputStream(), "en")
+        val wrong = words.filter { Dictionaries.misspelled(en, it.third) != null }
+        assertEquals(listOf("harvst"), wrong.map { it.third }); assertTrue(Dictionaries.misspelled(en, "harvst")!!.contains("harvest"))
+        val (k, r, _) = wrong[0]
+        assertEquals("Olive harvest", SheetSpelling.changed(s.cells[k]!!, r, "harvest").text)
+    }
+
+    /** Data › Goal Seek: the input that makes a formula reach a value (straight and curved), none for a formula that does not read it; the sheet left as it was. */
+    @Test fun `goal sought`() {
+        val b = Sheets.csv("2,0,0".toByteArray()); val s = b.sheet(0); val h = SheetHistory()
+        h.apply(b, 0, mapOf(Sheet.key(0, 1) to SheetInput.cell("=A1*3+1", null, 0, "General", b.format), Sheet.key(0, 2) to SheetInput.cell("=A1^2", null, 0, "General", b.format)))
+        assertEquals(7.0, s[0, 1]?.value)
+        assertEquals(3.0, SheetGoalSeek.solve(b, 0, Sheet.key(0, 1), 10.0, Sheet.key(0, 0))!!, 1e-6)
+        assertEquals(4.0, SheetGoalSeek.solve(b, 0, Sheet.key(0, 2), 16.0, Sheet.key(0, 0))!!, 1e-6)
+        h.apply(b, 0, mapOf(Sheet.key(1, 1) to SheetInput.cell("=5", null, 0, "General", b.format)))
+        assertEquals(null, SheetGoalSeek.solve(b, 0, Sheet.key(1, 1), 9.0, Sheet.key(0, 0)))
+        assertEquals(2.0, s[0, 0]?.value); assertEquals(7.0, s[0, 1]?.value) // tried, then put back
+    }
+
+    @Test fun `formula evaluated step by step`() {
+        val b = Sheets.csv("2,3,0".toByteArray()); val h = SheetHistory()
+        h.apply(b, 0, mapOf(Sheet.key(0, 2) to SheetInput.cell("=A1*(B1+1)+SUM(A1:B1)", null, 0, "General", b.format)))
+        assertEquals(listOf("=A1*(B1+1)+SUM(A1:B1)", "=2*(B1+1)+SUM(A1:B1)", "=2*(3+1)+SUM(A1:B1)", "=2*4+SUM(A1:B1)", "=8+SUM(A1:B1)", "=8+5", "=13"),
+            SheetEvaluate.steps(b, 0, Sheet.key(0, 2)))
+        // a string with a quote in it, and -A1 (a sign, then a number: one step); ' stands for " here
+        fun q(t: String) = t.replace('\'', '"')
+        h.apply(b, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell(q("=IF(A1>1,'big '''&B1,-A1)"), null, 0, "General", b.format)))
+        assertEquals(listOf("=IF(A1>1,'big '''&B1,-A1)", "=IF(2>1,'big '''&B1,-A1)", "=IF(TRUE,'big '''&B1,-A1)", "=IF(TRUE,'big '''&3,-A1)",
+            "=IF(TRUE,'big ''3',-A1)", "=IF(TRUE,'big ''3',-2)", "='big ''3'").map(::q), SheetEvaluate.steps(b, 0, Sheet.key(1, 0)))
+    }
+
+    @Test fun `part of a cell's words bold while typing`() {
+        val plain = listOf(DocRun("Hello world"))
+        val bold = SheetRich.styled(plain, 6, 11) { it.copy(bold = true) }
+        assertEquals(listOf(DocRun("Hello "), DocRun("world", bold = true)), bold)
+        assertTrue(SheetRich.all(bold, 6, 11) { it.bold }); assertFalse(SheetRich.all(bold, 4, 8) { it.bold })
+        // typed at the end: the bold goes on; typed at the start: the first letter's look
+        assertEquals(listOf(DocRun("Hello "), DocRun("worlds", bold = true)), SheetRich.edited(bold, "Hello world", "Hello worlds"))
+        assertEquals(listOf(DocRun("Oh Hello "), DocRun("world", bold = true)), SheetRich.edited(bold, "Hello world", "Oh Hello world"))
+        // a letter taken out of the bold part, and words that no longer match the runs: one look
+        assertEquals(listOf(DocRun("Hello "), DocRun("wold", bold = true)), SheetRich.edited(bold, "Hello world", "Hello wold"))
+        assertEquals(listOf(DocRun("x")), SheetRich.edited(bold, "something else", "x"))
+        assertTrue(SheetRich.any(bold)); assertFalse(SheetRich.any(plain))
     }
 
     @Test fun `text pasted from another app`() {

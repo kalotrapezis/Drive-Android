@@ -1,3 +1,5 @@
+> **Start at [Plan.md](Plan.md)** (17 Oct): the common notepad — what is planned, being done, done and dropped, for every agent. Write your line there when you start and finish.
+
 > **Latest — 15 October 2026, evening: finishing Word** (branch `writer-library`). The task: every item left in Word
 > done or deferred by the user, one commit each, each checked with a unit test, in LibreOffice where Writer writes files,
 > and on the phone (208c8192, Print layout, Mobile view off). `UserDocsSweepTest` (run with `TETRA_SWEEP=1`) reads, writes
@@ -560,6 +562,13 @@ the PC**, write; papers come and go, so **local** is right. So, in order:
 ## Phase 4 — slowly, the rest
 Editing for Excel and PowerPoint, the smaller Word items left over, en_GB dictionary if wanted (the user: the
 keyboard's own suggestions as one types are fine), anything found in use.
+
+**Parity and a UI/UX pass (the user, 17 Oct):** Slides' and Tables' ribbons look empty next to Words'. The plan is in
+OFFICE_FEATURES.md, "Parity: Slides and Tables as full as Words, then a UI/UX pass over all three". The order:
+(A) the UI/UX pass's shared pieces and test walk first: one tab row with Settings › Office › Tab marker (Bubble or
+Dash; compact always Dash), the same File items, lag, touch targets, inconsistencies; (B) Slides' gaps, slide words
+as runs first; (C) Tables' gaps. References and contents are in B and C (the user chose live citations and a linked
+Contents slide for Slides). Words' own items stay in Phase 2.
 
 **Not walked on the phone yet** (do during Phase 1): Position, text box / WordArt insert, line numbers, hyphenation,
 style sets, Format painter.

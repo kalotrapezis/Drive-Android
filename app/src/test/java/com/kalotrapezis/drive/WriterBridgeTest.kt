@@ -270,7 +270,7 @@ class WriterBridgeTest {
             }
             check(DocStyles.of(kind, styled).look(OfficeFormats.read(styled, kind).paras.single()).box, "read back")
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "b.${kind.extension}").apply { writeBytes(styled) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
@@ -348,7 +348,7 @@ class WriterBridgeTest {
             val bytes = OfficeFormats.write(doc.copy(paras = back.mapIndexed { i, p -> p.copy(keep = doc.paras[i].keep) }), kind)
             assertEquals(kind.name, drop, DropCap.of(OfficeFormats.read(bytes, kind).paras[0].keep))
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "d.${kind.extension}").apply { writeBytes(bytes) }
                 val out = java.io.File(dir, "out").apply { mkdirs() }
                 // as an .odt: LibreOffice's own .docx export leaves drop caps out
@@ -378,7 +378,7 @@ class WriterBridgeTest {
             val bytes = OfficeFormats.write(numbered.copy(paras = listOf(numbered.paras[0], numbered.paras[1].copy(runs = listOf(DocRun("Second"))))), kind)
             assertEquals(kind.name, listOf(false, true), OfficeFormats.read(bytes, kind).paras.map { it.list?.ordered })
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "l.${kind.extension}").apply { writeBytes(bytes) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 val lines = java.io.File(dir, "l.txt").readText().lines().filter { it.isNotBlank() }

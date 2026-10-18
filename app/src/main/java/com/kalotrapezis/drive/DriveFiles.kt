@@ -23,8 +23,6 @@ const val FILE_OPENER_PATH = "drive_opener_path"
 
 data class DriveItem(val file: File, val relativePath: String, val isDirectory: Boolean)
 data class DriveRecent(val relativePath: String, val openedAt: Long)
-data class DriveDestination(val relativePath: String, val label: String)
-
 enum class DriveFolderColor { Blue, Green, Yellow, Red, Purple }
 data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
     val totalBytes: Long get() = bytesByType.values.sum()
@@ -47,6 +45,30 @@ object TetraFolder {
     }
 }
 
+/** Files tools › System folders, kept in the "drive" preferences with when each folder was chosen or left out, for sync. */
+object SystemFolderChoice {
+    private fun prefs(context: Context) = context.getSharedPreferences("drive", Context.MODE_PRIVATE)
+    private fun at(context: Context, name: String) = prefs(context).getLong("systemFolderAt.$name", 0)
+    fun load(context: Context) { DriveRules.chosenFolders = prefs(context).getStringSet("systemFolders", null).orEmpty().toSet() }
+    fun choose(context: Context, chosen: Set<String>) {
+        val now = System.currentTimeMillis()
+        val edit = prefs(context).edit().putStringSet("systemFolders", chosen)
+        (chosen + DriveRules.chosenFolders).filter { (it in chosen) != (it in DriveRules.chosenFolders) }.forEach { edit.putLong("systemFolderAt.$it", now) }
+        edit.apply()
+        DriveRules.chosenFolders = chosen
+    }
+    fun records(context: Context) = DriveRules.OPTIONAL_FOLDERS.map { Triple(it, it in DriveRules.chosenFolders, at(context, it)) }
+    /** One folder's choice from the computer; the chosen ones are made at once, so they are there before Files opens. */
+    fun applyIncoming(context: Context, root: File, name: String, chosen: Boolean, updatedAt: Long) {
+        if (name !in DriveRules.OPTIONAL_FOLDERS || !DriveRules.incomingChoiceWins(name in DriveRules.chosenFolders, at(context, name), chosen, updatedAt)) return
+        val next = if (chosen) DriveRules.chosenFolders + name else DriveRules.chosenFolders - name
+        prefs(context).edit().putStringSet("systemFolders", next).putLong("systemFolderAt.$name", updatedAt).apply()
+        DriveRules.chosenFolders = next
+        // Left out over there: an empty one goes here too; one with files stays, an ordinary folder, until its files follow.
+        if (chosen) File(root, name).mkdirs() else File(root, name).takeIf { it.isDirectory }?.delete()
+    }
+}
+
 object DriveRules {
     /**
      * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
@@ -62,6 +84,12 @@ object DriveRules {
     @Volatile var chosenFolders: Set<String> = emptySet()
     val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
+    /**
+     * Sync of the choice, folder by folder (the computer has the same rule): the later answer wins, and on a tie (a
+     * choice made before there were times) chosen wins — a folder made on either side is a system folder on both,
+     * and one left out on either side is not undone by the other (SYNC_PLAN.md 6g).
+     */
+    fun incomingChoiceWins(localChosen: Boolean, localAt: Long, chosen: Boolean, at: Long) = at > localAt || (at == localAt && chosen && !localChosen)
     fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
     private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }
 
@@ -118,14 +146,12 @@ object DriveRules {
 
     fun parent(relativePath: String): String = relativePath.substringBeforeLast('/', "")
 
-    fun destinations(root: File): List<DriveDestination> = root.walkTopDown()
-        .onEnter { it == root || !it.name.startsWith(".") }
-        .filter { it.isDirectory && inside(root, it) }
-        .map { file -> relative(root, file) }
-        .filterNot { it == TRASH_FOLDER || it.startsWith("$TRASH_FOLDER/") }
-        .sortedWith(compareBy<String> { it.isNotEmpty() }.thenBy { it.lowercase(Locale.ROOT) })
-        .map { DriveDestination(it, if (it.isEmpty()) "Tetra" else it) }
-        .toList()
+    /** The folders right inside [relativePath], for Move and Copy one level at a time (asked 17 Oct: every level at once was too much); no hidden ones, no Trash. */
+    fun subfolders(root: File, relativePath: String): List<String> = folder(root, relativePath).listFiles().orEmpty()
+        .filter { it.isDirectory && !it.name.startsWith(".") && inside(root, it) }
+        .map { relative(root, it) }
+        .filterNot { it == TRASH_FOLDER }
+        .sortedBy { it.lowercase(Locale.ROOT) }
 
     fun allItems(root: File, includeTrash: Boolean = false): List<DriveItem> = root.walkTopDown()
         .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || (relative(root, folder) != TRASH_FOLDER && !folder.name.startsWith("."))) }
@@ -220,14 +246,39 @@ object DriveRules {
         requireMovable(relativePath)
         val source = item(root, relativePath)
         require(!inside(trash, source)) { "This item is already in Trash." }
-        // A name already in Trash never blocks a delete: the newcomer becomes "name (2)", as everywhere in Drive.
-        var target = File(trash, source.name)
+        val target = freeTarget(trash, source)
+        moveExisting(root, source, target)
+        return relative(root, target)
+    }
+
+    /** A name already in [dir] never blocks a move there: the newcomer becomes "name (2)", as everywhere in Drive. */
+    private fun freeTarget(dir: File, source: File): File {
+        var target = File(dir, source.name)
         for (n in 2..Int.MAX_VALUE) {
             if (!target.exists()) break
-            target = File(trash, source.nameWithoutExtension + " ($n)" + source.name.removePrefix(source.nameWithoutExtension))
+            target = File(dir, source.nameWithoutExtension + " ($n)" + source.name.removePrefix(source.nameWithoutExtension))
         }
-        moveExisting(root, source, target.canonicalFile)
-        return relative(root, target.canonicalFile)
+        return target.canonicalFile
+    }
+
+    /**
+     * A folder just left out of System folders goes (asked 17 Oct): what is in it to the top of Tetra, or the folder
+     * whole to the Trash, as the user answered. Returns each move (from, to), so favorites and tags follow.
+     */
+    fun clearLeftOut(root: File, name: String, toTrash: Boolean): List<Pair<String, String>> {
+        require(name in OPTIONAL_FOLDERS && !isSystem(name)) { "$name is still a system folder." }
+        val dir = File(root, name).canonicalFile
+        if (!inside(root, dir) || !dir.isDirectory) return emptyList()
+        val entries = dir.listFiles().orEmpty()
+        if (toTrash && entries.isNotEmpty()) return listOf(name to moveToTrash(root, name))
+        val moved = entries.map { entry ->
+            val from = relative(root, entry)
+            val target = freeTarget(root.canonicalFile, entry)
+            moveExisting(root, entry.canonicalFile, target)
+            from to relative(root, target)
+        }
+        dir.delete()
+        return moved
     }
 
     fun emptyTrash(root: File): Int {

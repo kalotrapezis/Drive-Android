@@ -56,6 +56,56 @@ class SheetLookTest {
         convert(saved, if (name.endsWith("ods")) "xlsx" else "ods")?.let { check(it, "$name by LibreOffice") }
     }
 
+    /** Excel's cell styles: Good, Heading 1, Note and Total put on, saved, read back by Tetra and LibreOffice; a number format kept. */
+    private fun cellStyles(name: String) {
+        val dir = Files.createTempDirectory("styles").toFile()
+        val file = File(dir, name).apply { writeBytes(resource(name)) }
+        val book = Sheets.read(file, ',', '.'); val s = book.sheet(0); val history = SheetHistory()
+        fun put(r: Int, c: Int, style: String) = history.apply(book, 0, SheetLook.change(book, s, listOf(Sheet.key(r, c))) { st, _ ->
+            SheetLook.styled(st, SheetLook.STYLES.first { it.name == style }, book.styles[0]) })
+        history.apply(book, 0, SheetLook.change(book, s, listOf(Sheet.key(0, 0))) { st, _ -> st.copy(fill = 0xFFFFFF00.toInt()) })
+        // a heading: font and border, the cell's fill kept (as Excel's)
+        put(2, 0, "Good"); put(0, 0, "Heading 1"); put(3, 0, "Note"); put(11, 1, "Total"); put(4, 0, "Good"); put(4, 0, "Normal")
+        val saved = File(dir, "styled." + name.substringAfterLast('.')); SheetSave.save(book, file, saved)
+        fun check(f: File, who: String) {
+            val b = Sheets.read(f, ',', '.'); val t = b.sheet(0)
+            fun st(r: Int, c: Int) = t.look(t[r, c]!!.style, b.styles)!!
+            // LibreOffice 26.2's .xlsx of an .ods whose Default style has a theme colour gives every cell that colour (it shows ours)
+            val colours = who != "Excel-test.ods by LibreOffice"
+            assertEquals(who, 0xFFC6EFCE.toInt(), st(2, 0).fill); if (colours) assertEquals(who, 0xFF006100.toInt(), st(2, 0).color)
+            assertTrue(who, st(0, 0).bold); assertEquals(who, 15f, st(0, 0).size); assertEquals(who, 0xFF4472C4.toInt(), st(0, 0).bottom?.color); assertEquals(who, 0xFFFFFF00.toInt(), st(0, 0).fill)
+            assertEquals(who, 0xFFFFFFCC.toInt(), st(3, 0).fill); assertTrue(who, st(3, 0).let { it.left != null && it.top != null && it.right != null && it.bottom != null })
+            assertTrue(who, st(11, 1).bold); assertTrue(who, st(11, 1).bottom?.double == true); assertTrue(who, st(11, 1).top != null)
+            assertEquals(who, null, st(4, 0).fill); assertEquals(who, false, st(4, 0).bold) // Normal: back to the workbook's own
+            assertEquals(who, "Αλεξίου", t[2, 0]?.text)
+        }
+        check(saved, "$name by Tetra")
+        convert(saved, if (name.endsWith("ods")) "xlsx" else "ods")?.let { check(it, "$name by LibreOffice") }
+    }
+    /** Home's alignment: top and middle, an indent, text angled up and down — saved, read back by Tetra and by LibreOffice. */
+    private fun alignment(name: String) {
+        val dir = Files.createTempDirectory("align").toFile()
+        val file = File(dir, name).apply { writeBytes(resource(name)) }
+        val book = Sheets.read(file, ',', '.'); val s = book.sheet(0); val history = SheetHistory()
+        fun put(r: Int, c: Int, change: (SheetStyle) -> SheetStyle) = history.apply(book, 0, SheetLook.change(book, s, listOf(Sheet.key(r, c))) { st, _ -> change(st) })
+        put(2, 0) { it.copy(valign = SheetVAlign.Top) }; put(3, 0) { it.copy(valign = SheetVAlign.Center, indent = 2, align = SheetAlign.Left) }
+        put(4, 0) { it.copy(rotation = 45) }; put(5, 0) { it.copy(rotation = 135) }
+        val saved = File(dir, "aligned." + name.substringAfterLast('.')); SheetSave.save(book, file, saved)
+        fun check(f: File, who: String) {
+            val b = Sheets.read(f, ',', '.'); val t = b.sheet(0)
+            fun st(r: Int, c: Int) = t.look(t[r, c]!!.style, b.styles)!!
+            assertEquals(who, SheetVAlign.Top, st(2, 0).valign); assertEquals(who, SheetVAlign.Center, st(3, 0).valign); assertEquals(who, 2, st(3, 0).indent)
+            assertEquals(who, 45, st(4, 0).rotation); assertEquals(who, 135, st(5, 0).rotation); assertEquals(who, 0, st(6, 0).rotation)
+        }
+        check(saved, "$name by Tetra")
+        convert(saved, if (name.endsWith("ods")) "xlsx" else "ods")?.let { check(it, "$name by LibreOffice") }
+    }
+    @Test fun `alignment xlsx`() = alignment("Excel-test.xlsx")
+    @Test fun `alignment ods`() = alignment("Excel-test.ods")
+
+    @Test fun `cell styles xlsx`() = cellStyles("Excel-test.xlsx")
+    @Test fun `cell styles ods`() = cellStyles("Excel-test.ods")
+
     @Test fun xlsx() = format("Excel-test.xlsx")
     @Test fun ods() = format("Excel-test.ods")
 }

@@ -71,7 +71,7 @@ class TextEffectsTest {
             assertEquals(kind.name, listOf("New words"), back.box?.map { it.text })
             assertEquals(kind.name, 0xED7D31, TextWarp.art(back.raw)?.first)
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
-                val dir = java.nio.file.Files.createTempDirectory("lo").toFile()
+                val dir = scratchDir("lo")
                 val f = java.io.File(dir, "a.${kind.extension}").apply { writeBytes(bytes) }
                 ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
                 val text = ProcessBuilder("pdftotext", java.io.File(dir, "a.pdf").path, "-").redirectErrorStream(true).start().inputStream.bufferedReader().readText()

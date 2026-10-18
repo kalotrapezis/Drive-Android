@@ -39,10 +39,12 @@ private val DROP_COLORS = listOf(0x000000, 0xC00000, 0x0070C0, 0x00B050, 0x7030A
  * stands, how many lines it drops, how far from the text, the letter's font and colour. [odt]: LibreOffice has no drop cap in the margin.
  */
 @Composable
-internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowColor: Int?, dismiss: () -> Unit, apply: (DropCap?, String?, Int?) -> Unit) {
+internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowColor: Int?, dismiss: () -> Unit,
+    /** Slides' (17 Oct): None, Dropped (the letter in a box of its own beside the lines) or Raised — the first letter as tall as [DropCap.lines] lines, in its line */ raised: Boolean = false,
+    apply: (DropCap?, String?, Int?) -> Unit) {
     var font by remember { mutableStateOf(nowFont) } // null: the text's own
     var color by remember { mutableStateOf(nowColor) } // null: automatic
-    var place by remember { mutableIntStateOf(when { now == null -> 0; now.margin && !odt -> 2; else -> 1 }) }
+    var place by remember { mutableIntStateOf(when { now == null -> 0; now.raised -> 3; now.margin && !odt -> 2; else -> 1 }) }
     var lines by remember { mutableIntStateOf(now?.lines ?: 3) }
     var distance by remember { mutableFloatStateOf(now?.distance ?: 0f) } // pt
     val step = if (WriterUnits.inches) 0.05f * 72f else 0.1f * 28.3465f
@@ -55,9 +57,11 @@ internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowCol
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Choice("None", place == 0) { place = 0 }
                     Choice("Dropped", place == 1) { place = 1 }
-                    if (!odt) Choice("In margin", place == 2) { place = 2 }
+                    if (!odt && !raised) Choice("In margin", place == 2) { place = 2 }
+                    if (raised) Choice("Raised", place == 3) { place = 3 }
                 }
-                if (odt) Text("An OpenDocument file has no drop cap in the margin.", style = MaterialTheme.typography.bodySmall)
+                if (odt && !raised) Text("An OpenDocument file has no drop cap in the margin.", style = MaterialTheme.typography.bodySmall)
+                if (raised) Text("PowerPoint and LibreOffice have no drop cap. Dropped puts the letter in a text box of its own beside the first lines (it stays where it is when the words change); Raised makes it bigger, on the first line.", style = MaterialTheme.typography.bodySmall)
                 if (place != 0) {
                     @Composable fun stepper(label: String, value: String, less: () -> Unit, more: () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(label, modifier = Modifier.width(150.dp))
@@ -65,8 +69,8 @@ internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowCol
                         Text(value, textAlign = TextAlign.Center, modifier = Modifier.width(64.dp))
                         Choice("+", false, more)
                     }
-                    stepper("Lines to drop", "$lines", { lines = (lines - 1).coerceAtLeast(2) }, { lines = (lines + 1).coerceAtMost(10) })
-                    stepper("Distance from text", "%.2f".format(Locale.ROOT, WriterUnits.of(distance)).trimEnd('0').trimEnd('.') + " " + WriterUnits.name,
+                    stepper(if (place == 3) "Lines tall" else "Lines to drop", "$lines", { lines = (lines - 1).coerceAtLeast(2) }, { lines = (lines + 1).coerceAtMost(10) })
+                    if (place != 3) stepper("Distance from text", "%.2f".format(Locale.ROOT, WriterUnits.of(distance)).trimEnd('0').trimEnd('.') + " " + WriterUnits.name,
                         { distance = (distance - step).coerceAtLeast(0f) }, { distance = (distance + step).coerceAtMost(72f) })
                     // The letter's own look (asked 2026-09-30): its font and colour, as the text's letters have theirs.
                     Text("Font", style = MaterialTheme.typography.labelLarge)
@@ -83,7 +87,7 @@ internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowCol
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { apply(if (place == 0) null else DropCap(lines, place == 2, distance, now?.length ?: 1), font, color) }) { Text("OK") } },
+        confirmButton = { TextButton(onClick = { apply(if (place == 0) null else DropCap(lines, place == 2, distance, now?.length ?: 1, place == 3), font, color) }) { Text("OK") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }

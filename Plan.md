@@ -1532,6 +1532,13 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       on Files' own path (`/files/manifest/scoped`, scope `calendar`), 2.5 s after a change, waiting for a network as a
       job; the computer's changes (the skill too) by its nudge, or a quarter-hourly look with Tetra closed. Reusable for
       the Timer (its own scope). **Not yet run between real devices** (the emulator cannot scan the pairing code).
+- [x] (46a6309; Drive 83c4e50) **Refresh, Trash and Settings at the top; no delay after a change** (the user, 18 Oct):
+      Refresh beside the title (tablet/desktop), the Trash beside it (phone: in the drawer) with each event's days left
+      and Restore; desktop Settings is Gallery's tune menu with Share with Claude. Saves push at once (desktop: 300 ms).
+      **Run on the real pair** (tablet ↔ installed PC Tetra, older, so the whole sync): Thursday/Friday lessons arrived
+      7 s after Refresh; the user's new event reached the PC in seconds, its deletion was in the PC's Trash 3 s later and
+      stayed gone. The phone's hotspot first blocked device-to-device traffic (restarting it fixed that). New .deb:
+      Drive-worktrees/calendar/desktop/release/local-drive-desktop_0.3.0-beta.4_amd64.deb (not installed).
 
 - [x] (Drive ca93bdb; 2f3c21e) **Clock and month pickers on the desktop; a repeat's cancelled days follow its time**
       (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the date not

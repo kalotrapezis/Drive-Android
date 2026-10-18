@@ -129,6 +129,9 @@ How to write here:
       Themes, Background, Colours, Insert › Video, Words' Text colour + More…, Line numbers, Watermark, Spacing; Tables' Fill, Clear.
       Seen there: the emulator's Gboard (hardware-keyboard mode) floats its toolbar 28 dp above the room it tells apps it takes, over
       the ribbon; it can be dragged away (Gboard's own, not Tetra's).
+- [x] (office-strips session, 18 Oct, carried on) The tablet walk's 22 findings (A › "The tablet walk, 18 Oct"): 1–14, 16–22 fixed, 15
+      kept as the file has it (written there why); Tables › Selection › Select cells (the user's ask). Commits 9ea0280 … 77fbc42. Unit 505,
+      0 failing, 7 skipped. All on emulator-5554 (tablet 1280×800; the phone size for the strips); the tablet was not touched.
 - [ ] (the user, 18 Oct: "right click otions go in the selection tab in phone and tablet") Words, Slides, Tables: what a right-click
       menu offers is on the Selection tab on a phone and tablet (the ribbon at the bottom); the menu stays for a mouse.
 - Other sessions: add your line here when you start.
@@ -231,6 +234,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] 22. Words › Insert › Shapes › Block arrows: left-right and up-down arrows drawn as diamonds. Their drawing was right — in a square
       the two heads meet (Word's too); now the gallery draws each in its proportions and puts it in at Word's size, one rule for all
       three apps (`shapeSize`: ⇔ 2:1, ⇕ 1:2; Slides used to put every shape in square).
+Found on the way (office-strips, emulator, not fixed):
+- [ ] Slides: a table put on a slide over a text box is drawn on top, but a tap there chooses the box under it (the hit test's order
+      is not the drawing's).
+- [ ] Slides › Numbering on "Olive harvest talk.pptx" gives "1. • Olives…": that deck's bullets are typed "•" letters, not PowerPoint
+      bullets — Numbering could take a typed "• " / "- " off the line's start as PowerPoint's AutoCorrect does.
 Working on the tablet: speaker notes, Select all/Group/drag/Ungroup, Distribute, Reset, Shape options Dash/Shadow (both), Gradient, Slide
 size 16:9 Ensure fit, table Row below, Zoom 200% + pan, Fade + Fly In, the show letterboxed; Words' heart with dot + shadow; Tables'
 Gridlines, column Hide, sheet Hide/Unhide, Protect/Unprotect; LibreOffice opens all three saved copies; touch targets Tables 2 (edge-cut).

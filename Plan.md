@@ -206,8 +206,10 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       in both: the size dragged out on a grid, on a strip on tablet/phone (✓ puts it in), in Words' window on a desktop.
 - [x] 10. Words › Page numbers in Insert and in Layout, once a strip, once a list — one form. Layout has no Page numbers; its list was
       Line numbers, now cards on the pages' strip as Insert › Page numbers (7ee3675).
-- [ ] 11. Duplicates: Tables Sheet › Protect vs Review › Protect sheet; Formulas › Insert function vs Insert › Function; Show formulas
+- [x] 11. Duplicates: Tables Sheet › Protect vs Review › Protect sheet; Formulas › Insert function vs Insert › Function; Show formulas
       in Formulas and View; AutoSum in Home and Formulas; Slides' Selection pane in Home and in the Shape tab — one place, or one form.
+      Now: the sheet's tab says "Protect sheet" as Review does; Insert › Function is Formulas' Insert function (the same window); Show
+      formulas only on Formulas (Excel's place); AutoSum and the Selection pane were already the same in both places (as Excel/PowerPoint).
 - [x] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.
 - [ ] 13. Slides › View: Notes page leaves Normal highlighted; Normal does not hide the notes — exclusive, or a "Notes" toggle.
 - [ ] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers.

@@ -1141,7 +1141,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             RibbonButton("Hide", w, R.drawable.ic_visibility_off, enabled = b.tabs.count { !it.hidden } > 1) { showSheet(index, true) }
                             // Excel's Review › Protect Sheet: its locked cells kept as they are
-                            if (b.kind != "csv") RibbonButton(if (s.protected) "Unprotect" else "Protect", w, R.drawable.ic_lock, on = s.protected) {
+                            if (b.kind != "csv") RibbonButton(if (s.protected) "Unprotect sheet" else "Protect sheet", w, R.drawable.ic_lock, on = s.protected) {
                                 if (s.protected && !s.guarded) protectSheet(false, "") else protecting = true }
                             if (b.tabs.any { it.hidden }) RibbonMenu("Unhide", w, R.drawable.ic_visibility, preset = false, title = "Unhide sheet", choices = b.tabs.withIndex().filter { it.value.hidden }.map { (k, t) -> MenuChoice(t.name) { showSheet(k, false) } })
                         }
@@ -1249,7 +1249,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Sheet", w, R.drawable.ic_note_add) {
                                 sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } })
                             }
-                            RibbonButton("Function", w, R.drawable.ic_functions) { barFocus.requestFocus(); draft = TextFieldValue("=", androidx.compose.ui.text.TextRange(1)) }
+                            // the same as Formulas › Insert function (the tablet walk, 18 Oct: one form in both places)
+                            RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
                             RibbonButton("Symbol", w, R.drawable.ic_special_character) { symbols = true }
                             RibbonButton("Link", w, R.drawable.ic_link) { linking = true }
                             // Excel's Insert › Pictures (Words' picker) and Text Box: on the sheet at the chosen cell
@@ -1412,8 +1413,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("Keep rows above at the top", w, R.drawable.ic_push_pin) { l.row(cr).takeIf { it >= 0 }?.let { view.freeze = it; view.y = 0f } }
                                 if (l.frozenRows > 0) RibbonButton("Let them scroll", w, R.drawable.ic_push_pin) { view.freeze = 0 }
                             }
-                            RibbonDivider(w)
-                            RibbonButton("Show formulas", w, R.drawable.ic_code, on = formulas) { formulas = !formulas }
+                            // Show formulas: on Formulas only, as Excel's (the tablet walk, 18 Oct: one place)
                             RibbonDivider(w)
                             // Excel's View › Gridlines: kept in the file (a change to it, while editing)
                             if (editing && b.kind != "csv") RibbonButton("Gridlines", w, R.drawable.ic_view_grid, on = s.grid) { val i = index; val on = !s.grid

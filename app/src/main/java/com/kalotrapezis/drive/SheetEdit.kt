@@ -46,6 +46,24 @@ internal object SheetInput {
         val empty = Regex("""([A-Za-z][A-Za-z0-9.]*)\(\s*\)""").findAll(t).map { it.groupValues[1].uppercase() }.filter { it !in NO_ARGS }
         return if (empty.any()) null else t
     }
+    /** A typed formula Tables cannot read (as it would keep it: ";" made ","): Excel's "There's a problem with this formula". */
+    fun badFormula(text: String) = formulaProblem(text) != null
+    /** … and what is wrong, in words: a missing comma or operator, a bracket without its pair, an end too soon (the user, 18 Oct). */
+    fun formulaProblem(text: String): String? {
+        if (!text.startsWith("=") || text.length < 2) return null
+        val e = runCatching { SheetCalc.parse(formula(text.drop(1))) }.exceptionOrNull() as? SheetCalc.Unknown ?: return null
+        val what = e.message.orEmpty()
+        val rest = what.substringAfter("left over: ", "").ifEmpty { what.substringAfter("name at ", "") }.trim()
+        return when {
+            rest.startsWith(")") -> "a ) with no ( before it, or something missing before it"
+            rest.startsWith("}") || rest.startsWith("]") -> "a ${rest.first()} with no pair"
+            rest.startsWith("{") || rest.startsWith("[") -> "{ } and [ ] are not read here"
+            rest.isNotEmpty() -> "a comma or an operator (+ − * / &) missing before “${rest.take(12)}”"
+            what == "end" -> "it ends too soon: something is missing after the last operator or comma"
+            what == "args" -> "a ( with no ) — or a comma missing between what is in it"
+            else -> "something Tables cannot read ($what)"
+        }
+    }
     private val NO_ARGS = setOf("TODAY", "NOW", "PI", "RAND", "NA", "TRUE", "FALSE", "ROW", "COLUMN", "SHEET", "SHEETS", "RANDARRAY")
 
     /** Find and Replace: [content] (a cell as typed: its words, or its formula) with every [find] in it, any case, made [with]; null: none in it. */

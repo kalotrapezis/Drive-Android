@@ -259,6 +259,10 @@ as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbe
       being dragged is outlined on the sheet (Excel's dashed blue over a light tint) while the finger moves.
       And: "if I tap and then drag … it gets sum(K2K2:K20" — now, as Excel's pointing, the reference a tap or drag put in last, with
       nothing typed after it, is replaced by the next tap or drag (B2 tapped, then B2:B5 dragged → "=SUM(B2:B5"; after a "," a new one).
+      ✓ with a ")" missing closes it (as Excel). And (the user: "Do we have syntax help warning as well? … for missing a "," or a "(" | }
+      that kind of thing"): the function's syntax shows above the keyboard while typing (it did); now a formula Tables cannot read is
+      not put in at the first ✓ — the message says what is wrong ("a comma or an operator missing before “C2”", "a ) with no (",
+      "it ends too soon"…), ✓ again keeps it as typed (Excel's arrays { } and table [ ] references, which Tables does not read).
 - [x] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
       throws it away; leaving saved "=SUM(" into the cell. It must open the bar for editing, the cursor inside the brackets.
       Not reproduced on the emulator (ribbon top and bottom, a hardware keyboard): there the bar opens with ✓ ×, the cursor in "=SUM(".

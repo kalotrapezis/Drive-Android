@@ -238,6 +238,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // the reference a tap or drag put in last, while nothing has been typed after it: the next tap or drag replaces it (Excel's pointing;
     // the user, 18 Oct: a tap on K2 and then a drag gave "K2K2:K20")
     var lastRef by remember { mutableStateOf<IntRange?>(null) }
+    var formulaWarned by remember { mutableStateOf<String?>(null) } // the formula warned about at the last ✓ (a second ✓ puts it in)
     LaunchedEffect(draft == null) { if (draft == null) lastRef = null }
     var draftRuns by remember { mutableStateOf<List<DocRun>?>(null) } // the typed words' looks, a part bold (`SheetRich`); null: one look
     var saving by remember { mutableStateOf(false) }
@@ -427,6 +428,11 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         // a formula's missing brackets closed, as Excel does on Enter; a function with nothing in it yet is not written (the walk, 18 Oct:
         // "=SUM(" went into C13 as an empty-looking cell) — it stays in the bar
         val d = SheetInput.closed(d0.text)?.let { if (it == d0.text) d0 else TextFieldValue(it) } ?: run { message = "The formula is not finished: put in what ${d0.text.substringAfter('=').substringBefore('(')} takes, or ✕"; return }
+        // Excel's "There's a problem with this formula": one Tables cannot read is shown first, kept in the bar; ✓ again puts it in as typed
+        // (Excel may read what Tables cannot) — the user, 18 Oct: "Do we have syntax help warning as well?"
+        val problem = if (d.text != formulaWarned) SheetInput.formulaProblem(d.text) else null
+        if (problem != null) {
+            formulaWarned = d.text; draft = d; message = "A problem with this formula: $problem. Fix it, or ✓ again to keep it as it is"; WriterLog.i("Sheets: a formula warned about ($problem)"); return }
         val (r, c) = editAt ?: chosen(s)
         val (look, format) = lookAt(s, r, c)
         // a part's own look typed (SheetRich): kept as the cell's runs while they are its words and say something

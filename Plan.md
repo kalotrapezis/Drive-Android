@@ -966,8 +966,11 @@ what is not already above:
       ones in their columns (rows) move, every formula on the sheet reading them follows (`SheetShift` given `within`: only those columns
       or rows; whole rows/columns and ranges partly in them stay); merged cells in the way refused, as Excel. `cells shifted`; emulator:
       D2 shifted down (B2's merge below refused). shortcut: merges, rules, validations, links, notes and other sheets' formulas stay.
-- [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
+- [~] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
+      Done (office-F session, 18 Oct): header and footer (Page layout, above); Insert › Equation (Words' EquationDialog and
+      MathDrawable, as Slides': the equation put on at the chosen cell as a picture, its letters 16 pt). Emulator: x²+a/b at F14.
+      shortcut: a picture, not Excel's own equation (OMML in a text box), so it is not edited again as an equation.
 - [x] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
       Calculate now and automatic / manual; trace precedents and dependents as arrows; evaluate a formula step by step.
       Done (office-F session, 18 Oct): Insert function by category with a search (FunctionsDialog); Precedents, Dependents and

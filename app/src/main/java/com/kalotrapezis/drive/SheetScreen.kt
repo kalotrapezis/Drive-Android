@@ -188,6 +188,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
+    var equating by remember { mutableStateOf(false) } // Insert › Equation: Words' editor
     var protectingBook by remember { mutableStateOf(false) } // Review › Protect / Unprotect workbook: its password asked
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
@@ -1240,6 +1241,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Picture", w, R.drawable.ic_gallery) { pickPicture.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                             if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
                             if (b.kind != "csv") RibbonButton("Shape", w, R.drawable.ic_category) { shaping = true }
+                            if (b.kind != "csv") RibbonButton("Equation", w, R.drawable.ic_functions) { equating = true }
                             // References: where the data came from — Words' source dialog, the reference in APA 7 on the Sources sheet
                             if (b.kind != "csv") RibbonButton("Source", w, R.drawable.ic_menu_book) { sourcing = true }
                             // References: a first sheet listing every sheet as a link (made again when there is one)
@@ -2112,6 +2114,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
     if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
     if (inserting) FunctionsDialog({ inserting = false }) { f -> inserting = false; inserted = f }
+    // Insert › Equation: Words' equation editor, the equation put on the sheet as a picture at the chosen cell (its letters 16 pt).
+    // shortcut: a picture, not Excel's own equation (OMML in a text box): edited again as a picture; upgrade if equations are kept editable
+    if (equating) EquationDialog(null, { equating = false }) { m -> equating = false
+        val s = sheet ?: return@EquationDialog; val (r, c) = chosen(s); val i = index
+        val made = runCatching {
+            val dr = MathDrawable(m, 16f); val w = dr.widthPt.coerceAtLeast(1f); val h = dr.heightPt.coerceAtLeast(1f)
+            val bmp = android.graphics.Bitmap.createBitmap((w * 4).toInt().coerceAtLeast(1), (h * 4).toInt().coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+            dr.setBounds(0, 0, bmp.width, bmp.height); dr.draw(android.graphics.Canvas(bmp))
+            Triple(java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray(), w, h)
+        }.onFailure { WriterLog.e("Sheets: an equation could not be drawn", it) }.getOrNull() ?: run { message = "Could not draw that equation"; return@EquationDialog }
+        val (bytes, w, h) = made
+        fileStep("equation put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.pictureXlsx(baked, next, bb.parts.getValue("$i"), r, c, w, h, bytes, "png")
+            else SheetChart.pictureOds(baked, next, i, r, c, w, h, bytes, "png") })
+    }
     evaluating?.let { (at, steps) ->
         var shown by remember(steps) { mutableStateOf(1) }
         AlertDialog(onDismissRequest = { evaluating = null }, title = { Text("Evaluate formula: $at") }, text = {

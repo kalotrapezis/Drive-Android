@@ -244,6 +244,21 @@ size 16:9 Ensure fit, table Row below, Zoom 200% + pan, Fade + Fly In, the show 
 Gridlines, column Hide, sheet Hide/Unhide, Protect/Unprotect; LibreOffice opens all three saved copies; touch targets Tables 2 (edge-cut).
 Not walked yet: Tables Merge & centre, Replace, Chart, Link, Text to columns, Insert function, rich-text cell; Words beyond Insert/Shapes.
 
+**The tablet walk, second round, 18 Oct 08:48–09:00 (main session, at acb4526 on 971f6b37)** — confirmed there: Slide size strip (3:2 saved
+as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbers' gap, Save keeps Undo, Tables' Find, Select cells, Merge
+& centre, part-bold cell, Insert function's window, touch targets. To fix (office-strips session, in this order):
+- [ ] 1. DATA LOSS — Tables: C13 typing "=SUM(B1," then a long-press drag over B2:B4 moved the edit to B2; ")" and Enter wrote
+      "=SUM(B1,B4" over B2 (AutoSave saved it). While a formula is typed a drag (plain, long press, Select cells) puts the range in at
+      the cursor; it never changes the cell being edited; Enter writes to the cell the edit started in. (The user: "After a formula like
+      SUM is in place can the user just click on cells and add them to the formula?" — yes, as Excel.)
+- [ ] 2. A tap adds a cell's name (keep); a drag adds nothing today — the gap.
+- [ ] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
+      throws it away; leaving saved "=SUM(" into the cell. It must open the bar for editing, the cursor inside the brackets.
+- [ ] 4. With a keyboard: typing on a chosen cell does nothing, a double tap does not open it — Excel starts typing on both.
+- [ ] 5. Search forgives a wrong letter ("Hello" finds "Yellow fill"); Replace / Replace all must change exact matches only.
+- [ ] 6. Two strip forms: "‹ title … × ✓" (Slide size, Themes) and "title … Cancel OK" (Colours, Multilevel, Line numbers cards) — one form.
+- [ ] 7. Slide size: the size picked is not shown on the slide before ✓ (Themes and Colours are).
+
 **Made the same** (one shared component where today each app has its own code):
 - [x] **The tab indicator**: Words drew a bubble behind the chosen tab; Tables and Slides a dash under it. Now one
       shared tab row for all three (`OfficeTabRow`, OfficeUi.kt: each app's tabs, its dash colour, the contextual

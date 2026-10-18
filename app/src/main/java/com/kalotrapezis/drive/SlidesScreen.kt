@@ -485,6 +485,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
     var query by remember { mutableStateOf("") }; var replacement by remember { mutableStateOf("") }; var replacing by remember { mutableStateOf(false) }
     var findAt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var rulers by remember { mutableStateOf(false) } // View › Ruler: Words' rulers along the slide's top and side (a tablet's layout)
     var grid by remember { mutableStateOf(false) } // View › Gridlines: a grid and the middle guides over the slide, what is dragged snapping to them
     var notesPage by remember { mutableStateOf(false) } // View › Notes page: the notes pane under the slide (a desktop always has it)
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
@@ -1213,6 +1214,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Outline", w, R.drawable.ic_view_list, on = outline) { outline = true; sorter = false; item = null; typing = null }
                 RibbonButton("Slide sorter", w, R.drawable.ic_view_grid, on = sorter) { sorter = true; outline = false; item = null; marked = setOf(uid) }
                 RibbonButton("Gridlines", w, R.drawable.ic_border_all, on = grid) { grid = !grid }
+                // Words' rulers round the slide being edited, in Words' unit from its top left (a tablet's, as Words shows them)
+                if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) RibbonButton("Ruler", w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
+                // PowerPoint's Reading View: the show from this slide (on a phone or tablet, the screen is its window)
+                RibbonButton("Reading view", w, R.drawable.ic_play) { presenting = c }
                 // the speaker notes under the slide, typed there (PowerPoint's Notes); a desktop always shows them
                 if (!OfficeUi.top) RibbonButton("Notes page", w, R.drawable.ic_comment, on = notesPage) { notesPage = !notesPage; sorter = false; outline = false }
                 if (sorter) {
@@ -1803,9 +1808,15 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             // as big as it can be; on a desktop, room kept under it for its notes pane
                             // with little room (an on-screen keyboard up) the slide gives way and the pane keeps its height, at least a readable width
                             val withNotes = OfficeUi.top || notesPage
-                            val slideW = minOf(maxWidth, (maxHeight - if (withNotes) 96.dp else 0.dp).coerceAtLeast(if (OfficeUi.top) 0.dp else 120.dp) * (d.width / d.height))
-                            Column(Modifier.width(if (withNotes) maxOf(slideW, minOf(maxWidth, 480.dp)) else slideW), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) }; if (withNotes) NotesPane(c, d.slides[c]) }
+                            val rule = if (rulers) 20.dp else 0.dp // View › Ruler's room
+                            val slideW = minOf(maxWidth - rule, (maxHeight - rule - if (withNotes) 96.dp else 0.dp).coerceAtLeast(if (OfficeUi.top) 0.dp else 120.dp) * (d.width / d.height))
+                            Column(Modifier.width(if (withNotes) maxOf(slideW + rule, minOf(maxWidth, 480.dp)) else slideW + rule), horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (rulers) {
+                                    val page = DocPage(d.width, d.height, 0f, 0f, 0f, 0f); val perPt = slideW / d.width
+                                    Row { androidx.compose.foundation.layout.Spacer(Modifier.width(rule)); HorizontalRuler(page, perPt, 0.dp, Modifier.width(slideW).height(rule)) }
+                                    Row { VerticalRuler(page, perPt, Modifier.width(rule).height(slideW * (d.height / d.width))); Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) } }
+                                } else Box(Modifier.width(slideW)) { SlideBox(c, d.slides[c]) }
+                                if (withNotes) NotesPane(c, d.slides[c]) }
                         }
                         if (commentsOn) CommentsPane(Modifier.width(320.dp).fillMaxHeight().padding(top = if (OfficeUi.top) 150.dp else 16.dp, end = 12.dp, bottom = if (OfficeUi.top) 16.dp else 150.dp))
                     } else {

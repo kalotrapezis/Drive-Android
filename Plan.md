@@ -572,8 +572,9 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       Text effects done 18 Oct (office-F): Home › Text effects on any box's words — Outline, Shadow, Glow, each on or off (WordArt's,
       already read and written both ways; an .odp has no glow, so none offered). Emulator: arrange.pptx's red words shadowed and glowing.
       Character spacing: later — Words has none either; the shared engine lays letters out without it, so it comes to all three at once.
-- [ ] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`
+- [x] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`
       is played today, not set); **Morph** (later: the most used modern transition).
+      Found done 18 Oct (office-F): Transitions › Options — Fast / Medium / Slow, and Next slide: On click, After 3 / 5 / 10 / 20 s.
 - [~] **Animations**: start on click / with previous / after previous; duration and delay; entrance, emphasis and
       exit kinds; the animation list (pane) to reorder; animation painter; motion paths and triggers (later).
       Found 17 Oct (office-D session): start, duration (Fast/Medium/Slow), delay, the kinds and Earlier/Later were already in Options and
@@ -589,7 +590,10 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       (Words' drawing picture, red as the pen, Edit drawing draws on). Emulator: a line under the subtitle, kept. Not yet: a grid to go to
       a slide during the show, without animations, use timings or not; subtitles later.
 - [ ] **Record** (later): record narration and timings per slide; export the deck as a video.
-- [ ] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
+- [x] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
+      Done 18 Oct (office-F): View › Ruler (Words' HorizontalRuler and VerticalRuler round the slide being edited, in Words' unit from
+      its top left; a tablet's layout, as Words shows its rulers) and Reading view (the show from the chosen slide — on a phone or
+      tablet the screen is its window). Emulator: a 4:3 slide's 25.4 × 19.05 cm; slide 4 shown.
 - [~] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
       .odp / .pptx; remove notes and comments before sharing (Inspect); password protection (later).
       Template and Inspect done 17 Oct (office-C session, with From Words' File above). Not yet: saving as the other format.

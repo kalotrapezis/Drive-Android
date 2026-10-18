@@ -567,8 +567,11 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       none of Words' (Words' Picture tab has neither yet — Words should get the same `PictureLook` when it does). `a picture's style and
       transparency saved` (both, LibreOffice's conversions keep them); emulator: rounded with shadow at 30 %. Not yet: colour and
       brightness, compress pictures; a strip of cards for the styles (a menu for now).
-- [ ] **Shapes**: text effects (shadow, outline, glow) and character spacing; merge shapes (union, combine,
+- [x] **Shapes**: text effects (shadow, outline, glow) and character spacing; merge shapes (union, combine,
       intersect, subtract — later); edit points (later).
+      Text effects done 18 Oct (office-F): Home › Text effects on any box's words — Outline, Shadow, Glow, each on or off (WordArt's,
+      already read and written both ways; an .odp has no glow, so none offered). Emulator: arrange.pptx's red words shadowed and glowing.
+      Character spacing: later — Words has none either; the shared engine lays letters out without it, so it comes to all three at once.
 - [ ] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`
       is played today, not set); **Morph** (later: the most used modern transition).
 - [~] **Animations**: start on click / with previous / after previous; duration and delay; entrance, emphasis and

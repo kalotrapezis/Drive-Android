@@ -870,6 +870,20 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
         Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
         Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
+        // PowerPoint's Text Effects (WordArt's, on any box's words): an outline round the letters, a shadow, a glow (an .odp has none)
+        Box {
+            var effecting by remember { mutableStateOf(false) }
+            val fx = TextEffects.of(r?.font)
+            RibbonButton("Text effects", w, R.drawable.ic_format_color_text, on = fx.any) { effecting = true }
+            DropdownMenu(effecting, { effecting = false }) {
+                val tint = r?.color ?: 0x4472C4
+                listOfNotNull("Outline" to (fx.outline != null), "Shadow" to fx.shadow, ("Glow" to (fx.glow != null)).takeIf { !odp }).forEach { (label, on) ->
+                    DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (on) Icon(painterResource(R.drawable.ic_check), null) }, onClick = { effecting = false
+                        restyle { it.copy(effects = when (label) { "Outline" -> fx.copy(outline = if (on) null else artOutline(tint)); "Shadow" -> fx.copy(shadow = !on); else -> fx.copy(glow = if (on) null else artGlow(tint)) }) }
+                        WriterLog.i("Slides: text effect $label ${if (on) "off" else "on"}") })
+                }
+            }
+        }
         // Format painter: this box's look taken, put on the next box chosen
         Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
             painter = if (painter != null) null else lookOf(box)

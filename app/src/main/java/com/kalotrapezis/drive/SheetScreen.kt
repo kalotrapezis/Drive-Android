@@ -188,6 +188,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var noting by remember { mutableStateOf(false) } // Insert › Note: Words' comment dialog on the chosen cell
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
+    var protectingBook by remember { mutableStateOf(false) } // Review › Protect / Unprotect workbook: its password asked
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
     var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
@@ -417,11 +418,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
      * A change to the whole file ([op] from the copy with the edits in it to a new copy — rows, columns, sheets): the
      * edits written into a copy, [op] done, the new copy read again; one step to undo; [then] after, with it.
      */
-    fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, unprotecting: Boolean = false, then: (Workbook) -> Unit = {}) {
+    fun fileStep(what: String, op: (baked: File, next: File, b: Workbook) -> Unit, unprotecting: Boolean = false, structure: Boolean = false, then: (Workbook) -> Unit = {}) {
         val b = book ?: return; val i = index
         // one at a time: a second started before the first is done would start from the file without it
         if (saving) { message = "One moment — the last change is still being made"; return }
         if (b.sheet(i).protected && !unprotecting) { message = PROTECTED; return }
+        // Review › Protect workbook: no sheet added, deleted, renamed, moved or hidden
+        if (structure && b.structureLocked) { message = "This workbook's structure is protected: Review › Unprotect workbook first"; return }
         val from = work ?: file ?: return
         commit(false)
         saving = true
@@ -630,7 +633,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         fileStep(when { copy -> "sheet copied"; add != null -> "sheet added"; rename != null -> "sheet renamed"; delete -> "sheet deleted"; else -> "sheet moved" }, { baked, next, b ->
             if (b.kind == "xlsx") SheetBook.xlsx(baked, next, b.parts, b.tabs.map { it.name }, i, add, rename, delete, to, copy)
             else SheetBook.ods(baked, next, b.tabs.map { it.name }, i, add, rename, delete, to, copy)
-        }) { nb ->
+        }, structure = true) { nb ->
             views.clear(); header = null
             index = when { add != null -> i + 1; delete -> maxOf(0, i - 1); to != null -> to; else -> i }.coerceIn(0, nb.tabs.lastIndex)
         }
@@ -660,6 +663,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             "xlsx" -> SheetProtect.xlsx(baked, next, b.parts.getValue("$i"), protect, password); "ods" -> SheetProtect.ods(baked, next, i, protect, password)
             else -> error("A CSV file can't be protected: save it as a workbook first.") } }, unprotecting = !protect) { message = if (protect) "Sheet protected" else "Sheet unprotected" }
     }
+    /** Review › Protect workbook (its structure), with [password] or none, or Unprotect it (the password, if it has one, checked). */
+    fun protectBook(protect: Boolean, password: String) {
+        fileStep(if (protect) "workbook protected" else "workbook unprotected", { baked, next, b -> when (b.kind) {
+            "xlsx" -> SheetProtect.bookXlsx(baked, next, b.parts.getValue("workbook"), protect, password); "ods" -> SheetProtect.bookOds(baked, next, protect, password)
+            else -> error("A CSV file can't be protected: save it as a workbook first.") } }, unprotecting = true) { message = if (protect) "Workbook protected" else "Workbook unprotected" }
+    }
     /** Conditional formatting on cells [d] (the sheet's): [rule] made, null: the rules over them cleared. */
     fun putRule(d: SheetRange, rule: SheetConditional.Rule?) { val i = index
         fileStep(if (rule == null) "rules cleared" else "rule made (${rule.kind})", { baked, next, b -> when (b.kind) {
@@ -676,7 +685,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     /** Hide (a sheet's tab, Excel's) or Unhide sheet [at]: the file's; hidden, the next shown sheet opened. */
     fun showSheet(at: Int, hidden: Boolean) {
         fileStep(if (hidden) "sheet hidden" else "sheet shown", { baked, next, b -> when (b.kind) {
-            "xlsx" -> SheetVisibility.xlsx(baked, next, at, hidden); "ods" -> SheetVisibility.ods(baked, next, at, hidden); else -> error("A CSV file has one sheet.") } }) { nb ->
+            "xlsx" -> SheetVisibility.xlsx(baked, next, at, hidden); "ods" -> SheetVisibility.ods(baked, next, at, hidden); else -> error("A CSV file has one sheet.") } }, structure = true) { nb ->
             views.clear(); header = null
             index = if (hidden) nb.tabs.indices.firstOrNull { !nb.tabs[it].hidden && it >= at } ?: nb.tabs.indices.first { !nb.tabs[it].hidden } else at
         }
@@ -1235,7 +1244,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Source", w, R.drawable.ic_menu_book) { sourcing = true }
                             // References: a first sheet listing every sheet as a link (made again when there is one)
                             if (b.kind != "csv" && b.tabs.size > 1) RibbonButton("Contents sheet", w, R.drawable.ic_toc) {
-                                fileStep("contents sheet", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetContents.apply(baked, next, bb, sym.decimalSeparator, sym.groupingSeparator) } }) { views.clear(); header = null; index = 0 } }
+                                fileStep("contents sheet", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetContents.apply(baked, next, bb, sym.decimalSeparator, sym.groupingSeparator) } }, structure = true) { views.clear(); header = null; index = 0 } }
                             // Excel's notes (LibreOffice's comments): made or changed in Words' comment dialog; taken away
                             val hasNote = s[cr, cc]?.note != null
                             RibbonButton(if (hasNote) "Edit note" else "Note", w, R.drawable.ic_comment) { noting = true }
@@ -1368,6 +1377,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonDivider(w)
                             if (editing && b.kind != "csv") RibbonButton(if (s.protected) "Unprotect sheet" else "Protect sheet", w, R.drawable.ic_lock, on = s.protected) {
                                 if (s.protected && !s.guarded) protectSheet(false, "") else protecting = true }
+                            if (editing && b.kind != "csv") RibbonButton(if (b.structureLocked) "Unprotect workbook" else "Protect workbook", w, R.drawable.ic_lock, on = b.structureLocked) { protectingBook = true }
                             RibbonButton("Workbook statistics", w, R.drawable.ic_numbers) { counting = true }
                         }
                         shown == "View" -> {
@@ -1872,6 +1882,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             confirmButton = { TextButton(enabled = unprotect && password.isNotEmpty() || !unprotect && (password.isEmpty() || again == password), onClick = { protecting = false
                 protectSheet(!unprotect, password) }) { Text(if (unprotect) "Unprotect" else "Protect") } },
             dismissButton = { TextButton(onClick = { protecting = false }) { Text("Cancel") } }) }
+    if (protectingBook) book?.let { b -> val unprotect = b.structureLocked
+        var password by remember { mutableStateOf("") }; var again by remember { mutableStateOf("") }
+        val hidden = androidx.compose.ui.text.input.PasswordVisualTransformation()
+        val keys = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
+        AlertDialog(onDismissRequest = { protectingBook = false }, title = { Text(if (unprotect) "Unprotect workbook" else "Protect workbook") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (unprotect) "Its password, if it has one:" else "Its sheets can't be added, deleted, renamed, moved or hidden. A password is optional.")
+                OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = hidden, keyboardOptions = keys)
+                if (!unprotect && password.isNotEmpty()) OutlinedTextField(again, { again = it }, label = { Text("Password again") }, singleLine = true, visualTransformation = hidden, keyboardOptions = keys,
+                    isError = again.isNotEmpty() && again != password) } },
+            confirmButton = { TextButton(enabled = unprotect || password.isEmpty() || again == password, onClick = { protectingBook = false
+                protectBook(!unprotect, password) }) { Text(if (unprotect) "Unprotect" else "Protect") } },
+            dismissButton = { TextButton(onClick = { protectingBook = false }) { Text("Cancel") } }) }
     // Data › Sort: Excel's dialog — headers?, then each level's column and order (up to three)
     sortingRows?.let { d -> sheet?.let { s -> val b = book
         val guess = remember(d) { (d.c1..d.c2).all { s[d.r1, it]?.kind == SheetKind.Text } && (d.c1..d.c2).any { s[d.r1 + 1, it]?.kind == SheetKind.Number } }
@@ -1945,7 +1968,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             else SheetChart.shapeOds(baked, next, i, r, c, w, h, kind, fill, line) }) } }
     // Insert › Source: Words' source dialog; the reference (APA 7) onto the Sources sheet, which is shown
     if (sourcing) SourceDialog(null, { sourcing = false }) { src -> sourcing = false
-        fileStep("source added", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSources.add(baked, next, bb, CiteStyle.APA.entry(src), sym.decimalSeparator, sym.groupingSeparator) } }) { nb ->
+        fileStep("source added", { baked, next, bb -> DecimalFormatSymbols.getInstance().let { sym -> SheetSources.add(baked, next, bb, CiteStyle.APA.entry(src), sym.decimalSeparator, sym.groupingSeparator) } },
+            structure = book?.tabs?.none { it.name.equals(SheetSources.NAME, true) } == true) { nb ->
             views.clear(); header = null; index = nb.tabs.indexOfFirst { it.name.equals(SheetSources.NAME, true) }.coerceAtLeast(0); message = "Added to the Sources sheet" } }
     // Review › Spelling: Excel's dialog — the word not in the dictionary, its cell, the suggestions; Change, Ignore, Ignore all
     spellRun?.let { run -> sheet?.let { s -> val b = book

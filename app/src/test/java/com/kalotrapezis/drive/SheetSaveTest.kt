@@ -473,6 +473,30 @@ class SheetSaveTest {
         }
     }
 
+    /** Review › Protect workbook: Excel's workbookProtection lockStructure, LibreOffice's structure-protected; read back, and by LibreOffice. */
+    @Test fun `a workbook's structure protected and unprotected`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("book").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val part = Sheets.read(f, ',', '.').parts["workbook"].orEmpty()
+            fun step(protect: Boolean, password: String) { val next = File(dir, "${System.nanoTime()}.${f.extension}")
+                if (name.endsWith("xlsx")) SheetProtect.bookXlsx(f, next, part, protect, password) else SheetProtect.bookOds(f, next, protect, password); f = next }
+            assertFalse(name, Sheets.read(f, ',', '.').structureLocked)
+            step(true, "secret"); assertTrue(name, Sheets.read(f, ',', '.').structureLocked)
+            // LibreOffice opens and saves the .ods with it kept; its .xlsx filter neither reads nor writes Excel's lockStructure (tried: 26.2)
+            if (lo && name.endsWith("ods")) {
+                val conv = File(dir, "lo").apply { mkdirs() }
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                assertTrue("LibreOffice's ods of $name", Sheets.read(conv.listFiles()!!.single { it.extension == "ods" }, ',', '.').structureLocked)
+            }
+            assertTrue(name, runCatching { step(false, "wrong") }.isFailure)
+            step(false, "secret"); assertFalse(name, Sheets.read(f, ',', '.').structureLocked)
+            step(true, ""); assertTrue(name, Sheets.read(f, ',', '.').structureLocked)
+            step(false, ""); assertFalse(name, Sheets.read(f, ',', '.').structureLocked)
+        }
+    }
+
     /** Insert › Picture and Text box: Excel's picture and text box shapes, LibreOffice's frame and rectangle — read back, and by LibreOffice. */
     @Test fun `a picture and a text box put on a sheet`() {
         val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(8, 6, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()

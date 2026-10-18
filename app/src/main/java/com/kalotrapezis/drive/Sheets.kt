@@ -271,6 +271,8 @@ internal class Workbook(
     val nameList: () -> List<Pair<String, String>> = { emptyList() },
     /** Its theme's colours (an .xlsx's own, else Office's): Format as table's gallery. */
     val theme: IntArray = SheetTables.OFFICE,
+    /** Review › Protect workbook: its sheets not added, deleted, renamed, moved or hidden. */
+    val structureLocked: Boolean = false,
     private val load: (Int) -> Sheet,
 ) {
     private val kept = LinkedHashMap<Int, Sheet>()
@@ -559,6 +561,7 @@ internal object Sheets {
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
                 kind = "xlsx", format = format, theme = theme.takeIf { it.size >= 10 } ?: SheetTables.OFFICE,
+                structureLocked = wb.kid("workbookProtection")?.attr("lockStructure").let { it == "1" || it == "true" },
                 names = names.filter { it.attr("name")?.startsWith("_xlnm.") == false }.associate { it.attr("name")!!.lowercase() to it.textContent.trim() },
                 nameList = { names.filter { it.attr("name")?.startsWith("_xlnm.") == false && it.attr("localSheetId") == null }.map { it.attr("name")!! to it.textContent.trim() } },
                 parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
@@ -1360,11 +1363,13 @@ internal object Sheets {
             parts("styles.xml")?.let { sax(it, styleHandler()) }
             settings = readSettings()
             // The automatic styles, at the head of content.xml: read until the body begins.
+            var locked = false
             sax(stream("content.xml") ?: error("Not a spreadsheet."), object : DefaultHandler() {
                 val autoStyles = styleHandler()
                 var inStyles = false
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
-                    if (local == "body") throw Enough()
+                    // the body's spreadsheet: whether its structure is protected (Review › Protect workbook)
+                    if (local == "spreadsheet") { locked = at.getValue("urn:oasis:names:tc:opendocument:xmlns:table:1.0", "structure-protected") == "true"; throw Enough() }
                     if (local == "automatic-styles") inStyles = true
                     if (inStyles) autoStyles.startElement(uri, local, q, at)
                 }
@@ -1392,7 +1397,8 @@ internal object Sheets {
             val lazyNames = object : AbstractMap<String, String>() { override val entries get() = named.entries }
             val listNames = { runCatching { parts("content.xml")?.let { c -> Regex("""<table:named-(?:range|expression)\b[^>]*\btable:name="([^"]*)"""").findAll(String(c, Charsets.UTF_8)).map { it.groupValues[1] }.toList() } }.getOrNull().orEmpty()
                 .mapNotNull { n -> named[n.lowercase()]?.let { n to it } } }
-            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names, names = lazyNames, nameList = listNames) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+            return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names, names = lazyNames, nameList = listNames,
+                structureLocked = locked) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */

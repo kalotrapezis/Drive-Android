@@ -991,6 +991,10 @@ what is not already above:
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
       Done (office-F session, 18 Oct): Previous / Next note, Workbook statistics, Protect sheet (above); Show all notes (each
       note in Excel's yellow box beside its cell, drawn over the cells, frozen rows' and columns' too). Emulator: A2's note shown.
+      Review › Protect workbook (its structure: no sheet added, deleted, renamed, moved or hidden — refused with a word, as Excel;
+      a password or none): Excel's workbookProtection lockStructure (SHA-512 as Protect sheet), LibreOffice's structure-protected
+      (`SheetProtect.bookXlsx` / `bookOds`; `a workbook's structure protected and unprotected`). LibreOffice keeps it in an .ods,
+      but its .xlsx filter neither reads nor writes Excel's lock (26.2). Emulator: + refused while protected, then unprotected.
 - [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
       columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
       Done (office-F session, 18 Oct) but the page views: freezing (above, kept in the file); View › Zoom to selection (the chosen

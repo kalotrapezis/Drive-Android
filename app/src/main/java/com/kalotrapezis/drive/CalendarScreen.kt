@@ -355,8 +355,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Scope.Following -> if (m == null || day.toInstant() <= m.start.toInstant()) CalendarFiles.trash(root, f.file) else CalendarFiles.endBefore(f, day)
         }
     }
-    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.Month)
-    LaunchedEffect(wide) { if (view !in views && !(view == CalView.ThreeDays && !wide)) setView(views.first()) }
+    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.ThreeDays, CalView.Month)
+    LaunchedEffect(wide) { if (view !in views) setView(views.first()) }
     BackHandler { when { shown != null -> shown = null; drawer -> drawer = false; else -> back() } }
     editing?.let { ed ->
         val repeating = ed.occ != null && (ed.occ.file.master?.rrule != null || ed.occ.event.recurrenceId != null)
@@ -385,28 +385,39 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // 18 Oct: "an island and bottom drawer that opens for the rest like what calendars to see", on the big screen too).
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                    Text(if (wide) title(selected, view) else selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
-                        style = if (wide) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f).padding(start = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (wide) OutlinedButton(onClick = { selected = today }) { Text("Today") }
-                    else IconButton(onClick = { selected = today }) { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = "Today") }
-                    if (wide || view != CalView.Agenda) {
-                        IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
-                        IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
-                    }
-                }
+            Column(Modifier.fillMaxSize()) {
+                // Files' own top: Back and the title in islands, the dates' controls beside them
+                FilesPageHeader(
+                    title = if (wide) title(selected, view) else selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
+                    icon = R.drawable.ic_calendar_today, back = back, island = true,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    trailing = {
+                        Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { selected = today }) { Text("Today", color = islandContentColor()) }
+                                if (wide || view != CalView.Agenda) {
+                                    IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
+                                    IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
+                                }
+                            }
+                        }
+                    },
+                )
                 ReminderNotes()
                 if (!wide && view == CalView.Agenda) WeekStrip(selected, today, days) { selected = it }
                 // the island floats over the last row; the views stop above it
                 body(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().padding(bottom = if (view == CalView.Agenda) 0.dp else 76.dp))
             }
-            Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp)) {
+            // Files' bottom: the island at the left, the one round action at the right (here New event)
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     views.forEach { v -> IslandNavigationItem(v.label, view == v, viewIcon(v)) { setView(v) } }
-                    IslandNavigationItem("New event", false, R.drawable.ic_add) { create(selected) }
+                }
+                IslandVisibility(!drawer) {
+                    Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                        IconButton(onClick = { create(selected) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New event") }
+                    }
                 }
             }
             message?.let { m ->
@@ -416,9 +427,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         }
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // what the island has no room for: 3 days on a phone, the small month on a big screen
-            if (!wide) DrawerButton(viewIcon(CalView.ThreeDays), "3 days", view == CalView.ThreeDays, Modifier.fillMaxWidth()) { setView(CalView.ThreeDays); drawer = false }
+        Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // the small month on a big screen, beside the calendars; a phone has its week row
             val calendarsPanel: @Composable (Modifier) -> Unit = { m ->
                 Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = m) {
                     Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
@@ -752,10 +762,16 @@ private data class AgendaNone(override val day: LocalDate) : AgendaRow
                     val blocks = dayBlocks(d, days[d].orEmpty().filter { !it.allDay }, zone)
                     blocks.forEach { b ->
                         val color = Color(b.o.calendar.color)
-                        Column(Modifier.offset(x = w * b.col / b.cols, y = hourH * (b.from / 60f)).width(w / b.cols).height(hourH * ((b.to - b.from) / 60f))
-                            .padding(1.dp).clip(RoundedCornerShape(4.dp)).background(color).clickable { open(b.o) }.padding(horizontal = 4.dp, vertical = 2.dp)) {
-                            Text(b.o.event.title.ifEmpty { "(No title)" }, style = MaterialTheme.typography.labelMedium, color = onColor(color), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (b.to - b.from >= 45) Text(timeText(context, b.o.start) + " – " + timeText(context, b.o.end), style = MaterialTheme.typography.labelSmall, color = onColor(color).copy(alpha = 0.85f), maxLines = 1)
+                        val bw = w * b.width
+                        val narrow = bw < 72.dp
+                        // a thin edge in the page's colour keeps a cascaded card apart from the one under it
+                        Column(Modifier.offset(x = w * b.left, y = hourH * (b.from / 60f)).width(bw).height(if (b.short) 20.dp else hourH * ((b.to - b.from) / 60f))
+                            .border(1.dp, MaterialTheme.colorScheme.background, RoundedCornerShape(5.dp)).padding(1.dp).clip(RoundedCornerShape(4.dp))
+                            .background(color).clickable { open(b.o) }.padding(horizontal = 4.dp, vertical = if (b.short) 0.dp else 2.dp)) {
+                            Text(b.o.event.title.ifEmpty { "(No title)" } + if (b.short && !narrow) ", " + timeText(context, b.o.start) else "",
+                                style = if (b.short) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium, color = onColor(color),
+                                maxLines = if (narrow || b.short) 1 else 2, softWrap = !narrow && !b.short, overflow = TextOverflow.Ellipsis)
+                            if (!b.short && !narrow && b.to - b.from >= 45) Text(timeText(context, b.o.start) + " – " + timeText(context, b.o.end), style = MaterialTheme.typography.labelSmall, color = onColor(color).copy(alpha = 0.85f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     if (d == today) {
@@ -771,28 +787,31 @@ private data class AgendaNone(override val day: LocalDate) : AgendaRow
 private fun hourText(context: Context, h: Int) =
     if (android.text.format.DateFormat.is24HourFormat(context)) "%02d:00".format(h) else "${(h + 11) % 12 + 1} ${if (h < 12) "AM" else "PM"}"
 
-private class TimeBlock(val o: Occurrence, val from: Int, val to: Int, var col: Int = 0, var cols: Int = 1)
+private class TimeBlock(val o: Occurrence, val from: Int, val to: Int, val short: Boolean, var left: Float = 0f, var width: Float = 1f)
 
-/** The day's timed events in minutes of the day, overlapping ones given columns side by side (Google's way). */
+/**
+ * The day's timed events laid out as Google does, so every title stays readable: events starting within a quarter of
+ * an hour of each other (less than a title's height) share the width side by side; one starting later over a longer one is drawn on top of it, indented
+ * (cascading), its own title clear. A very short one (under half an hour) is a small chip.
+ */
 private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<TimeBlock> {
     val dayStart = d.atStartOfDay(zone)
     val blocks = occ.map { o ->
         val from = ChronoUnit.MINUTES.between(dayStart, o.start).coerceIn(0, 1440).toInt()
         val to = ChronoUnit.MINUTES.between(dayStart, o.end).coerceIn(0, 1440).toInt()
-        TimeBlock(o, from, minOf(maxOf(to, from + 20), 1440)) // a short one still tall enough to tap
+        TimeBlock(o, from, minOf(maxOf(to, from + 22), 1440), short = to - from < 30)
     }.sortedWith(compareBy({ it.from }, { -it.to }))
-    var cluster = mutableListOf<TimeBlock>()
-    var clusterEnd = -1
-    fun close() { val n = (cluster.maxOfOrNull { it.col } ?: 0) + 1; cluster.forEach { it.cols = n }; cluster = mutableListOf() }
+    val groups = mutableListOf<MutableList<TimeBlock>>()
     for (b in blocks) {
-        if (b.from >= clusterEnd) { close(); clusterEnd = -1 }
-        val ends = IntArray(cluster.size + 1) { -1 }
-        cluster.forEach { ends[it.col] = maxOf(ends[it.col], it.to) }
-        b.col = ends.indices.first { ends[it] <= b.from }
-        cluster.add(b)
-        clusterEnd = maxOf(clusterEnd, b.to)
+        val g = groups.lastOrNull()
+        // a short one never takes width from a long one: it sits on top, indented, as a chip
+        if (g != null && b.short == g[0].short && b.from - g.last().from < 15 && b.from < g.maxOf { it.to }) g.add(b) else groups.add(mutableListOf(b))
     }
-    close()
+    groups.forEachIndexed { i, g ->
+        val depth = groups.take(i).count { e -> e.maxOf { it.to } > g[0].from }.coerceAtMost(3)
+        val left = depth * 0.14f
+        g.forEachIndexed { k, b -> b.left = left + (1 - left) * k / g.size; b.width = (1 - left) / g.size }
+    }
     return blocks
 }
 

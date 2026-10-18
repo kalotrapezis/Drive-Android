@@ -1661,6 +1661,26 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
             }
         }
+        // Typing in a cell: Words' bar on the keyboard (Words' [KeyboardBar]), its looks on the cell, as Excel's phone app
+        // has them; ⋯ puts the typing in and brings the ribbon back
+        val said = rememberDictation { t -> draft?.let { v -> val at = v.selection.min
+            draft = TextFieldValue(v.text.substring(0, at) + t + v.text.substring(v.selection.max), androidx.compose.ui.text.TextRange(at + t.length)) } }
+        androidx.compose.animation.AnimatedVisibility(d != null && rs != null && rb != null && rl != null, enter = SLIDE_IN, exit = SLIDE_OUT) {
+            val s = rs ?: return@AnimatedVisibility; val b = rb ?: return@AnimatedVisibility; val l = rl ?: return@AnimatedVisibility
+            val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+            val (cr, cc) = chosen(s)
+            val now = version.let { (s[cr, cc]?.fileStyle ?: (s.rowStyles[cr] ?: s.colStyles[cc] ?: 0)).let { b.styles.getOrNull(it) } ?: SheetStyle() }
+            fun look(change: (SheetStyle) -> SheetStyle) {
+                val changed = SheetLook.change(b, s, targets(s, l)) { st, _ -> change(st) }
+                if (changed.isNotEmpty()) { history.apply(b, index, changed); version++; WriterLog.i("Sheets: ${changed.size} cells formatted from the keyboard bar") }
+            }
+            Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                KeyboardBar(islandContentColor(), now.bold, now.italic, now.underline,
+                    { look { it.copy(bold = !now.bold) } }, { look { it.copy(italic = !now.italic) } }, { look { it.copy(underline = !now.underline) } },
+                    { c -> look { it.copy(fill = c?.let { (it.value shr 32).toInt() }) } },
+                    { said?.invoke() ?: run { message = "This phone has no voice typing" } }, { commit(false); focusManager.clearFocus() }, { keyboard?.hide() })
+            }
+        }
         androidx.compose.animation.AnimatedVisibility(fontStrip != null && rs != null && rb != null && rl != null, enter = SLIDE_IN, exit = SLIDE_OUT) {
             // a font tapped shows on the cells at once, in place of the one tapped before; ✕ puts the cells back as they were
             fun unshow() { if (fontChosen != null) { rb?.let { history.undo(it) }; version++; fontChosen = null } }

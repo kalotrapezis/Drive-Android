@@ -91,6 +91,9 @@ How to write here:
 - (office-F, 17 Oct night) **Touch targets** (A's script, details under A › Touch points): the tab row's tabs are 41–43 dp tall and the
   icon-only ribbon buttons 40–46 dp wide, under Android's 48 dp. Make them 48 dp (the ribbon ~5 dp taller; icon buttons' circles
   as now, 8 dp more room round each), or keep the present compact look?
+- (office-F, 18 Oct) **Tables' AutoSave**: Tables' File tab now has AutoSave, sharing Words' own setting — so with it on (it was, on the
+  emulator) a spreadsheet saves itself a few seconds after each change, as a Words document does. Keep it shared, or give Tables its own
+  setting starting off?
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
@@ -980,9 +983,12 @@ what is not already above:
       options; the bar comes back while typing); headings and gridlines kept in the file (above). Emulator: A1:D5 zoomed to, the
       bar and tabs hidden. Not yet: page break preview, page layout view.
 - [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
-- [~] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
+- [x] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.
-      Done (office-F session, 18 Oct) but the keyboard bar: File › Save a copy ("<name> (copy)" beside it), AutoSave (Words' own
+      Keyboard bar done 18 Oct (office-F): Words' KeyboardBar and rememberDictation while a cell is typed in, on tablet and
+      phone (Tables hides its ribbon while typing on both); Bold, Italic, Underline and the highlighter (the fill) on the chosen
+      cells, voice typing in at the cursor, ⋯ puts the typing in and brings the ribbon back. Emulator: "hello" bold on yellow.
+      Done (office-F session, 18 Oct): File › Save a copy ("<name> (copy)" beside it), AutoSave (Words' own
       setting, shared: a few seconds after a change, never while a cell is being typed in), Save as (the new file open from then
       on), Rename (its versions and draft with it). Emulator: each on a copy of sheet.xlsx. Note for the user: AutoSave is Words'
       setting, so with it on (as on this emulator) Tables now saves by itself too — the File tab's AutoSave turns it off for both.

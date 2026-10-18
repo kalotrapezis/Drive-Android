@@ -490,6 +490,15 @@ object CalendarFiles {
     fun trash(calendarRoot: File, file: File): String =
         DriveRules.moveToTrash(calendarRoot.parentFile!!, file.relativeTo(calendarRoot.parentFile!!).path)
 
+    /**
+     * The Calendar's part of Tetra's Trash (asked 18 Oct): its event files and when each went in, newest first. A move
+     * into Trash/ changes the ctime only, as sync's 30-day sweep reads it (SyncClient, purgatory.js).
+     */
+    fun trashed(calendarRoot: File): List<Pair<CalFile, Long>> = (File(calendarRoot.parentFile, "Trash").listFiles() ?: emptyArray())
+        .filter { it.isFile && it.name.endsWith(".ics", true) && !it.name.startsWith(".") }
+        .map { read(it) to runCatching { android.system.Os.lstat(it.path).st_ctime * 1000 }.getOrDefault(it.lastModified()) }
+        .sortedByDescending { it.second }
+
     /** The other files of the same event in its calendar: sync's "(2)" copies, for "Keep this one". */
     fun copies(cal: CalendarInfo, f: CalFile): List<File> = (cal.dir.listFiles() ?: emptyArray())
         .filter { it.isFile && it.name.endsWith(".ics", true) && it != f.file && !it.name.startsWith(".") && read(it).uid == f.uid }

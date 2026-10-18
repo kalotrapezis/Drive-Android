@@ -182,6 +182,11 @@ class CalendarTest {
         val there = File(calRoot, "Home/${moved.name}")
         assertEquals("Trash/${moved.name}", CalendarFiles.trash(calRoot, there))
         assertTrue(!there.exists() && File(tetra, "Trash/${moved.name}").isFile)
+        File(tetra, "Trash/notes.txt").writeText("not an event")
+        val trashed = CalendarFiles.trashed(calRoot)
+        assertEquals(listOf(moved.name), trashed.map { it.first.file.name }) // the Calendar's part of the Trash only
+        val back = CalendarFiles.move(trashed[0].first.file, CalendarFiles.calendars(calRoot).first { it.name == "Work" })
+        assertTrue(back.isFile && CalendarFiles.trashed(calRoot).isEmpty())
     }
 
     @Test fun `the reminders due in a span, a repeating one each day`() {

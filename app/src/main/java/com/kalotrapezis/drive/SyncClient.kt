@@ -948,13 +948,14 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val files = connections(host, p).firstOrNull { it.content == "files" } ?: SyncConnection("files", "both", "everything")
         if (!files.sends && !files.receives) return 0
         val failed = mutableListOf<String>()
-        val n = syncFiles(host, p, files, failed, {}, {}, scope)
+        val counts = IntArray(1)
+        val n = syncFiles(host, p, files, failed, {}, {}, scope, counts)
         runCatching { CalendarAlarms.plan(context) }
         if (failed.isNotEmpty()) throw SyncException(failed.joinToString("; "))
-        return n
+        return n + counts[0] // what came here, and what went there or moved
     }
 
-    private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit, scope: String? = null): Int {
+    private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit, scope: String? = null, counts: IntArray? = null): Int {
         val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
         if (!root.isDirectory) return 0
         val entries = if (scope == null) driveManifest.entries(root) else driveManifest.entries(root) { DriveScope.contains(scope, it) }
@@ -971,6 +972,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 uploadFile(host, p, entry, File(root, entry.relativePath))
                 sent += entry.relativePath
             }
+            counts?.let { it[0] += sent.size + (answer.optJSONArray("moved")?.length() ?: 0) }
             // A Move keeps a window of files here and deletes the older ones — files only; system folders stay,
             // regular folders left empty go (asked 2026-09-25). Only what the computer confirmed holding in this sync
             // goes: it did not ask for it, or it just received it verified.
@@ -991,6 +993,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         if (!connection.receives) return 0
         // A move the computer made is followed, never downloaded: the bytes are already here, under another name.
         val moveTo = answer.optJSONArray("moveTo") ?: JSONArray()
+        counts?.let { it[0] += moveTo.length() }
         for (i in 0 until moveTo.length()) runCatching {
             val move = moveTo.getJSONObject(i)
             moveFile(root, move.getString("from"), move.getString("to"))

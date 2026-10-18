@@ -62,6 +62,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -252,6 +254,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var asking by remember { mutableStateOf<Asking?>(null) } // a repeating event's This / Following / All
     var calDialog by remember { mutableStateOf<CalendarInfo?>(null) }
     var newCal by remember { mutableStateOf(false) }
+    var trashOpen by remember { mutableStateOf(false) }
     var deleteCal by remember { mutableStateOf<CalendarInfo?>(null) }
     var birthday by remember { mutableStateOf(false) }
     var schedule by remember { mutableStateOf(false) }
@@ -293,12 +296,32 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     /** Writes on the IO thread and says what [work] answers; the folder's watcher shows the result, the reminders follow. */
     fun writeSaying(work: () -> String) = scope.launch {
         val done = withContext(Dispatchers.IO) { runCatching(work).also { runCatching { CalendarAlarms.plan(context) } } }
-        if (done.isSuccess) ScopedSync.soon(context, "calendar") // to the other devices at once, as Notes (18 Oct)
+        if (done.isSuccess) ScopedSync.soon(context, "calendar", 0, orWhole = true) // to the other devices at once (the user, 18 Oct: "no delay")
         message = done.getOrElse { "Not saved: ${it.message ?: it.javaClass.simpleName}" }
         done.exceptionOrNull()?.let { WriterLog.e("Calendar: a change failed", it) }
         version++
     }
     fun write(said: String, work: () -> Unit) = writeSaying { work(); said }
+    // Refresh (the user, 18 Oct: "add a refresh button at the top right"): the Calendar's part with the computer now
+    var syncing by remember { mutableStateOf(false) }
+    fun refresh() = scope.launch {
+        if (syncing) return@launch
+        syncing = true
+        val r = withContext(Dispatchers.IO) { runCatching { SyncClient(context.applicationContext, SyncStore(context.applicationContext)).scopeOnly("calendar") } }
+        syncing = false
+        message = r.fold({ n -> if (n == 0) "Up to date" else "$n change" + if (n == 1) "" else "s" }) { e ->
+            if (e.message?.contains("Unknown request") == true) { // the computer's Tetra is older: the whole sync, as Sync now
+                runCatching { androidx.core.content.ContextCompat.startForegroundService(context, android.content.Intent(context, SyncService::class.java).setAction(SyncService.ACTION_START)) }
+                "Syncing everything (the computer's Tetra is older)"
+            } else if (SyncStore(context).pairing() == null) "Not paired with a computer" else "Could not sync: ${e.message}"
+        }
+        version++
+    }
+    val refreshButton: @Composable () -> Unit = {
+        val turn by androidx.compose.animation.core.rememberInfiniteTransition(label = "sync").animateFloat(0f, if (syncing) 360f else 0f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing)), label = "turn")
+        IconButton(onClick = { refresh() }) { Icon(painterResource(R.drawable.ic_sync), contentDescription = if (syncing) "Syncing" else "Sync now", modifier = Modifier.graphicsLayer { rotationZ = if (syncing) -turn else 0f }) }
+    }
     // Import: an .ics or Takeout's zip, from the picker or opened from another app
     var incoming by remember { mutableStateOf<List<CalendarTransfer.Incoming>?>(null) }
     fun readImport(uri: android.net.Uri) = scope.launch {
@@ -430,9 +453,14 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     icon = R.drawable.ic_calendar_today, back = back, island = true,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     // a wide screen has Today and the arrows at the bottom, by the + (the user, 18 Oct); the top keeps the title
-                    trailing = if (wide) null else ({
+                    // the Trash beside sync (the user, 18 Oct: "not something people press regularly"); a phone's is in the drawer
+                    trailing = if (wide) ({ Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) { Row {
+                        IconButton(onClick = { trashOpen = true }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Trash") }
+                        refreshButton()
+                    } } }) else ({
                         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                refreshButton()
                                 TextButton(onClick = { selected = today }) { Text("Today", color = islandContentColor()) }
                                 if (wide || view != CalView.Agenda) {
                                     IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
@@ -485,7 +513,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             else Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                     CalendarList(cals, hidden, ::toggle, { drawer = false; calDialog = it }, { drawer = false; newCal = true },
-                        { drawer = false; pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { drawer = false; exportAll.launch("Tetra calendars.zip") })
+                        { drawer = false; pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { drawer = false; exportAll.launch("Tetra calendars.zip") },
+                        trash = { drawer = false; trashOpen = true })
                 }
             }
         }
@@ -504,6 +533,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             keep = { shown = null; write("Kept this version; the other went to the Trash") { CalendarFiles.copies(o.calendar, o.file).forEach { CalendarFiles.trash(root, it) } } })
     }
     if (editing == null) asking?.let { a -> ScopeDialog(a.deleting, { asking = null }) { sc -> asking = null; a.then(sc) } }
+    if (trashOpen) CalendarTrash(root, cals, version, { trashOpen = false }) { f, to -> write("Restored to ${to.name}") { CalendarFiles.move(f.file, to) } }
     if (newCal) CalendarDialog(null, cals.map { it.name }.toSet(), { newCal = false }) { name, color ->
         newCal = false
         write("Calendar $name created") { CalendarFiles.newCalendar(root, name, color) }
@@ -598,7 +628,7 @@ private fun viewIcon(v: CalView) = when (v) {
     CalView.Year -> R.drawable.ic_calendar_today
 }
 
-@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit, settings: Boolean = true) {
+@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit, settings: Boolean = true, trash: (() -> Unit)? = null) {
     Column {
         Text("My calendars", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
         if (cals.isEmpty()) Text("No calendars yet. Each folder in Tetra/Calendar is one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -615,9 +645,43 @@ private fun viewIcon(v: CalView) = when (v) {
         Row {
             TextButton(onClick = import) { Text("Import") }
             if (cals.isNotEmpty()) TextButton(onClick = exportAll) { Text("Export all") }
+            trash?.let { TextButton(onClick = it) { Text("Trash") } }
         }
         if (settings) { RemindersSwitch(); ShareWithClaude() }
     }
+}
+
+/** Deleted events (asked 18 Oct): each with its day and the days it has left, and Restore into a calendar. */
+@Composable private fun CalendarTrash(root: java.io.File, cals: List<CalendarInfo>, version: Int, dismiss: () -> Unit, restore: (CalFile, CalendarInfo) -> Unit) {
+    val items by produceState(emptyList<Pair<CalFile, Long>>(), version) { value = withContext(Dispatchers.IO) { CalendarFiles.trashed(root) } }
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Trash") },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Close") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Deleted events stay here 30 days, then they are deleted for good.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (items.isEmpty()) Text("The Trash has no events.", Modifier.padding(top = 16.dp))
+                items.forEach { (f, at) ->
+                    val e = f.master ?: f.overrides.firstOrNull()
+                    val left = (30 - (System.currentTimeMillis() - at) / 86_400_000L).coerceAtLeast(0)
+                    var pick by remember { mutableStateOf(false) }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(e?.title?.ifBlank { null } ?: "(No title)", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(e?.start?.format(DateTimeFormatter.ofPattern(if (e.allDay) "EEE d MMM yyyy" else "EEE d MMM yyyy, HH:mm", Locale.ENGLISH)),
+                                if (left == 1L) "1 day left" else "$left days left").joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Box {
+                            TextButton(enabled = cals.isNotEmpty(), onClick = { if (cals.size == 1) restore(f, cals[0]) else pick = true }) { Text("Restore") }
+                            DropdownMenu(pick, { pick = false }) {
+                                cals.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, onClick = { pick = false; restore(f, c) },
+                                    leadingIcon = { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(c.color))) }) }
+                            }
+                        }
+                    }
+                }
+            }
+        })
 }
 
 /**
@@ -1030,7 +1094,7 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
         CalendarTransfer.write(to, inc).let { (a, u) -> added += a; updated += u }
     }
     runCatching { CalendarAlarms.plan(context) }
-    ScopedSync.soon(context, "calendar")
+    ScopedSync.soon(context, "calendar", 0, orWhole = true)
     return "Imported: $added new" + if (updated > 0) ", $updated updated" else ""
 }
 

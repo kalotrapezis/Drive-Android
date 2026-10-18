@@ -119,14 +119,19 @@ internal object ScopedSync {
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pending: Job? = null
 
-    fun soon(context: Context, scope: String, delayMs: Long = 2_500) {
+    /** [orWhole]: a change made here, which an older computer then takes by the whole sync (the computer's own "/sync" arranges its own). */
+    fun soon(context: Context, scope: String, delayMs: Long = 2_500, orWhole: Boolean = false) {
         val app = context.applicationContext
         pending?.cancel()
         pending = running.launch {
             delay(delayMs)
             if (SyncService.isRunning) return@launch // the whole sync is carrying it now
             runCatching { SyncClient(app, SyncStore(app)).scopeOnly(scope) }.onFailure {
-                if (it.message?.contains("Unknown request") == true) return@onFailure WriterLog.w("Scoped sync $scope: the computer's Tetra is too old; the whole sync carries it")
+                if (it.message?.contains("Unknown request") == true) { // the computer's Tetra is older: the whole sync, now
+                    WriterLog.w("Scoped sync $scope: the computer's Tetra is too old; the whole sync carries it")
+                    if (orWhole) runCatching { androidx.core.content.ContextCompat.startForegroundService(app, android.content.Intent(app, SyncService::class.java).setAction(SyncService.ACTION_START)) }
+                    return@onFailure
+                }
                 WriterLog.w("Scoped sync $scope: waiting for a network (${it.message})")
                 wait(app, scope)
             }

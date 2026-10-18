@@ -1524,11 +1524,14 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       drawer and Settings › Calendar: Share (the share sheet) and Save to Files. Desktop, in the Settings drawer: Save as…
       (~/Downloads) and Copy to ~/.claude/skills. "Lets Claude read and change this calendar by editing its files."
 
-- [~] (calendar pickers session, 18 Oct) **Clock and month pickers on the desktop; a repeat's cancelled days follow its
-      time** (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the
-      date not a calendar"): desktop editor's quarter-hour list → a clock that takes any minute (typed too), every date
-      field → a month calendar; moving all of a repeat's times shifts its EXDATEs and RECURRENCE-IDs alike (desktop and
-      Android), so cancelled days stay cancelled.
+- [x] (Drive ca93bdb; 2f3c21e) **Clock and month pickers on the desktop; a repeat's cancelled days follow its time**
+      (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the date not
+      a calendar"): every time field types any minute ("12:25", "1225", "925") and opens a clock as the phone's (hours
+      00–11 outside, 12–23 inside, then minutes); every date field opens a month (‹ ›, the year list for birthdays,
+      Today). Moving a repeat's start moves its EXDATEs and RECURRENCE-IDs by as much, desktop and Android (a test in
+      each). Checked in the desktop source build against the real library, nothing saved; installed Tetra restarted.
+      Not done: the user's own ΤΠΕ Β' file (its EXDATEs are still at 11:50) — the main session asks the user; "this and
+      following" still drops the cancelled days after the split (both apps).
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

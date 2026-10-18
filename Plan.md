@@ -1494,6 +1494,25 @@ sync and you to be able to work with it with a skill just by editing files like 
       two events of one title whose Google UIDs begin alike got one file name, one lost; names now use the UID's hash and
       never take another's. The skill's helper is now tetra_calendar.py (calendar.py hid Python's own module).
 
+### Wide and narrow, and kinds of event (the user, 18 Oct, relayed by the main session; overrides part of the island ask)
+"On a wide screen dont hide the calendar or the opitions as it was then the island it would hide only the setting day
+week month year. On narow screen keep the calendar at the top I like to see you now a week or two or three or month and
+be able to choose." Then: "Alltho to be closer to our thing we could bring calendar to the bottom and ajenta to the top".
+And for Home: "On the default buttons at home add New : Shedule : burthday : reminder."
+- [~] (calendar session, 18 Oct) **Wide** (tablet landscape, desktop): the small month and the calendars (show/hide,
+      New calendar, Import, Export) always beside the grid; the island only Day · Week · Month · Year (a new Year view)
+      and New event; the drawer only what is left (the reminders switch). The top in Tetra's pill style.
+- [~] **Narrow** (phone, tablet portrait, a narrow desktop window): the events on top; a small calendar at the bottom,
+      just above the island — 1, 2 or 3 weeks or the month, its handle dragged up for more and down for fewer (kept);
+      a day tapped there moves the events to it. The island and drawer as before. Same at the same widths on the PC.
+- [~] **Kinds**: Home's Calendar card gets four tiles as Office's — New, Schedule, Birthday, Reminder — and + in the app
+      offers the same. Birthday: a Birthdays calendar (made if missing), all day, yearly, name and date, the year
+      optional (kept as X-TETRA-BIRTH-YEAR so the age shows). Schedule: chosen weekdays, a time, a start and end — one
+      event `RRULE:FREQ=WEEKLY;BYDAY=…;UNTIL=…`; templates "Elementary school year" (1 Sep – 26 Jun, the user's dates)
+      and "High school year" (1 Sep – 15 Jun: **the end date needs the user's confirmation**), both editable; "Skip the
+      Holidays calendar's days" adds an EXDATE for each. Reminder: one event with a list of notifications. All plain
+      .ics the tetra-calendar skill reads and writes.
+
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

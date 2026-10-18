@@ -80,11 +80,16 @@ How to write here:
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
       Sources sheet (116c4d6), Review tab (b39004e),
       freeze panes (e621ff6), zoom to selection and the bar/tabs (0d32d4e),
-      Goal seek and CSV import (cf4d0d0), Reapply (f6d3d41), File's Save a copy/AutoSave/Save as/Rename. Checks at a925139: unit
+      Goal seek and CSV import (cf4d0d0), Reapply (f6d3d41), File's Save a copy/AutoSave/Save as/Rename (4667b2e), the keyboard bar
+      while typing in a cell (86dc6c7) and in a Slides text box (90463dc), Formulas' Recently used (4519744), Calculate sheet
+      (7c1bdd0), Evaluate formula (5e528d4), Show all notes (00a7f4e), Protect workbook (bbaafa4), a note in place of an Excel 365
+      thread (1c6a74b), Equation (1822d02), a save keeping Undo (59c9218), WordArt (3dca5bb), Page break preview (48bc258), Page
+      layout view (efc4b16), Draw on sheet (70fcb8f) — C done (c378f71). Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
-      failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
-      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics), View › Freeze panes.
+      failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. At c378f71 (04:10, C done): unit 490, 0 failing, 7 skipped
+      (the sweep's and LibreOffice-only ones); sweep 349 documents + 29 decks, none failing. Emulator only. For the tablet too: Tables › Page
+      layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics), View › Freeze panes; then View › Zoom to selection, Formula bar, Sheet tabs, Page break preview, Page layout; Data › Goal seek, From text/CSV, Reapply; File › Save a copy, AutoSave (Undo kept after a save), Save as, Rename; the keyboard bar while typing in a cell (phone and tablet) and in a Slides text box; Formulas › Recently used, Calculate sheet, Evaluate formula; Review › Show all notes, Protect workbook; Insert › Equation, WordArt (a look and a bend); Draw › Draw on sheet (with the tablet's pen).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -93,7 +98,7 @@ How to write here:
   as now, 8 dp more room round each), or keep the present compact look?
 - (office-F, 18 Oct) **Tables' AutoSave**: Tables' File tab now has AutoSave, sharing Words' own setting — so with it on (it was, on the
   emulator) a spreadsheet saves itself a few seconds after each change, as a Words document does. Keep it shared, or give Tables its own
-  setting starting off?
+  setting starting off? (Undo now goes back past a save, as Word's — 59c9218 — so AutoSave no longer costs Undo.)
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)

@@ -42,6 +42,26 @@ internal object SheetChart {
             """<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="9525"><a:solidFill><a:srgbClr val="808080"/></a:solidFill></a:ln></xdr:spPr>""" +
             """<xdr:txBody><a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>$paras</xdr:txBody></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>""" }
 
+    /**
+     * Insert › WordArt (Words' looks and bends): [text] in [color] (0xRRGGBB), bold, [sizePt], with Words' [effects] on its
+     * letters and [warp] — Excel's WordArt: a text box with no fill or line, the letters' outline (a:ln) and glow and shadow
+     * (a:effectLst) in the run, the bend as prstTxWarp, as PowerPoint and Excel write them.
+     */
+    fun wordArtXlsx(source: File, target: File, sheetPart: String, row: Int, col: Int, widthPt: Float, heightPt: Float, text: String, color: Int, sizePt: Float,
+                    effects: TextEffects, warp: TextWarp?) =
+        anchored(source, target, sheetPart, null) { n, _ -> val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
+            fun hex(c: Int) = "%06X".format(c and 0xFFFFFF)
+            val ln = "<a:ln w=\"12700\">" + (effects.outline?.let { "<a:solidFill><a:srgbClr val=\"${hex(it)}\"/></a:solidFill>" } ?: "<a:noFill/>") + "</a:ln>"
+            val fx = if (effects.glow == null && !effects.shadow) "" else "<a:effectLst>" +
+                (effects.glow?.let { "<a:glow rad=\"101600\"><a:srgbClr val=\"${hex(it)}\"><a:alpha val=\"40000\"/></a:srgbClr></a:glow>" } ?: "") +
+                (if (effects.shadow) "<a:outerShdw blurRad=\"38100\" dist=\"38100\" dir=\"2700000\" algn=\"tl\" rotWithShape=\"0\"><a:srgbClr val=\"000000\"><a:alpha val=\"60000\"/></a:srgbClr></a:outerShdw>" else "") + "</a:effectLst>"
+            val rPr = "<a:rPr lang=\"en-US\" sz=\"${Math.round(sizePt * 100)}\" b=\"1\">$ln<a:solidFill><a:srgbClr val=\"${hex(color)}\"/></a:solidFill>$fx</a:rPr>"
+            val paras = text.split('\n').joinToString("") { "<a:p><a:pPr algn=\"ctr\"/><a:r>$rPr<a:t>${OfficeFormats.esc(it)}</a:t></a:r></a:p>" }
+            val bend = warp?.let { "<a:prstTxWarp prst=\"${it.word}\"><a:avLst/></a:prstTxWarp>" } ?: ""
+            """<xdr:oneCellAnchor>${mark("from", row, col)}<xdr:ext cx="$cx" cy="$cy"/><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="$n" name="WordArt $n"/><xdr:cNvSpPr txBox="1"/></xdr:nvSpPr>""" +
+            """<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$cx" cy="$cy"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></xdr:spPr>""" +
+            """<xdr:txBody><a:bodyPr wrap="none" rtlCol="0" anchor="ctr" fromWordArt="1">$bend</a:bodyPr><a:lstStyle/>$paras</xdr:txBody></xdr:sp><xdr:clientData/></xdr:oneCellAnchor>""" }
+
     /** Insert › Shape (Words' shapes dialog): preset [kind] ("rect", "rightArrow"…) at cell [row], [col], its [fill] and [line] — Excel's shape. */
     fun shapeXlsx(source: File, target: File, sheetPart: String, row: Int, col: Int, widthPt: Float, heightPt: Float, kind: String, fill: Int?, line: Int?) =
         anchored(source, target, sheetPart, null) { n, _ -> val cx = (widthPt * 12700).toLong(); val cy = (heightPt * 12700).toLong()
@@ -145,6 +165,45 @@ internal object SheetChart {
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             val paras = text.split('\n').joinToString("") { "<text:p>${OfficeFormats.esc(it)}</text:p>" }
             val shape = OfficeFormats.parse("""<draw:custom-shape xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" draw:z-index="0" draw:name="TextBox tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}">$paras<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle" draw:enhanced-path="M 0 0 L 21600 0 21600 21600 0 21600 0 0 Z N"/></draw:custom-shape>""".toByteArray()).documentElement
+            val cell = SheetMerge.odsCell(doc, table, row, col)
+            cell.insertBefore(doc.importNode(shape, true), cell.firstChild)
+            SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")
+        }
+    }
+
+    /**
+     * LibreOffice: WordArt in cell [row], [col] of sheet [index] — straight, a shape with no fill or line holding the words in
+     * a text style of their own (colour, size, bold, outline, shadow; LibreOffice has no glow); bent, its fontwork, which
+     * paints the letters in the shape's fill and outlines them in its line, as Impress writes one.
+     */
+    fun wordArtOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, text: String, color: Int, sizePt: Float,
+                   effects: TextEffects, warp: TextWarp?) {
+        ZipFile(source).use { zip ->
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+            val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"; val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"; val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+            val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
+            val taken = (0 until autos.childNodes.length).mapNotNull { (autos.childNodes.item(it) as? Element)?.getAttributeNS(S, "name") }.toMutableSet()
+            fun style(prefix: String, family: String, kind: String, set: (Element) -> Unit) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { name -> taken += name
+                autos.appendChild(doc.createElementNS(S, "style:style").also { st -> st.setAttributeNS(S, "style:name", name); st.setAttributeNS(S, "style:family", family)
+                    st.appendChild(doc.createElementNS(S, "style:$kind").also(set)) }) }
+            fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
+            val graphic = style("grT", "graphic", "graphic-properties") { p ->
+                if (warp != null) { p.setAttributeNS(DRAW, "draw:fill", "solid"); p.setAttributeNS(DRAW, "draw:fill-color", hex(color))
+                    if (effects.outline != null) { p.setAttributeNS(DRAW, "draw:stroke", "solid"); p.setAttributeNS(SVG, "svg:stroke-color", hex(effects.outline)) } else p.setAttributeNS(DRAW, "draw:stroke", "none") }
+                else { p.setAttributeNS(DRAW, "draw:fill", "none"); p.setAttributeNS(DRAW, "draw:stroke", "none") }
+                p.setAttributeNS(DRAW, "draw:textarea-horizontal-align", "center"); p.setAttributeNS(DRAW, "draw:textarea-vertical-align", "middle")
+                // its size as made (LibreOffice's shapes otherwise shrink to their words, and move)
+                p.setAttributeNS(DRAW, "draw:auto-grow-width", "false"); p.setAttributeNS(DRAW, "draw:auto-grow-height", "false") }
+            val words = style("T", "text", "text-properties") { p -> p.setAttributeNS(FO, "fo:color", hex(color)); p.setAttributeNS(FO, "fo:font-size", "${sizePt}pt"); p.setAttributeNS(FO, "fo:font-weight", "bold")
+                if (effects.outline != null) p.setAttributeNS(S, "style:text-outline", "true"); if (effects.shadow) p.setAttributeNS(FO, "fo:text-shadow", "1pt 1pt") }
+            fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
+            val paras = text.split('\n').joinToString("") { "<text:p><text:span text:style-name=\"$words\">${OfficeFormats.esc(it)}</text:span></text:p>" }
+            val geometry = if (warp == null) """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle"/>"""
+                else """<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:text-path="true" draw:text-path-mode="path" draw:text-path-scale="path" draw:type="${warp.fontwork}"/>"""
+            val shape = OfficeFormats.parse("""<draw:custom-shape xmlns:draw="$DRAW" xmlns:svg="$SVG" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" draw:style-name="$graphic" draw:z-index="0" draw:name="WordArt tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}">$paras$geometry</draw:custom-shape>""".toByteArray()).documentElement
             val cell = SheetMerge.odsCell(doc, table, row, col)
             cell.insertBefore(doc.importNode(shape, true), cell.firstChild)
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc)), "mimetype")

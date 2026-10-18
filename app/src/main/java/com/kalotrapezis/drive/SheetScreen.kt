@@ -189,6 +189,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var splitting by remember { mutableStateOf<SheetRange?>(null) } // Data › Text to columns: the cells (one column, the sheet's)
     var ruling by remember { mutableStateOf<Pair<String, SheetRange>?>(null) } // Home › Conditional formatting: a highlight rule's kind and the cells (the sheet's)
     var equating by remember { mutableStateOf(false) } // Insert › Equation: Words' editor
+    var artStrip by remember { mutableStateOf<Pair<ArtStyle, ArtBend>?>(null) } // Insert › WordArt: Words' strip, the look and bend tapped
+    var artWords by remember { mutableStateOf<Pair<ArtStyle, ArtBend>?>(null) } // then its words asked
     var protectingBook by remember { mutableStateOf(false) } // Review › Protect / Unprotect workbook: its password asked
     var protecting by remember { mutableStateOf(false) } // the sheet tab › Protect / Unprotect: its password asked
     var footing by remember { mutableStateOf<String?>(null) } // Page layout › Header or Footer › Custom…: "header" or "footer"
@@ -1246,6 +1248,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (b.kind != "csv") RibbonButton("Text box", w, R.drawable.ic_text_fields) { boxing = true }
                             if (b.kind != "csv") RibbonButton("Shape", w, R.drawable.ic_category) { shaping = true }
                             if (b.kind != "csv") RibbonButton("Equation", w, R.drawable.ic_functions) { equating = true }
+                            if (b.kind != "csv") RibbonButton("WordArt", w, R.drawable.ic_format_color_text) { artStrip = ART_STYLES[0] to ArtBend(null) }
                             // References: where the data came from — Words' source dialog, the reference in APA 7 on the Sources sheet
                             if (b.kind != "csv") RibbonButton("Source", w, R.drawable.ic_menu_book) { sourcing = true }
                             // References: a first sheet listing every sheet as a link (made again when there is one)
@@ -1579,7 +1582,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         // the ribbon at the top while a mouse is in use (or as Settings say): under the cell bar, as a PC's Excel has it
         run {
             val rs = sheet; val rb = book; val rl = layout
-            androidx.compose.animation.AnimatedVisibility(OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
+            androidx.compose.animation.AnimatedVisibility(OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && artStrip == null && (header != null || view.range != null || editing),
                 enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()) {
                 if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl)
             }
@@ -1648,7 +1651,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         val rs = sheet; val rb = book; val rl = layout
         // The ribbon slides down and up, as Writer's; Home › Font's gallery takes its place (asked 16 Oct, as Page numbers).
-        androidx.compose.animation.AnimatedVisibility(!OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && (header != null || view.range != null || editing),
+        androidx.compose.animation.AnimatedVisibility(!OfficeUi.top && rs != null && rb != null && rl != null && draft == null && !searching && fontStrip == null && artStrip == null && (header != null || view.range != null || editing),
             enter = SLIDE_IN, exit = SLIDE_OUT) { if (rs != null && rb != null && rl != null) Ribbon(rs, rb, rl) }
         // A drop-down list's cell: its values to tap, as Excel's arrow on the cell opens them
         val listed = rs?.takeIf { editing && !searching }?.let { s -> chosen(s).let { (r, c) -> s.listAt(r, c) } }?.items.orEmpty()
@@ -1714,6 +1717,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     { c -> look { it.copy(fill = c?.let { (it.value shr 32).toInt() }) } },
                     { said?.invoke() ?: run { message = "This phone has no voice typing" } }, { commit(false); focusManager.clearFocus() }, { keyboard?.hide() })
             }
+        }
+        // Insert › WordArt: Words' strip of looks and bends; OK asks for its words
+        androidx.compose.animation.AnimatedVisibility(artStrip != null, enter = SLIDE_IN, exit = SLIDE_OUT) {
+            DesignGalleryStrip(DesignGallery.WordArt, artStrip, cancel = { artStrip = null }, ok = { artWords = artStrip; artStrip = null }, pick = { ch ->
+                artStrip = artStrip?.let { (st, bd) -> (ch as? ArtStyle ?: st) to (ch as? ArtBend ?: bd) } },
+                glow = book?.kind != "ods", modifier = Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars))
         }
         androidx.compose.animation.AnimatedVisibility(fontStrip != null && rs != null && rb != null && rl != null, enter = SLIDE_IN, exit = SLIDE_OUT) {
             // a font tapped shows on the cells at once, in place of the one tapped before; ✕ puts the cells back as they were
@@ -2118,6 +2127,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
     if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
     if (inserting) FunctionsDialog({ inserting = false }) { f -> inserting = false; inserted = f }
+    // Insert › WordArt: its words (Words' "Your text here"), put on at the chosen cell in the look and bend chosen, sized to its words as Slides'
+    artWords?.let { (style, bend) ->
+        var words by remember { mutableStateOf("Your text here") }
+        AlertDialog(onDismissRequest = { artWords = null }, title = { Text("WordArt") },
+            text = { OutlinedTextField(words, { words = it }, label = { Text("Its words") }, singleLine = true) },
+            confirmButton = { TextButton(enabled = words.isNotBlank(), onClick = { artWords = null
+                val s = sheet ?: return@TextButton; val (r, c) = chosen(s); val i = index
+                val fx = TextEffects(if (style.outline) artOutline(style.color) else null, style.shadow, if (style.glow && book?.kind != "ods") artGlow(style.color) else null)
+                val (w0, h0) = android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }.measureText(words).let { it * 1.1f + 30f to PictureXml.ART_PT * 1.25f + 10f }
+                val (aw, ah) = when (bend.warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) }
+                fileStep("WordArt put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.wordArtXlsx(baked, next, bb.parts.getValue("$i"), r, c, aw, ah, words, style.color, PictureXml.ART_PT, fx, bend.warp)
+                    else SheetChart.wordArtOds(baked, next, i, r, c, aw, ah, words, style.color, PictureXml.ART_PT, fx, bend.warp) }) }) { Text("Insert") } },
+            dismissButton = { TextButton(onClick = { artWords = null }) { Text("Cancel") } })
+    }
     // Insert › Equation: Words' equation editor, the equation put on the sheet as a picture at the chosen cell (its letters 16 pt).
     // shortcut: a picture, not Excel's own equation (OMML in a text box): edited again as a picture; upgrade if equations are kept editable
     if (equating) EquationDialog(null, { equating = false }) { m -> equating = false
@@ -3236,15 +3259,24 @@ internal class SheetPainter(
                 if (bmp != null) c.drawBitmap(bmp, null, box, fill.apply { color = 0xFFFFFFFF.toInt(); isFilterBitmap = true })
             }
             else -> {
+                val art = d.warp != null || d.effects.any || d.bold && (d.textPt ?: 0f) >= PictureXml.ART_PT // WordArt
                 if (d.shape != null) d.shape.drawAt(c, box.left, box.top, box.width(), box.height())
                 else {
                     d.fill?.let { fill.color = it; c.drawRect(box, fill) }
                     line.color = d.line ?: 0xFF7F7F7F.toInt(); line.strokeWidth = 1f / s; line.pathEffect = null
-                    if (d.line != null || d.fill == null) c.drawRect(box, line)
+                    // a text box with neither shows a thin grey line (to be found); WordArt none
+                    if (d.line != null || d.fill == null && !art) c.drawRect(box, line)
                 }
                 d.text?.takeIf { it.isNotEmpty() }?.let { t ->
-                    text.typeface = Typeface.SANS_SERIF; text.textSize = 11 * 4 / 3f; text.color = d.textColor ?: 0xFF000000.toInt(); text.isUnderlineText = false; text.isStrikeThruText = false
-                    val l = StaticLayout.Builder.obtain(t, 0, t.length, TextPaint(text), max(1, (box.width() - 8).toInt()))
+                    text.typeface = if (d.bold) Typeface.DEFAULT_BOLD else Typeface.SANS_SERIF; text.textSize = (d.textPt ?: 11f) * 4 / 3f; text.color = d.textColor ?: 0xFF000000.toInt()
+                    text.isUnderlineText = false; text.isStrikeThruText = false
+                    // WordArt bent: along its bend, as Words draws it
+                    val bend = d.warp
+                    if (bend != null) { TextBoxDrawable.bent(c, bend, t.replace('\n', ' '), TextPaint(text), box.left, box.top, box.width(), box.height()); return@let }
+                    // its letters' outline, shadow and glow: Words' EffectSpan on each word
+                    val words: CharSequence = if (!d.effects.any) t else android.text.SpannableString(t).also { sp ->
+                        Regex("\\S+").findAll(t).forEach { m -> sp.setSpan(EffectSpan(d.effects, text.color, 1f), m.range.first, m.range.last + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) } }
+                    val l = StaticLayout.Builder.obtain(words, 0, words.length, TextPaint(text), max(1, (box.width() - 8).toInt()))
                         .setAlignment(if (d.centred) android.text.Layout.Alignment.ALIGN_CENTER else android.text.Layout.Alignment.ALIGN_NORMAL).setIncludePad(false).build()
                     val top = if (d.centred) box.top + max(4f, (box.height() - l.height) / 2) else box.top + 4
                     c.save(); c.clipRect(box); c.translate(box.left + 4, top); l.draw(c); c.restore()

@@ -541,6 +541,37 @@ class SheetSaveTest {
         }
     }
 
+    /** Insert › WordArt: straight (outline and shadow) and bent (an arch) — Excel's WordArt text box, LibreOffice's styled words and fontwork; read back, and by LibreOffice. */
+    @Test fun `WordArt put on a sheet`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        for (name in listOf("sheet.xlsx", "sheet.ods")) {
+            val dir = Files.createTempDirectory("wordart").toFile()
+            var f = File(dir, name).apply { writeBytes(resource(name)) }
+            val parts = Sheets.read(f, ',', '.').parts
+            fun step(op: (File, File) -> Unit) { val next = File(dir, "${System.nanoTime()}.${f.extension}"); op(f, next); f = next }
+            fun art(r: Int, words: String, color: Int, fx: TextEffects, warp: TextWarp?) = step { a, b ->
+                if (name.endsWith("xlsx")) SheetChart.wordArtXlsx(a, b, parts.getValue("0"), r, 1, 300f, 60f, words, color, 36f, fx, warp)
+                else SheetChart.wordArtOds(a, b, 0, r, 1, 300f, 60f, words, color, 36f, fx, warp) }
+            art(6, "Straight", 0x4472C4, TextEffects(0x000000, shadow = true), null)
+            art(10, "Bent", 0xED7D31, TextEffects(), TextWarp.ArchUp)
+            fun check(file: File, how: String, effects: Boolean) { val s = Sheets.read(file, ',', '.').sheet(0)
+                val a = s.drawings.firstOrNull { it.text == "Straight" }; val b = s.drawings.firstOrNull { it.text == "Bent" }
+                assertTrue("$how: ${s.drawings.map { it.text }}", a != null && b != null)
+                assertEquals(how, 6, a!!.row); assertEquals(how, 1, a.col); assertEquals(how, 36f, a.textPt); assertTrue(how, a.bold)
+                assertEquals(how, null, a.fill); assertEquals(how, null, a.warp)
+                // LibreOffice's outline is hollow letters in their colour (as Words' .odt): its own files say so their way
+                if (effects) { assertEquals(how, 0xFF4472C4.toInt(), a.textColor); assertEquals(how, 0, a.effects.outline); assertTrue(how, a.effects.shadow) }
+                assertEquals(how, TextWarp.ArchUp, b!!.warp); assertEquals(how, 0xFFED7D31.toInt(), b.textColor); assertEquals(how, null, b.fill)
+                assertEquals(how, "Alpha", s[1, 0]?.text) }
+            check(f, "made in $name", true)
+            if (lo) {
+                val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", false)
+            }
+        }
+    }
+
     /** The view's filter kept as the file's AutoFilter (Excel's autoFilter, LibreOffice's database range): read back, by LibreOffice, taken away. */
     @Test fun `an AutoFilter kept in the file`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

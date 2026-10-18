@@ -57,6 +57,8 @@ internal class SheetDrawing(
 ) {
     /** Its place among the file's drawings (Excel's anchors in the sheet's drawing; LibreOffice's frames and shapes in the sheet), to change it by. */
     var ordinal = -1
+    /** Its words' size (pt) and weight, and WordArt's effects and bend (Excel's run and bodyPr; LibreOffice's text style and fontwork). */
+    var textPt: Float? = null; var bold = false; var effects = TextEffects(); var warp: TextWarp? = null
 }
 
 /**
@@ -1075,6 +1077,10 @@ internal object Sheets {
                     else null
                 val textColor = body.kid("txBody")?.below("rPr")?.firstNotNullOfOrNull { solid(it) } ?: scheme(style?.kid("fontRef"))
                 val centred = body.kid("txBody")?.kid("bodyPr")?.attr("anchor") == "ctr"
+                val rPr = body.kid("txBody")?.below("rPr")?.firstOrNull(); val fx = rPr?.kid("effectLst")
+                fun words(d: SheetDrawing) { d.textPt = rPr?.attr("sz")?.toFloatOrNull()?.div(100); d.bold = rPr?.attr("b") == "1"
+                    d.effects = TextEffects(rPr?.kid("ln")?.let(::solid)?.and(0xFFFFFF), fx?.kid("outerShdw") != null, fx?.kid("glow")?.let(::scheme)?.and(0xFFFFFF))
+                    d.warp = body.kid("txBody")?.kid("bodyPr")?.kid("prstTxWarp")?.attr("prst")?.let { p -> TextWarp.entries.firstOrNull { it.word == p } } }
                 if (body.localName == "sp" && text.isNullOrEmpty() && fillC == null && shape == null) continue
                 val x = at(from, "colOff") / emu; val y = at(from, "rowOff") / emu
                 out += (if (a.localName == "absoluteAnchor") SheetDrawing(0, 0, (pos?.attr("x")?.toLongOrNull() ?: 0) / emu, (pos?.attr("y")?.toLongOrNull() ?: 0) / emu,
@@ -1082,7 +1088,7 @@ internal object Sheets {
                 else if (to != null) SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, at(to, "row").toInt(), at(to, "col").toInt(), at(to, "colOff") / emu, at(to, "rowOff") / emu,
                     chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)
                 else SheetDrawing(at(from, "row").toInt(), at(from, "col").toInt(), x, y, width = (ext?.attr("cx")?.toLongOrNull() ?: 0) / emu, height = (ext?.attr("cy")?.toLongOrNull() ?: 0) / emu,
-                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)).also { it.ordinal = ordinal }
+                    chart = chart, image = image, text = text, fill = fillC, line = lineC, shape = shape, textColor = textColor, centred = centred, crop = crop)).also { it.ordinal = ordinal; words(it) }
             }
             if (out.isNotEmpty()) WriterLog.i("Sheets: ${out.size} drawings (${out.count { it.chart != null }} charts, ${out.count { it.image != null }} pictures)")
             return out
@@ -1645,9 +1651,15 @@ internal object Sheets {
                         val fill = if (g["g.fill"] == "none") null else hex(g["g.fill-color"]) ?: 0xFF729FCF.toInt() // LibreOffice's own blue
                         val line = if (g["g.stroke"] == "none") null else hex(g["g.stroke-color"]) ?: 0xFF3465A4.toInt()
                         val width = (odfPx(g["g.stroke-width"]) ?: 1f).coerceAtLeast(0.5f)
-                        val shape = if (preset != null && preset != "rect" || own != null) ShapePicture(preset ?: "custom", fill, line, width, own, adjust) else null
+                        // WordArt bent (fontwork): its letters painted in the shape's fill, outlined in its line — no box
+                        val warp = geo["type"]?.let { t -> TextWarp.entries.firstOrNull { it.fontwork == t } }
+                        val shape = if (warp == null && (preset != null && preset != "rect" || own != null)) ShapePicture(preset ?: "custom", fill, line, width, own, adjust) else null
+                        val t = shapeSpan?.let { props(it) }.orEmpty()
                         drawings += SheetDrawing(f.row, f.col, f.dx, f.dy, width = f.width, height = f.height, text = shapeText.toString().trim().ifEmpty { null },
-                            fill = fill, line = line, shape = shape, textColor = shapeSpan?.let { hex(props(it)["t.color"]) }, centred = g["g.textarea-vertical-align"] == "middle").also { it.ordinal = f.ordinal }
+                            fill = fill.takeIf { warp == null }, line = line.takeIf { warp == null }, shape = shape, textColor = if (warp != null) fill else hex(t["t.color"]),
+                            centred = g["g.textarea-vertical-align"] == "middle" || warp != null).also { d -> d.ordinal = f.ordinal; d.warp = warp
+                            d.textPt = t["t.font-size"]?.removeSuffix("pt")?.toFloatOrNull(); d.bold = t["t.font-weight"] == "bold"
+                            d.effects = TextEffects(if (warp != null) line?.and(0xFFFFFF) else if (t["t.text-outline"] == "true") 0 else null, t["t.text-shadow"].let { it != null && it != "none" }) }
                         return
                     }
                     // A chart is LibreOffice's object ("./Object 1"); a picture its file; a chart we cannot read is left out.

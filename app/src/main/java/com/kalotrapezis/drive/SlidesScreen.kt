@@ -2663,6 +2663,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
         val keys = remember { androidx.compose.ui.focus.FocusRequester() }
         LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
         var typed by remember { mutableStateOf("") }
+        var picking by remember { mutableStateOf(false) } // PowerPoint's See All Slides: a grid to go to any of them
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).focusRequester(keys).focusable().onKeyEvent { k ->
             if (k.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
             val digit = k.utf16CodePoint.toChar().takeIf { it.isDigit() }
@@ -2694,6 +2695,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
                 tool("Laser", R.drawable.ic_highlighter, tool == "laser") { tool = if (tool == "laser") null else "laser" }
                 if (ink[page].orEmpty().isNotEmpty()) tool("Wipe the ink", R.drawable.ic_ink_eraser, false) { ink.remove(page) }
                 if (tv != null) tool("Black screen", R.drawable.ic_visibility_off, black) { black = !black }
+                tool("All slides", R.drawable.ic_view_grid, picking) { picking = !picking }
             }
             // the slide, its taps and swipes, the pen and the laser
             val slideArea: @Composable (Modifier) -> Unit = { m -> Box(m.pointerInput(tool) {
@@ -2770,6 +2772,13 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
             // Rehearse timings: this slide's time so far, in the corner (PowerPoint's Recording bar)
             if (rehearse != null) Text("Rehearsing · %d:%02d".format(ms(since) / 60_000, ms(since) / 1000 % 60), color = Color.White, style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 10.dp, vertical = 6.dp))
+            // See All Slides: every slide shown (hidden ones too, dimmed), one tapped goes there (on the second screen too)
+            if (picking) androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(220.dp),
+                Modifier.fillMaxSize().background(Color(0xF0101010)), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(shown.size) { i -> Column(Modifier.clip(RoundedCornerShape(6.dp)).clickable { picking = false; goTo(i); WriterLog.i("Slides: show, to slide ${i + 1} from the grid") }) {
+                    SlideCanvas(deck, deck.slides[shown[i]], Modifier.fillMaxWidth().then(if (i == page) Modifier.border(3.dp, POWERPOINT_ORANGE) else Modifier))
+                    Text("${shown[i] + 1}", color = if (i == page) POWERPOINT_ORANGE else Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp)) } }
+            }
             // the dock at the left edge: the tools and the slide count, brought out by two taps; kept from Android's Back swipe there (asked 17 Oct: it conflicted)
             if (tv == null) Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.animation.AnimatedVisibility(dock, enter = androidx.compose.animation.slideInHorizontally { -it }, exit = androidx.compose.animation.slideOutHorizontally { -it }) {

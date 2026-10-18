@@ -592,6 +592,8 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       show drawn on with the pen (while editing), "Keep your ink?" — kept, each slide's strokes become a drawing on it where they were
       (Words' drawing picture, red as the pen, Edit drawing draws on). Emulator: a line under the subtitle, kept. Not yet: a grid to go to
       a slide during the show, without animations, use timings or not; subtitles later.
+      A grid to go to a slide during the show done 18 Oct (office-F): the show's tools › All slides (PowerPoint's See All Slides) —
+      every slide shown, the one on screen marked, one tapped goes there (the second screen follows). Emulator: slide 3 from the grid.
 - [ ] **Record** (later): record narration and timings per slide; export the deck as a video.
 - [x] **View**: reading view; ruler; notes and handout masters (later); grayscale preview (later).
       Done 18 Oct (office-F): View › Ruler (Words' HorizontalRuler and VerticalRuler round the slide being edited, in Words' unit from

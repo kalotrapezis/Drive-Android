@@ -3101,19 +3101,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Save picture as…: into the phone's Pictures/Tetra, where Photos and Files find it. */
     fun savePicture(img: DocImage) {
         val bytes = pictureBytes(img) ?: return
-        scope.launch {
-            val ext = img.part?.substringAfterLast('.')?.lowercase(Locale.ROOT) ?: img.extension
-            val ok = withContext(Dispatchers.IO) { runCatching {
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "${name.substringBeforeLast('.')} picture.$ext")
-                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "image/$ext")
-                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Tetra")
-                }
-                val target = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
-                context.contentResolver.openOutputStream(target)!!.use { it.write(bytes) }
-            }.isSuccess }
-            message = if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
-        }
+        scope.launch { message = savePictureToPhone(context, bytes, img.part?.substringAfterLast('.')?.lowercase(Locale.ROOT) ?: img.extension, name) }
     }
     /** Leaving the document: this session's history goes with it (a recovery draft stays only when Writer did not close). */
     fun exit() {
@@ -5482,3 +5470,26 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
     }
 }
 
+/**
+ * Save picture as… (Words', Slides' and Tables'): [bytes] into the phone's Pictures/Tetra, where Photos and Files find it,
+ * named for the document ([document]); [ext] its kind (null: told by its first bytes). What to tell the user.
+ */
+internal suspend fun savePictureToPhone(context: android.content.Context, bytes: ByteArray, ext: String?, document: String): String {
+    val kind = ext ?: when {
+        bytes.size > 3 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "png"
+        bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "jpg"
+        bytes.size > 3 && String(bytes, 0, 3, Charsets.ISO_8859_1) == "GIF" -> "gif"
+        bytes.size > 12 && String(bytes, 8, 4, Charsets.ISO_8859_1) == "WEBP" -> "webp"
+        else -> return "This picture's kind can't be saved as a photo"
+    }
+    val ok = withContext(Dispatchers.IO) { runCatching {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "${document.substringBeforeLast('.')} picture.$kind")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(kind) ?: "image/$kind")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Tetra")
+        }
+        val target = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+        context.contentResolver.openOutputStream(target)!!.use { it.write(bytes) }
+    }.isSuccess }
+    return if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
+}

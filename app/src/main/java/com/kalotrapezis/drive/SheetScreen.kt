@@ -1118,6 +1118,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         fig != null && shown == figName -> {
                             Text("Drag it to another cell to move it", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
                             RibbonButton("Size", w, R.drawable.ic_aspect_ratio) { figureSizing = fig }
+                            // Words' Save picture as: into the phone's Pictures/Tetra
+                            fig.image?.let { pic -> RibbonButton("Save picture as", w, R.drawable.ic_save) { scope.launch {
+                                message = withContext(Dispatchers.IO) { pic() }?.let { savePictureToPhone(context, it, null, file?.name ?: "Spreadsheet") } ?: "Could not read the picture." } } }
                             RibbonButton("Delete", w, R.drawable.ic_delete) { figureStep(fig, SheetDrawings.Delete) }
                         }
                         shown == "Sheet" -> {

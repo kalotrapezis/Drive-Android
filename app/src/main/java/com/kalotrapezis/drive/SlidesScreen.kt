@@ -1025,6 +1025,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // a video: played in its frame on the slide
                     it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
+                    // Words' Save picture as: into the phone's Pictures/Tetra
+                    if (it0 is SlideItem.Picture && it0.media == null) RibbonButton("Save picture as", w, R.drawable.ic_save) { scope.launch {
+                        message = withContext(Dispatchers.IO) { it0.bytes() }?.let { savePictureToPhone(context, it, null, file?.name ?: "Presentation") } ?: "Could not read the picture." } }
                     if (it0 is SlideItem.Picture && it0.math == null) {
                         // PowerPoint's Picture Styles (the tablet app's frame, shadow, rounded corners) and Transparency
                         Box {

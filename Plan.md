@@ -697,6 +697,8 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       put on here. Add text done 18 Oct (office-F): a deck's shape with no words gets them (typed as a box's are): in a .pptx a text
       body of its own, centred as PowerPoint's (`words added to a shape that had none`); in an .odp a paragraph in the shape.
       Emulator: arrange.pptx's arrow says "Next", LibreOffice reads it there.
+      Save picture as done 18 Oct (office-F): Words' own, now shared (`savePictureToPhone`: into Pictures/Tetra, its kind told by its
+      first bytes) — on a picture's tab in Slides and Tables. Emulator: arrange.pptx's flag saved as a PNG (Tables' not tried there).
 - [~] **Table** tab when a table is chosen (Words'): row above / below, column left / right, delete row, column,
       table; merge and split cells; borders and shading; table styles; Make chart from the table.
       Done 17 Oct (office-D session), for a table put on in Slides: Make chart (Words' `OfficeCharts.fromTable`: the first row names the

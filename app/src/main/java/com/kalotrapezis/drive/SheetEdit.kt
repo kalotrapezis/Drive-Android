@@ -392,6 +392,8 @@ internal class SheetHistory {
         undos.addLast(s); unsaved++
     }
     fun saved() { unsaved = 0; undos.clear(); redos.clear() }
+    /** The file saved with every step in it: Undo keeps going back past it (as Word's), the steps since counted from here. */
+    fun markSaved() { unsaved = 0 }
 }
 
 /**

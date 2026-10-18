@@ -1018,6 +1018,10 @@ what is not already above:
       setting, shared: a few seconds after a change, never while a cell is being typed in), Save as (the new file open from then
       on), Rename (its versions and draft with it). Emulator: each on a copy of sheet.xlsx. Note for the user: AutoSave is Words'
       setting, so with it on (as on this emulator) Tables now saves by itself too — the File tab's AutoSave turns it off for both.
+      Fixed 18 Oct (office-F): a save took Undo away (the file was read again), so with AutoSave on Undo went four seconds after
+      each change. Now a save keeps what is open and Undo, as Word's: the edits are written onto a copy of the file as opened
+      (kept in the working folder), and whole-file steps never start from the file itself. Emulator: a cell typed and a row
+      inserted, each autosaved, both undone, saved again — the file as it was.
 
 ### D. Words
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.

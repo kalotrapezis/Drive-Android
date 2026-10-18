@@ -235,7 +235,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var fontChosen by remember { mutableStateOf<FontChoice?>(null) } // the one shown on the cells, one step of Undo
     val barFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    fun leave() { if (history.unsaved > 0) leaving = true else { file?.let { sheetDraft(context, it).delete() }; back() } } // a draft of changes since undone: gone
+    fun leave() { if (history.unsaved != 0) leaving = true else { file?.let { sheetDraft(context, it).delete() }; back() } } // a draft of changes since undone: gone
     BackHandler {
         when {
             draft != null -> { draft = null; focusManager.clearFocus() }
@@ -251,7 +251,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             val f = file; val b = book
             if (e != androidx.lifecycle.Lifecycle.Event.ON_STOP || f == null || b == null || saving) return@LifecycleEventObserver
             if (index >= 0) views[index]?.let { SheetPlaces.save(context, f, index, it) } // where it was, should Android close it
-            val unsaved = history.unsaved > 0; val from = work ?: f
+            val unsaved = history.unsaved != 0; val from = work ?: f
             scope.launch(Dispatchers.IO) { runCatching {
                 val d = sheetDraft(context, f)
                 if (!unsaved) { d.delete(); return@runCatching }
@@ -433,18 +433,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
             val ext = from.extension.lowercase()
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    // never the file itself: a save changes it, and this step's Undo goes back to what it was
+                    val src = if (from == file) File(workDir, "${System.nanoTime()}.opened.$ext").also { from.copyTo(it, overwrite = true) } else from
                     val baked = File(workDir, "${System.nanoTime()}.edits.$ext")
                     val next = File(workDir, "${System.nanoTime()}.$ext")
                     try {
-                        if (b.edits.isNotEmpty() || b.kind == "csv") SheetSave.save(b, from, baked) else from.copyTo(baked, overwrite = true)
+                        if (b.edits.isNotEmpty() || b.kind == "csv") SheetSave.save(b, src, baked) else src.copyTo(baked, overwrite = true)
                         WriterLog.timed("Sheets: $what") { op(baked, next, b) }
                     } finally { baked.delete() }
-                    next
+                    src to next
                 }
             }
             saving = false
-            result.onSuccess { next ->
-                history.file(SheetHistory.FileStep(i, from, b.edits.mapValues { LinkedHashMap(it.value) }, next, Sheet.key(view.row, view.col)))
+            result.onSuccess { (src, next) ->
+                history.file(SheetHistory.FileStep(i, src, b.edits.mapValues { LinkedHashMap(it.value) }, next, Sheet.key(view.row, view.col)))
                 work = next
                 reread(next, emptyMap())
                 view.range = null
@@ -699,7 +701,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         version++
         // a whole-file step: its copy read again (undone: the copy before, with the edits that were not in it)
         if (step is SheetHistory.FileStep) scope.launch {
-            if (redo) { work = step.to; reread(step.to, emptyMap()) } else { work = step.from.takeIf { it != file }; reread(step.from, step.edits) }
+            if (redo) { work = step.to; reread(step.to, emptyMap()) } else { work = step.from; reread(step.from, step.edits) }
         }
         WriterLog.i("Sheets: ${if (redo) "redo" else "undo"}")
         val k = step.after.keys.firstOrNull() ?: return
@@ -709,7 +711,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
 
     /**
      * Save: the edits written into a new file beside it, the file as it was kept as a version (File › Versions, as
-     * Writer's), then the new one put in its place and read again; [then] after.
+     * Writer's), then the new one put in its place; [then] after. What is open stays as it is, Undo too (as Word's, and
+     * AutoSave saves after every change): the edits are written onto the working copy, else onto a copy of the file as
+     * it was opened, kept as the working copy from then on — so each save writes them afresh, never twice over.
      */
     fun save(then: (() -> Unit)? = null) {
         val b = book ?: return
@@ -717,22 +721,22 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         if (saving) return
         commit(false)
         saving = true
+        val was = work
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    val base = was ?: File(workDir, "${System.nanoTime()}.opened.${f.extension}").also { f.copyTo(it, overwrite = true) }
                     val temp = File(f.parentFile, ".${f.name}.tetra-saving")
                     try {
-                        // from the working copy when rows or columns were moved, else from the file
-                        WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, work ?: f, temp) }
+                        WriterLog.timed("Sheets: saved ${b.edits.values.sumOf { it.size }} cells in ${b.edits.size} sheets") { SheetSave.save(b, base, temp) }
                         if (f.exists()) keepPrevious(context, f) // a new spreadsheet has none
                         check(temp.renameTo(f)) { "Could not save ${f.name}." }
                     } finally { temp.delete() }
-                    val sym = DecimalFormatSymbols.getInstance()
-                    Sheets.read(f, sym.decimalSeparator, sym.groupingSeparator)
+                    base
                 }
             }
             saving = false
-            result.onSuccess { nb -> sheetDraft(context, f).delete(); prepare(nb); history.saved(); work = null; workDir.listFiles()?.forEach { it.delete() }; book = nb; version++; message = "Saved"; then?.invoke() }
+            result.onSuccess { base -> sheetDraft(context, f).delete(); work = base; history.markSaved(); version++; message = "Saved"; then?.invoke() }
                 .onFailure { WriterLog.e("Sheets: could not save", it); message = it.message ?: "Could not save." }
         }
     }
@@ -770,7 +774,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     LaunchedEffect(version, autoSave, editing, draft == null) {
         if (!autoSave || !editing || file == null || draft != null || history.unsaved == 0) return@LaunchedEffect
         delay(4000)
-        if (!saving && draft == null && history.unsaved > 0) { WriterLog.i("Sheets: autosaved"); save() }
+        if (!saving && draft == null && history.unsaved != 0) { WriterLog.i("Sheets: autosaved"); save() }
     }
 
     LaunchedEffect(sheet, query, searching, layout) {
@@ -1514,7 +1518,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     close = { searching = false; query = "" })
                 else Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = ::leave) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                    val unsaved = version >= 0 && history.unsaved > 0
+                    val unsaved = version >= 0 && history.unsaved != 0
                     Column(Modifier.weight(1f)) {
                         Text((if (unsaved) "• " else "") + (file?.name ?: "New spreadsheet"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(if (saving) "Saving…" else if (editing) "Editing" else "View only", style = MaterialTheme.typography.labelSmall, color = islandContentColor().copy(alpha = 0.7f))
@@ -1789,7 +1793,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     if (showVersions) file?.let { f -> VersionsDialog(f, "Undo goes back", { showVersions = false }) { v -> showVersions = false; editing = true; openVersion(v) } }
     if (leaving) AlertDialog(onDismissRequest = { leaving = false },
         title = { Text("Save the changes?") },
-        text = { Text("${history.unsaved} change${if (history.unsaved == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },
+        text = { Text("${kotlin.math.abs(history.unsaved)} change${if (kotlin.math.abs(history.unsaved) == 1) "" else "s"} to ${file?.name ?: "this spreadsheet"} are not saved.") },
         confirmButton = { TextButton(onClick = { leaving = false; save { back() } }) { Text("Save") } },
         dismissButton = {
             Row {

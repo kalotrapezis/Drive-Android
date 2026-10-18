@@ -1634,6 +1634,15 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
       on the way: every change of a timer made sync copies of its one file; now each device writes its own file (above).
 - [ ] Seen: Tetra already open does not turn to a part asked for by `adb am start -e …APPLET` (the Calendar's too); a
       notification's tap does. Not looked into.
+- [ ] (18 Oct, the user: "Let be for now. write it down") **The tablet drops off the network after each reinstall** of
+      Tetra: the PC stops hearing from it (17:04:58 that day) until the hotspot is restarted, so no stop, OK or change can
+      reach it. To look into on the tablet itself (971f6b37) — the pairing/connection after an `adb install -r`.
+- [ ] (same) **A 10 h 20 min timer started by itself** on the phone at 17:08:40 — most likely a stray touch on the clock while
+      setting the minutes, since a timer starts the moment the finger lifts from the minutes. If it happens again: a Start
+      button (or a confirm for long times) instead of starting on lift.
+- [ ] (same) The fix above (72e9d0b / Drive b2e9561, pushed) is **not yet on the devices**: the PC's .deb is built
+      (Drive/desktop/release/local-drive-desktop_0.6.0-beta.1_amd64.deb, the user installs it with sudo dpkg -i); the phone
+      and tablet get the debug APK when connected. No GitHub release of 0.6.0 Beta 1 yet.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

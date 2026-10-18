@@ -153,6 +153,8 @@ How to write here:
       Ferry and rooms.pdf by content://media, the own address, the PDF picker (Tetra/Documents) and Words' picker (Documents root) —
       each opened in place with its heart, no new copy. Unit 508, 0 failing, 7 skipped. Not tried: a save after such an open (it is
       the same file object Files opens).
+- [x] (timer session, 18 Oct) **Timer**, Android and desktop, branches `timer` in both repos (from `calendar`): § Timer below. Also
+      the Calendar's and the Timer's folders hidden in Files on both. Not merged, not on the tablet.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -1452,6 +1454,76 @@ UIDs, unknown zone, bad RRULE) — run after every edit.
 - [ ] 8. The real pair: an event made on each device and by Claude, edited on two at once (conflict), deleted, all
       three agree; a reminder rings on the tablet with the app closed and after a reboot.
 
+
+## Timer (18 Oct, timer session; branches `timer` in both repos, worktrees Drive-Android-worktrees/timer-b50bfc and Drive-worktrees/timer)
+
+**The user, 18 Oct:** "start it a simple timer with the clock widget like the calendar to select time and some recently used
+times below and the ability to pin some of them. Active notification on the hyper island with pause and stop buttons. Sync
+check every 30 sec. I mean as long as they start and stop together no real sync is needed. Just stopping the one device or
+clicking ok stops all of them." Then, while it was built: "If I click stop or pause you sync that moment, so it controls all
+the devices"; "we cant write every second to memory"; "at the timers card to the right side add 6m 15m 20m 30m options to
+imediatly start without even opening the UI"; "can we hide the folders of the calendar and the timer on PC and Android";
+"make the cards smaller on the desktop … 3 columns that get fewer when the window resizes"; "add a trash can to the top right
+corner of the timer card and a pin at the top left. The UI will fit 9 timers"; "remove the recently used column … thats it a
+clock with hands and the timer with play pause stop"; a sketch: the clock, HH and MM under it, Pause and Stop under those, a
+line, the cards beside — "play is not needed as soon as I set a timer starts"; "why do we need an island on this applet?"
+
+- [x] (timer session, 18 Oct) built on both sides; checked on emulator-5554 (tablet size and phone size) and the desktop in a
+      hidden window (a scratch HOME); not on the user's tablet or phone, not between real devices.
+
+### What it is
+- **The screen**: the Calendar's clock (hours on the outer and inner ring, then minutes); **lifting the finger from the minutes
+  starts the timer** (desktop: the minute hand let go, or Enter in a box); Pause/Resume and Stop under it act on the timer
+  last started there (else the one ending first). The timers' cards beside it (desktop and tablet: three to a row, fewer as
+  the window narrows; phone: two, above the clock), **nine at most**. Each card: the time left, Pause/Resume and Stop (OK when
+  it rings); **a pin at the top left** keeps the card when it is stopped or done, ready to start again (▶ Start); **a trash at
+  the top right** takes it away (a running one stops). No island, no drawer, no recently used list (all dropped by the user).
+- **Home (Android)**: the Timer card with **6 · 15 · 20 · 30 min**, each starting at a tap, Tetra staying on Home.
+- **Running**: Android — an ongoing notification per timer (Android's own countdown) with Pause/Resume + Stop, on a Xiaomi
+  the **Hyper Island** counting down by itself with the same buttons (`HyperIsland.timer`: `sameWidthDigitInfo.timerInfo`,
+  timerType −1 to the end, as the open-source HyperIsland ToolKit writes it); the end is an alarm clock (`setAlarmClock`, on
+  time in Doze), then the alarm sound (USAGE_ALARM) and **OK**. Desktop — the system notification and a "Time's up · OK"
+  bar with beeps on any page.
+- **Folders hidden**: Calendar and Timer are not shown in Files' lists, search or Move on either side; they sync as before.
+
+### The file (one per timer, plain JSON — Claude reads or starts a timer by writing one)
+```
+Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/Timer on a phone)
+  k3f9a2.json   {"id":"k3f9a2","seconds":300,"label":"","state":"running","ends":"2026-10-18T16:05:00Z","left":0,"rev":1,"by":"Tablet","pinned":false}
+```
+- `state`: `running` (counts down to `ends`, an ISO instant) · `paused` (`left` seconds remain, `ends` null) · `stopped`.
+  `pinned`: the card stays when stopped or done.
+- **Written only at a change** — start, pause, resume, stop, OK, pin, delete: a handful of writes in a timer's life, never per
+  second. Each device works out the time left from `ends` and its own clock, in memory.
+- `rev` +1 at each change; the highest wins, equal ones stopped > paused > running (a pause and a stop at once: stopped). So
+  clocks a few seconds apart decide nothing; they only show the time left a few seconds apart.
+- A timer changed on two devices between syncs arrives as `x (2).json` beside `x.json` (sync's both-changed rule): the same
+  `id`, read as one, the winner by `rev`.
+- A new timer takes the file of one that is over and not pinned (its `id`, `rev` + 1): the folder holds about as many files
+  as there were timers at once. Ran out and nobody tapped OK: it rings 10 minutes at most, then is over.
+- **Claude starts one** by writing `{"seconds":600,"state":"running","ends":"<now + 10 min, UTC>"}` as any `<name>.json` (the
+  file name is the id when there is none); **stops one** by setting `"state":"stopped"` and `rev` one higher.
+- The clock opens on the length last started on that device (a local setting, not synced).
+
+### How the devices keep in step
+- A change is pushed at once: Android `ScopedSync.soon("timer", 0)` — Files sync's own requests for the part `timer`
+  (DriveScope; desktop files.js SCOPES), as the Calendar's (SYNC_PLAN 6am); the computer's watcher on Files/Timer nudges every
+  paired device (their SyncServer `/sync` → their own `timer` part at once). So a stop on the tablet reaches the phone through
+  the computer within seconds.
+- Fallback: a look every 30 s while a timer exists (Android TimerService; the desktop re-reads every 30 s); with Tetra closed
+  on a phone, the Calendar's quarter-hourly look carries the Timer's part too. While ringing, a phone looks at once.
+- Code: Android `Timer.kt` (record, files), `TimerService.kt` (TimerControl, the service, notifications, alarm),
+  `TimerScreen.kt`, `HyperIsland.timer`, Home's card in MainActivity; desktop `timer.js`, `src/Timer.tsx` (the Calendar's
+  `ClockFace` with `below`/`onDone`), main.js `timer:*`. Tests: Android `TimerTest` (9), desktop `test/timer.test.js` (9):
+  time left, pause/resume, a stop/OK reaching the other device, two changes at once, clocks 3 s apart, a free file reused,
+  pin and trash across devices, nine at most, a hand-written file.
+
+### Left
+- [ ] The real pair: start on the tablet, pause on the PC, OK on the phone — on the user's tablet (971f6b37) once the main
+      session says it is free; the island's look there (the emulator has no Hyper Island). The user: the sound works on the
+      tablet with sync ("it works on sync with the tablet").
+- [ ] Seen: Tetra already open does not turn to a part asked for by `adb am start -e …APPLET` (the Calendar's too); a
+      notification's tap does. Not looked into.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

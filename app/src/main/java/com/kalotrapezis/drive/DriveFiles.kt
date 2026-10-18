@@ -86,6 +86,12 @@ object DriveRules {
     val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
     /**
+     * The Calendar's and the Timer's folders: synced as files (a dot name would not sync), but kept out of Files' lists,
+     * search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the same.
+     */
+    private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER)
+    fun isAppFolder(relativePath: String) = APP_FOLDERS.any { relativePath == it || relativePath.startsWith("$it/") }
+    /**
      * Sync of the choice, folder by folder (the computer has the same rule): the later answer wins, and on a tie (a
      * choice made before there were times) chosen wins — a folder made on either side is a system folder on both,
      * and one left out on either side is not undone by the other (SYNC_PLAN.md 6g).
@@ -151,11 +157,11 @@ object DriveRules {
     fun subfolders(root: File, relativePath: String): List<String> = folder(root, relativePath).listFiles().orEmpty()
         .filter { it.isDirectory && !it.name.startsWith(".") && inside(root, it) }
         .map { relative(root, it) }
-        .filterNot { it == TRASH_FOLDER }
+        .filterNot { it == TRASH_FOLDER || isAppFolder(it) }
         .sortedBy { it.lowercase(Locale.ROOT) }
 
     fun allItems(root: File, includeTrash: Boolean = false): List<DriveItem> = root.walkTopDown()
-        .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || (relative(root, folder) != TRASH_FOLDER && !folder.name.startsWith("."))) }
+        .onEnter { folder -> inside(root, folder) && (includeTrash || folder == root || (relative(root, folder).let { it != TRASH_FOLDER && !isAppFolder(it) } && !folder.name.startsWith("."))) }
         .filter { it != root && it.exists() && inside(root, it) && (includeTrash || !it.name.startsWith(".")) }
         .map { DriveItem(it.canonicalFile, relative(root, it), it.isDirectory) }
         .toList()
@@ -340,7 +346,7 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
         // Dot folders (.notes, .templates) are the apps' own, hidden as in file managers and on the desktop.
         .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
         // Trash has its own way in; as a folder in the list it is just something to open by accident.
-        .filterNot { relativePath.isEmpty() && it.name == TRASH_FOLDER }
+        .filterNot { relativePath.isEmpty() && (it.name == TRASH_FOLDER || DriveRules.isAppFolder(it.name)) }
         .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }
         .sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
 }
@@ -604,7 +610,7 @@ data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val mod
  * computer reads the same names (desktop files.js SCOPES); a new one (the Timer) is a line in each.
  */
 internal object DriveScope {
-    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")))
+    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()))
     fun contains(scope: String, relative: String): Boolean {
         val (dirs, trashExts) = scopes[scope] ?: return false
         return dirs.any { relative.startsWith("$it/") } || (relative.startsWith("Trash/") && trashExts.any { relative.lowercase().endsWith(it) })

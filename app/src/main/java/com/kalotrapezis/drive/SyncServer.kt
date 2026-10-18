@@ -198,6 +198,7 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             // about our own upload, and that round trip is worth skipping. Anything genuinely new still lands.
             NotesSync.soon(context, 0) // a note changed on the computer, most likely: those first, at once
             ScopedSync.soon(context, "calendar", 0) // or an event (Claude's, the skill's): the Calendar's part, at once
+            ScopedSync.soon(context, "timer", 0) // or a timer started, paused, stopped or answered on another device
             SyncService.syncInBackground(context, gap = 60_000)
             return reply(output, 200, JSONObject().put("ok", true))
         }

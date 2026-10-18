@@ -107,6 +107,49 @@ internal object HyperIsland {
         }
     }
 
+    const val TIMER = "tetra_timer"
+
+    /**
+     * A timer in the island (the user, 18 Oct: "active notification on the hyper island with pause and stop buttons"):
+     * running, the island counts down by itself to [ends] (HyperOS's countdown, timerType -1, as Xiaomi's own Clock);
+     * paused or rung, it shows [shown]. [buttons] are the notification's own actions, linked by key as the reminder's.
+     */
+    fun timer(builder: NotificationCompat.Builder, title: String, text: String, ends: Long?, shown: String, announce: Boolean,
+              buttons: List<Triple<String, String, android.app.PendingIntent>>) {
+        runCatching {
+            val now = System.currentTimeMillis()
+            val actions = Bundle().apply {
+                buttons.forEach { (key, label, pi) -> putParcelable("miui.focus.action_$key", android.app.Notification.Action.Builder(null as android.graphics.drawable.Icon?, label, pi).build()) }
+            }
+            val right = if (ends != null) JSONObject().put("sameWidthDigitInfo", JSONObject()
+                .put("timerInfo", JSONObject().put("timerType", -1).put("timerWhen", ends).put("timerTotal", now).put("timerSystemCurrent", now)))
+            else JSONObject().put("imageTextInfoRight", JSONObject().put("type", 2).put("textInfo", JSONObject().put("title", shown)))
+            val paramV2 = JSONObject()
+                .put("protocol", 3)
+                .put("business", TIMER)
+                .put("updatable", true)
+                .put("ticker", title)
+                .put("enableFloat", announce) // the card opens when it starts and when it rings, not at each pause
+                .put("isShowNotification", true)
+                .put("baseInfo", JSONObject().put("type", 1).put("title", title).put("content", text))
+                .put("actions", org.json.JSONArray().apply {
+                    buttons.forEachIndexed { i, (key, label, _) -> put(JSONObject().put("type", if (i == 0) 0 else 2).put("action", "miui.focus.action_$key").put("actionTitle", label).put("actionIntentType", 2)) }
+                })
+                .put("param_island", JSONObject()
+                    .put("islandProperty", 1)
+                    .put("islandPriority", 1)
+                    .put("expandedTime", 4000)
+                    .put("smallIslandArea", JSONObject().put("picInfo", JSONObject().put("type", 1)))
+                    .put("bigIslandArea", JSONObject().put("imageTextInfoLeft", JSONObject().put("type", 1).put("picInfo", JSONObject().put("type", 1))).apply {
+                        right.keys().forEach { k -> put(k, right.get(k)) }
+                    }))
+            builder.addExtras(Bundle().apply {
+                putString(EXTRA, JSONObject().put("param_v2", paramV2).put("title", title).put("content", text).toString())
+                putBundle("miui.focus.actions", actions)
+            })
+        }
+    }
+
     /** HyperOS only draws an island where the device has one. */
     private fun systemFeature(): Boolean = Class.forName("android.os.SystemProperties")
         .getDeclaredMethod("getBoolean", String::class.java, Boolean::class.javaPrimitiveType)

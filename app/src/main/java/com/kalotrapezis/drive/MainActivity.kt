@@ -232,6 +232,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
+        Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
         // a document, spreadsheet or presentation another app opens here (Open with › Tetra Office); else a photo or video
@@ -616,6 +617,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val pickOffice = rememberOfficePicker { openOfficeFile(it, Screen.Home) }
     // an applet icon's part (Settings › App icons), as its card on Home opens it; Back goes to Home (first-run photo setup stays first)
     LaunchedEffect(applet.value) {
+        // the Timer's notification opens its screen (no launcher icon of its own)
+        if (applet.value == TimerService.SCREEN && screen != Screen.PhotoSetup) { applet.value = null; screen = Screen.Timer; return@LaunchedEffect }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
         if (screen == Screen.PhotoSetup) return@LaunchedEffect
@@ -684,6 +687,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Slides -> Unit
                 Screen.Pdf -> Unit
                 Screen.Calendar -> Unit
+                Screen.Timer -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -727,6 +731,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     pickOffice = pickOffice,
                     openCalendar = { calendarNew = null; screen = Screen.Calendar },
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
+                    openTimer = { screen = Screen.Timer },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -784,6 +789,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew)
+                Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                })
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -853,7 +861,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -893,6 +901,7 @@ private fun Home(
     newNote: (checklist: Boolean) -> Unit,
     openCalendar: () -> Unit,
     newEvent: (NewKind) -> Unit,
+    openTimer: () -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -967,6 +976,28 @@ private fun Home(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, Color(0xFFF77FB3), Modifier.weight(1f)) { newEvent(k) } } }
+                        }
+                    }
+                }
+            }
+        },
+        // The Timer (18 Oct): teal; four times beside it that start at a tap, Tetra staying on Home (the user: "add 6m 15m 20m
+        // 30m options to imediatly start without even opening the UI") — the notification and the island show it running
+        {
+            val context = LocalContext.current
+            HomeGroup(Category.Timer.color) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HomeArtCard("Timer", R.drawable.timer_art, openTimer, Modifier.weight(1f), artSize = 76)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(listOf(6, 15), listOf(20, 30)).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, Color(0xFF80CBC4), Modifier.weight(1f)) {
+                                    Thread {
+                                        val failed = runCatching { TimerControl.start(context, m * 60L) }.onFailure { WriterLog.e("Timer: Home's $m min failed", it) }.exceptionOrNull()
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, failed?.let { it.message ?: "The timer could not start" } ?: "$m min timer started", Toast.LENGTH_SHORT).show() }
+                                    }.start()
+                                } }
+                            }
                         }
                     }
                 }
@@ -1841,6 +1872,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Office(Color(0xFFF76002), R.drawable.ic_office),
     Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
     Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
+    Timer(Color(0xFF00796B), R.drawable.ic_timer),
 }
 
 @Composable

@@ -31,6 +31,8 @@ internal class SyncJob : JobService() {
             if (SyncService.isRunning || store.pairing() == null) return false // (the whole sync carries it; not paired)
             scope.launch {
                 val error = runCatching { SyncClient(applicationContext, store).scopeOnly(part) }.onFailure { WriterLog.w("Scoped sync $part: ${it.message}") }.exceptionOrNull()
+                // the look carries the Timer's part too: a timer started on the computer reaches a closed Tetra here
+                if (params.jobId == ScopedSync.CALENDAR_LOOK) runCatching { SyncClient(applicationContext, store).scopeOnly("timer") }
                 val tooOld = error?.message?.contains("Unknown request") == true // the whole sync carries it
                 jobFinished(params, error != null && !tooOld && params.jobId != ScopedSync.CALENDAR_LOOK) // a change waiting is tried again; a look waits for the next
             }
@@ -110,20 +112,21 @@ internal class SyncJob : JobService() {
  * imediatly across devices as soon as connection available"). Notes' way, for files: a change here goes 2.5 s later;
  * the computer away or no network, it waits as a job that Android runs the moment there is one. A change on the
  * computer comes as its nudge (SyncServer's /sync, while Tetra is open here) and, with Tetra closed, within a quarter
- * of an hour. The Timer will pass its own scope (DriveScope).
+ * of an hour. The Timer has its own part ("timer", DriveScope), each part its own wait.
  */
 internal object ScopedSync {
     const val SCOPE = "scope"
     private const val CALENDAR_WAITING = 4140
     const val CALENDAR_LOOK = 4141
+    private const val TIMER_WAITING = 4142
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var pending: Job? = null
+    private val pending = java.util.concurrent.ConcurrentHashMap<String, Job>() // a timer's push never cancels an event's
 
     /** [orWhole]: a change made here, which an older computer then takes by the whole sync (the computer's own "/sync" arranges its own). */
     fun soon(context: Context, scope: String, delayMs: Long = 2_500, orWhole: Boolean = false) {
         val app = context.applicationContext
-        pending?.cancel()
-        pending = running.launch {
+        pending[scope]?.cancel()
+        pending[scope] = running.launch {
             delay(delayMs)
             if (SyncService.isRunning) return@launch // the whole sync is carrying it now
             runCatching { SyncClient(app, SyncStore(app)).scopeOnly(scope) }.onFailure {
@@ -141,7 +144,7 @@ internal object ScopedSync {
     /** Run by Android as soon as there is a network, and again until the computer has it. */
     private fun wait(context: Context, scope: String) {
         val jobs = context.getSystemService(JobScheduler::class.java) ?: return
-        jobs.schedule(JobInfo.Builder(CALENDAR_WAITING, ComponentName(context, SyncJob::class.java))
+        jobs.schedule(JobInfo.Builder(if (scope == "timer") TIMER_WAITING else CALENDAR_WAITING, ComponentName(context, SyncJob::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setBackoffCriteria(60_000, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setExtras(android.os.PersistableBundle().apply { putString(SCOPE, scope) })

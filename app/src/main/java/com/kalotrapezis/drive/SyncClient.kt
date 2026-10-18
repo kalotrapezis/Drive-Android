@@ -688,6 +688,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
         runCatching { CalendarAlarms.plan(context) } // an event that arrived, or changed, rings on time
+        TimerService.check(context)
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
@@ -951,6 +952,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val counts = IntArray(1)
         val n = syncFiles(host, p, files, failed, {}, {}, scope, counts)
         runCatching { CalendarAlarms.plan(context) }
+        if (scope == "timer") TimerService.check(context) // a timer started, paused or stopped elsewhere: here too
         if (failed.isNotEmpty()) throw SyncException(failed.joinToString("; "))
         return n + counts[0] // what came here, and what went there or moved
     }

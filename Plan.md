@@ -80,7 +80,7 @@ How to write here:
       drawings moved/sized/deleted (9b077de), contents sheet (0e3019b),
       Sources sheet (116c4d6), Review tab (b39004e),
       freeze panes (e621ff6), zoom to selection and the bar/tabs (0d32d4e),
-      Goal seek and CSV import. Checks at a925139: unit
+      Goal seek and CSV import (cf4d0d0), Reapply (f6d3d41), File's Save a copy/AutoSave/Save as/Rename. Checks at a925139: unit
       suite 460, 0 failing, 2 skipped; sweep 349 documents + 29 decks, none failing. With the .ods rich text (01:00): unit 464, 0
       failing, 2 skipped; sweep 349 + 29, none failing. At 22bebc0 (01:40): unit 471, 0 failing, 2 skipped; sweep 349 + 29, none
       failing. At e621ff6 (02:50): unit 484, 0 failing, 2 skipped; sweep 349 + 29, none failing. Emulator only. For the tablet too: Tables › Page
@@ -980,8 +980,12 @@ what is not already above:
       options; the bar comes back while typing); headings and gridlines kept in the file (above). Emulator: A1:D5 zoomed to, the
       bar and tabs hidden. Not yet: page break preview, page layout view.
 - [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
-- [ ] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
+- [~] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.
+      Done (office-F session, 18 Oct) but the keyboard bar: File › Save a copy ("<name> (copy)" beside it), AutoSave (Words' own
+      setting, shared: a few seconds after a change, never while a cell is being typed in), Save as (the new file open from then
+      on), Rename (its versions and draft with it). Emulator: each on a copy of sheet.xlsx. Note for the user: AutoSave is Words'
+      setting, so with it on (as on this emulator) Tables now saves by itself too — the File tab's AutoSave turns it off for both.
 
 ### D. Words
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.

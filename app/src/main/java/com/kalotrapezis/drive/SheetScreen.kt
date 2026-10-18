@@ -204,6 +204,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var showBar by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     var showTabs by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     var seeking by remember { mutableStateOf(false) } // Data › Goal seek: its three boxes asked
+    var fileNaming by remember { mutableStateOf<String?>(null) } // File › Save as ("as") or Rename ("rename"): the name asked
+    var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' own setting
     var listing by remember { mutableStateOf<SheetRange?>(null) } // Data › Drop-down list: the cells (the sheet's)
     var stepping by remember { mutableStateOf<SheetRange?>(null) } // Home › Series: the cells (as drawn)
     var deduping by remember { mutableStateOf<SheetRange?>(null) } // Data › Remove duplicates: the cells (the sheet's), asked about headers first
@@ -723,6 +725,42 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
     }
 
+    /** File › Save a copy: the spreadsheet with its edits as "<name> (copy)" beside it; the one open stays as it is. */
+    fun saveCopy() { val b = book ?: return; val f = file ?: return; commit(false)
+        scope.launch {
+            val copy = generateSequence(1) { it }.mapIndexed { k, _ -> File(f.parentFile, "${f.nameWithoutExtension} (copy${if (k == 0) "" else " ${k + 1}"}).${f.extension}") }.first { !it.exists() }
+            val ok = withContext(Dispatchers.IO) { runCatching { SheetSave.save(b, work ?: f, copy) }.onFailure { WriterLog.e("Sheets: could not save a copy", it) }.isSuccess }
+            message = if (ok) "Saved a copy: ${copy.name}" else "Could not save a copy."
+        }
+    }
+    /** File › Save as: the spreadsheet with its edits as [target]; that one is open from then on (the old file as it was). */
+    fun saveAs(target: File) { val b = book ?: return; val f = file ?: return; if (saving) return; commit(false); saving = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { SheetSave.save(b, work ?: f, target); DecimalFormatSymbols.getInstance().let { Sheets.read(target, it.decimalSeparator, it.groupingSeparator) } } }
+            saving = false
+            result.onSuccess { nb -> sheetDraft(context, f).delete(); file = target; prepare(nb); history.saved(); work = null; book = nb; version++; message = "Saved as ${target.name}" }
+                .onFailure { WriterLog.e("Sheets: could not save as", it); message = it.message ?: "Could not save." }
+        }
+    }
+    /** File › Rename: the file itself, its versions and its unsaved draft with it. */
+    fun renameFile(target: File) { val f = file ?: return
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { runCatching {
+                val draft = sheetDraft(context, f); val versions = versionsDir(context, f)
+                check(f.renameTo(target)) { "Could not rename ${f.name}." }
+                if (draft.isFile) draft.renameTo(sheetDraft(context, target))
+                if (versions.isDirectory) versions.renameTo(versionsDir(context, target))
+            }.onFailure { WriterLog.e("Sheets: rename", it) }.isSuccess }
+            if (ok) { file = target; message = "Renamed ${target.name}" } else message = "Could not rename it."
+        }
+    }
+    // File › AutoSave: a few seconds after a change (not while a cell is being typed in), the file saved
+    LaunchedEffect(version, autoSave, editing, draft == null) {
+        if (!autoSave || !editing || file == null || draft != null || history.unsaved == 0) return@LaunchedEffect
+        delay(4000)
+        if (!saving && draft == null && history.unsaved > 0) { WriterLog.i("Sheets: autosaved"); save() }
+    }
+
     LaunchedEffect(sheet, query, searching, layout) {
         val s = sheet; val l = layout
         if (!searching || s == null || l == null || query.isBlank()) { found = emptyList(); return@LaunchedEffect }
@@ -1153,6 +1191,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         shown == "File" -> {
                             // File as in Words and Slides (17 Oct): Save · Versions, Export PDF, Print · Share, another app · About, log · Settings
                             RibbonButton("Save", w, R.drawable.ic_save, enabled = !saving) { save() }
+                            // as Words' File: a copy beside it, AutoSave (Words' own setting), Save as, Rename
+                            if (file != null) RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = !saving) { saveCopy() }
+                            if (editing) RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) { autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
+                                message = if (autoSave) "AutoSave on — saved a few seconds after each change" else "AutoSave off — Save when you want the file changed" }
+                            if (file != null) RibbonButton("Save as", w, R.drawable.ic_save, enabled = !saving) { fileNaming = "as" }
+                            if (file != null) RibbonButton("Rename", w, R.drawable.ic_edit, enabled = !saving) { fileNaming = "rename" }
                             RibbonDivider(w)
                             if (file != null) RibbonButton("Versions", w, R.drawable.ic_history) { showVersions = true }
                             RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
@@ -1643,6 +1687,20 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val s = sheet
     filtering?.let { col -> if (s != null) FilterDialog(s, col, view) { filtering = null } }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
+    // File › Save as and Rename: the new name, beside the file
+    fileNaming?.let { how -> file?.let { f ->
+        var typed by remember(how) { mutableStateOf(if (how == "as") "${f.nameWithoutExtension} (2)" else f.nameWithoutExtension) }
+        AlertDialog(onDismissRequest = { fileNaming = null }, title = { Text(if (how == "as") "Save as" else "Rename") },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${f.extension}") }) },
+            confirmButton = { TextButton(onClick = { val name = typed.trim().removeSuffix(".${f.extension}"); val target = File(f.parentFile, "$name.${f.extension}")
+                when {
+                    name.isEmpty() || '/' in name -> message = "That is not a file name."
+                    target == f -> fileNaming = null
+                    target.exists() -> message = "${target.name} is already there. Choose another name."
+                    how == "as" -> { fileNaming = null; saveAs(target) }
+                    else -> { fileNaming = null; renameFile(target) }
+                } }) { Text(if (how == "as") "Save" else "Rename") } },
+            dismissButton = { TextButton(onClick = { fileNaming = null }) { Text("Cancel") } }) } }
     if (naming) {
         var typed by remember { mutableStateOf("New spreadsheet") }
         val dir = remember { TextEditorStore(context).saveDirectory() }

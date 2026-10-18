@@ -71,10 +71,11 @@ object SystemFolderChoice {
 
 object DriveRules {
     /**
-     * Folders the app itself relies on: the scanner saves into Scanned Documents, and both sync by these paths. They
+     * Folders the app itself relies on: the scanner saves into Scanned Documents, the Calendar's calendars are the
+     * folders in Calendar, and all sync by these paths. They
      * are always there, marked with an emblem, and cannot be renamed, moved or put in the Trash — their contents can.
      */
-    private val REQUIRED_FOLDERS = listOf("Documents", "Documents/Scanned Documents")
+    private val REQUIRED_FOLDERS = listOf("Documents", "Documents/Scanned Documents", CalendarFiles.FOLDER)
     /**
      * Folders to sort things into, each with its own emblem (asked 16 Oct), chosen in Files tools › System folders.
      * A chosen one is a system folder like Documents; one no longer chosen stays, as an ordinary folder.

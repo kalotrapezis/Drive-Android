@@ -81,6 +81,7 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
+    implementation("org.dmfs:lib-recur:0.17.1") // Calendar: iCalendar RRULE repeats (Apache 2.0)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android stubs it)

@@ -29,6 +29,12 @@ attribution in the map UI.
 MapLibre license: https://github.com/maplibre/maplibre-native/blob/main/LICENSE.md
 OpenFreeMap: https://openfreemap.org/
 
+## lib-recur
+
+The Calendar works out repeating events (iCalendar RRULE) with lib-recur 0.17.1
+(`org.dmfs:lib-recur`, with `org.dmfs:rfc5545-datetime` and `org.dmfs:jems2`),
+licensed under Apache License 2.0: https://github.com/dmfs/lib-recur
+
 ## OpenCV
 
 Document page detection uses OpenCV 4.12.0 for Android (`org.opencv:opencv`),

@@ -2584,6 +2584,7 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
     "Family" -> R.drawable.ic_folder_family to Color(0xFFE0A030)
     "Books" -> R.drawable.ic_folder_books to Color(0xFFC0884F)
     "Others" -> R.drawable.ic_folder_others to Color(0xFF9AA3A4)
+    CalendarFiles.FOLDER -> R.drawable.ic_folder_calendar to Color(0xFFEC407A)
     else -> null
 }
 

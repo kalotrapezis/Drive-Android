@@ -46,6 +46,7 @@ internal object SlidesEdit {
         /** Shape options: the outline's dash ([LineDash]'s names, "" solid) and a shadow under it */ val dash: String? = null, val shadow: Boolean? = null,
         /** Home › Multilevel list: Words' scheme ([LIST_SCHEMES] index), each paragraph numbered in its level's form */ val scheme: Int? = null,
         /** Home › Paragraph (Words' page): every paragraph's spacing before and after, line spacing, indents */ val para: ParaLook? = null,
+        /** … only these of it ([PARA_PARTS]; none: all) — the fields changed on the page, each paragraph keeping its own others */ val paraParts: Set<String> = emptySet(),
         /** a picture's crop (Words' crop editor): what is cut from its left, top, right and bottom, 0–1 of the whole picture; all 0: none */ val crop: List<Float>? = null,
         /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
         /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null,
@@ -104,7 +105,7 @@ internal object SlidesEdit {
             val bullet = if (form != null) SlideBullet("1.", num = form) else when (l.list) { null -> p.bullet; 'n' -> null; 'b' -> SlideBullet("•"); else -> SlideBullet("1.") } // counted by numbered()
             val look0 = when (if (form != null) '1' else l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f); else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
             val look = l.drop?.let { d -> when (i) { first -> look0.copy(left = d, firstLine = 0f, after = 0f); first + 1 -> if (l.dropRest) look0.copy(firstLine = 0f, before = 0f) else null; else -> null } } ?: look0
-            val paraLooked = l.para?.let { q -> look.copy(before = q.before, after = q.after, lineMultiple = q.lineMultiple, lineExact = q.lineExact, lineAtLeast = q.lineAtLeast, left = q.left, right = q.right, firstLine = q.firstLine) } ?: look
+            val paraLooked = l.para?.let { q -> paraOn(look, q, l.paraParts) } ?: look
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.num != null || bullet?.text?.first()?.isDigit() == true, p.level)),
                 l.spacing?.let { paraLooked.copy(lineMultiple = it, lineExact = null) } ?: paraLooked, bullet, p.base)
         }), l.anchor ?: t.anchor, l.insets?.toFloatArray() ?: t.insets, t.scale, l.wrap ?: t.wrap, l.autofit?.let { it == 's' } ?: t.shrink, if (l.warp == null) t.warp else TextWarp.entries.firstOrNull { it.word == l.warp },
@@ -560,11 +561,13 @@ internal object SlidesEdit {
             l.spacing?.let { m -> place(pPr, a("lnSpc").also { it.appendChild(a("spcPct", "val" to "${Math.round(m * 100_000)}")) }, PPR) }
             // Words' paragraph page: before and after, line spacing (a share, or exactly), indents
             l.para?.let { q ->
-                pPr.kids().filter { it.localName in setOf("lnSpc", "spcBef", "spcAft") }.forEach { pPr.removeChild(it) }
-                place(pPr, a("lnSpc").also { it.appendChild(if (q.lineExact != null) a("spcPts", "val" to "${Math.round(q.lineExact * 100)}") else a("spcPct", "val" to "${Math.round(q.lineMultiple * 100_000)}")) }, PPR)
-                place(pPr, a("spcBef").also { it.appendChild(a("spcPts", "val" to "${Math.round(q.before * 100)}")) }, PPR)
-                place(pPr, a("spcAft").also { it.appendChild(a("spcPts", "val" to "${Math.round(q.after * 100)}")) }, PPR)
-                pPr.setAttribute("marL", "${Math.round(q.left * 12700)}"); pPr.setAttribute("marR", "${Math.round(q.right * 12700)}"); pPr.setAttribute("indent", "${Math.round(q.firstLine * 12700)}")
+                fun on(k: String) = l.paraParts.isEmpty() || k in l.paraParts
+                pPr.kids().filter { it.localName in listOfNotNull("lnSpc".takeIf { on("line") }, "spcBef".takeIf { on("before") }, "spcAft".takeIf { on("after") }) }.forEach { pPr.removeChild(it) }
+                if (on("line")) place(pPr, a("lnSpc").also { it.appendChild(if (q.lineExact != null) a("spcPts", "val" to "${Math.round(q.lineExact * 100)}") else a("spcPct", "val" to "${Math.round(q.lineMultiple * 100_000)}")) }, PPR)
+                if (on("before")) place(pPr, a("spcBef").also { it.appendChild(a("spcPts", "val" to "${Math.round(q.before * 100)}")) }, PPR)
+                if (on("after")) place(pPr, a("spcAft").also { it.appendChild(a("spcPts", "val" to "${Math.round(q.after * 100)}")) }, PPR)
+                if (on("left")) pPr.setAttribute("marL", "${Math.round(q.left * 12700)}"); if (on("right")) pPr.setAttribute("marR", "${Math.round(q.right * 12700)}")
+                if (on("first")) pPr.setAttribute("indent", "${Math.round(q.firstLine * 12700)}")
             }
             // Words' multilevel list: each paragraph numbered in its level's form (PowerPoint's own numbering, a level each)
             l.scheme?.let { s ->
@@ -1319,3 +1322,20 @@ internal object SlidesEdit {
         zip.close()
     }
 }
+
+/** Home › Paragraph's parts, as [SlidesEdit.Look.paraParts] names them. */
+internal val PARA_PARTS = listOf("before", "after", "line", "left", "right", "first")
+
+/** The parts of the paragraph page changed between [from] and [to]. */
+internal fun paraChanged(from: ParaLook, to: ParaLook) = buildSet {
+    if (from.before != to.before) add("before"); if (from.after != to.after) add("after")
+    if (from.lineMultiple != to.lineMultiple || from.lineExact != to.lineExact || from.lineAtLeast != to.lineAtLeast) add("line")
+    if (from.left != to.left) add("left"); if (from.right != to.right) add("right"); if (from.firstLine != to.firstLine) add("first")
+}
+
+/** [look] with [q]'s [parts] (none: all of them). */
+internal fun paraOn(look: ParaLook, q: ParaLook, parts: Set<String>): ParaLook {
+    fun on(k: String) = parts.isEmpty() || k in parts
+    return look.copy(before = if (on("before")) q.before else look.before, after = if (on("after")) q.after else look.after,
+        lineMultiple = if (on("line")) q.lineMultiple else look.lineMultiple, lineExact = if (on("line")) q.lineExact else look.lineExact, lineAtLeast = if (on("line")) q.lineAtLeast else look.lineAtLeast,
+        left = if (on("left")) q.left else look.left, right = if (on("right")) q.right else look.right, firstLine = if (on("first")) q.firstLine else look.firstLine) }

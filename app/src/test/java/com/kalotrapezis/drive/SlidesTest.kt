@@ -906,6 +906,28 @@ class SlidesTest {
         }
     }
 
+    /** Home › Paragraph with only Line spacing changed (the tablet walk, 18 Oct): every paragraph gets it, each keeps its own level's indent. */
+    @Test fun `a paragraph page's one change keeps each paragraph's indent`() {
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            fun box(d: Deck) = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read the slides") == true }
+            val before = box(deck).text!!.paras.map { it.look.left to it.look.firstLine }
+            assertTrue(name, before.distinct().size > 1) // two levels, two indents
+            val first = box(deck).text!!.paras[0].look
+            val n = first.copy(lineMultiple = 1.5f, lineExact = null)
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((1 to box(deck).anim!!) to SlidesEdit.Look(para = n, paraParts = paraChanged(first, n))))
+            fun check(d: Deck, how: String) {
+                val ps = box(d).text!!.paras
+                assertEquals(how, before.map { Math.round(it.first) }, ps.map { Math.round(it.look.left) })
+                ps.forEach { assertEquals(how, 1.5f, it.look.lineMultiple, 0.01f) }
+            }
+            check(SlidesEdit.view(deck, e), "shown, $name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("para-one-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            check(Slides.read(out), "saved, $name")
+        }
+    }
+
     /** The Table tab on a deck's own table (one saved here, then read as the file's): a row and a column added, another row taken — in the XML, the frame grown. */
     @Test fun `a deck's own table's rows and columns saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

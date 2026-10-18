@@ -228,10 +228,13 @@ internal object SlidesOdpEdit {
                     l.align?.let { pp.setAttributeNS(FO, "fo:text-align", when (it) { DocAlign.Center -> "center"; DocAlign.End -> "end"; DocAlign.Justify -> "justify"; else -> "start" }) }
                     l.spacing?.let { pp.setAttributeNS(FO, "fo:line-height", "${Math.round(it * 100)}%") }
                     // Words' paragraph page, as LibreOffice keeps a paragraph's: margins above and below, line height, indents
-                    l.para?.let { q -> fun pt(v: Float) = String.format(Locale.ROOT, "%.2fpt", v)
-                        pp.setAttributeNS(FO, "fo:margin-top", pt(q.before)); pp.setAttributeNS(FO, "fo:margin-bottom", pt(q.after))
-                        pp.setAttributeNS(FO, "fo:line-height", q.lineExact?.let(::pt) ?: "${Math.round(q.lineMultiple * 100)}%")
-                        pp.setAttributeNS(FO, "fo:margin-left", pt(q.left)); pp.setAttributeNS(FO, "fo:margin-right", pt(q.right)); pp.setAttributeNS(FO, "fo:text-indent", pt(q.firstLine)) }
+                    l.para?.let { q ->
+                        fun pt(v: Float) = String.format(Locale.ROOT, "%.2fpt", v)
+                        fun on(k: String) = l.paraParts.isEmpty() || k in l.paraParts
+                        if (on("before")) pp.setAttributeNS(FO, "fo:margin-top", pt(q.before)); if (on("after")) pp.setAttributeNS(FO, "fo:margin-bottom", pt(q.after))
+                        if (on("line")) pp.setAttributeNS(FO, "fo:line-height", q.lineExact?.let(::pt) ?: "${Math.round(q.lineMultiple * 100)}%")
+                        if (on("left")) pp.setAttributeNS(FO, "fo:margin-left", pt(q.left)); if (on("right")) pp.setAttributeNS(FO, "fo:margin-right", pt(q.right))
+                        if (on("first")) pp.setAttributeNS(FO, "fo:text-indent", pt(q.firstLine)) }
                 })
             }
             // WordArt's bend on a shape: LibreOffice's fontwork geometry (straight: a rectangle again); a frame keeps its words in lines

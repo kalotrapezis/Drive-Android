@@ -2074,7 +2074,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 spelling = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else Triple(rest, offered, ignored)
                             } else next() }, ignore = { next() }, ignoreAll = { next(ignored + sp.word) }, close = { spelling = null })
                     }
-                    paragraphing?.let { q -> ParagraphDialog(q, { paragraphing = null }) { n -> paragraphing = null; restyle { it.copy(para = n) }; WriterLog.i("Slides: paragraph page") } }
+                    // only what was changed on the page, each paragraph keeping its own rest (its level's indent): the walk, 18 Oct
+                    paragraphing?.let { q -> ParagraphDialog(q, { paragraphing = null }) { n -> paragraphing = null; val parts = paraChanged(q, n)
+                        // a second visit adds to the first: what it set before stays, this visit's changes over it
+                        if (parts.isNotEmpty()) restyle { l -> val before = if (l.para == null) emptySet() else l.paraParts.ifEmpty { PARA_PARTS.toSet() }
+                            l.copy(para = paraOn(l.para ?: n, n, parts), paraParts = before + parts) }
+                        WriterLog.i("Slides: paragraph page, $parts") } }
                     // Slide size: PowerPoint's question — the things made as big as the new size allows, or fitted into it
                     resizing?.let { (sw, sh) -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
                         text = { Text("Make the things on the slides as big as the new size allows (some may be cut at its sides), or smaller so they all fit?") },

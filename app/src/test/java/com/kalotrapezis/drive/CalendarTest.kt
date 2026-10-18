@@ -138,6 +138,21 @@ class CalendarTest {
         assertEquals(listOf("2026-10-06T10:00", "2026-10-13T10:00", "2026-10-27T12:00", "2026-11-10T10:00"), staffDays())
     }
 
+    @Test fun `a repeat moved to another time keeps its cancelled and changed days`() {
+        // the user's ΤΠΕ, 18 Oct: 11:50 moved to 11:45 and its holidays (EXDATEs at 11:50) came back
+        val m = staff().master!!
+        CalendarFiles.save(staff().file, m.copy(start = z("2026-10-06T11:50"), end = z("2026-10-06T12:25")))
+        assertEquals(listOf("2026-10-06T11:50", "2026-10-13T11:50", "2026-10-27T12:00", "2026-11-03T11:50", "2026-11-10T11:50"), staffDays())
+        val text = staff().file.readText()
+        assertTrue("EXDATE;TZID=Europe/Athens:20261020T115000" in text)
+        assertTrue("RECURRENCE-ID;TZID=Europe/Athens:20261027T115000" in text)
+        CalendarFiles.save(staff().file, staff().master!!.copy(start = z("2026-10-07T11:45"), end = z("2026-10-07T12:20")))
+        assertTrue("EXDATE;TZID=Europe/Athens:20261021T114500" in staff().file.readText())
+        val day = z("2026-10-07T00:00")
+        CalendarFiles.save(staff().file, staff().master!!.copy(allDay = true, start = day, end = day.plusDays(1)))
+        assertTrue("EXDATE;VALUE=DATE:20261021" in staff().file.readText())
+    }
+
     @Test fun `this and following - the old one ends the day before, a moved day after it goes`() {
         CalendarFiles.endBefore(staff(), z("2026-10-27T10:00"))
         assertEquals(listOf("2026-10-06T10:00", "2026-10-13T10:00"), staffDays())

@@ -374,13 +374,40 @@ object CalendarFiles {
             ICalProp("VERSION", "", "2.0"), ICalProp("PRODID", "", "-//Tetra//Calendar//EN")))
         val vevent = cal.comps("VEVENT").firstOrNull { it.prop("RECURRENCE-ID") == null }
             ?: ICalComp("VEVENT").also { cal.items.add(cal.items.indexOfFirst { it is ICalComp && it.name == "VEVENT" }.let { i -> if (i < 0) cal.items.size else i }, it) }
-        fill(vevent, e, now, isNew = vevent.prop("DTSTART") == null)
+        val was = vevent.prop("DTSTART")?.let { ICal.time(it) }
+        fill(vevent, e, now, isNew = was == null)
+        if (was != null) ICal.time(vevent.prop("DTSTART")!!)?.let { shiftRepeat(cal, vevent, was, it) }
         val all = if (comps.isEmpty()) listOf(cal) else comps
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, ".${file.name}.part")
         tmp.writeText(ICal.write(all))
         if (!tmp.renameTo(file)) { file.writeText(tmp.readText()); tmp.delete() }
         return read(file)
+    }
+
+    /**
+     * A repeat's start moved ([was] → [now], e.g. 11:50 → 11:45): its EXDATEs and its changed days' RECURRENCE-IDs
+     * move by as much, or they match no day and a cancelled day comes back (the user's timetable, 18 Oct). The
+     * desktop's shiftRepeat the same.
+     */
+    private fun shiftRepeat(cal: ICalComp, m: ICalComp, was: Pair<ZonedDateTime, Boolean>, now: Pair<ZonedDateTime, Boolean>) {
+        val (w, n) = was.first to now.first
+        val days = java.time.temporal.ChronoUnit.DAYS.between(w.toLocalDate(), n.toLocalDate())
+        val secs = (n.toLocalTime().toSecondOfDay() - w.toLocalTime().toSecondOfDay()).toLong()
+        val mixed = was.second != now.second
+        if (days == 0L && secs == 0L && !mixed) return
+        fun redo(p: ICalProp): ICalProp {
+            val out = p.value.split(',').mapNotNull { x -> ICal.time(ICalProp(p.name, p.params, x))?.first?.let { t ->
+                // all day ↔ a time: the day kept, at the new start's time
+                val moved = if (mixed) t.toLocalDate().plusDays(days).atTime(n.toLocalTime()).atZone(n.zone)
+                    else t.toLocalDateTime().plusDays(days).plusSeconds(secs).atZone(t.zone)
+                ICal.timeValue(moved, now.second)
+            } }
+            if (out.isEmpty()) return p
+            return ICalProp(p.name, p.params.replace(Regex(";(TZID|VALUE)=(\"[^\"]*\"|[^;]*)", RegexOption.IGNORE_CASE), "") + out[0].second, out.joinToString(",") { it.first })
+        }
+        m.items.replaceAll { if (it is ICalProp && it.name == "EXDATE") redo(it) else it }
+        cal.comps("VEVENT").filter { it !== m }.forEach { v -> v.items.replaceAll { if (it is ICalProp && it.name == "RECURRENCE-ID") redo(it) else it } }
     }
 
     /** Reads [file], lets [change] work on its components, writes it back whole (a ".part" first: sync skips dot files). */

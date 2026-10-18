@@ -598,13 +598,26 @@ data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val mod
  * identity, so the computer can tell a moved or renamed file from a new one and move its own copy to match —
  * which is also how a move into Drive/Trash/ reaches the other device.
  */
+/**
+ * A part of Drive that syncs on its own, at once (the Calendar, 18 Oct: "send it imediatly across devices as soon as
+ * connection available", as Notes do): its folders, and its kinds of file in the Trash (deleting is a move there). The
+ * computer reads the same names (desktop files.js SCOPES); a new one (the Timer) is a line in each.
+ */
+internal object DriveScope {
+    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")))
+    fun contains(scope: String, relative: String): Boolean {
+        val (dirs, trashExts) = scopes[scope] ?: return false
+        return dirs.any { relative.startsWith("$it/") } || (relative.startsWith("Trash/") && trashExts.any { relative.lowercase().endsWith(it) })
+    }
+}
+
 class DriveManifest(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("drive_hashes", Context.MODE_PRIVATE)
 
-    fun entries(root: File): List<DriveFileEntry> = walk(root, root).map { file ->
-        val relative = DriveRules.relative(root, file)
-        DriveFileEntry(relative, file.length(), file.lastModified(), hash(relative, file))
-    }
+    /** Every file under [root], or only those [keep] takes (a scoped sync: nothing else is read or hashed). */
+    fun entries(root: File, keep: (String) -> Boolean = { true }): List<DriveFileEntry> = walk(root, root)
+        .map { it to DriveRules.relative(root, it) }.filter { (_, relative) -> keep(relative) }
+        .map { (file, relative) -> DriveFileEntry(relative, file.length(), file.lastModified(), hash(relative, file)) }
 
     private fun walk(root: File, folder: File): List<File> = folder.listFiles().orEmpty()
         .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }

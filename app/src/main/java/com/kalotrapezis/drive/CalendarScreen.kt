@@ -293,6 +293,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     /** Writes on the IO thread and says what [work] answers; the folder's watcher shows the result, the reminders follow. */
     fun writeSaying(work: () -> String) = scope.launch {
         val done = withContext(Dispatchers.IO) { runCatching(work).also { runCatching { CalendarAlarms.plan(context) } } }
+        if (done.isSuccess) ScopedSync.soon(context, "calendar") // to the other devices at once, as Notes (18 Oct)
         message = done.getOrElse { "Not saved: ${it.message ?: it.javaClass.simpleName}" }
         done.exceptionOrNull()?.let { WriterLog.e("Calendar: a change failed", it) }
         version++
@@ -1029,6 +1030,7 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
         CalendarTransfer.write(to, inc).let { (a, u) -> added += a; updated += u }
     }
     runCatching { CalendarAlarms.plan(context) }
+    ScopedSync.soon(context, "calendar")
     return "Imported: $added new" + if (updated > 0) ", $updated updated" else ""
 }
 

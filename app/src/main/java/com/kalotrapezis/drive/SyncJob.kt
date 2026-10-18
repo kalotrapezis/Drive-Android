@@ -9,7 +9,9 @@ import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -24,6 +26,16 @@ internal class SyncJob : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val store = SyncStore(applicationContext)
+        // A part of Drive waiting to travel (ScopedSync), or the Calendar's quarter-hourly look: that part alone.
+        params.extras.getString(ScopedSync.SCOPE)?.let { part ->
+            if (SyncService.isRunning || store.pairing() == null) return false // (the whole sync carries it; not paired)
+            scope.launch {
+                val error = runCatching { SyncClient(applicationContext, store).scopeOnly(part) }.onFailure { WriterLog.w("Scoped sync $part: ${it.message}") }.exceptionOrNull()
+                val tooOld = error?.message?.contains("Unknown request") == true // the whole sync carries it
+                jobFinished(params, error != null && !tooOld && params.jobId != ScopedSync.CALENDAR_LOOK) // a change waiting is tried again; a look waits for the next
+            }
+            return true
+        }
         // A new photo or video: sync now (asked 2026-09-27) — the computer there or not, the trigger is armed again.
         val newPhoto = params.jobId == NEW_PHOTO
         if (newPhoto) watchNewPhotos(applicationContext)
@@ -80,6 +92,7 @@ internal class SyncJob : JobService() {
          */
         fun schedule(context: Context) {
             val jobs = context.getSystemService(JobScheduler::class.java) ?: return
+            ScopedSync.lookEvery(context)
             jobs.getPendingJob(NEW_PHOTO).let { if (it == null || it.networkType != JobInfo.NETWORK_TYPE_NONE) watchNewPhotos(context) }
             val every = minutes(context) * 60_000L
             if (every == 0L) return jobs.cancel(ID)
@@ -89,5 +102,58 @@ internal class SyncJob : JobService() {
                 .setPersisted(true)
                 .build())
         }
+    }
+}
+
+/**
+ * A part of Drive that travels at once (the user, 18 Oct: "once there is an update on calendar like on notes send it
+ * imediatly across devices as soon as connection available"). Notes' way, for files: a change here goes 2.5 s later;
+ * the computer away or no network, it waits as a job that Android runs the moment there is one. A change on the
+ * computer comes as its nudge (SyncServer's /sync, while Tetra is open here) and, with Tetra closed, within a quarter
+ * of an hour. The Timer will pass its own scope (DriveScope).
+ */
+internal object ScopedSync {
+    const val SCOPE = "scope"
+    private const val CALENDAR_WAITING = 4140
+    const val CALENDAR_LOOK = 4141
+    private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var pending: Job? = null
+
+    fun soon(context: Context, scope: String, delayMs: Long = 2_500) {
+        val app = context.applicationContext
+        pending?.cancel()
+        pending = running.launch {
+            delay(delayMs)
+            if (SyncService.isRunning) return@launch // the whole sync is carrying it now
+            runCatching { SyncClient(app, SyncStore(app)).scopeOnly(scope) }.onFailure {
+                if (it.message?.contains("Unknown request") == true) return@onFailure WriterLog.w("Scoped sync $scope: the computer's Tetra is too old; the whole sync carries it")
+                WriterLog.w("Scoped sync $scope: waiting for a network (${it.message})")
+                wait(app, scope)
+            }
+        }
+    }
+
+    /** Run by Android as soon as there is a network, and again until the computer has it. */
+    private fun wait(context: Context, scope: String) {
+        val jobs = context.getSystemService(JobScheduler::class.java) ?: return
+        jobs.schedule(JobInfo.Builder(CALENDAR_WAITING, ComponentName(context, SyncJob::class.java))
+            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+            .setBackoffCriteria(60_000, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+            .setExtras(android.os.PersistableBundle().apply { putString(SCOPE, scope) })
+            .setPersisted(true)
+            .build())
+    }
+
+    /** A quarter-hourly look at the Calendar's part, so the computer's changes arrive with Tetra closed too. */
+    fun lookEvery(context: Context) {
+        val jobs = context.getSystemService(JobScheduler::class.java) ?: return
+        if (SyncJob.minutes(context) == 0) return jobs.cancel(CALENDAR_LOOK) // sync without asking turned off: so is this
+        if (jobs.getPendingJob(CALENDAR_LOOK) != null) return
+        jobs.schedule(JobInfo.Builder(CALENDAR_LOOK, ComponentName(context, SyncJob::class.java))
+            .setPeriodic(15 * 60_000L)
+            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+            .setExtras(android.os.PersistableBundle().apply { putString(SCOPE, "calendar") })
+            .setPersisted(true)
+            .build())
     }
 }

@@ -686,8 +686,8 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Photos from the computer: ${it.message}" }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
-        runCatching { CalendarAlarms.plan(context) } // an event that arrived, or changed, rings on time
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
+        runCatching { CalendarAlarms.plan(context) } // an event that arrived, or changed, rings on time
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
@@ -937,12 +937,31 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         return syncNotes(p.hosts.first(), p)
     }
 
-    private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit): Int {
+    /**
+     * One part of Drive alone, at once ([DriveScope]: the Calendar), by the same rules and the same requests as the
+     * whole sync; the rest waits for that. What arrives re-plans the reminders. The computer away: it throws, and
+     * [ScopedSync] tries again when there is a network.
+     */
+    suspend fun scopeOnly(scope: String): Int {
+        val p = reach(store.pairing() ?: return 0)
+        val host = p.hosts.first()
+        val files = connections(host, p).firstOrNull { it.content == "files" } ?: SyncConnection("files", "both", "everything")
+        if (!files.sends && !files.receives) return 0
+        val failed = mutableListOf<String>()
+        val n = syncFiles(host, p, files, failed, {}, {}, scope)
+        runCatching { CalendarAlarms.plan(context) }
+        if (failed.isNotEmpty()) throw SyncException(failed.joinToString("; "))
+        return n
+    }
+
+    private suspend fun syncFiles(host: String, p: Pairing, connection: SyncConnection, failed: MutableList<String>, checkpoint: suspend () -> Unit, progress: (BackupProgress) -> Unit, scope: String? = null): Int {
         val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
         if (!root.isDirectory) return 0
-        val entries = driveManifest.entries(root)
+        val entries = if (scope == null) driveManifest.entries(root) else driveManifest.entries(root) { DriveScope.contains(scope, it) }
         val manifest = JSONArray(entries.map { JSONObject().put("path", it.relativePath).put("sha256", it.sha256).put("size", it.sizeBytes).put("modified", it.modified) })
-        val answer = postJson(host, p, "/files/manifest", JSONObject().put("files", manifest))
+        // a part's list goes to its own address: a computer too old for parts answers "Unknown request" instead of
+        // taking it for the whole Drive (and offering everything else back as copies)
+        val answer = postJson(host, p, if (scope == null) "/files/manifest" else "/files/manifest/scoped", JSONObject().put("files", manifest).apply { if (scope != null) put("scope", scope) })
         if (connection.sends) {
             val want = answer.optJSONArray("want") ?: JSONArray()
             val byPath = entries.associateBy { it.relativePath }
@@ -955,7 +974,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             // A Move keeps a window of files here and deletes the older ones — files only; system folders stay,
             // regular folders left empty go (asked 2026-09-25). Only what the computer confirmed holding in this sync
             // goes: it did not ask for it, or it just received it verified.
-            if (connection.keep == "nothing") {
+            if (connection.keep == "nothing" && scope == null) { // a part's sync never lets files go
                 val asked = (0 until want.length()).mapTo(HashSet()) { want.getString(it) }
                 val cutoff = System.currentTimeMillis() - connection.keepDays * 86_400_000L
                 val favorites = if (connection.keepFavorites) driveMetadata.records().filter { it.favorite }.mapTo(HashSet()) { it.path } else emptySet()

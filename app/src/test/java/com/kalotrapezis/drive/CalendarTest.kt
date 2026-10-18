@@ -258,4 +258,14 @@ class CalendarTest {
         assertEquals(listOf("2026-10-26T08:15", "2026-10-27T08:15", "2026-10-29T08:15", "2026-10-30T08:15"), days) // 28 Oct off
         assertEquals("2027-06-25T08:15", CalendarFiles.occurrences(cal, f, at("2027-06-20T00:00"), at("2027-07-10T00:00")).map(::local).last())
     }
+
+    @Test fun `the Calendar's own sync takes its folder and the Trash's events, nothing else`() {
+        assertTrue(DriveScope.contains("calendar", "Calendar/Work/staff-meeting-1a2b3c4d.ics"))
+        assertTrue(DriveScope.contains("calendar", "Calendar/Work/color"))
+        assertTrue(DriveScope.contains("calendar", "Trash/staff-meeting-1a2b3c4d.ics")) // a deleted event
+        assertTrue(!DriveScope.contains("calendar", "Trash/report.pdf"))
+        assertTrue(!DriveScope.contains("calendar", "Documents/Calendar.docx"))
+        assertTrue(!DriveScope.contains("calendar", "Calendars/x.ics"))
+        assertTrue(!DriveScope.contains("timer", "Calendar/Work/a.ics")) // a scope not known: nothing
+    }
 }

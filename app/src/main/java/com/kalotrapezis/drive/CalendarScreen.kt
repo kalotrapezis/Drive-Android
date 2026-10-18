@@ -264,7 +264,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // A file changed by sync, by another app or by Claude on the computer shows as soon as it lands.
     DisposableEffect(root) {
         root.mkdirs()
-        val watcher = DriveWatcher(root) { version++ }
+        val watcher = DriveWatcher(root) { version++; CalendarAlarms.planSoon(context) }
         onDispose { watcher.stop() }
     }
     val anchor = selected.year
@@ -283,12 +283,37 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         CalendarPrefs.setHidden(context, hidden)
     }
     fun setView(v: CalView) { view = v; CalendarPrefs.setView(context, wide, v) }
-    /** Writes on the IO thread; the folder's watcher shows the result, [said] says what happened. */
-    fun write(said: String, work: () -> Unit) = scope.launch {
-        val failed = withContext(Dispatchers.IO) { runCatching(work).exceptionOrNull() }
-        message = failed?.let { "Not saved: ${it.message ?: it.javaClass.simpleName}" } ?: said
-        if (failed != null) WriterLog.e("Calendar: $said failed", failed)
+    /** Writes on the IO thread and says what [work] answers; the folder's watcher shows the result, the reminders follow. */
+    fun writeSaying(work: () -> String) = scope.launch {
+        val done = withContext(Dispatchers.IO) { runCatching(work).also { runCatching { CalendarAlarms.plan(context) } } }
+        message = done.getOrElse { "Not saved: ${it.message ?: it.javaClass.simpleName}" }
+        done.exceptionOrNull()?.let { WriterLog.e("Calendar: a change failed", it) }
         version++
+    }
+    fun write(said: String, work: () -> Unit) = writeSaying { work(); said }
+    // Import: an .ics or Takeout's zip, from the picker or opened from another app
+    var incoming by remember { mutableStateOf<List<CalendarTransfer.Incoming>?>(null) }
+    fun readImport(uri: android.net.Uri) = scope.launch {
+        val got = withContext(Dispatchers.IO) { runCatching {
+            val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                ?: uri.lastPathSegment.orEmpty()
+            if (bytes.size > 1 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) CalendarTransfer.readZip(bytes)
+            else listOf(CalendarTransfer.read(bytes.toString(Charsets.UTF_8), name.substringAfterLast('/').removeSuffix(".ics").ifEmpty { "Imported" }))
+        } }
+        got.onSuccess { l -> l.filter { it.events.isNotEmpty() }.let { if (it.isEmpty()) message = "No events in that file." else incoming = it } }
+            .onFailure { message = "Could not read it: ${it.message ?: it.javaClass.simpleName}"; WriterLog.e("Calendar: import failed", it) }
+    }
+    val pickImport = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { it?.let(::readImport) }
+    LaunchedEffect(Unit) { CalendarInbox.pending.collect { u -> if (u != null) { CalendarInbox.pending.value = null; readImport(u) } } }
+    // Export: one calendar as an .ics, or all as a zip, saved where the person chooses
+    var exporting by remember { mutableStateOf<CalendarInfo?>(null) }
+    fun saveTo(uri: android.net.Uri?, bytes: () -> ByteArray) { if (uri != null) writeSaying { context.contentResolver.openOutputStream(uri)!!.use { it.write(bytes()) }; "Exported" } }
+    val exportOne = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
+        exporting?.let { c -> saveTo(uri) { CalendarTransfer.export(c).toByteArray() } }; exporting = null
+    }
+    val exportAll = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        saveTo(uri) { CalendarTransfer.exportAll(CalendarFiles.calendars(root)) }
     }
     fun create(day: LocalDate, minute: Int? = null) {
         val now = java.time.LocalTime.now()
@@ -368,12 +393,13 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 Text(title(selected, view), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 ViewMenu(view, views, ::setView)
             }
+            ReminderNotes()
             Row(Modifier.weight(1f)) {
                 if (panel) Column(Modifier.width(264.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     androidx.compose.material3.ExtendedFloatingActionButton(onClick = { create(selected) }, containerColor = CalendarPink, contentColor = Color.White,
                         icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) }, text = { Text("Create") })
                     MiniMonth(selected, today, days.keys) { selected = it }
-                    CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true })
+                    CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }, { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") })
                 }
                 body(Modifier.weight(1f).fillMaxHeight())
             }
@@ -386,6 +412,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 IconButton(onClick = { selected = today }) { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = "Today") }
                 ViewMenu(view, views, ::setView)
             }
+            ReminderNotes()
             if (view == CalView.Agenda) WeekStrip(selected, today, days) { selected = it }
             else if (view != CalView.Month) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
@@ -409,7 +436,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         }
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) { CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }) }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) { CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }, { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }) }
     }
     shown?.let { o ->
         val repeating = o.file.master?.rrule != null || o.event.recurrenceId != null
@@ -430,7 +457,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         write("Calendar $name created") { CalendarFiles.newCalendar(root, name, color) }
     }
     calDialog?.let { c ->
-        CalendarDialog(c, cals.map { it.name }.toSet(), { calDialog = null }, delete = { calDialog = null; deleteCal = c }) { name, color ->
+        CalendarDialog(c, cals.map { it.name }.toSet(), { calDialog = null }, delete = { calDialog = null; deleteCal = c },
+            export = { calDialog = null; exporting = c; exportOne.launch("${c.name}.ics") }) { name, color ->
             calDialog = null
             write("Saved") {
                 CalendarFiles.setColor(c.dir, color)
@@ -439,6 +467,21 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     require(!to.exists() && c.dir.renameTo(to)) { "Could not rename ${c.name}." }
                     if (c.dir.name in hidden) { hidden = hidden - c.dir.name + name; CalendarPrefs.setHidden(context, hidden) }
                 }
+            }
+        }
+    }
+    incoming?.let { list ->
+        ImportDialog(list, cals, { incoming = null }) { choices ->
+            incoming = null
+            writeSaying {
+                var added = 0; var updated = 0
+                choices.forEach { (inc, chosen) ->
+                    val all = CalendarFiles.calendars(root)
+                    val to = chosen ?: all.firstOrNull { it.name.equals(inc.name, true) }
+                        ?: CalendarFiles.newCalendar(root, inc.name, inc.color ?: CalendarFiles.PALETTE[all.size % CalendarFiles.PALETTE.size])
+                    CalendarTransfer.write(to, inc).let { (a, u) -> added += a; updated += u }
+                }
+                "Imported: $added new" + if (updated > 0) ", $updated updated" else ""
             }
         }
     }
@@ -478,7 +521,7 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
     }
 }
 
-@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit) {
+@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit) {
     Column {
         Text("My calendars", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
         if (cals.isEmpty()) Text("No calendars yet. Each folder in Tetra/Calendar is one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -492,6 +535,16 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
             }
         }
         TextButton(onClick = add) { Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.padding(end = 8.dp)); Text("New calendar") }
+        Row {
+            TextButton(onClick = import) { Text("Import") }
+            if (cals.isNotEmpty()) TextButton(onClick = exportAll) { Text("Export all") }
+        }
+        val context = LocalContext.current
+        var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Reminders on this device", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(on, { on = it; CalendarAlarms.setEnabled(context, it) }, colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = CalendarPink))
+        }
     }
 }
 
@@ -805,4 +858,70 @@ internal fun nextEventText(context: Context): String? {
         day == today.plusDays(1) -> "Tomorrow · $title"
         else -> day.format(DateTimeFormatter.ofPattern("EEE d", Locale.ENGLISH)) + " · " + title
     }
+}
+
+/**
+ * What stands between a reminder and the person: notifications off, and on a Xiaomi its own Autostart and battery
+ * saver (a restart reaches Tetra only with Autostart). Asked once; a line stays while notifications are off.
+ */
+@Composable private fun ReminderNotes() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("calendar", Context.MODE_PRIVATE) }
+    fun allowed() = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+    var notifications by remember { mutableStateOf(allowed()) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { notifications = allowed() }
+    LaunchedEffect(Unit) {
+        if (!notifications && android.os.Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("askedNotifications", false)) {
+            prefs.edit().putBoolean("askedNotifications", true).apply()
+            ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    val xiaomi = android.os.Build.MANUFACTURER.equals("Xiaomi", true)
+    var xiaomiSeen by remember { mutableStateOf(prefs.getBoolean("xiaomiSeen", false)) }
+    fun open(i: android.content.Intent) = runCatching { context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    val appSettings = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+    if (!notifications) Note("Notifications are off for Tetra, so reminders will not show.", "Turn on" to { open(appSettings) })
+    else if (xiaomi && !xiaomiSeen) Note("On a Xiaomi, reminders ring after a restart only with Autostart allowed for Tetra, and on time with Battery saver set to No restrictions.",
+        "Autostart" to { open(android.content.Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")) || open(appSettings) },
+        "Battery" to { open(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))) },
+        "Done" to { xiaomiSeen = true; prefs.edit().putBoolean("xiaomiSeen", true).apply() })
+}
+
+@Composable private fun Note(text: String, vararg actions: Pair<String, () -> Unit>) {
+    Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 2.dp)) {
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } } }
+        }
+    }
+}
+
+/** What another app asked the Calendar to import (an .ics opened with Tetra); the Calendar takes it when it shows. */
+internal object CalendarInbox { val pending = kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?>(null) }
+
+/** Import: one calendar into a new one or an existing one; Takeout's several each into its own (by name). */
+@Composable private fun ImportDialog(list: List<CalendarTransfer.Incoming>, cals: List<CalendarInfo>, dismiss: () -> Unit, go: (List<Pair<CalendarTransfer.Incoming, CalendarInfo?>>) -> Unit) {
+    val single = list.singleOrNull()
+    var target by remember { mutableStateOf(single?.let { s -> cals.firstOrNull { it.name.equals(s.name, true) } }) }
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Import") }, confirmButton = {
+        TextButton(onClick = { go(if (single != null) listOf(single to target) else list.map { it to null }) }) { Text("Import") }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (single != null) {
+                Text("${single.events.size} events from “${single.name}”, into:")
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(onClick = { menu = true }) { Text((target?.name ?: "A new calendar “${single.name}”") + "  ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("A new calendar “${single.name}”") }, onClick = { target = null; menu = false })
+                        cals.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, leadingIcon = { Box(Modifier.size(14.dp).clip(CircleShape).background(Color(c.color))) }, onClick = { target = c; menu = false }) }
+                    }
+                }
+                Text("An event already there (the same one, imported before) is updated, not doubled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("${list.size} calendars, each into the calendar of its name (made if there is none):")
+                list.forEach { Text("• ${it.name} — ${it.events.size} events", style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+    })
 }

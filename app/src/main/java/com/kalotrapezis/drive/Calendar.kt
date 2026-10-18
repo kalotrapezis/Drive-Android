@@ -464,3 +464,125 @@ object CalendarFiles {
         }
     }
 }
+
+/**
+ * Import and export (Plan.md § Calendar › Import and export): any .ics — Google's, Outlook's, Apple's, Thunderbird's —
+ * and Google Takeout's zip of one .ics per calendar, split into one file per event; out again as one .ics per calendar.
+ */
+object CalendarTransfer {
+    /** A calendar arriving: its name, its colour if the file says, its events by UID (a repeat's changed days with it), the zones they use. */
+    class Incoming(val name: String, val color: Int?, val events: Map<String, List<ICalComp>>, val zones: Map<String, ICalComp>)
+
+    fun read(text: String, fallbackName: String): Incoming {
+        val cals = ICal.parse(text).filter { it.name == "VCALENDAR" }
+        val events = LinkedHashMap<String, MutableList<ICalComp>>()
+        val zones = LinkedHashMap<String, ICalComp>()
+        cals.forEach { cal ->
+            cal.comps("VTIMEZONE").forEach { z -> z.prop("TZID")?.value?.let { zones[it] = z } }
+            cal.comps("VEVENT").forEach { v ->
+                // an event without a UID gets one from what it is, so importing the same file again finds it again
+                val uid = v.prop("UID")?.value?.trim()?.ifEmpty { null }
+                    ?: ("import-" + Integer.toHexString((v.prop("DTSTART")?.value + "|" + v.prop("SUMMARY")?.value).hashCode())).also { v.set("UID", it) }
+                events.getOrPut(uid) { mutableListOf() }.add(v)
+            }
+        }
+        val name = cals.firstNotNullOfOrNull { it.prop("X-WR-CALNAME")?.text?.trim()?.ifEmpty { null } } ?: fallbackName
+        val color = cals.firstNotNullOfOrNull { it.prop("X-APPLE-CALENDAR-COLOR")?.value ?: it.prop("COLOR")?.value }
+            ?.trim()?.removePrefix("#")?.take(6)?.takeIf { it.length == 6 }?.toLongOrNull(16)?.let { (0xFF000000 or it).toInt() }
+        return Incoming(name, color, events, zones)
+    }
+
+    /** Takeout's zip (or any zip): each .ics in it a calendar. */
+    fun readZip(bytes: ByteArray): List<Incoming> {
+        val out = mutableListOf<Incoming>()
+        java.util.zip.ZipInputStream(bytes.inputStream()).use { zip ->
+            while (true) {
+                val e = zip.nextEntry ?: break
+                if (!e.isDirectory && e.name.endsWith(".ics", true))
+                    out.add(read(zip.readBytes().toString(Charsets.UTF_8), e.name.substringAfterLast('/').removeSuffix(".ics").removeSuffix(".ICS")))
+            }
+        }
+        return out
+    }
+
+    private fun zonesUsed(comps: List<ICalComp>): Set<String> {
+        val ids = mutableSetOf<String>()
+        fun walk(c: ICalComp) { c.items.forEach { if (it is ICalComp) walk(it) else (it as ICalProp).param("TZID")?.let(ids::add) } }
+        comps.forEach(::walk)
+        return ids
+    }
+
+    /**
+     * Writes [inc]'s events into [into], one file each; an event already there (the same UID) is replaced, so importing
+     * the same file twice changes nothing. Returns (new, updated).
+     */
+    fun write(into: CalendarInfo, inc: Incoming): Pair<Int, Int> {
+        val existing = (into.dir.listFiles() ?: emptyArray()).filter { it.isFile && it.name.endsWith(".ics", true) && !it.name.startsWith(".") }
+            .associateBy { CalendarFiles.read(it).uid }
+        var added = 0; var updated = 0
+        inc.events.forEach { (uid, vevents) ->
+            val cal = ICalComp("VCALENDAR", mutableListOf(ICalProp("VERSION", "", "2.0"), ICalProp("PRODID", "", "-//Tetra//Calendar//EN")))
+            zonesUsed(vevents).forEach { id -> inc.zones[id]?.let(cal.items::add) }
+            cal.items.addAll(vevents.sortedBy { it.prop("RECURRENCE-ID") != null })
+            val title = vevents.firstNotNullOfOrNull { it.prop("SUMMARY")?.text } ?: ""
+            val file = existing[uid] ?: java.io.File(into.dir, CalendarFiles.fileName(title, uid))
+            if (file.exists()) updated++ else added++
+            file.writeText(ICal.write(listOf(cal)))
+        }
+        return added to updated
+    }
+
+    /** A calendar as one .ics for other apps: its name and colour, each zone it uses described (VTIMEZONE), every event. */
+    fun export(cal: CalendarInfo): String {
+        val out = ICalComp("VCALENDAR", mutableListOf(ICalProp("VERSION", "", "2.0"), ICalProp("PRODID", "", "-//Tetra//Calendar//EN"),
+            ICalProp("X-WR-CALNAME", "", ICal.escape(cal.name)), ICalProp("X-APPLE-CALENDAR-COLOR", "", CalendarFiles.colorText(cal.color))))
+        val events = mutableListOf<ICalComp>()
+        val zones = LinkedHashMap<String, ICalComp>()
+        CalendarFiles.files(cal).forEach { f ->
+            f.comps.forEach { c -> c.comps("VTIMEZONE").forEach { z -> z.prop("TZID")?.value?.let { zones.putIfAbsent(it, z) } }; events.addAll(c.comps("VEVENT")) }
+        }
+        zonesUsed(events).forEach { id -> zones.getOrPut(id) { vtimezone(id) ?: return@forEach } }
+        out.items.addAll(zones.values)
+        out.items.addAll(events)
+        return ICal.write(listOf(out))
+    }
+
+    /** Every calendar, a zip of one .ics each (Takeout's own shape, so it comes back in the same way). */
+    fun exportAll(cals: List<CalendarInfo>): ByteArray {
+        val bytes = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(bytes).use { zip ->
+            cals.forEach { c -> zip.putNextEntry(java.util.zip.ZipEntry("Calendar/${c.name}.ics")); zip.write(export(c).toByteArray()); zip.closeEntry() }
+        }
+        return bytes.toByteArray()
+    }
+
+    /** A VTIMEZONE for an IANA zone from Java's own rules: its standard and summer time as they are now (Google writes the same). */
+    fun vtimezone(id: String): ICalComp? {
+        val zone = runCatching { java.time.ZoneId.of(id) }.getOrNull() ?: return null
+        val rules = zone.rules
+        val tz = ICalComp("VTIMEZONE", mutableListOf(ICalProp("TZID", "", id)))
+        fun off(o: java.time.ZoneOffset) = (if (o.totalSeconds < 0) "-" else "+") + "%02d%02d".format(Math.abs(o.totalSeconds) / 3600, Math.abs(o.totalSeconds) % 3600 / 60)
+        val transitions = rules.transitionRules
+        if (transitions.isEmpty()) {
+            val o = rules.getOffset(Instant.now())
+            tz.items.add(ICalComp("STANDARD", mutableListOf(ICalProp("TZOFFSETFROM", "", off(o)), ICalProp("TZOFFSETTO", "", off(o)), ICalProp("DTSTART", "", "19700101T000000"))))
+            return tz
+        }
+        transitions.forEach { r ->
+            val summer = r.offsetAfter.totalSeconds > r.offsetBefore.totalSeconds
+            val t = r.createTransition(1970)
+            val local = t.dateTimeBefore
+            val day = r.dayOfWeek?.name?.take(2)
+            val byDay = when {
+                day == null -> null
+                r.dayOfMonthIndicator < 0 || r.dayOfMonthIndicator + 6 == r.month.maxLength() -> "-1$day" // "Sunday on or after the 25th" of March is its last
+                else -> "${(r.dayOfMonthIndicator - 1) / 7 + 1}$day"
+            }
+            val rrule = "FREQ=YEARLY;BYMONTH=${r.month.value}" + (byDay?.let { ";BYDAY=$it" } ?: ";BYMONTHDAY=${r.dayOfMonthIndicator}")
+            tz.items.add(ICalComp(if (summer) "DAYLIGHT" else "STANDARD", mutableListOf(
+                ICalProp("TZOFFSETFROM", "", off(r.offsetBefore)), ICalProp("TZOFFSETTO", "", off(r.offsetAfter)),
+                ICalProp("DTSTART", "", local.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))), ICalProp("RRULE", "", rrule))))
+        }
+        return tz
+    }
+}

@@ -219,22 +219,31 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(Applet.EXTRA)?.let { applet.value = it }
+        calendarFile(intent)?.let { CalendarInbox.pending.value = it; applet.value = Applet.Calendar.name }
+    }
+
+    /** An .ics another app opened with Tetra (Open with › Tetra Calendar): the Calendar imports it. */
+    private fun calendarFile(i: Intent): Uri? = i.takeIf { it.action == Intent.ACTION_VIEW }?.data?.takeIf { u ->
+        val type = i.type ?: runCatching { contentResolver.getType(u) }.getOrNull()
+        type in setOf("text/calendar", "text/x-vcalendar", "application/ics") || u.lastPathSegment.orEmpty().endsWith(".ics", true)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
+        CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
         // a document, spreadsheet or presentation another app opens here (Open with › Tetra Office); else a photo or video
         val type = intent.data?.let { intent.type ?: runCatching { contentResolver.getType(it) }.getOrNull() }
         val office = intent.takeIf { it.action == Intent.ACTION_VIEW || it.action == Intent.ACTION_EDIT }?.data
             ?.takeIf { OfficeOpen.extensionOf(type) != null || OfficeOpen.isOffice(it.lastPathSegment.orEmpty()) }?.let { ExternalMedia(it, type) }
-        val external = intent.takeIf { office == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
+        val calendar = calendarFile(intent)?.also { CalendarInbox.pending.value = it }
+        val external = intent.takeIf { office == null && calendar == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
         SystemFolderChoice.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
-        if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA)
+        if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA) ?: calendar?.let { Applet.Calendar.name }
         setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
     }
 }

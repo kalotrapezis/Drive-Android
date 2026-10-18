@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Calendar reminders on time: a calendar app's own exact alarms (Android 13+), the asked-for kind before -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -77,6 +80,16 @@
         <activity-alias android:name=".AppCalendar" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar" android:roundIcon="@mipmap/applet_calendar">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
+        <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->
+        <activity-alias android:name=".CalendarOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/calendar" />
+                <data android:mimeType="text/x-vcalendar" />
+                <data android:mimeType="application/ics" />
+            </intent-filter>
+        </activity-alias>
         <!-- Office: "Open with › Tetra Office" for documents, spreadsheets, presentations and PDFs (17 Oct) from any app (asked 16 Oct);
              Android's Always makes it the default. -->
         <activity-alias android:name=".OfficeOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Office" android:icon="@drawable/ic_office">
@@ -112,6 +125,14 @@
                 <data android:mimeType="application/xml" />
             </intent-filter>
         </activity>
+        <receiver android:name=".CalendarAlarmReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".SyncActionReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="com.kalotrapezis.drive.PAUSE" />

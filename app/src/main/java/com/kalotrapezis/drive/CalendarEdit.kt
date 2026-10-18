@@ -409,7 +409,7 @@ internal fun EventEditor(
 
 /** A calendar made or changed: its name and its colour from the palette. */
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun CalendarDialog(old: CalendarInfo?, taken: Set<String>, dismiss: () -> Unit, delete: () -> Unit = {}, save: (String, Int) -> Unit) {
+@Composable internal fun CalendarDialog(old: CalendarInfo?, taken: Set<String>, dismiss: () -> Unit, delete: () -> Unit = {}, export: () -> Unit = {}, save: (String, Int) -> Unit) {
     var name by remember { mutableStateOf(old?.name ?: "") }
     var color by remember { mutableStateOf(old?.color ?: CalendarFiles.PALETTE[taken.size % CalendarFiles.PALETTE.size]) }
     val clash = name.trim().lowercase() in taken.map { it.lowercase() } && name.trim() != old?.name
@@ -418,6 +418,7 @@ internal fun EventEditor(
     }, dismissButton = {
         Row {
             if (old != null) TextButton(onClick = delete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            if (old != null) TextButton(onClick = export) { Text("Export") }
             TextButton(onClick = dismiss) { Text("Cancel") }
         }
     }, text = {

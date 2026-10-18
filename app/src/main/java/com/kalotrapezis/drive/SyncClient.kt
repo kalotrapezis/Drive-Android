@@ -686,6 +686,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Photos from the computer: ${it.message}" }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
+        runCatching { CalendarAlarms.plan(context) } // an event that arrived, or changed, rings on time
             .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }

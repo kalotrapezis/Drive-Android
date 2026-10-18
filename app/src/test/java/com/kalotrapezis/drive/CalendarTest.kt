@@ -155,4 +155,49 @@ class CalendarTest {
         assertEquals("Trash/${moved.name}", CalendarFiles.trash(calRoot, there))
         assertTrue(!there.exists() && File(tetra, "Trash/${moved.name}").isFile)
     }
+
+    @Test fun `the reminders due in a span, a repeating one each day`() {
+        val due = CalendarAlarms.reminders(CalendarFiles.calendars(root), at("2027-03-08T00:00"), at("2027-03-12T00:00"))
+            .filter { it.occ.event.uid == "mum-birthday-2026" }
+        assertEquals(listOf("2027-03-09T09:00", "2027-03-10T09:00", "2027-03-11T09:00"), due.map { LocalDateTime.ofInstant(it.at, athens).toString() })
+        assertEquals(3, due.map { it.key }.toSet().size)
+        // the same span again gives the same keys: a reminder is never shown twice under two names
+        assertEquals(due.map { it.key }, CalendarAlarms.reminders(CalendarFiles.calendars(root), at("2027-03-08T00:00"), at("2027-03-12T00:00")).filter { it.occ.event.uid == "mum-birthday-2026" }.map { it.key })
+        // Google's 15 minutes before the staff meeting
+        val staff = CalendarAlarms.reminders(CalendarFiles.calendars(root), at("2026-10-13T00:00"), at("2026-10-14T00:00")).single { it.occ.event.uid.startsWith("staff") }
+        assertEquals("2026-10-13T09:45", LocalDateTime.ofInstant(staff.at, athens).toString())
+    }
+
+    @Test fun `Google's export imported, split per event, and again without doubles`() {
+        val text = File("src/test/resources/calendar-import/takeout-greece.ics").readText()
+        val inc = CalendarTransfer.read(text, "takeout-greece")
+        assertEquals("School 2026-27", inc.name)
+        val into = CalendarFiles.newCalendar(root, inc.name, CalendarFiles.PALETTE[3])
+        assertEquals(2 to 0, CalendarTransfer.write(into, inc))
+        assertEquals(0 to 2, CalendarTransfer.write(into, CalendarTransfer.read(text, "x")))
+        val files = CalendarFiles.files(into)
+        assertEquals(2, files.size)
+        val club = files.single { it.uid == "4k1m8s@google.com" }
+        assertTrue("BEGIN:VTIMEZONE" in club.file.readText()) // the zone it names comes with it
+        assertEquals(listOf("2026-11-06T09:00", "2026-11-13T11:00", "2026-11-20T09:00"),
+            CalendarFiles.occurrences(into, club, at("2026-11-01T00:00"), at("2026-11-21T00:00")).map(::local))
+    }
+
+    @Test fun `Takeout's zip, and a calendar out again for other apps`() {
+        val bytes = java.io.ByteArrayOutputStream().also { b ->
+            java.util.zip.ZipOutputStream(b).use { z ->
+                z.putNextEntry(java.util.zip.ZipEntry("Takeout/Calendar/kalotrapezis@gmail.com.ics")); z.write(File("src/test/resources/calendar/ai-style.ics").readBytes())
+                z.putNextEntry(java.util.zip.ZipEntry("Takeout/Calendar/School.ics")); z.write(File("src/test/resources/calendar-import/takeout-greece.ics").readBytes())
+            }
+        }.toByteArray()
+        val got = CalendarTransfer.readZip(bytes)
+        assertEquals(listOf("kalotrapezis@gmail.com", "School 2026-27"), got.map { it.name })
+        assertEquals(listOf(1, 2), got.map { it.events.size })
+        val out = CalendarTransfer.export(cal)
+        assertTrue("X-WR-CALNAME:Work" in out && "X-APPLE-CALENDAR-COLOR:#33B679" in out)
+        assertTrue("TZID:Europe/Athens" in out) // a VTIMEZONE written for the zone the events name
+        assertTrue("RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU" in out && "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU" in out)
+        val back = CalendarTransfer.read(out, "x")
+        assertEquals(CalendarFiles.files(cal).size, back.events.size)
+    }
 }

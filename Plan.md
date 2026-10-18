@@ -1482,6 +1482,17 @@ sync and you to be able to work with it with a skill just by editing files like 
       look and fs.watch shows any edit (Claude's, the skill's, sync's) at once; the skill's paths (~/Tetra/Files/Calendar)
       are what both apps read and write. Checked 18 Oct: a file made by the skill's calendar.py is read by the desktop with
       the same days and reminder times (and by the phone: the same fixtures and answers in both test suites).
+- [x] (534e341, bc0f3ff; Drive 7736b99, 0559fd0) Closer to the rest of Tetra (the user via the main session, 18 Oct, after
+      0ed5b56 on the emulator): Files' top (Back and the month in islands, Today ‹ › beside them; the desktop's
+      title-island); Files' bottom (the island at the left with the current view labelled, 3 days on the phone's island,
+      New event the round island at the right); the drawer pads for the navigation bar; overlapping events readable as
+      Google lays them out (starts within 15 min side by side, later ones cascade on top indented, under 30 min a chip).
+- [x] The user's own Google calendar (~/Λήψεις/…ical.zip, kept out of both repos and out of ~/Tetra): 393 events in on the
+      emulator through Open with › Tetra Calendar, the desktop engine and the phone engine (CalendarRealImportTest, run
+      only with TETRA_CALENDAR_ZIP); out again, all 397 entries line for line equal; imported twice, no doubles; the phone,
+      the desktop and the skill agree on all 1639 occurrences and 758 reminder times (2015–2030). It found a bug, fixed:
+      two events of one title whose Google UIDs begin alike got one file name, one lost; names now use the UID's hash and
+      never take another's. The skill's helper is now tetra_calendar.py (calendar.py hid Python's own module).
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

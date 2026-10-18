@@ -151,6 +151,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
     // the file (null: a new spreadsheet, named on its first Save)
     var file by remember(open) { mutableStateOf(if (open == NEW_SHEET) null else Uri.parse(open).path?.let(::File)) }
+    RememberOpened(file) // the Office home's Recents
     var book by remember { mutableStateOf<Workbook?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(-1) }

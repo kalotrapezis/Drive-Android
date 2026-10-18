@@ -192,6 +192,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
+    RememberOpened(file) // the Office home's Recents
     var doc by remember { mutableStateOf<PdfDoc?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(open) {

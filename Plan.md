@@ -134,6 +134,12 @@ How to write here:
       0 failing, 7 skipped. All on emulator-5554 (tablet 1280×800; the phone size for the strips); the tablet was not touched.
 - [ ] (the user, 18 Oct: "right click otions go in the selection tab in phone and tablet") Words, Slides, Tables: what a right-click
       menu offers is on the Selection tab on a phone and tablet (the ribbon at the bottom); the menu stays for a mouse.
+- [~] (office-strips session, 18 Oct, after 0.5.0 Beta 2 — merged main's 02edcee) The user: "the resents does not update in office when
+      I open a file from picker or Files. In tablet and bigger screens add a heart at the top to go strait to favorites. In phone it does not
+      feet place it in the file tab. Do it for all a applets".
+      (1) Recents: every file opened in Words, Tables, Slides or PDF — the home's list, the picker, another app, Files — goes on a list of
+      its own (`OfficeRecents`); the home lists those first, then the newest of each kind, and reads both again when it shows (a resume,
+      a file opened). Emulator: from another app and from Files, back to the home: the file on top.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

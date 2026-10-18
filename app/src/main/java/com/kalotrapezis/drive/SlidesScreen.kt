@@ -118,6 +118,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
 
     val scope = rememberCoroutineScope()
     var file by remember(open) { mutableStateOf(Uri.parse(open).path?.let(::File)) } // Save as and Rename go on with another
+    RememberOpened(file) // the Office home's Recents
     val odp = file?.extension.equals("odp", true)
     var deck by remember { mutableStateOf<Deck?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }

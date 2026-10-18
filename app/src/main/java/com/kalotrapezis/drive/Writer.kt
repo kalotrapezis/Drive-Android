@@ -1051,9 +1051,20 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
-    LaunchedEffect(hasAccess) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) }.let { all -> total = all.size
-        // the newest of each kind, one list again by date (the list is newest first)
-        files = all.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }.values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.modified } } }
+    // read again whenever the home shows (back from a document, Files or another app) and when something opens (the user, 18 Oct:
+    // the list did not change after opening a file from the picker or from Files)
+    var shown by remember { mutableIntStateOf(0) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val watch = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) shown++ }
+        lifecycle.addObserver(watch); onDispose { lifecycle.removeObserver(watch) }
+    }
+    LaunchedEffect(hasAccess, shown, OfficeRecents.changes) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) to OfficeRecents.list(context) }.let { (all, opened) -> total = all.size
+        // the files opened first, newest first (however they were opened), then the newest of each kind, one list again by date
+        val first = opened.filter { isOfficeFile(it.name) }.take(OFFICE_RECENT).map { f -> OfficeFile(f, runCatching { f.relativeTo(root).path }.getOrNull()?.takeIf { !it.startsWith("..") } ?: f.absolutePath) }
+        val seen = first.map { it.file.absolutePath }.toSet()
+        files = first + all.filter { it.file.absolutePath !in seen }.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }
+            .values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.modified } } }
     BackHandler { back() }
     var choosingTemplate by remember { mutableStateOf(false) }
     // each card's Open: Android's picker for that kind only (asked 17 Oct); what is chosen opens in its own app
@@ -1089,7 +1100,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     fun loadFavs() = metadata.favorites(root).filter { !it.isDirectory && isOfficeFile(it.file.name) }
         .map { OfficeFile(it.file, it.relativePath) }
     var favs by remember { mutableStateOf<List<OfficeFile>?>(null) } // null while they load
-    LaunchedEffect(hasAccess) { if (hasAccess) favs = withContext(Dispatchers.IO) { loadFavs() } }
+    LaunchedEffect(hasAccess, shown) { if (hasAccess) favs = withContext(Dispatchers.IO) { loadFavs() } } // a heart set in a document, too
     @Composable fun officeRow(f: OfficeFile) {
         val sheet = Sheets.isSheet(f.file.name); val deck = Slides.isSlides(f.file.name); val pdf = Pdf.isPdf(f.file.name)
         val fav = favs.orEmpty().any { it.relative == f.relative }
@@ -1116,7 +1127,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         val recentsTitle: @Composable (Modifier) -> Unit = { m ->
             Column(m.padding(top = 14.dp, bottom = 2.dp)) {
                 Text("Recent documents", style = MaterialTheme.typography.titleMedium)
-                if (total > (files?.size ?: 0)) Text("The $OFFICE_RECENT newest of each kind — documents, spreadsheets, presentations, PDFs — of $total; the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+                if (total > (files?.size ?: 0)) Text("Those opened lately first, then the $OFFICE_RECENT newest of each kind — documents, spreadsheets, presentations, PDFs — of $total; the rest are in Files.", style = MaterialTheme.typography.bodySmall)
             }
         }
         val recents: @Composable (Modifier) -> Unit = { m ->
@@ -1270,6 +1281,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** The file as of now ([uri] changes on Save a copy and a first Save; long-lived effects must not keep an old one). */
     fun currentFile(): File? = uri?.let { Uri.parse(it) }?.takeIf { it.scheme == "file" }?.path?.let(::File)
     val file: File? = currentFile()
+    RememberOpened(file) // the Office home's Recents
     var kind by remember { mutableStateOf(OfficeKind.of(open ?: "") ?: OfficeKind.Docx) }
     var name by remember { mutableStateOf(file?.name ?: "New document.docx") }
     var original by remember { mutableStateOf<ByteArray?>(null) }

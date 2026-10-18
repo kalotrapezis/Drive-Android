@@ -974,6 +974,9 @@ what is not already above:
       Error checking (cells marked, `SheetTrace`); Recently used (the last ten functions put in — Insert function, the row of
       functions while typing, AutoSum's — kept in Words' store; a ribbon menu, and first in Insert function). Emulator: AVERAGE
       there after Average.
+      Formulas › Calculate sheet (Excel's: every formula here worked out again, NOW and TODAY moving on; one step of Undo).
+      Emulator: =NOW()*86400 moved on by 20. Not done, on purpose: manual calculation — Tetra works out on every change (a file
+      set to manual keeps its setting); other sheets are worked out as their own cells change.
 - [~] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
       Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers

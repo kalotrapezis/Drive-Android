@@ -1296,6 +1296,13 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (traced.isNotEmpty()) RibbonButton("Remove marks", w, R.drawable.ic_close) { traced = emptySet() }
                             // Excel's Name Manager: the workbook's names, one for the chosen cells, one taken away
                             if (editing && b.kind != "csv") RibbonButton("Names", w, R.drawable.ic_label) { namesFor = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) }
+                            // Excel's Calculate Sheet: every formula here worked out again (NOW and TODAY move on), one step of Undo.
+                            // shortcut: this sheet only (others are worked out as their cells change), and no manual mode — Tetra always works out on a change
+                            if (editing) RibbonButton("Calculate sheet", w, R.drawable.ic_refresh) {
+                                val keys = ArrayList<Long>().also { ks -> s.cells.forEach { k, c -> if (c.formula != null) ks += k } }
+                                val moved = SheetRecalc.run(b, index, s, keys).filter { (k, c) -> s[Sheet.row(k), Sheet.col(k)].let { it?.text != c.text || it?.value != c.value } }
+                                if (moved.isEmpty()) message = "Every formula's result here is up to date" else { history.apply(b, index, moved); version++; message = if (moved.size == 1) "1 result changed" else "${moved.size} results changed" }
+                                WriterLog.i("Sheets: calculated, ${moved.size} changed") }
                             RibbonDivider(w)
                             RibbonButton("AutoSum", w, R.drawable.ic_functions) { autoFunction("SUM") }
                             RibbonButton("Average", w, R.drawable.ic_functions) { autoFunction("AVERAGE") }

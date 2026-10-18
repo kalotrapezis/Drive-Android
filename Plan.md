@@ -221,11 +221,16 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] 16. Slides › Ungroup leaves nothing chosen (PowerPoint keeps the pieces); Undo after Paragraph drops the choice. Now the pieces
       stay chosen; Undo and Redo keep what is chosen while it is still on the slide.
 - [x] 17. Slides: a table cell being typed is not marked on the slide. Now outlined and tinted in the app's colour.
-- [ ] 18. The ribbon's height jumps a few px between tabs (Slides Home vs Group/Shape; Tables Home vs View).
-- [ ] 19. Some ribbons centred (Design, Arrange, Sheet), others from the left (View) when they fit — one.
-- [ ] 20. Words' contextual tab row lacks Selection / × at its start when a shape is chosen (Slides and Tables have it).
-- [ ] 21. Tables' top bar has no Find (Words and Slides have it).
-- [ ] 22. Words › Insert › Shapes › Block arrows: left-right and up-down arrows drawn as diamonds.
+- [x] 18. The ribbon's height jumps a few px between tabs (Slides Home vs Group/Shape; Tables Home vs View). Now every ribbon line is at
+      least a tool tall (48 dp, Compact 40) inside its padding, in all three apps.
+- [x] 19. Some ribbons centred (Design, Arrange, Sheet), others from the left (View) when they fit — one. Now all from the left (Office's
+      way; a long tab has to start there anyway), in all three apps and the strips.
+- [x] 20. Words' contextual tab row lacks Selection / × at its start when a shape is chosen (Slides and Tables have it). Now ×, which
+      lets go of the picture, shape or table. Selection stays for words (Words' Cut/Copy work on text; a picture has its own tab).
+- [x] 21. Tables' top bar has no Find (Words and Slides have it). Now before Undo, while editing too.
+- [x] 22. Words › Insert › Shapes › Block arrows: left-right and up-down arrows drawn as diamonds. Their drawing was right — in a square
+      the two heads meet (Word's too); now the gallery draws each in its proportions and puts it in at Word's size, one rule for all
+      three apps (`shapeSize`: ⇔ 2:1, ⇕ 1:2; Slides used to put every shape in square).
 Working on the tablet: speaker notes, Select all/Group/drag/Ungroup, Distribute, Reset, Shape options Dash/Shadow (both), Gradient, Slide
 size 16:9 Ensure fit, table Row below, Zoom 200% + pan, Fade + Fly In, the show letterboxed; Words' heart with dot + shadow; Tables'
 Gridlines, column Hide, sheet Hide/Unhide, Protect/Unprotect; LibreOffice opens all three saved copies; touch targets Tables 2 (edge-cut).

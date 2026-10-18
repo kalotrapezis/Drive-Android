@@ -3853,6 +3853,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 else -> true
             } }, tab, w, WORD_BLUE, { tab = it }, contextual = if (selectedObject?.table != null) WriterTab.Table else WriterTab.Picture, label = { t -> if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label }) {
                 if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, "Back to the keyboard bar", w, on = true) { ribbonOverKeyboard = false }
+                // a picture, shape or table chosen: ✕ lets go of it, as Slides' and Tables' rows have (the tablet walk, 18 Oct)
+                else if (selectedObject != null) androidx.compose.material3.IconButton(onClick = { state.selection = androidx.compose.ui.text.TextRange(state.selection.max); tab = WriterTab.Home },
+                    modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
             }
             // The tools of a tab in pages that fit the width, swiped one page at a time (asked 2026-09-27), with dots.
             val span = state.currentSpanStyle
@@ -4384,14 +4387,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // a desktop (asked 16 Oct): the groups on rows, a group kept whole
             if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } }
             else if (LocalConfiguration.current.screenWidthDp >= 700) Row(
-                rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
+                // from the left and as tall in every tab, as Slides' and Tables' (the tablet walk, 18 Oct)
+                rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp).heightIn(min = if (OfficeUi.compact) 40.dp else 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
             ) { RibbonTools { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } } }
             else androidx.compose.runtime.key(tab) {
                 // The tab's tools in one row that scrolls freely, its groups apart by a thin line, faded where there is more
                 // (16 Oct: as Tables' and Slides' rows, in place of pages turned one at a time with dots); a new tab from its start
                 val sc = remember(tab) { androidx.compose.foundation.ScrollState(0) }
-                Row(Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc).padding(horizontal = 4.dp, vertical = 2.dp).heightIn(min = if (OfficeUi.compact) 40.dp else 48.dp), verticalAlignment = Alignment.CenterVertically) {
                     RibbonTools { pages.forEachIndexed { i, group -> if (i > 0) RibbonDivider(w); group() } }
                 }
             }
@@ -4676,9 +4680,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (shapesPage) ShapesDialog(kind == OfficeKind.Odt, { shapesPage = false }) { shape, fill, line ->
         shapesPage = false
-        // An inch square (a line: two inches across); its picture tab sizes, wraps and places it after.
-        // Long ones (sideways arrows, banners, scrolls, waves) half as tall as they are wide.
-        val (w, h) = if (shape == "line" || shape.startsWith("lineArrow")) 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(shape)) 108f to 54f else 72f to 72f
+        // Word's size for it ([shapeSize]); its picture tab sizes, wraps and places it after
+        val (w, h) = shapeSize(shape)
         val img = DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, kind, fill, line, 1f, w, h))
         pictures[img.key] = img
         val at = placePicture(img)

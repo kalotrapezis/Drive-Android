@@ -1544,6 +1544,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (editing) saveState(saving, unsaved || draft != null) else null, file?.extension?.let { ".$it" }), islandContentColor())
                     }
                     if (editing) {
+                        // Find where Words and Slides have it, before Undo (the tablet walk, 18 Oct)
+                        if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }
                         IconButton(onClick = { undoOrRedo(false) }, enabled = version >= 0 && history.canUndo) { Icon(painterResource(R.drawable.ic_undo), contentDescription = "Undo") }
                         IconButton(onClick = { undoOrRedo(true) }, enabled = version >= 0 && history.canRedo) { Icon(painterResource(R.drawable.ic_redo), contentDescription = "Redo") }
                         IconButton(onClick = { save() }, enabled = (unsaved || draft != null) && !saving) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save") }
@@ -2002,7 +2004,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // Insert › Shape: Words' and Slides' shapes dialog; the shape at the chosen cell, an inch square (long ones twice as wide), as Words sizes them
     if (shaping) sheet?.let { s -> ShapesDialog(odt = book?.kind == "ods", dismiss = { shaping = false }) { kind, fill, line ->
         shaping = false; val (r, c) = chosen(s); val i = index
-        val (w, h) = if (kind == "line" || kind.startsWith("lineArrow")) 144f to 0.75f else if (Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(kind)) 108f to 54f else 72f to 72f
+        val (w, h) = shapeSize(kind)
         fileStep("shape put in", { baked, next, bb -> if (bb.kind == "xlsx") SheetChart.shapeXlsx(baked, next, bb.parts.getValue("$i"), r, c, w, h, kind, fill, line)
             else SheetChart.shapeOds(baked, next, i, r, c, w, h, kind, fill, line) }) } }
     // Insert › Source: Words' source dialog; the reference (APA 7) onto the Sources sheet, which is shown

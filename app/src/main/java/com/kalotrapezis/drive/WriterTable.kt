@@ -953,6 +953,15 @@ internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) 
     }
 }
 
+/** A shape's size as put in (pt), Word's way: an inch square; a line two inches across; long ones (sideways arrows, banners, scrolls,
+ *  waves) half as tall as wide; up and down arrows the other way round (the tablet walk, 18 Oct: ⇔ and ⇕ looked like diamonds). */
+internal fun shapeSize(kind: String): Pair<Float, Float> = when {
+    kind == "line" || kind.startsWith("lineArrow") -> 144f to 0.75f
+    Regex("(?i)^(right|left|leftRight|striped|notched)Arrow$|^(homePlate|chevron|ribbon2?|ellipseRibbon2?|horizontalScroll|wave|doubleWave)$").matches(kind) -> 108f to 54f
+    Regex("(?i)^(up|down|upDown)Arrow$|^verticalScroll$").matches(kind) -> 54f to 108f
+    else -> 72f to 72f
+}
+
 /**
  * Insert › Shapes (asked 2026-09-29, OnlyOffice's and Word's gallery): Word's groups of shapes, the ones used last first,
  * each drawn as it will be in the colours chosen above them — a fill (or none) and an outline. A tap puts it at the cursor.
@@ -990,7 +999,10 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
                                     val preview = remember(kind, fill, line) { ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 1.5f) }
                                     androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, 2f, 2f, size.width - 4f, size.height - 4f) }
+                                        // in its proportions as put in, in the middle of the square
+                                        val (sw, sh) = shapeSize(kind).let { (a, b) -> if (kind == "line" || kind.startsWith("lineArrow")) 1f to 1f else a to b }
+                                        val k = minOf((size.width - 4f) / sw, (size.height - 4f) / sh); val pw = sw * k; val ph = sh * k
+                                        drawIntoCanvas { c -> preview.drawAt(c.nativeCanvas, (size.width - pw) / 2, (size.height - ph) / 2, pw, ph) }
                                     }
                                 }
                             }

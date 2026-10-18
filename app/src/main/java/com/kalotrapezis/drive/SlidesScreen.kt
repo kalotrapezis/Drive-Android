@@ -2340,8 +2340,10 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         shapes = false
                         val dd = deck; val ee = edit; val c = chosen
                         if (dd != null && ee != null && c != null) {
-                            val side = dd.height * 0.3f; val uid = ee.order[c].uid; val id = ee.newId(uid, taken(ee, c))
-                            put(SlidesEdit.Added(id, (dd.width - side) / 2, (dd.height - side) / 2, side, side, prst = kind, fill = fill ?: 0xFF4472C4.toInt()))
+                            // Words' proportions for it, its longer side three tenths of the slide's height
+                            val (sw, sh) = shapeSize(kind); val k = dd.height * 0.3f / maxOf(sw, sh); val bw = sw * k; val bh = maxOf(sh * k, 1f)
+                            val uid = ee.order[c].uid; val id = ee.newId(uid, taken(ee, c))
+                            put(SlidesEdit.Added(id, (dd.width - bw) / 2, (dd.height - bh) / 2, bw, bh, prst = kind, fill = fill ?: 0xFF4472C4.toInt()))
                             // its fill and outline as chosen (none for either kept as none)
                             edit?.let { now -> edit = now.copy(looks = now.looks + ((uid to id) to SlidesEdit.Look(fill = fill?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, line = line?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE))) }
                             WriterLog.i("Slides: a shape put on a slide ($kind)")

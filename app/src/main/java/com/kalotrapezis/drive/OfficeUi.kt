@@ -379,8 +379,10 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
 /** A ribbon's tools: rows of whole groups on a desktop ([ribbonRows]), else one sliding line, faded where there is more. */
 @Composable internal fun RibbonLine(scroll: androidx.compose.foundation.ScrollState, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
     if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().then(modifier), content)
-    else androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).then(modifier),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { RibbonTools(content) }
+    // from the left as Words' and Office's (the tablet walk, 18 Oct: some centred, some not), and as tall in every tab — the tools'
+    // height, so the tab row does not move between tabs
+    else androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).then(modifier).heightIn(min = if (OfficeUi.compact) 40.dp else 48.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) { RibbonTools(content) }
 
 /** navigationBarsPadding, plus room for the window's handle: a floating or split window has no navigation bar of its
  *  own, but the system draws its handle over the window's bottom (asked 16 Oct: it sat on the ribbon's tools). */

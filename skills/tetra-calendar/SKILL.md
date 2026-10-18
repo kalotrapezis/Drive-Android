@@ -12,18 +12,18 @@ reminders, and you manage them by changing the files. Tetra syncs the folder to 
 ~/Tetra/Files/Calendar/                 one folder per calendar; the folder's name is the calendar's name
   Personal/
     color                               one line: #E91E63 (the calendar's colour)
-    dentist-3f9a2c.ics                  one event = one .ics file (a repeating one, with its changed days, too)
+    dentist-3f9a2c41.ics                  one event = one .ics file (a repeating one, with its changed days, too)
   Work/
     color
-    staff-meeting-c2d410.ics
+    staff-meeting-c2d41077.ics
 ```
 
 ## Use the helper first
 
-`calendar.py` beside this file (standard library only) does the careful parts. Run it with `python3`:
+`tetra_calendar.py` beside this file (standard library only) does the careful parts. Run it with `python3`:
 
 ```bash
-C=~/.claude/skills/tetra-calendar/calendar.py
+C=~/.claude/skills/tetra-calendar/tetra_calendar.py  # not calendar.py: that name hides Python's own module
 python3 $C list                                  # the calendars, colours, event counts
 python3 $C agenda 2026-10-19 2026-10-25          # what happens between two dates, repeats worked out
 python3 $C find dentist                          # an event's file, by title, place or notes
@@ -32,7 +32,7 @@ python3 $C add --calendar Personal --title "Dentist" --start "2026-10-21 17:30" 
 python3 $C add --calendar Family --title "Mum's birthday" --all-day 2027-03-12 --repeat "FREQ=YEARLY" \
     --remind 3d@09:00+daily                      # 3 days before at 9:00, and every day after until the day
 python3 $C new-calendar "School" "#33B679"
-python3 $C trash ~/Tetra/Files/Calendar/Personal/dentist-3f9a2c.ics
+python3 $C trash ~/Tetra/Files/Calendar/Personal/dentist-3f9a2c41.ics
 python3 $C check                                 # ALWAYS after any change: every file read and checked
 ```
 
@@ -74,7 +74,8 @@ END:VCALENDAR
 
 The rules (RFC 5545, as Google and Outlook write it):
 - **UID** unique and never changed. A new event: a new file with a new UID (`uuidgen`), any name ending in `.ics`
-  (Tetra's own: the title's words and six letters of the UID, `staff-meeting-6f1c2b.ics`). Never rename a file.
+  (Tetra's own: the title's words and eight letters of the UID's SHA-1, `staff-meeting-6f1c2b0e.ics`; never a name
+  another file has). Never rename a file.
 - **On every change** set `DTSTAMP` and `LAST-MODIFIED` to now in UTC (`date -u +%Y%m%dT%H%M%SZ`) and add 1 to
   `SEQUENCE`. Sync uses them to tell the newer version.
 - **Times**: `DTSTART;TZID=Europe/Athens:20261020T100000` (local time in an IANA zone), or UTC with `Z`
@@ -116,7 +117,7 @@ Each reminder is a `BEGIN:VALARM … END:VALARM` inside the VEVENT, with `ACTION
 - New: `new-calendar NAME [#RRGGBB]`, or `mkdir` + a `color` file holding `#RRGGBB`.
 - Rename: rename the folder. Colour: rewrite `color`.
 - Move an event to another calendar: `mv` its file into that folder.
-- Delete an event or a calendar: **`calendar.py trash PATH`** (into `~/Tetra/Files/Trash`). **Never `rm`**: Tetra's sync
+- Delete an event or a calendar: **`tetra_calendar.py trash PATH`** (into `~/Tetra/Files/Trash`). **Never `rm`**: Tetra's sync
   never deletes, so a file removed on the computer comes back from the phone; a file moved into Trash moves there on
   every device.
 - Colours Tetra offers: `#E91E63` pink, `#D50000` red, `#E67C73` flamingo, `#F4511E` tangerine, `#F6BF26` yellow,

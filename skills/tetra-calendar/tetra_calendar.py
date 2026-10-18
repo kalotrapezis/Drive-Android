@@ -2,18 +2,18 @@
 """Tetra's calendar from the command line (standard library only).
 
 The calendars are folders in ~/Tetra/Files/Calendar; each event is one iCalendar (.ics) file in its calendar's folder.
-    calendar.py list                              the calendars, their colours and how many events
-    calendar.py agenda [FROM] [TO]                events between two dates (repeats worked out); default: the next 7 days
-    calendar.py find TEXT                         events whose title, place or notes contain TEXT, with their files
-    calendar.py add --calendar NAME --title T --start "2026-10-20 09:30" [--end ...|--minutes 60]
+    tetra_calendar.py list                              the calendars, their colours and how many events
+    tetra_calendar.py agenda [FROM] [TO]                events between two dates (repeats worked out); default: the next 7 days
+    tetra_calendar.py find TEXT                         events whose title, place or notes contain TEXT, with their files
+    tetra_calendar.py add --calendar NAME --title T --start "2026-10-20 09:30" [--end ...|--minutes 60]
                     [--all-day 2026-10-20 [--days N]] [--place P] [--notes N] [--repeat RRULE]
                     [--remind 30m,1h,1d,1d@09:00,3d@09:00+daily] [--zone Europe/Athens]
-    calendar.py new-calendar NAME [#RRGGBB]
-    calendar.py trash FILE                        an event (or a calendar folder) to Tetra's Trash — never rm
-    calendar.py check                             every file read and checked; run after any change
+    tetra_calendar.py new-calendar NAME [#RRGGBB]
+    tetra_calendar.py trash FILE                        an event (or a calendar folder) to Tetra's Trash — never rm
+    tetra_calendar.py check                             every file read and checked; run after any change
 --root DIR (or TETRA_CALENDAR) points elsewhere.
 """
-import argparse, datetime as dt, os, re, shutil, sys, uuid
+import argparse, datetime as dt, hashlib, os, re, shutil, sys, uuid
 from zoneinfo import ZoneInfo
 
 ROOT = os.environ.get("TETRA_CALENDAR", os.path.expanduser("~/Tetra/Files/Calendar"))
@@ -252,7 +252,7 @@ def occurrences(cals, frm, to):
                 length = master["end"] - master["start"]
                 skip = {x.timestamp() for x in master["exdates"]} | moved
                 for s in expand(master, frm - length, to):
-                    if s.timestamp() not in skip and s + length > frm:
+                    if s.timestamp() not in skip and s + length > frm and s < to:
                         out.append((s, s + length, master, cal, path))
             for o in overrides:
                 if not o["cancelled"] and o["start"] < to and o["end"] > frm:
@@ -282,8 +282,9 @@ def stamp():
 
 
 def slug(title, uid):
+    """Tetra's name for a new event: its title and eight letters of its UID's hash (as the apps name theirs)."""
     s = re.sub(r"[^\w]+", "-", title.lower(), flags=re.UNICODE).strip("-")[:40].rstrip("-") or "event"
-    return f"{s}-{re.sub(r'[^0-9a-zA-Z]', '', uid)[:6].lower()}.ics"
+    return f"{s}-{hashlib.sha1(uid.encode()).hexdigest()[:8]}.ics"
 
 
 def dur(days, seconds):
@@ -322,7 +323,7 @@ def tval(t, all_day):
 def cmd_add(a, root):
     cal = next((c for c in calendars(root) if c["name"].lower() == a.calendar.lower()), None)
     if not cal:
-        sys.exit(f"No calendar named {a.calendar}. Calendars: {', '.join(c['name'] for c in calendars(root)) or 'none'} (calendar.py new-calendar NAME)")
+        sys.exit(f"No calendar named {a.calendar}. Calendars: {', '.join(c['name'] for c in calendars(root)) or 'none'} (tetra_calendar.py new-calendar NAME)")
     tz = ZoneInfo(a.zone) if a.zone else LOCAL
     if a.all_day:
         start = dt.datetime.strptime(a.all_day, "%Y-%m-%d")
@@ -348,7 +349,9 @@ def cmd_add(a, root):
     for spec in filter(None, (a.remind or "").split(",")):
         lines += alarm(spec, start, all_day)
     lines += ["END:VEVENT", "END:VCALENDAR"]
-    path = os.path.join(cal["dir"], slug(a.title, uid))
+    path, n = os.path.join(cal["dir"], slug(a.title, uid)), 2
+    while os.path.exists(path):  # never over another event's file
+        path, n = os.path.join(cal["dir"], slug(a.title, uid)[:-4] + f" ({n}).ics"), n + 1
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write("\r\n".join(fold(x) for x in lines) + "\r\n")
     print(path)

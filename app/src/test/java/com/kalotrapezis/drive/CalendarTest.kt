@@ -200,4 +200,18 @@ class CalendarTest {
         val back = CalendarTransfer.read(out, "x")
         assertEquals(CalendarFiles.files(cal).size, back.events.size)
     }
+
+    @Test fun `two events of one title whose UIDs begin alike get two files`() {
+        // Google's UIDs of a series share long beginnings; the user's import lost two events to one file name (18 Oct).
+        val ics = { uid: String -> "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:$uid\r\nDTSTAMP:20261018T000000Z\r\nSUMMARY:Lesson\r\nDTSTART:20261020T080000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n" }
+        val inc = CalendarTransfer.read(ics("_60q30c1g60o30e1i60o4ac1g60rj8gpl88rj2c1h84s34h9g64o30c1g60o30c1g70o30c1g6ksk2e1n6sp3gc1g64o30c1g60o30c1g60o32c1g60o30c1g6os3achm6or3achl6gpjcdi36l0j0d9m8l0@google.com") +
+            ics("_60q30c1g60o30e1i60o4ac1g60rj8gpl88rj2c1h84s34h9g64o30c1g60o30c1g70o30c1g6ksk2e1n6sp3gc1g64o30c1g60o30c1g60o32c1g60o30c1g6os3achm6or3achl6gpjcdi36l0j0d9m8l1@google.com"), "x")
+        val into = CalendarFiles.newCalendar(root, "Google", CalendarFiles.PALETTE[1])
+        assertEquals(2 to 0, CalendarTransfer.write(into, inc))
+        assertEquals(2, CalendarFiles.files(into).size)
+        assertEquals(0 to 2, CalendarTransfer.write(into, inc))
+        // and a name already taken by another event is never written over
+        val f = File(into.dir, CalendarFiles.fileName("Lesson", "a")); f.writeText("x")
+        assertEquals(File(into.dir, f.nameWithoutExtension + " (2).ics"), CalendarFiles.newFile(into.dir, "Lesson", "a"))
+    }
 }

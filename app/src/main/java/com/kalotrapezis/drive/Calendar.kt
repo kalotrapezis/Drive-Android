@@ -342,10 +342,24 @@ object CalendarFiles {
 
     // ——— Writing ———
 
-    /** The file name for a new event: its title and six letters of its UID; never renamed later (a rename is a move in sync). */
+    /**
+     * The file name for a new event: its title and eight letters of its UID's hash; never renamed later (a rename is a
+     * move in sync). The hash, not the UID's first letters: Google's UIDs of one series share long beginnings, and two
+     * such events of the same title once got one name (found importing the user's own calendar, 18 Oct).
+     */
     fun fileName(title: String, uid: String): String {
         val slug = title.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "-").trim('-').take(40).trimEnd('-').ifEmpty { "event" }
-        return "$slug-${uid.filter { it.isLetterOrDigit() }.take(6).lowercase()}.ics"
+        val hash = java.security.MessageDigest.getInstance("SHA-1").digest(uid.toByteArray()).take(4).joinToString("") { "%02x".format(it) }
+        return "$slug-$hash.ics"
+    }
+
+    /** A new event's file in [dir]: its name, or "name (2)" if another event has it — a file is never written over another's. */
+    fun newFile(dir: File, title: String, uid: String): File {
+        val name = fileName(title, uid)
+        var f = File(dir, name)
+        var n = 2
+        while (f.exists()) f = File(dir, name.removeSuffix(".ics") + " (${n++}).ics")
+        return f
     }
 
     fun newUid() = UUID.randomUUID().toString()
@@ -525,7 +539,7 @@ object CalendarTransfer {
             zonesUsed(vevents).forEach { id -> inc.zones[id]?.let(cal.items::add) }
             cal.items.addAll(vevents.sortedBy { it.prop("RECURRENCE-ID") != null })
             val title = vevents.firstNotNullOfOrNull { it.prop("SUMMARY")?.text } ?: ""
-            val file = existing[uid] ?: java.io.File(into.dir, CalendarFiles.fileName(title, uid))
+            val file = existing[uid] ?: CalendarFiles.newFile(into.dir, title, uid)
             if (file.exists()) updated++ else added++
             file.writeText(ICal.write(listOf(cal)))
         }

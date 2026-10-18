@@ -328,7 +328,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         val to = target ?: CalendarFiles.calendars(root).firstOrNull() ?: CalendarFiles.newCalendar(root, "Personal", CalendarFiles.PALETTE[0])
         CalendarPrefs.setLast(context, to.dir.name)
         val o = ed.occ
-        if (o == null) { CalendarFiles.save(java.io.File(to.dir, CalendarFiles.fileName(e.title, e.uid)), e); return@write }
+        if (o == null) { CalendarFiles.save(CalendarFiles.newFile(to.dir, e.title, e.uid), e); return@write }
         val f = o.file
         val m = f.master
         val day = o.event.recurrenceId ?: o.start
@@ -339,7 +339,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Scope.Following -> if (m == null || day.toInstant() == m.start.toInstant()) saveAll(f, m, o, e, moveTo) else {
                 CalendarFiles.endBefore(f, day)
                 val uid = CalendarFiles.newUid()
-                CalendarFiles.save(java.io.File(to.dir, CalendarFiles.fileName(e.title, uid)), e.copy(uid = uid, recurrenceId = null, exdates = emptyList(),
+                CalendarFiles.save(CalendarFiles.newFile(to.dir, e.title, uid), e.copy(uid = uid, recurrenceId = null, exdates = emptyList(),
                     rrule = e.rrule?.split(';')?.filterNot { it.startsWith("COUNT=", true) }?.joinToString(";")))
             }
             Scope.All -> saveAll(f, m, o, e, moveTo)

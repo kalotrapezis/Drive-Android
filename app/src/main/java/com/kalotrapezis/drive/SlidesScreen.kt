@@ -199,7 +199,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
     }
     var shapes by remember { mutableStateOf(false) } // Shape: the shapes to choose from
-    var resizing by remember { mutableStateOf<Float?>(null) } // Design › Slide size: the width (pt) asked about, Maximize or Ensure fit
+    var resizing by remember { mutableStateOf<Pair<Float, Float>?>(null) } // Design › Slide size: the size (pt) asked about, Maximize or Ensure fit
+    var sizeAfterSave by remember { mutableStateOf<Pair<Float, Float>?>(null) } // … asked for with other changes unsaved: Save, then go on
+    var slideSizing by remember { mutableStateOf(false) } // … Custom…: its width and height in cm
     var paragraphing by remember { mutableStateOf<ParaLook?>(null) } // Home › Paragraph: Words' page open on the box's first paragraph's look
     var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
     var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
@@ -1402,21 +1404,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonDivider(w)
                 if (!odp) RibbonButton("Colours", w, R.drawable.ic_format_color_text) { strip = DesignGallery.Colours }
                 RibbonButton("Fonts", w, R.drawable.ic_style) { strip = DesignGallery.Fonts }
-                // Slide size (PowerPoint's): Widescreen or Standard, the things on the slides fitted in or made as big as it allows
+                // Slide size (PowerPoint's): its sizes and one's own, the things on the slides fitted in or made as big as it allows
                 RibbonDivider(w)
-                Box {
-                    var sizing by remember { mutableStateOf(false) }
-                    RibbonButton("Slide size", w, R.drawable.ic_aspect_ratio) { sizing = true }
-                    DropdownMenu(sizing, { sizing = false }) {
-                        listOf("Widescreen (16:9)" to SlidesSize.WIDE_W, "Standard (4:3)" to SlidesSize.STANDARD_W).forEach { (label, sw) ->
-                            val now = base?.let { Math.abs(it.width / it.height - sw / SlidesSize.HEIGHT) < 0.01f } == true
-                            DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (now) Icon(painterResource(R.drawable.ic_check), null) }, onClick = { sizing = false
-                                // everything on the slides is moved: only from a deck with nothing else changed (or the size undone)
-                                if (!now) { if (e.copy(theme = null, size = null) != SlidesEdit.start(deck ?: return@DropdownMenuItem)) message = "Save first: a new slide size moves everything on the slides"
-                                    else if (deck?.let { Math.abs(it.width / it.height - sw / SlidesSize.HEIGHT) < 0.01f } == true) change(e.copy(size = null)) // back to the file's own
-                                    else resizing = sw } })
-                        }
-                    }
+                fun same(d: Deck?, sw: Float, sh: Float) = d != null && Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f
+                fun resize(sw: Float, sh: Float) {
+                    if (same(base, sw, sh)) return
+                    if (same(deck, sw, sh)) { change(e.copy(size = null)); return } // back to the file's own
+                    // everything on the slides is moved from the file as saved: other changes are saved first (asked, 18 Oct)
+                    if (e.copy(theme = null, size = null) != SlidesEdit.start(deck ?: return)) sizeAfterSave = sw to sh else resizing = sw to sh
                 }
             }
             "Transitions" -> {
@@ -1439,6 +1434,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 } else {
                     for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, if (kind.isEmpty()) 0 else now?.ms?.takeIf { it > 0 } ?: 750, now?.after)) }
                     RibbonDivider(w)
+                RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
+                    MenuChoice("Custom…", checked = SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }, opens = true) { slideSizing = true })
                     RibbonButton("Options", w, R.drawable.ic_tune) { effectOptions = true }
                     // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
                     RibbonButton("Apply to all", w, R.drawable.ic_done_all, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
@@ -1985,7 +1982,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 StripHead(st, w) { effectOptions = false; effectKinds = false }
                                 RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(vertical = 2.dp)) { if (e != null) SlideRibbon(shown, c, e, w) }
                             } else
-                            Column(if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) {
+                            OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
                                 OfficeTabRow(tabs, shown, w, POWERPOINT_ORANGE, { ribbonTab = it }, contextual = "Item", label = { if (it == "Item") itemKind else it }) {
                                     // a tablet always has a slide chosen: ✕ lets go of what is chosen on it only
                                     if (!wide || item != null) IconButton(onClick = { if (item != null) item = null else chosen = null }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
@@ -2024,7 +2021,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     else (ch as ThemeFonts).let { f -> t0.copy(major = f.heading, minor = f.body) }
                                 stripBefore = b; stripPicked = ch; edit = b.copy(theme = t)
                                 return@DesignGalleryStrip
-                            }
+                            } }
                             if (stripShown == DesignGallery.WordArt) {
                                 // a look and a bend make the WordArt, as in Words: the one not tapped stays as it was
                                 val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip
@@ -2115,11 +2112,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     paragraphing?.let { q -> ParagraphDialog(q, { paragraphing = null }) { n -> paragraphing = null; restyle { it.copy(para = n) }; WriterLog.i("Slides: paragraph page") } }
                     // Slide size: PowerPoint's question — the things made as big as the new size allows, or fitted into it
-                    resizing?.let { sw -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
+                    resizing?.let { (sw, sh) -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
                         text = { Text("Make the things on the slides as big as the new size allows (some may be cut at its sides), or smaller so they all fit?") },
                         confirmButton = { Row {
-                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, SlidesSize.HEIGHT, true))) } }) { Text("Maximize") }
-                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, SlidesSize.HEIGHT, false))) } }) { Text("Ensure fit") } } },
+                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, sh, true))) } }) { Text("Maximize") }
+                            androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, sh, false))) } }) { Text("Ensure fit") } } },
                         dismissButton = { androidx.compose.material3.TextButton(onClick = { resizing = null }) { Text("Cancel") } }) }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
@@ -2142,6 +2139,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (alting && arranged != null) {
                         var typed by remember { mutableStateOf(arranged.alt.orEmpty()) }
                         androidx.compose.material3.AlertDialog(onDismissRequest = { alting = false }, title = { Text("Alt text") },
+                    sizeAfterSave?.let { z -> androidx.compose.material3.AlertDialog(onDismissRequest = { sizeAfterSave = null }, title = { Text("Slide size") },
+                        text = { Text("A new slide size moves everything on the slides, so your other changes are saved first. Undo takes the new size back.") },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null; save { resizing = z } }) { Text("Save and go on") } },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null }) { Text("Cancel") } }) }
+                    if (slideSizing) SlideSizeDialog(base?.width ?: SlidesSize.WIDE_W, base?.height ?: SlidesSize.HEIGHT, { slideSizing = false }) { sw, sh -> slideSizing = false
+                        val e = edit ?: return@SlideSizeDialog; val d = deck ?: return@SlideSizeDialog
+                        if (Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f) change(e.copy(size = null))
+                        else if (e.copy(theme = null, size = null) != SlidesEdit.start(d)) sizeAfterSave = sw to sh else resizing = sw to sh }
                             text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it }, label = { Text("What it shows, for screen readers") }, minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth()) },
                             confirmButton = { androidx.compose.material3.TextButton(onClick = { alting = false; restyle { it.copy(alt = typed.trim()) } }) { Text("OK") } },
                             dismissButton = { androidx.compose.material3.TextButton(onClick = { alting = false }) { Text("Cancel") } })
@@ -3237,3 +3242,19 @@ private fun SizeAndPosition(item: SlideItem, dismiss: () -> Unit, set: (Float, F
 
 /** Review › Spelling's word in a deck: its slide, its box (its id), its line there, where in it, the word. */
 internal data class SlideSpell(val slide: Int, val id: String, /** what chooses it (its anim id) */ val sel: String, val line: Int, val at: IntRange, val word: String)
+
+/** Design › Slide size › Custom…: the slides' width and height in cm (PowerPoint's 2.54–142.24 cm). */
+@Composable private fun SlideSizeDialog(w0: Float, h0: Float, dismiss: () -> Unit, ok: (Float, Float) -> Unit) {
+    fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.2f", pt / 28.346457f).trimEnd('0').trimEnd('.')
+    var w by remember { mutableStateOf(cm(w0)) }; var h by remember { mutableStateOf(cm(h0)) }
+    fun pt(s: String) = s.replace(',', '.').toFloatOrNull()?.takeIf { it in 2.54f..142.24f }?.times(28.346457f)
+    androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Slide size") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((label, v, set) in listOf(Triple("Width (cm)", w) { x: String -> w = x }, Triple("Height (cm)", h) { x: String -> h = x }))
+                androidx.compose.material3.OutlinedTextField(v, set, label = { Text(label) }, singleLine = true, isError = pt(v) == null,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+            Text("From 2.54 to 142.24 cm, as PowerPoint allows.", style = MaterialTheme.typography.bodySmall)
+        }
+    }, confirmButton = { androidx.compose.material3.TextButton(onClick = { ok(pt(w) ?: return@TextButton, pt(h) ?: return@TextButton) }, enabled = pt(w) != null && pt(h) != null) { Text("OK") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
+}

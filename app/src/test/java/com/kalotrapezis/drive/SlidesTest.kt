@@ -456,6 +456,28 @@ class SlidesTest {
         }
     }
 
+    /** Design › Slide size: each size offered and one's own (25 × 20 cm), saved in both formats — PowerPoint's p:sldSz and its type, Impress's page — and as LibreOffice reads them. */
+    @Test fun `each slide size saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val sizes = SlidesSize.PRESETS.map { it.second } + (25f * 28.346457f to 20f * 28.346457f)
+        for (name in listOf("slides.pptx", "slides.odp")) for ((sw, sh) in sizes) {
+            val src = File("src/test/resources/$name")
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("size-${sw.toInt()}x${sh.toInt()}-$name")
+            SlidesSize.resize(src, SlidesSize.Size(sw, sh, false), out)
+            fun check(d: Deck, how: String) { assertEquals(how, sw, d.width, 1f); assertEquals(how, sh, d.height, 1f) }
+            check(Slides.read(out), "$name ${sw}×$sh")
+            if (name.endsWith("pptx")) {
+                val sz = Regex("""<p:sldSz\b[^>]*/>""").find(String(OfficeFormats.unzip(out.readBytes()).getValue("ppt/presentation.xml")))!!.value
+                assertEquals(sz, SlidesSize.type(sw, sh), Regex("""type="(\w+)"""").find(sz)?.groupValues?.get(1))
+            }
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (name.endsWith("odp")) "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name ${sw}×$sh")
+            }
+        }
+    }
+
     /** Home › Reset: a title moved and made bold, saved; read again and reset — back where and as its layout has it, shown and saved. */
     @Test fun `a slide reset saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

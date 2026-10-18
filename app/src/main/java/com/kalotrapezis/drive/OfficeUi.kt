@@ -57,6 +57,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 
@@ -195,6 +197,98 @@ internal val CELL_FILLS = listOf(0xFFFFFF00, 0xFFC6EFCE, 0xFFFFC7CE, 0xFFDDEBF7,
 @Composable internal fun StripHead(title: String, w: Color, back: () -> Unit) {
     androidx.compose.material3.IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back", tint = w) }
     Text(title, color = w, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
+}
+
+/**
+ * A list of choices' own strip on a tablet or phone (the user, 18 Oct: "I dont like over UI list when not in desktop. Keep it
+ * as is for Desktop but tablet and phone make a riben for it at the bottom like the pages one"): the ribbon slides down, the
+ * strip slides up in its place, ‹ and its name first. A preset is picked, then ✓ keeps it and × (or ‹, or Back) leaves it;
+ * an action strip ([ok] null) acts at the tap and goes back. Opened through [officeStrip] by a ribbon's tool; one at a time.
+ */
+internal class OfficeStrip(val key: Any, val title: String) {
+    var content: @Composable (OfficeStrip) -> Unit by mutableStateOf({ _ -> })
+    var ok: ((OfficeStrip) -> Unit)? by mutableStateOf(null)
+    var cancel: () -> Unit = {}
+    /** the preset tapped, shown chosen until ✓ */
+    var picked by mutableStateOf<Any?>(null)
+}
+internal class OfficeStrips {
+    var open by mutableStateOf<OfficeStrip?>(null)
+    fun cancel() { open?.cancel?.invoke(); open = null }
+    fun ok() { open?.let { s -> s.ok?.invoke(s) }; open = null }
+}
+internal val LocalOfficeStrips = androidx.compose.runtime.staticCompositionLocalOf<OfficeStrips?> { null }
+
+/**
+ * What opens a strip of choices in the ribbon's place — null with the ribbon at the top (a desktop keeps its menus) or with no
+ * [OfficeStripFrame] round the ribbon. Its [content] and [ok] are kept fresh while the tool's ribbon is there (hidden under it).
+ */
+@Composable internal fun officeStrip(title: String, ok: ((OfficeStrip) -> Unit)?, cancel: () -> Unit = {}, content: @Composable (OfficeStrip) -> Unit): (() -> Unit)? {
+    val strips = LocalOfficeStrips.current
+    val key = remember { Any() }
+    val mine = strips?.open?.takeIf { it.key === key }
+    androidx.compose.runtime.SideEffect { mine?.let { it.content = content; it.ok = ok; it.cancel = cancel } }
+    // its tool gone (another tab, nothing chosen): its strip with it
+    androidx.compose.runtime.DisposableEffect(strips) { onDispose { if (strips?.open?.key === key) strips.open = null } }
+    if (strips == null || OfficeUi.top) return null
+    return { strips.open = OfficeStrip(key, title).also { it.content = content; it.ok = ok; it.cancel = cancel } }
+}
+
+/** Round a ribbon (its tab row and tools): a strip of choices ([officeStrip]) slides up in its place while the ribbon slides down. */
+@Composable internal fun OfficeStripFrame(w: Color, modifier: Modifier = Modifier, ribbon: @Composable () -> Unit) {
+    val strips = remember { OfficeStrips() }
+    val open = strips.open
+    val last = remember { arrayOfNulls<OfficeStrip>(1) }
+    if (open != null) last[0] = open
+    val t by androidx.compose.animation.core.animateFloatAsState(if (open != null) 1f else 0f, androidx.compose.animation.core.tween(180), label = "strip")
+    androidx.activity.compose.BackHandler(open != null) { strips.cancel() }
+    LaunchedEffect(OfficeUi.top) { if (OfficeUi.top) strips.cancel() }
+    androidx.compose.runtime.CompositionLocalProvider(LocalOfficeStrips provides strips) {
+        // the ribbon stays composed under the strip (its tools keep the strip's choices fresh), only not placed
+        androidx.compose.ui.layout.Layout({
+            Box { ribbon() }
+            Box { val st = open ?: last[0]; if (st != null && t > 0f) Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                StripHead(st.title, w) { strips.cancel() }
+                Box(Modifier.weight(1f)) { RibbonLine(androidx.compose.foundation.rememberScrollState()) { st.content(st) } }
+                if (st.ok != null) RibbonTools {
+                    Tool(R.drawable.ic_close, "Cancel", w) { strips.cancel() }
+                    Tool(R.drawable.ic_check, "Apply", w, enabled = st.picked != null) { strips.ok() }
+                }
+            } }
+        }, modifier.clipToBounds()) { ms, c ->
+            val r = ms[0].measure(c); val s = ms[1].measure(c)
+            val h = Math.round(r.height + (s.height - r.height) * t)
+            layout(c.constrainWidth(maxOf(r.width, s.width)), h) {
+                if (t < 1f) r.place(0, Math.round(maxOf(r.height, s.height) * t))
+                if (t > 0f) s.place(0, h - Math.round(s.height * t))
+            }
+        }
+    }
+}
+
+/** A choice of a [RibbonMenu]: its words, ✓ when it is the one in use; [opens] a window (More…, Custom…) at the tap. */
+internal class MenuChoice(val label: String, val checked: Boolean = false, val enabled: Boolean = true, val opens: Boolean = false, val act: () -> Unit)
+
+/**
+ * A ribbon tool with a list of choices: a menu under it on a desktop, its own strip on a tablet or phone ([officeStrip]) —
+ * [preset]s (sizes, spacings, looks) picked, then ✓; actions (Clear all, Shift cells down…) at the tap, the ribbon back.
+ */
+@Composable internal fun RibbonMenu(label: String, w: Color, icon: Int? = null, on: Boolean = false, enabled: Boolean = true, preset: Boolean = true,
+    title: String = label, choices: List<MenuChoice>) {
+    val strips = LocalOfficeStrips.current
+    val strip = officeStrip(title, ok = if (preset) { s -> choices.firstOrNull { it.label == s.picked }?.act?.invoke() } else null) { s ->
+        choices.forEach { ch -> RibbonButton(ch.label, w, enabled = ch.enabled, on = if (s.picked != null) s.picked == ch.label else ch.checked) {
+            if (preset && !ch.opens) s.picked = ch.label else { strips?.open = null; ch.act() } } }
+    }
+    if (strip != null) RibbonButton(label, w, icon, enabled = enabled, on = on) { strip() }
+    else Box {
+        var open by remember { mutableStateOf(false) }
+        RibbonButton(label, w, icon, enabled = enabled, on = on) { open = true }
+        DropdownMenu(open, { open = false }) {
+            choices.forEach { ch -> DropdownMenuItem(text = { Text(ch.label) }, trailingIcon = { if (ch.checked) Icon(painterResource(R.drawable.ic_check), null) },
+                enabled = ch.enabled, onClick = { open = false; ch.act() }) }
+        }
+    }
 }
 
 /** File › Versions in Tables and Slides: the file as it was before each save (the last 3, [keepPrevious]); [open] one. */

@@ -4,7 +4,7 @@ import org.w3c.dom.Element
 import java.io.File
 
 /**
- * Design › Slide size (PowerPoint's): a copy of a deck made another size — Widescreen 16:9 or Standard 4:3 — every slide's,
+ * Design › Slide size (PowerPoint's): a copy of a deck made another size — Widescreen 16:9, 16:10, Standard 4:3, 3:2, 1:2 or one's own — every slide's,
  * layout's and master's things scaled into it as PowerPoint does, "Ensure fit" (all of it smaller, in the middle, its
  * letters too) or "Maximize" (as big as the new size allows, cut at its sides). Shown and saved from the copy, as a theme is.
  */
@@ -13,6 +13,14 @@ internal object SlidesSize {
     data class Size(val w: Float, val h: Float, val maximize: Boolean)
     /** PowerPoint's two (13.333 × 7.5 in and 10 × 7.5 in), in points. */
     const val WIDE_W = 960f; const val STANDARD_W = 720f; const val HEIGHT = 540f
+    /** The sizes offered (w × h pt): PowerPoint's Widescreen, On-screen Show (16:10), Standard, 35mm slides (3:2), and a tall 1:2 page. */
+    val PRESETS = listOf("Widescreen 16:9" to (WIDE_W to HEIGHT), "16:10" to (720f to 450f), "Standard 4:3" to (STANDARD_W to HEIGHT),
+        "3:2" to (810f to HEIGHT), "1:2 (tall)" to (540f to 1080f))
+    /** PowerPoint's own name for a size (p:sldSz's type), "custom" for one it has none for; Widescreen has none written. */
+    fun type(w: Float, h: Float): String? {
+        fun at(a: Float, b: Float) = Math.abs(w - a) < 0.5f && Math.abs(h - b) < 0.5f
+        return when { at(WIDE_W, HEIGHT) -> null; at(STANDARD_W, HEIGHT) -> "screen4x3"; at(720f, 450f) -> "screen16x10"; at(810f, HEIGHT) -> "35mm"; else -> "custom" }
+    }
 
     /** How [w0] × [h0] goes into [w] × [h]: its scale and the shift across and down (pt). */
     fun fit(w0: Float, h0: Float, w: Float, h: Float, maximize: Boolean): Triple<Float, Float, Float> {
@@ -35,7 +43,7 @@ internal object SlidesSize {
         fun attr(n: String) = Regex("""\b$n="(\d+)"""").find(sz.value)?.groupValues?.get(1)?.toFloatOrNull()
         val w0 = (attr("cx") ?: return) / 12700f; val h0 = (attr("cy") ?: return) / 12700f
         val (k, dx, dy) = fit(w0, h0, size.w, size.h, size.maximize)
-        val type = if (Math.abs(size.w / size.h - 4f / 3f) < 0.01f) """ type="screen4x3"""" else ""
+        val type = type(size.w, size.h)?.let { """ type="$it"""" } ?: ""
         parts["ppt/presentation.xml"] = pres.replaceRange(sz.range, """<p:sldSz cx="${Math.round(size.w * 12700)}" cy="${Math.round(size.h * 12700)}"$type/>""").toByteArray()
         for (name in parts.keys.filter { Regex("""ppt/(slides|slideLayouts|slideMasters)/[^/]+\.xml""").matches(it) }) {
             val doc = OfficeFormats.parse(parts.getValue(name)); val root = doc.documentElement

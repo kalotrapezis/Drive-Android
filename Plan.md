@@ -1533,6 +1533,10 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       Not done: the user's own ΤΠΕ Β' file (its EXDATEs are still at 11:50) — the main session asks the user; "this and
       following" still drops the cancelled days after the split (both apps).
 
+- [~] (calendar split session, 18 Oct) **"This and following" keeps the cancelled and changed days after the split**:
+      the new event gets the old series' EXDATEs and RECURRENCE-ID days from the split day on, moved by as much as that
+      day moved (shiftRepeat), desktop and Android (a test in each, the staff-meeting fixture).
+
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

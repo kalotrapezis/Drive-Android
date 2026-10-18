@@ -235,6 +235,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var editAt by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     // a range being dragged out into a formula: where its name is in the typed words
     var refAt by remember { mutableStateOf<IntRange?>(null) }
+    // the reference a tap or drag put in last, while nothing has been typed after it: the next tap or drag replaces it (Excel's pointing;
+    // the user, 18 Oct: a tap on K2 and then a drag gave "K2K2:K20")
+    var lastRef by remember { mutableStateOf<IntRange?>(null) }
+    LaunchedEffect(draft == null) { if (draft == null) lastRef = null }
     var draftRuns by remember { mutableStateOf<List<DocRun>?>(null) } // the typed words' looks, a part bold (`SheetRich`); null: one look
     var saving by remember { mutableStateOf(false) }
     // The working copy after rows or columns were inserted or deleted (null: the file itself, with edits in memory);
@@ -1626,7 +1630,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     if (editing) {
                         val (r, c) = editAt?.takeIf { draft != null } ?: chosen(s)
                         EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
-                            change = { v -> draft?.text?.let { was -> draftRuns = draftRuns?.let { SheetRich.edited(it, was, v.text) } }; draft = v }, start = ::startTyping, commit = { commit(true) },
+                            change = { v -> draft?.text?.let { was -> draftRuns = draftRuns?.let { SheetRich.edited(it, was, v.text) } }; if (v.text != draft?.text) lastRef = null; draft = v }, start = ::startTyping, commit = { commit(true) },
                             runs = draftRuns, focused = { barFocused = it },
                             cancel = { draft = null; draftRuns = null; focusManager.clearFocus() })
                     } else CellBar(s, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") }
@@ -1663,7 +1667,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 // a formula being typed: the tapped cell's name goes in at the cursor (Excel's pointing)
                                 d != null && d.text.startsWith("=") -> {
                                     val ref = Sheets.colName(c) + (r + 1)
-                                    draft = TextFieldValue(d.text.substring(0, d.selection.min) + ref + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + ref.length))
+                                    val at = lastRef?.takeIf { it.last + 1 == d.selection.min && d.selection.collapsed } ?: (d.selection.min until d.selection.max)
+                                    draft = TextFieldValue(d.text.substring(0, at.first) + ref + d.text.substring(at.last + 1), androidx.compose.ui.text.TextRange(at.first + ref.length))
+                                    lastRef = at.first until at.first + ref.length
                                     true
                                 }
                                 // what was typed goes in, then the tap chooses; the keyboard goes (asked 16 Oct: a tap chooses, the bar edits)
@@ -1680,9 +1686,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (d != null) {
                                 val ref = Sheets.colName(minOf(a.second, z.second)) + (minOf(a.first, z.first) + 1) +
                                     if (a == z) "" else ":" + Sheets.colName(maxOf(a.second, z.second)) + (maxOf(a.first, z.first) + 1)
-                                val at = refAt ?: (d.selection.min until d.selection.max)
+                                val at = refAt ?: lastRef?.takeIf { it.last + 1 == d.selection.min && d.selection.collapsed } ?: (d.selection.min until d.selection.max)
                                 draft = TextFieldValue(d.text.substring(0, at.first) + ref + d.text.substring(at.last + 1), androidx.compose.ui.text.TextRange(at.first + ref.length))
                                 refAt = if (done) null else at.first until at.first + ref.length
+                                lastRef = at.first until at.first + ref.length
                                 if (done) WriterLog.i("Sheets: $ref put in the formula")
                             }
                         } else null,

@@ -451,7 +451,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       as LibreOffice's page style (solid, or bitmap stretched with a draw:fill-image in styles.xml). Read too now: a deck's own picture
       backgrounds (PowerPoint's on a slide, layout or master; LibreOffice's bitmap fill) — before, only colours were drawn.
       `backgrounds saved` (both, LibreOffice's conversions); LibreOffice draws Tetra's .odp's colour and picture. Not yet: gradient
-      backgrounds (read or made), slide size. Unit 424/0/7; sweep 349 + 29, none failing.
+      backgrounds (read or made), slide size. Unit 424/0/7; sweep 349 + 29, none failing. (Both done since: 396a8f8, 1be3318.)
       Slide size (office-F session, 17 Oct): Design › Slide size ▾ Widescreen (16:9) / Standard (4:3), then PowerPoint's question —
       Maximize (as big as the new size allows, cut at its sides) or Ensure fit (smaller, in the middle, its letters too). `SlidesSize`: a
       copy of the deck with every slide's, layout's and master's things scaled (PowerPoint: p:sldSz, each top-level xfrm, sz and spcPts;
@@ -570,6 +570,8 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       none of Words' (Words' Picture tab has neither yet — Words should get the same `PictureLook` when it does). `a picture's style and
       transparency saved` (both, LibreOffice's conversions keep them); emulator: rounded with shadow at 30 %. Not yet: colour and
       brightness, compress pictures; a strip of cards for the styles (a menu for now).
+      18 Oct (office-F): colour, brightness and contrast — later: none of the user's 29 decks uses them (their pictures' only
+      setting is transparency, which is done); compress pictures later too.
 - [x] **Shapes**: text effects (shadow, outline, glow) and character spacing; merge shapes (union, combine,
       intersect, subtract — later); edit points (later).
       Text effects done 18 Oct (office-F): Home › Text effects on any box's words — Outline, Shadow, Glow, each on or off (WordArt's,
@@ -675,6 +677,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       looks carry X²/X₂ too. Smaller / Bigger: Words has none beyond its − size + stepper, which Slides already has. **Shared piece:**
       Words' X²/X₂ and Aa (`WriterBridge.Case`, `inCase`). `Home's looks on a box saved` (superscript added); emulator: a title made
       UPPERCASE and raised. Not yet: a text box's borders and shading.
+      Found done 18 Oct (office-F): a text box's Fill and Border (and Shape options' width, dash, shadow) on its tab.
       Multilevel list and Paragraph (office-F session, 17 Oct): Home › Multilevel opens Words' Multilevel list strip (`DesignGalleryStrip`
       › Lists, `LIST_SCHEMES`) — each paragraph numbered in its level's form (1. a. i., I. A. 1., i. a. 1.; Word's "1. 1.1." shows each
       level's own 1. 2., as PowerPoint has no such numbers) — and Home › Paragraph opens Words' paragraph page (`ParagraphDialog`: before
@@ -731,6 +734,9 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       fill and words' colour as before. **Shared piece:** Words' Table tab (its labels, icons and order) and `fromTable`; the rows and
       columns are `SlidesEdit.rowAdded/columnAdded/rowTaken/columnTaken` on the table's cells. `a table's rows and columns`; emulator:
       2×2 made 3×3, saved — LibreOffice opens it. Not yet: merge and split, borders, table styles.
+      18 Oct (office-F): table styles are there as the Fill colour's banded look (PowerPoint's Medium Style 2 in that colour, read
+      from a deck's own styles too). Merge and split, cell borders: later — they need spans through the reader, the drawing and
+      both writers, and the user's decks have one table in all, with none.
       A deck's own tables (office-F session, 17 Oct): the same Table tab on a table that came with the file — a second tap chooses the cell
       the rows and columns go round; Make chart from its words. Kept as `Edit.tables` (rows and columns added or taken, in order;
       `SlidesEdit.tabled` shows them), saved into the file's own table: PowerPoint's a:tbl (a gridCol and each row's a:tc copied with no

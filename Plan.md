@@ -1523,6 +1523,10 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       at build time (assets/tetra-calendar.zip) and copied into desktop/skills before a desktop build. Android, in the
       drawer and Settings › Calendar: Share (the share sheet) and Save to Files. Desktop, in the Settings drawer: Save as…
       (~/Downloads) and Copy to ~/.claude/skills. "Lets Claude read and change this calendar by editing its files."
+- [x] (322fe65; Drive bc47403) Wide screens (the user, 18 Oct: "The today and the arrows for the tablet place them at the
+      bottom between the + and the island on its own island", then "Closer to the + button to be easily reachable with
+      the thum"): the top keeps the title; the views' island at the left, ‹ Today › in its own island beside the + at the
+      right; the grid stops above them. Phone and narrow windows unchanged (no room at the bottom beside the week strip).
 
 - [x] (Drive ca93bdb; 2f3c21e) **Clock and month pickers on the desktop; a repeat's cancelled days follow its time**
       (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the date not

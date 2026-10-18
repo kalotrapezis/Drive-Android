@@ -469,7 +469,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (wide) RemindersSwitch()
+            if (wide) { RemindersSwitch(); ShareWithClaude() }
             else Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                     CalendarList(cals, hidden, ::toggle, { drawer = false; calDialog = it }, { drawer = false; newCal = true },
@@ -604,7 +604,35 @@ private fun viewIcon(v: CalView) = when (v) {
             TextButton(onClick = import) { Text("Import") }
             if (cals.isNotEmpty()) TextButton(onClick = exportAll) { Text("Export all") }
         }
-        if (settings) RemindersSwitch()
+        if (settings) { RemindersSwitch(); ShareWithClaude() }
+    }
+}
+
+/**
+ * Share with Claude (asked 18 Oct): the tetra-calendar skill the app was built with (assets/tetra-calendar.zip, from
+ * skills/tetra-calendar), to send to the Claude app, mail or Drive, or to save in Files.
+ */
+@Composable internal fun ShareWithClaude() {
+    val context = LocalContext.current
+    fun zip() = context.assets.open("tetra-calendar.zip").use { it.readBytes() }
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(zip()) } }
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text("Share with Claude", style = MaterialTheme.typography.titleSmall)
+        Text("Lets Claude read and change this calendar by editing its files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                runCatching {
+                    val file = java.io.File(context.cacheDir, "share/tetra-calendar.zip").apply { parentFile?.mkdirs(); writeBytes(zip()) }
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+                    context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
+                        .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, "Tetra Calendar skill for Claude")
+                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share the skill"))
+                }.onFailure { WriterLog.e("Calendar: sharing the skill failed", it) }
+            }) { Text("Share") }
+            TextButton(onClick = { save.launch("tetra-calendar.zip") }) { Text("Save to Files") }
+        }
     }
 }
 
@@ -1043,6 +1071,7 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
         }
     }
     RemindersSwitch()
+    ShareWithClaude()
     TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder comes in 5 seconds: go to the home screen to see it in the island (HyperOS shows none for the app in front)." }) { Text("Send a test reminder") }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } } }

@@ -1,4 +1,6 @@
 import java.util.Properties
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 plugins {
     alias(libs.plugins.android.application)
@@ -88,3 +90,23 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
+
+// The tetra-calendar skill, zipped into the app at build time from skills/tetra-calendar (its one source), so Calendar ›
+// Share with Claude always hands over the skill that matches this app's files (asked 18 Oct).
+abstract class SkillZip : DefaultTask() {
+    @get:InputDirectory abstract val skill: DirectoryProperty
+    @get:OutputDirectory abstract val out: DirectoryProperty
+    @TaskAction fun zip() {
+        val dir = out.get().asFile.apply { deleteRecursively(); mkdirs() }
+        ZipOutputStream(File(dir, "tetra-calendar.zip").outputStream()).use { z ->
+            skill.get().asFile.listFiles()!!.filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name }.forEach { f ->
+                z.putNextEntry(ZipEntry("tetra-calendar/${f.name}")); f.inputStream().use { it.copyTo(z) }; z.closeEntry()
+            }
+        }
+    }
+}
+val skillZip = tasks.register<SkillZip>("skillZip") {
+    skill.set(rootProject.layout.projectDirectory.dir("skills/tetra-calendar"))
+    out.set(layout.buildDirectory.dir("generated/skillAssets"))
+}
+androidComponents { onVariants { it.sources.assets?.addGeneratedSourceDirectory(skillZip, SkillZip::out) } }

@@ -1527,6 +1527,11 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       bottom between the + and the island on its own island", then "Closer to the + button to be easily reachable with
       the thum"): the top keeps the title; the views' island at the left, ‹ Today › in its own island beside the + at the
       right; the grid stops above them. Phone and narrow windows unchanged (no room at the bottom beside the week strip).
+- [x] (7ed20a5; Drive 2cf2fa2; SYNC_PLAN 6am) Calendar changes travel at once (the user, 18 Oct: "once there is an update
+      on calendar like on notes send it imediatly across devices as soon as connection available"): a Calendar-only sync
+      on Files' own path (`/files/manifest/scoped`, scope `calendar`), 2.5 s after a change, waiting for a network as a
+      job; the computer's changes (the skill too) by its nudge, or a quarter-hourly look with Tetra closed. Reusable for
+      the Timer (its own scope). **Not yet run between real devices** (the emulator cannot scan the pairing code).
 
 - [x] (Drive ca93bdb; 2f3c21e) **Clock and month pickers on the desktop; a repeat's cancelled days follow its time**
       (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the date not

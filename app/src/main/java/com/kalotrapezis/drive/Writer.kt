@@ -910,7 +910,10 @@ internal object WriterBridge {
             } else null
             val from = emptyItem
                 ?: text.indexOf(needle, pos).takeIf { it >= 0 }
-                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return WriterLog.w("editor block $k not found after $pos")
+                ?: text.indexOf(needle.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 }
+                // a picture's mark the editor keeps as it was given (a box alone in its paragraph: the user's "test", 18 Oct — not found, the
+                // box was measured from the paragraph before and climbed over its words)
+                ?: text.indexOf(b.text.replace('\t', EDITOR_TAB_SPACE), pos).takeIf { it >= 0 } ?: return WriterLog.w("editor block $k not found after $pos")
             each(k, from, from + b.text.length)
             pos = from + b.text.length + 1
         }

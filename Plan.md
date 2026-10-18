@@ -234,6 +234,11 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [x] 22. Words › Insert › Shapes › Block arrows: left-right and up-down arrows drawn as diamonds. Their drawing was right — in a square
       the two heads meet (Word's too); now the gallery draws each in its proportions and puts it in at Word's size, one rule for all
       three apps (`shapeSize`: ⇔ 2:1, ⇕ 1:2; Slides used to put every shape in square).
+- [x] (the user, 18 Oct, Tetra test.docx: "the position of [the text box] is different in Edit mode than Viewer mode … in edit mode it
+      climbs around 5 lines and goes in front of [the text]") Words: a box placed freely on the page (in front, behind, no wrap) is
+      drawn in the editor from its paragraph's top, as the pages lay it out; a box alone in its paragraph has its mark as given
+      (\uFFFC), which the editor's paragraph finder did not look for — its paragraph was "not found", the box measured from the one
+      before. Now found either way; the editor matches the viewer (emulator, the user's file). Unit 507, 0 failing.
 Found on the way (office-strips, emulator, not fixed):
 - [ ] Slides: a table put on a slide over a text box is drawn on top, but a tap there chooses the box under it (the hit test's order
       is not the drawing's).

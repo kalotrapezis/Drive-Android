@@ -825,6 +825,29 @@ internal object SlidesOdpEdit {
             out["styles.xml"] = (if ("</office:styles>" in st) st.replace("</office:styles>", "$defs</office:styles>") else st.replace("<office:automatic-styles", "<office:styles>$defs</office:styles><office:automatic-styles")).toByteArray()
         }
         if (dashes.isNotEmpty()) (out["styles.xml"] ?: read("styles.xml"))?.let { out["styles.xml"] = LineDash.intoStyles(String(it), dashes).toByteArray() }
+        // Arrange › On every slide: what was put on the slide master onto each master page (styles.xml), the automatic styles it names
+        // copied there from content.xml (a master page can only name styles.xml's); the master's own shapes taken off where they were
+        val everySlide = edit.added[SlidesEdit.MASTER].orEmpty(); val offMaster = edit.removed.filter { it.first == SlidesEdit.MASTER }.map { it.second }
+        if (everySlide.isNotEmpty() || offMaster.isNotEmpty()) (out["styles.xml"] ?: read("styles.xml"))?.let { bytes ->
+            val sdoc = OfficeFormats.parse(bytes)
+            val sAutos = sdoc.documentElement.kids().firstOrNull { it.localName == "automatic-styles" }
+                ?: sdoc.createElementNS(OFFICE, "office:automatic-styles").also { a -> sdoc.documentElement.insertBefore(a, sdoc.documentElement.kids().firstOrNull { it.localName == "master-styles" }) }
+            val copied = HashSet<String>()
+            fun copyStyles(el: Element) {
+                val named = (listOf(el) + el.all()).flatMap { x -> (0 until x.attributes.length).map { x.attributes.item(it) as org.w3c.dom.Attr }.filter { it.localName?.endsWith("style-name") == true }.map { it.value } }
+                for (nm in named) if (copied.add(nm)) autos.kids().firstOrNull { it.a(STYLE, "name") == nm || it.a(TEXT, "name") == nm }?.let { st ->
+                    sAutos.appendChild(sdoc.importNode(st, true)); copyStyles(st) }
+            }
+            for (mp in sdoc.getElementsByTagNameNS(STYLE, "master-page").let { l -> (0 until l.length).map { l.item(it) as Element } }) {
+                val name = mp.a(STYLE, "name")
+                val gone = offMaster.filter { it.startsWith("$name ") }.mapNotNull { it.substringAfterLast(' ').toIntOrNull() }.toSet()
+                mp.kids().withIndex().filter { it.index in gone }.map { it.value }.forEach { mp.removeChild(it) }
+                for (a in everySlide) added(a, edit.looks[SlidesEdit.MASTER to a.id])?.let { el -> edit.texts[SlidesEdit.MASTER to a.id]?.let { type(el, it) }
+                    edit.looks[SlidesEdit.MASTER to a.id]?.takeIf { it.words }?.let { words(el, it) }
+                    copyStyles(el); mp.appendChild(sdoc.importNode(el, true)) }
+            }
+            out["styles.xml"] = xml(sdoc)
+        }
         if (manifest != null && out.keys.any { it.startsWith("Pictures/") || it.startsWith("Media/") || it.startsWith("Object tetra-") }) out["META-INF/manifest.xml"] = xml(manifest)
         SheetSave.rezip(zip, target, out, stored = "mimetype")
         zip.close()

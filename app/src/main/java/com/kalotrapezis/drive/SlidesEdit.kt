@@ -11,6 +11,8 @@ import java.io.File
 internal object SlidesEdit {
     /** One slide in the edited deck: [src] the deck's slide it shows, [uid] its own (a duplicate is a new one); [layout]: a new slide of that layout. */
     data class Entry(val src: Int, val uid: Int, val layout: Int = -1)
+    /** The slide master's "slide" in an edit's maps: what is put on every slide (Arrange › On every slide), the master's own taken off. */
+    const val MASTER = -1000
     /** A picture ([image]: a copy on the phone, [ext] png/jpeg) or a shape ([prst], [fill]) put on a slide, where it is (points). */
     data class Added(val id: String, val x: Float, val y: Float, val w: Float, val h: Float, val image: String? = null, val ext: String = "png",
         val prst: String? = null, val fill: Int = 0xFF4472C4.toInt(),
@@ -315,21 +317,24 @@ internal object SlidesEdit {
                 ?: SlideText(paras, 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         }
         // what was put on it: pictures and shapes, over the rest
-        val added = edit.added[e.uid].orEmpty().map { a ->
-            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[e.uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f, null, a.math) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { it.media = a.video }
+        fun things(uid: Int) = edit.added[uid].orEmpty().map { a ->
+            (if (a.chart != null) SlideItem.Chart(a.x, a.y, a.w, a.h, a.chart) else if (a.prst == "table") table(a, edit.looks[uid to a.id]) else if (a.image != null) SlideItem.Picture(a.x, a.y, a.w, a.h, 0f, null, a.math) { runCatching { File(a.image).readBytes() }.getOrNull() }.also { it.media = a.video }
             else {
                 // its words as typed (a text box's at its top on the left, a shape's in its middle), as PowerPoint puts a new one's
                 val box = a.prst == TEXT_BOX
-                val text = edit.texts[e.uid to a.id]?.let { lines -> SlideText(lines.map { SlidePara.plain(it, 18f, 0, align = if (box) DocAlign.Start else DocAlign.Center) }, if (box) 't' else 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
+                val text = edit.texts[uid to a.id]?.let { lines -> SlideText(lines.map { SlidePara.plain(it, 18f, 0, align = if (box) DocAlign.Start else DocAlign.Center) }, if (box) 't' else 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
                     ?: a.runs.takeIf { it.isNotEmpty() }?.let { paras -> SlideText(paras.map { rs -> SlidePara(DocPara(rs.map { it.copy(sizePt = it.sizePt ?: 18f, color = it.color ?: 0) }, list = DocList(false, 0)),
                         ParaLook(left = a.hang, firstLine = -a.hang, listIndented = true)) }, 't', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)) }
                 // a text box: no fill, no border, as tall as its words (PowerPoint's "resize shape to fit text")
                 // shortcut: without Android's text layout (the JVM tests) a line a paragraph, 1.2 × 18 pt each
                 // (one that keeps its size — no autofit, or its words shrunk to fit — as tall as it was made)
-                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[e.uid to a.id]?.autofit !in setOf('n', 's') }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
+                if (box) SlideItem.Shape(a.x, a.y, a.w, text?.takeIf { edit.looks[uid to a.id]?.autofit !in setOf('n', 's') }?.let { t -> maxOf(runCatching { SlidesText.height(t, a.w) }.getOrElse { t.paras.size * 21.6f + 7.2f }, 20f) } ?: a.h, 0f, null, text, id = a.id)
                 else SlideItem.Shape(a.x, a.y, a.w, a.h, 0f, ShapePicture(a.prst ?: "rect", a.fill, darker(a.fill), 1.5f), text, id = a.id)
             }).also { it.anim = a.id } // what it is chosen and animated by
         }
+        val added = things(e.uid)
+        // Arrange › On every slide: what was put on the slide master, under the slide's own
+        val everySlide = things(MASTER).onEach { it.master = "added ${it.anim}" }.map { styled(it, edit.looks[MASTER to it.anim!!]) }
         // Header & footer: the slide's own date, footer and number gone, the chosen ones in the layout's boxes (the number its place in the deck)
         val foot = edit.footers[e.uid]
         val footed = foot?.let { f -> listOfNotNull(
@@ -343,11 +348,11 @@ internal object SlidesEdit {
         val groups = loose.filter { it.grouped && it.anim != null }.map { it.anim!! }.distinct().associateWith { boxOf(loose, it) }
         // groups made here: their things joined (after each was moved on its own), then the group moved as one
         val made = edit.groups[e.uid].orEmpty()
-        val placed = (loose.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added)
+        val placed = (loose.filter { (it.anim == null || (e.uid to it.anim!!) !in edit.removed) && (it.master == null || (MASTER to it.master!!) !in edit.removed) && (foot == null || (it as? SlideItem.Shape)?.id !in s.footerIds.keys) }.map { moved(it, it.anim?.let { id -> edit.frames[e.uid to id] }, if (it.grouped) groups[it.anim] else null) } + added)
             .map { i -> made.entries.firstOrNull { i.anim in it.value }?.let { g -> copied(i, g.key, true) } ?: i }
         val joined = if (made.isEmpty()) placed else made.keys.associateWith { boxOf(placed, it) }.let { boxes -> placed.map { i -> if (i.anim in made) moved(i, edit.frames[e.uid to i.anim!!], boxes[i.anim]) else i } }
         val all = joined.map { styled(it, it.anim?.let { id -> edit.looks[e.uid to id] }) }
-            .map { if (it.grouped) it else turned(it, it.anim?.let { id -> edit.turns[e.uid to id] }) }.let { stacked(it, edit.stack[e.uid]) } + footed
+            .map { if (it.grouped) it else turned(it, it.anim?.let { id -> edit.turns[e.uid to id] }) }.let { stacked(it, edit.stack[e.uid]) }.let { everySlide + it } + footed
         val transition = edit.transitions[e.uid]?.takeIf { it.kind.isNotEmpty() || it.after != null } ?: s.transition.takeIf { e.uid !in edit.transitions }
         val steps = edit.anims[e.uid]?.let(::group) ?: s.steps
         return Slide(all, s.background, edit.notes[e.uid] ?: s.notes.takeIf { e.layout < 0 }.orEmpty(), edit.hidden[e.uid] ?: s.hidden, s.part, transition, steps, s.footers, s.footerIds, s.titleSlide, edit.comments[e.uid] ?: s.comments,
@@ -1245,6 +1250,18 @@ internal object SlidesEdit {
             fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace("\"", "&quot;")
             out[path] = ("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:p="$P">""" + authors.joinToString("") {
                 """<p:cmAuthor id="${it.id}" name="${esc(it.name)}" initials="${esc(it.initials)}" lastIdx="${it.last}" clrIdx="${it.clr}"/>""" } + "</p:cmAuthorLst>").toByteArray()
+        }
+        // Arrange › On every slide: what was put on the slide master written into each master's shape tree (its pictures its own
+        // relationships), the master's own shapes taken off where they were
+        val everySlide = edit.added[MASTER].orEmpty(); val offMaster = edit.removed.filter { it.first == MASTER }.map { it.second }
+        if (everySlide.isNotEmpty() || offMaster.isNotEmpty()) for (part in rels.documentElement.kids().filter { it.getAttribute("Type").endsWith("/slideMaster") }.map { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }.distinct()) {
+            val gone = offMaster.filter { it.startsWith("$part ") }.map { it.substringAfter(' ') }.toSet()
+            if (everySlide.isEmpty() && gone.isEmpty()) continue
+            val base = out[part] ?: read(part) ?: continue
+            val relsXml = relsDoc(part)
+            val ids = media(MASTER, relsXml)
+            out[part] = withTexts(base, edit.texts.filterKeys { it.first == MASTER }.mapKeys { it.key.second }, null, everySlide, ids, edit.looks.filterKeys { it.first == MASTER }.mapKeys { it.key.second }, removed = gone)
+            if (ids.isNotEmpty()) out[relsPath(part)] = xml(relsXml)
         }
         // Slide show › Loop until Esc: the presentation's properties' showPr (made when it has none)
         if (edit.loop != null || edit.noAnimation != null || edit.manual != null) rels.documentElement.kids().firstOrNull { it.getAttribute("Type").endsWith("/presProps") }?.let { "ppt/" + it.getAttribute("Target").removePrefix("/ppt/").removePrefix("/") }?.let { path ->

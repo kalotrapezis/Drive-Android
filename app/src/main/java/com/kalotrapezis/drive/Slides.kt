@@ -93,6 +93,9 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     /** Its name in the Selection pane (PowerPoint's cNvPr name, LibreOffice's draw:name) and whether it is hidden there (not drawn: hidden="1", drawooo:display="none"). */
     var name: String? = null
     var hidden = false
+    /** On every slide (the slide master's own, Arrange › On every slide): its key there — PowerPoint's master part and shape id,
+     *  LibreOffice's master page and the shape's place in it; "added <id>" one put on here. Chosen by "master:" and it. */
+    var master: String? = null
     /** A picture's style and transparency (PowerPoint's Picture Styles, LibreOffice's image opacity, line and shadow); null: plain. */
     var pic: PictureLook? = null
     /** Where a tap on it goes in a show (Insert › Link on a picture or shape): a slide's part (an .odp's "#page"), a web address, or "back" (the slide it came from). */
@@ -335,7 +338,7 @@ internal object Slides {
             val items = ArrayList<SlideItem>()
             fun tree(e: Element?, from: String, ctx: Placeholders?) = e?.kid("cSld")?.kid("spTree")?.let { shapes(it, rels(xml, from), ctx, items, null) }
             // what the master and the layout show on every slide (a logo, a line), under the slide's own
-            if (s.attr("showMasterSp") != "0" && layout?.attr("showMasterSp") != "0") tree(master, masterPath!!, null)
+            if (s.attr("showMasterSp") != "0" && layout?.attr("showMasterSp") != "0") master?.kid("cSld")?.kid("spTree")?.let { shapes(it, rels(xml, masterPath!!), null, items, null, masterKey = masterPath) }
             if (s.attr("showMasterSp") != "0") tree(layout, layoutPath!!, null)
             s.kid("cSld")?.kid("spTree")?.let { shapes(it, rels, context, items, null) }
             val notes = (if (own != null) null else relType(xml, path, "notesSlide"))?.let(xml)?.below("sp")?.firstOrNull { it.below("ph").firstOrNull()?.attr("type") == "body" }
@@ -465,7 +468,8 @@ internal object Slides {
         }
 
         /** The shapes of a tree, [group] placing a group's children in its box. */
-        fun shapes(tree: Element, rels: Map<String, String>, ctx: Placeholders?, out: MutableList<SlideItem>, group: ((FloatArray) -> FloatArray)?, groupId: String? = null) {
+        fun shapes(tree: Element, rels: Map<String, String>, ctx: Placeholders?, out: MutableList<SlideItem>, group: ((FloatArray) -> FloatArray)?, groupId: String? = null,
+                   /** the master's part: its own shapes keyed, to be chosen on a slide and taken off every slide */ masterKey: String? = null) {
             for (e in tree.kids()) runCatching {
                 val before = out.size
                 val ownId = groupId ?: e.kids().firstOrNull { it.localName.startsWith("nv") }?.kid("cNvPr")?.attr("id")
@@ -551,6 +555,7 @@ internal object Slides {
                 val descr = cNvPr?.attr("descr")
                 // its own click (PowerPoint's action on the object): a slide, a web page, or the slide it came from
                 val click = cNvPr?.kid("hlinkClick")?.let { h -> if (h.attr("action")?.contains("lastslideviewed") == true) "back" else h.rid("id")?.let(rels::get) }
+                if (masterKey != null) cNvPr?.attr("id")?.let { id -> for (k in before until out.size) { out[k].master = "$masterKey $id"; out[k].anim = "master:$masterKey $id" } }
                 if (ctx != null) for (k in before until out.size) { if (out[k].anim == null) out[k].anim = ownId; if (group != null && out[k].own == null) out[k].own = cNvPr?.attr("id"); if (group != null) out[k].grouped = true else { out[k].alt = descr; out[k].link = click; out[k].name = cNvPr?.attr("name")?.ifEmpty { null }; out[k].hidden = cNvPr?.attr("hidden").let { it == "1" || it == "true" } } }
             }.onFailure { WriterLog.w("Slides: a shape could not be read", it) }
         }

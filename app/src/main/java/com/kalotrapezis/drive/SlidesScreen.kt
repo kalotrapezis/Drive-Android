@@ -844,6 +844,26 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     /** Home's text tools for [box] (17 Oct), Words' own: font strip, size, B I U S, colours, painter, clear; lists, alignment, spacing; anchor, autofit. */
     /** Several things chosen (Select all, Choose several): Group, Align to each other, Distribute, Delete — PowerPoint's Arrange for a selection. */
+    /** A thing on every slide (the slide master's) chosen on a slide: back on this slide alone (one put on here), or off every slide. */
+    @Composable fun MasterTools(w: Color) {
+        val ee = edit ?: return; val c = chosen ?: return; val u = ee.order[c].uid
+        val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item } ?: return
+        val key = it0.master ?: return
+        Text("On every slide", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
+        val mine = key.takeIf { it.startsWith("added ") }?.removePrefix("added ")?.let { id -> ee.added[SlidesEdit.MASTER].orEmpty().firstOrNull { it.id == id } }
+        if (mine != null) RibbonButton("Only on this slide", w, R.drawable.ic_crop_landscape) {
+            change(ee.copy(added = ee.added + (SlidesEdit.MASTER to ee.added[SlidesEdit.MASTER].orEmpty().filter { it.id != mine.id }) + (u to ee.added[u].orEmpty() + mine),
+                looks = ee.looks.mapKeys { (k, _) -> if (k == SlidesEdit.MASTER to mine.id) u to mine.id else k },
+                texts = ee.texts.mapKeys { (k, _) -> if (k == SlidesEdit.MASTER to mine.id) u to mine.id else k }))
+            item = mine.id; WriterLog.i("Slides: a thing back on one slide") }
+        RibbonButton("Delete from every slide", w, R.drawable.ic_delete) {
+            // the master's own: the same thing on each master (an .odp's master pages each have their copy) — its kind, place, size and words
+            fun words(i: SlideItem) = (i as? SlideItem.Shape)?.let { SlidesEdit.lines(it) }
+            val keys = view?.slides.orEmpty().flatMap { it.items }.filter { o -> o.master?.startsWith("added ") == false && o::class == it0::class &&
+                kotlin.math.abs(o.x - it0.x) < 0.5f && kotlin.math.abs(o.y - it0.y) < 0.5f && kotlin.math.abs(o.w - it0.w) < 0.5f && kotlin.math.abs(o.h - it0.h) < 0.5f && words(o) == words(it0) }.mapNotNull { it.master }.toSet() + key
+            change(if (mine != null) ee.copy(added = ee.added + (SlidesEdit.MASTER to ee.added[SlidesEdit.MASTER].orEmpty().filter { it.id != mine.id })) else ee.copy(removed = ee.removed + keys.map { SlidesEdit.MASTER to it }))
+            item = null; message = "Taken off every slide"; WriterLog.i("Slides: a thing taken off every slide") }
+    }
     @Composable fun SeveralTools(w: Color) {
         val e = edit ?: return; val c = chosen ?: return; val d = base ?: return
         Text("${more.size + 1} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -970,7 +990,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     restyle { it.copy(font = pl.font, size = pl.size, bold = pl.bold, italic = pl.italic, underline = pl.underline, strike = pl.strike, text = pl.text, highlight = pl.highlight, align = pl.align, script = pl.script) }
                     WriterLog.i("Slides: formatting pasted") } }
             }
-            "Item" -> if (more.isNotEmpty()) SeveralTools(w) else {
+            "Item" -> if (more.isNotEmpty()) SeveralTools(w) else if (sl?.items?.lastOrNull { it.anim == item }?.master != null) MasterTools(w) else {
                 val a = e.added[uid]?.firstOrNull { it.id == item }
                 val it0 = sl?.items?.lastOrNull { it.anim == item }
                 // a group (the file's or made here): taken apart, each thing where it is
@@ -1044,6 +1064,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front) { restack('f') }
                     RibbonButton("Send backward", w, R.drawable.ic_flip_to_back) { restack('-') }
                     RibbonButton("Send to back", w, R.drawable.ic_flip_to_back) { restack('b') }
+                    // PowerPoint's slide master, for what is most often put there: this thing on every slide (a logo, a line of words)
+                    if (a != null) RibbonButton("On every slide", w, R.drawable.ic_copy) {
+                        val ee = edit ?: return@RibbonButton; val u = ee.order[c].uid
+                        change(ee.copy(added = ee.added + (u to ee.added[u].orEmpty().filter { it.id != a.id }) + (SlidesEdit.MASTER to ee.added[SlidesEdit.MASTER].orEmpty() + a),
+                            looks = ee.looks.mapKeys { (k, _) -> if (k == u to a.id) SlidesEdit.MASTER to a.id else k },
+                            texts = ee.texts.mapKeys { (k, _) -> if (k == u to a.id) SlidesEdit.MASTER to a.id else k }))
+                        message = "On every slide (the slide master's now)"; WriterLog.i("Slides: a thing put on every slide") }
                     RibbonButton("Selection pane", w, R.drawable.ic_layers) { selectionPane = true }
                     Box {
                         var aligning by remember { mutableStateOf(false) }

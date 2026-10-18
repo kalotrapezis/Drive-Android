@@ -238,8 +238,9 @@ internal object SlidesOdp {
          * second in that group) — what editing finds them by again in the file ([top]: the group's, what moves with it).
          */
         val named = HashMap<String, String>() // a shape's xml:id (what an animation names) → its item's id
-        fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean, prefix: String? = null, top: String? = null) {
-            for ((k, e) in parent.kids().withIndex()) runCatching {
+        fun shapes(parent: Element, out: MutableList<SlideItem>, master: Boolean, prefix: String? = null, top: String? = null,
+                   /** the master page's name: its own shapes keyed by their place in it, to be chosen on a page and taken off every page */ masterKey: String? = null) {
+            for ((k, e) in parent.kids().withIndex()) runCatching { val first = out.size; try {
                 val path = if (master) null else prefix?.let { "$it.$k" } ?: "o$k"
                 if (path != null) (e.a(XML, "id") ?: e.a(DRAW, "id"))?.let { named[it] = top ?: path }
                 val before = out.size
@@ -310,6 +311,7 @@ internal object SlidesOdp {
                 val click = e.kids().firstOrNull { it.localName == "event-listeners" }?.kids()?.firstOrNull { it.localName == "event-listener" && it.a(PRES, "action") == "show" }?.a(XLINK, "href")
                 if (path != null) for (i in before until out.size) { if (out[i].anim == null) out[i].anim = top ?: path; if (top != null && out[i].own == null) out[i].own = path; if (top != null) out[i].grouped = true else { out[i].alt = desc; out[i].link = click
                     out[i].name = e.a(DRAW, "name")?.ifEmpty { null }; out[i].hidden = e.getAttributeNS("http://openoffice.org/2010/draw", "display") == "none" } }
+            } finally { if (masterKey != null) for (j in first until out.size) { out[j].master = "$masterKey $k"; out[j].anim = "master:$masterKey $k" } }
             }.onFailure { WriterLog.w("Slides: an .odp shape could not be read", it) }
         }
 
@@ -337,7 +339,7 @@ internal object SlidesOdp {
                 footers["dt"]?.takeIf { shows("display-date-time", true) }?.let { sh -> decl(page.a(PRES, "use-date-time-name"))?.let { d -> SlidesEdit.worded(sh, if (d.a(PRES, "source") == "fixed") d.textContent else SlidesEdit.today(), "footer.dt") } },
                 footers["ftr"]?.takeIf { shows("display-footer", true) }?.let { sh -> decl(page.a(PRES, "use-footer-name"))?.let { SlidesEdit.worded(sh, it.textContent, "footer.ftr") } },
                 footers["sldNum"]?.takeIf { shows("display-page-number", false) }?.let { SlidesEdit.worded(it, "${index + 1}", "footer.sldNum") })
-            if (prop("drawing-page", dp, "d.background-objects-visible") != "false") master?.let { shapes(it, items, true) }
+            if (prop("drawing-page", dp, "d.background-objects-visible") != "false") master?.let { shapes(it, items, true, masterKey = masterName) }
             shapes(page, items, false)
             fun bg(style: String?) = if (prop("drawing-page", style, "d.fill") == "solid" || prop("drawing-page", style, "d.fill-color") != null) hex(prop("drawing-page", style, "d.fill-color")) else null
             val background = bg(dp) ?: bg(master?.a(DRAW, "style-name")) ?: 0xFFFFFFFF.toInt()

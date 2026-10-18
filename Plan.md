@@ -105,7 +105,7 @@ How to write here:
   setting starting off? (Undo now goes back past a save, as Word's — 59c9218 — so AutoSave no longer costs Undo.)
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
-  writer for each); (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master; (4) View › Zoom on the
+  writer for each); (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the
   slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
@@ -526,6 +526,14 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       Zoom done 18 Oct (office-F): View › Zoom — Fit, 150 %, 200 %, 300 % for the slide being edited (a tablet's layout): the slide in a
       window of the fitted size, moved about by dragging where nothing is chosen; items tapped, dragged and typed in as at Fit (rulers
       shown at Fit only). Emulator: arrange.pptx at 200 %, panned, the flag chosen.
+      Editing the slide master — what it is mostly for, done 18 Oct (office-F): a thing put on a slide, Arrange › On every slide, goes
+      onto the deck's masters (PowerPoint's slide masters' shape trees, its pictures their own relationships; LibreOffice's master
+      pages in styles.xml, the styles it names copied there) and shows under every slide's own things; the master's own shapes (a
+      logo, a line) and these are chosen on a slide (on top, or from the Selection pane) with a tab of their own — Only on this slide
+      (one put on here), Delete from every slide (each master's copy). `a thing on every slide` (both formats, typed words and their
+      colour, LibreOffice's conversions, then taken off). The master's title and body looks change deck-wide through Design's colours
+      and fonts. Not yet (later, when asked): a Slide Master view of its own (layouts, the master's placeholders moved or restyled).
+      Emulator: "Olive Co-op" on every slide of arrange.pptx, saved, chosen through the Selection pane and taken off every slide.
 - [x] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
       Find and Replace done 17 Oct (office-C session): Words' find bar moved into a shared `FindReplaceBar` (OfficeUi.kt; Words uses it
       as before — checked on the emulator, 1/3 found) and Slides' top bar has it (the search button while editing, Ctrl+F as A planned):

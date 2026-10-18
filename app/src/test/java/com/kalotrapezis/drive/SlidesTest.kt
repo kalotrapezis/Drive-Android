@@ -117,6 +117,41 @@ class SlidesTest {
         }
     }
 
+    /** Arrange › On every slide: a text box on the slide master (PowerPoint's master, LibreOffice's master page), on every slide when read back and by LibreOffice; then taken off every slide. */
+    @Test fun `a thing on every slide`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        fun everywhere(d: Deck) = d.slides.map { sl -> sl.items.filterIsInstance<SlideItem.Shape>().firstOrNull { sh -> sh.text?.paras?.any { p -> p.runs.any { it.text == "Olive Grove Co-op" } } == true } }
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val box = SlidesEdit.Added("9100", 20f, deck.height - 40f, 200f, 30f, prst = SlidesEdit.TEXT_BOX, runs = listOf(listOf(DocRun("Olive Grove Co-op", sizePt = 12f, color = 0x2E7D32))))
+            // and one typed (its words in the edit's texts, as a text box put on and typed in keeps them), its words red
+            val typed = SlidesEdit.Added("9101", 300f, deck.height - 40f, 200f, 30f, prst = SlidesEdit.TEXT_BOX)
+            val e = SlidesEdit.start(deck).let { it.copy(added = it.added + (SlidesEdit.MASTER to listOf(box, typed)), texts = it.texts + ((SlidesEdit.MASTER to "9101") to listOf("Typed on every slide")),
+                looks = it.looks + ((SlidesEdit.MASTER to "9101") to SlidesEdit.Look(text = 0xFFC00000.toInt()))) }
+            assertTrue(name, everywhere(SlidesEdit.view(deck, e)).all { it != null })
+            fun typedOn(d: Deck) = d.slides.all { sl -> sl.items.filterIsInstance<SlideItem.Shape>().any { sh -> sh.text?.paras?.any { p -> p.runs.any { it.text == "Typed on every slide" && it.color == 0xC00000 } } == true } }
+            assertTrue(name, typedOn(SlidesEdit.view(deck, e)))
+            val out = scratchDir("every").resolve("every-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val back = Slides.read(out)
+            assertTrue("saved typed, $name", typedOn(back))
+            val found = everywhere(back)
+            assertTrue("$name: ${found.map { it != null }}", found.all { it != null && it.master != null && it.master!!.startsWith("added").not() })
+            if (lo) {
+                val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                assertTrue("LibreOffice's $other of $name", everywhere(Slides.read(dir.listFiles()!!.single { it.extension == other })).all { it != null })
+            }
+            // taken off every slide again: the master's own now
+            // (each master's copy: an .odp's pages use more than one master page)
+            val e2 = SlidesEdit.start(back).let { it.copy(removed = it.removed + found.mapNotNull { f -> f?.master }.toSet().map { SlidesEdit.MASTER to it }) }
+            assertTrue(name, everywhere(SlidesEdit.view(back, e2)).all { it == null })
+            val out2 = scratchDir("every2").resolve("off-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(out, back, e2, out2) else SlidesEdit.save(out, back, e2, out2)
+            assertTrue(name, everywhere(Slides.read(out2)).all { it == null })
+        }
+    }
+
     /** Add text: a shape with no words given some — a text body of its own, its words in the middle; read back. */
     @Test fun `words added to a shape that had none`() {
         val xml = """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>""" +

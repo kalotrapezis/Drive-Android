@@ -97,7 +97,7 @@ import kotlinx.coroutines.withContext
  * row (pulled down: the month) over the agenda of the days. Everything is read from Tetra/Calendar's files.
  */
 
-internal enum class CalView(val label: String) { Agenda("Agenda"), Day("Day"), ThreeDays("3 days"), Week("Week"), Month("Month") }
+internal enum class CalView(val label: String) { Agenda("Agenda"), Day("Day"), ThreeDays("3 days"), Week("Week"), Month("Month"), Year("Year") }
 
 internal fun calendarRoot() = CalendarFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
 
@@ -110,11 +110,13 @@ private object CalendarPrefs {
         .getOrDefault(if (wide) CalView.Month else CalView.Agenda)
     fun last(c: Context): String? = prefs(c).getString("lastCalendar", null)
     fun setLast(c: Context, name: String) = prefs(c).edit().putString("lastCalendar", name).apply()
+    fun stripWeeks(c: Context) = prefs(c).getInt("stripWeeks", 1)
+    fun setStripWeeks(c: Context, n: Int) = prefs(c).edit().putInt("stripWeeks", n).apply()
     fun setView(c: Context, wide: Boolean, v: CalView) = prefs(c).edit().putString(if (wide) "viewWide" else "view", v.name).apply()
 }
 
 /** The editor open: on an occurrence (null: a new event), its draft and calendar. */
-private class Editing(val occ: Occurrence?, val draft: CalEvent, val calendar: CalendarInfo?)
+private class Editing(val occ: Occurrence?, val draft: CalEvent, val calendar: CalendarInfo?, val heading: String? = null)
 private class Asking(val deleting: Boolean, val then: (Scope) -> Unit)
 
 /** "All events" from one day: the change of that day's time moved onto the series' own start. */
@@ -231,7 +233,7 @@ private fun onColor(c: Color) = if (c.luminance() > 0.55f) Color.Black else Colo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, startNew: Boolean = false) {
+internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, startKind: NewKind? = null) {
     val context = LocalContext.current
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val zone = remember { ZoneId.systemDefault() }
@@ -248,6 +250,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var calDialog by remember { mutableStateOf<CalendarInfo?>(null) }
     var newCal by remember { mutableStateOf(false) }
     var deleteCal by remember { mutableStateOf<CalendarInfo?>(null) }
+    var birthday by remember { mutableStateOf(false) }
+    var schedule by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(message) { if (message != null) { delay(3000); message = null } }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -323,7 +327,16 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         val cal = cals.firstOrNull { it.dir.name == CalendarPrefs.last(context) && it.dir.name !in hidden } ?: cals.firstOrNull { it.dir.name !in hidden } ?: cals.firstOrNull()
         editing = Editing(null, CalEvent(CalendarFiles.newUid(), "", "", "", false, start, start.plusHours(1), alarms = defaultAlarms(false, start)), cal)
     }
-    LaunchedEffect(startNew, data != null) { if (startNew && data != null && editing == null) create(today) }
+    // + and Home's tiles: New, Schedule, Birthday, Reminder (the user, 18 Oct)
+    fun start(k: NewKind) {
+        when (k) {
+            NewKind.Event -> create(selected)
+            NewKind.Reminder -> { create(selected); editing = editing?.let { Editing(null, it.draft.copy(end = it.draft.start.plusMinutes(15), alarms = listOf(CalAlarm(0, 0))), it.calendar, "New reminder") } }
+            NewKind.Birthday -> birthday = true
+            NewKind.Schedule -> schedule = true
+        }
+    }
+    LaunchedEffect(startKind, data != null) { if (startKind != null && data != null && editing == null) start(startKind) }
     fun saveEvent(ed: Editing, e: CalEvent, target: CalendarInfo?, scopeChoice: Scope?) = write(if (ed.occ == null) "Event created" else "Saved") {
         val to = target ?: CalendarFiles.calendars(root).firstOrNull() ?: CalendarFiles.newCalendar(root, "Personal", CalendarFiles.PALETTE[0])
         CalendarPrefs.setLast(context, to.dir.name)
@@ -355,12 +368,13 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Scope.Following -> if (m == null || day.toInstant() <= m.start.toInstant()) CalendarFiles.trash(root, f.file) else CalendarFiles.endBefore(f, day)
         }
     }
-    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.ThreeDays, CalView.Month)
+    // the user, 18 Oct: on a wide screen the island holds only Day · Week · Month · Year
+    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Year) else listOf(CalView.Agenda, CalView.Day, CalView.ThreeDays, CalView.Month)
     LaunchedEffect(wide) { if (view !in views) setView(views.first()) }
     BackHandler { when { shown != null -> shown = null; drawer -> drawer = false; else -> back() } }
     editing?.let { ed ->
         val repeating = ed.occ != null && (ed.occ.file.master?.rrule != null || ed.occ.event.recurrenceId != null)
-        EventEditor(ed.draft, ed.calendar, cals, isNew = ed.occ == null, wide = wide, cancel = { editing = null }) { e, target ->
+        EventEditor(ed.draft, ed.calendar, cals, isNew = ed.occ == null, wide = wide, cancel = { editing = null }, heading = ed.heading) { e, target ->
             if (repeating) asking = Asking(false) { sc -> saveEvent(ed, e, target, sc); editing = null }
             else { saveEvent(ed, e, target, null); editing = null }
         }
@@ -377,6 +391,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 CalView.ThreeDays -> TimeGrid((0L..2).map { selected.plusDays(it) }, days, today, open, ::create)
                 CalView.Day -> TimeGrid(listOf(selected), days, today, open, ::create)
                 CalView.Agenda -> Agenda(anchor, days, today, selected, { selected = it }, open)
+                CalView.Year -> YearGrid(selected, today, days.keys) { selected = it; setView(CalView.Day) }
             }
         }
     }
@@ -404,19 +419,39 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     },
                 )
                 ReminderNotes()
-                if (!wide && view == CalView.Agenda) WeekStrip(selected, today, days) { selected = it }
-                // the island floats over the last row; the views stop above it
-                body(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().padding(bottom = if (view == CalView.Agenda) 0.dp else 76.dp))
+                if (wide) Row(Modifier.weight(1f)) {
+                    // the user, 18 Oct: on a wide screen the small month and the calendars stay in sight, beside the grid
+                    Column(Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState()).navigationBarsPadding()
+                        .padding(start = 16.dp, end = 8.dp, bottom = 84.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MiniMonth(selected, today, days.keys) { selected = it }
+                        CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true },
+                            { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }, settings = false)
+                    }
+                    // the island floats over the last row; the views stop above it
+                    body(Modifier.weight(1f).fillMaxHeight().navigationBarsPadding().padding(end = 8.dp, bottom = 76.dp))
+                } else {
+                    // the user, 18 Oct: the events on top, the small calendar at the bottom within the thumb's reach
+                    body(Modifier.weight(1f).fillMaxWidth())
+                    if (view != CalView.Month) BottomStrip(selected, today, days) { selected = it }
+                    Spacer(Modifier.navigationBarsPadding().height(92.dp)) // the island and its gap below
+                }
             }
             // Files' bottom: the island at the left, the one round action at the right (here New event)
-            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            // on a wide screen it starts at the grid, the side column left in sight
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = if (wide) 300.dp else 12.dp, end = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     views.forEach { v -> IslandNavigationItem(v.label, view == v, viewIcon(v)) { setView(v) } }
                 }
                 IslandVisibility(!drawer) {
-                    Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                        IconButton(onClick = { create(selected) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New event") }
+                    Box {
+                        var kinds by remember { mutableStateOf(false) }
+                        Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                            IconButton(onClick = { kinds = true }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New") }
+                        }
+                        DropdownMenu(expanded = kinds, onDismissRequest = { kinds = false }) {
+                            NewKind.entries.forEach { k -> DropdownMenuItem(text = { Text(k.label) }, leadingIcon = { Icon(painterResource(k.icon), contentDescription = null) }, onClick = { kinds = false; start(k) }) }
+                        }
                     }
                 }
             }
@@ -428,21 +463,13 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // the small month on a big screen, beside the calendars; a phone has its week row
-            val calendarsPanel: @Composable (Modifier) -> Unit = { m ->
-                Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = m) {
-                    Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                        CalendarList(cals, hidden, ::toggle, { drawer = false; calDialog = it }, { drawer = false; newCal = true },
-                            { drawer = false; pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { drawer = false; exportAll.launch("Tetra calendars.zip") })
-                    }
+            if (wide) RemindersSwitch()
+            else Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    CalendarList(cals, hidden, ::toggle, { drawer = false; calDialog = it }, { drawer = false; newCal = true },
+                        { drawer = false; pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { drawer = false; exportAll.launch("Tetra calendars.zip") })
                 }
             }
-            if (wide) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.width(340.dp)) {
-                    Box(Modifier.padding(12.dp)) { MiniMonth(selected, today, days.keys) { selected = it; drawer = false } }
-                }
-                calendarsPanel(Modifier.weight(1f))
-            } else calendarsPanel(Modifier.fillMaxWidth())
         }
     }
     shown?.let { o ->
@@ -477,6 +504,31 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             }
         }
     }
+    if (birthday) BirthdayDialog({ birthday = false }) { name, date, yearKnown ->
+        birthday = false
+        write("$name's birthday saved") {
+            val cal = CalendarFiles.calendars(root).firstOrNull { it.name.equals("Birthdays", true) } ?: CalendarFiles.newCalendar(root, "Birthdays", 0xFF8E24AA.toInt())
+            val start = (if (yearKnown) date else date.withYear(today.year)).atStartOfDay(zone)
+            val uid = CalendarFiles.newUid()
+            val f = CalendarFiles.save(CalendarFiles.newFile(cal.dir, "$name birthday", uid),
+                CalEvent(uid, "$name's birthday", "", "", true, start, start.plusDays(1), rrule = "FREQ=YEARLY", alarms = listOf(daysBeforeAt(start, 0, java.time.LocalTime.of(9, 0), false))))
+            if (yearKnown) CalendarFiles.setProp(f.file, "X-TETRA-BIRTH-YEAR", date.year.toString())
+        }
+    }
+    if (schedule) {
+        val holidays = cals.firstOrNull { it.name.equals("Holidays", true) }
+        ScheduleDialog(cals, cals.firstOrNull { it.dir.name == CalendarPrefs.last(context) } ?: cals.firstOrNull(), holidays != null, { schedule = false }) { title, place, weekdays, at, until, from, to, skip, cal ->
+            schedule = false
+            write("Schedule saved") {
+                val into = cal ?: CalendarFiles.calendars(root).firstOrNull() ?: CalendarFiles.newCalendar(root, "Personal", CalendarFiles.PALETTE[0])
+                // the Holidays calendar's days (all day) between the two dates, as exceptions
+                val skipDays = if (skip && holidays != null) CalendarFiles.occurrences(listOf(holidays), from.atStartOfDay(zone).toInstant(), to.plusDays(1).atStartOfDay(zone).toInstant())
+                    .filter { it.allDay }.flatMap { daysOf(it, zone) } else emptyList()
+                val e = scheduleEvent(CalendarFiles.newUid(), title, place, weekdays, at, until, from, to, skipDays, zone)
+                CalendarFiles.save(CalendarFiles.newFile(into.dir, title, e.uid), e)
+            }
+        }
+    }
     incoming?.let { list ->
         ImportDialog(list, cals, { incoming = null }) { choices ->
             incoming = null
@@ -501,6 +553,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
 }
 
 private fun step(d: LocalDate, v: CalView, n: Long): LocalDate = when (v) {
+    CalView.Year -> d.plusYears(n)
     CalView.Day -> d.plusDays(n)
     CalView.ThreeDays -> d.plusDays(3 * n)
     CalView.Week, CalView.Agenda -> d.plusWeeks(n)
@@ -515,6 +568,7 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
         if (a.month == b.month) a.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
         else a.format(DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)) + " – " + b.format(DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH))
     }
+    CalView.Year -> d.year.toString()
     else -> d.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
 }
 
@@ -523,9 +577,10 @@ private fun viewIcon(v: CalView) = when (v) {
     CalView.Day -> R.drawable.ic_view_day
     CalView.ThreeDays, CalView.Week -> R.drawable.ic_view_column
     CalView.Month -> R.drawable.ic_view_grid
+    CalView.Year -> R.drawable.ic_calendar_today
 }
 
-@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit) {
+@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit, settings: Boolean = true) {
     Column {
         Text("My calendars", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
         if (cals.isEmpty()) Text("No calendars yet. Each folder in Tetra/Calendar is one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -543,11 +598,33 @@ private fun viewIcon(v: CalView) = when (v) {
             TextButton(onClick = import) { Text("Import") }
             if (cals.isNotEmpty()) TextButton(onClick = exportAll) { Text("Export all") }
         }
-        val context = LocalContext.current
-        var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Reminders on this device", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            androidx.compose.material3.Switch(on, { on = it; CalendarAlarms.setEnabled(context, it) }, colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = CalendarPink))
+        if (settings) RemindersSwitch()
+    }
+}
+
+@Composable private fun RemindersSwitch() {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Reminders on this device", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(on, { on = it; CalendarAlarms.setEnabled(context, it) }, colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = CalendarPink))
+    }
+}
+
+/** The Year view: the twelve months small, a day tapped opens it. */
+@Composable private fun YearGrid(selected: LocalDate, today: LocalDate, busy: Set<LocalDate>, pick: (LocalDate) -> Unit) {
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(250.dp), Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(12) { m ->
+            val month = YearMonth.of(selected.year, m + 1)
+            Column {
+                Text(month.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH), style = MaterialTheme.typography.titleSmall,
+                    color = if (YearMonth.from(today) == month) CalendarPink else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                Row { weekOf(today).forEach { Text(it.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.ENGLISH), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                monthCells(month).chunked(7).forEach { week ->
+                    Row { week.forEach { d -> if (d.month == month.month) DayDot(d, Modifier.weight(1f), d == selected, d == today, true, d in busy, 28.dp) { pick(d) } else Spacer(Modifier.weight(1f)) } }
+                }
+            }
         }
     }
 }
@@ -583,29 +660,40 @@ private fun viewIcon(v: CalView) = when (v) {
     }
 }
 
-/** The phone's top: the chosen day's week, pulled down to its whole month; swiped sideways for the next week or month. */
-@Composable private fun WeekStrip(selected: LocalDate, today: LocalDate, days: Map<LocalDate, List<Occurrence>>, pick: (LocalDate) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
+/**
+ * The narrow screen's small calendar, at the bottom above the island (the user, 18 Oct): 1, 2 or 3 weeks from the chosen
+ * day's, or its whole month — the handle dragged up for more, down for fewer, the choice kept; swiped sideways for the
+ * next ones; a day tapped moves the events above to it.
+ */
+@Composable private fun BottomStrip(selected: LocalDate, today: LocalDate, days: Map<LocalDate, List<Occurrence>>, pick: (LocalDate) -> Unit) {
+    val context = LocalContext.current
+    var weeks by remember { mutableIntStateOf(CalendarPrefs.stripWeeks(context)) }
+    fun set(n: Int) { weeks = n; CalendarPrefs.setStripWeeks(context, n) }
+    val sizes = listOf(1, 2, 3, 6) // 6: the month
     var drag by remember { mutableStateOf(Offset.Zero) }
     val sel = rememberUpdated(selected)
-    Column(Modifier.fillMaxWidth().pointerInput(Unit) {
+    val month = weeks == 6
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).pointerInput(Unit) {
         detectDragGestures(onDragStart = { drag = Offset.Zero }, onDrag = { _, d -> drag += d }, onDragEnd = {
-            if (Math.abs(drag.y) > Math.abs(drag.x)) { if (drag.y > 40) expanded = true else if (drag.y < -40) expanded = false }
+            val k = sizes.indexOf(weeks)
+            if (Math.abs(drag.y) > Math.abs(drag.x)) { if (drag.y < -30) set(sizes[minOf(k + 1, sizes.lastIndex)]) else if (drag.y > 30) set(sizes[maxOf(k - 1, 0)]) }
             else if (Math.abs(drag.x) > 60) {
                 val n = if (drag.x < 0) 1L else -1L
-                pick(if (expanded) sel.value.plusMonths(n) else sel.value.plusWeeks(n))
+                pick(if (weeks == 6) sel.value.plusMonths(n) else sel.value.plusWeeks(n * weeks))
             }
         })
     }) {
-        Row { weekOf(today).forEach { Text(it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-        val weeks = if (expanded) monthCells(YearMonth.from(selected)).chunked(7).filter { w -> w.any { it.month == selected.month } } else listOf(weekOf(selected))
-        weeks.forEach { week ->
-            Row { week.forEach { d -> DayDot(d, Modifier.weight(1f), d == selected, d == today, !expanded || d.month == selected.month, !days[d].isNullOrEmpty(), 36.dp) { pick(d) } } }
-        }
-        Box(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        HorizontalDivider()
+        Box(Modifier.fillMaxWidth().clickable { set(sizes[(sizes.indexOf(weeks) + 1) % sizes.size]) }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.width(36.dp).height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)))
         }
-        HorizontalDivider()
+        if (month) Text(selected.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 16.dp, bottom = 2.dp))
+        Row { weekOf(today).forEach { Text(it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        val rows = if (month) monthCells(YearMonth.from(selected)).chunked(7).filter { w -> w.any { it.month == selected.month } }
+            else (0 until weeks).map { i -> weekOf(selected.plusWeeks(i.toLong())) }
+        rows.forEach { week ->
+            Row { week.forEach { d -> DayDot(d, Modifier.weight(1f), d == selected, d == today, !month || d.month == selected.month, !days[d].isNullOrEmpty(), 34.dp) { pick(d) } } }
+        }
     }
 }
 
@@ -842,6 +930,9 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
                 Text(whenText, style = MaterialTheme.typography.bodyLarge)
                 (o.file.master ?: e).let { m -> repeatText(m.rrule, m.start) }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (e.place.isNotEmpty()) Text(e.place, style = MaterialTheme.typography.bodyMedium)
+                // a birthday with its year: the age that day
+                o.file.comps.flatMap { c -> c.comps("VEVENT") }.firstOrNull { it.prop("RECURRENCE-ID") == null }?.prop("X-TETRA-BIRTH-YEAR")?.value?.trim()?.toIntOrNull()
+                    ?.let { y -> if (o.start.year > y) Text("Turns ${o.start.year - y}", style = MaterialTheme.typography.bodyMedium) }
                 Text(o.calendar.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 e.alarms.forEach { Text("🔔 " + alarmText(it, e.allDay, o.start), style = MaterialTheme.typography.bodyMedium) }
                 if (e.notes.isNotEmpty()) Text(e.notes, style = MaterialTheme.typography.bodyMedium)
@@ -855,23 +946,6 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
     }
 }
 
-/** Home's line for the Calendar: what is on now or next within a month ("09:30 Dentist", "Tomorrow · Trip"). */
-internal fun nextEventText(context: Context): String? {
-    val root = calendarRoot()
-    if (!root.isDirectory) return null
-    val hidden = CalendarPrefs.hidden(context)
-    val now = java.time.Instant.now()
-    val o = runCatching { CalendarFiles.occurrences(CalendarFiles.calendars(root).filter { it.dir.name !in hidden }, now, now.plus(java.time.Duration.ofDays(31))) }
-        .getOrNull()?.firstOrNull() ?: return null
-    val today = LocalDate.now()
-    val day = if (o.allDay) o.start.toLocalDate() else o.start.withZoneSameInstant(ZoneId.systemDefault()).toLocalDate()
-    val title = o.event.title.ifEmpty { "(No title)" }
-    return when {
-        day <= today -> if (o.allDay) "Today · $title" else timeText(context, o.start) + " " + title
-        day == today.plusDays(1) -> "Tomorrow · $title"
-        else -> day.format(DateTimeFormatter.ofPattern("EEE d", Locale.ENGLISH)) + " · " + title
-    }
-}
 
 /**
  * What stands between a reminder and the person: notifications off, and on a Xiaomi its own Autostart and battery

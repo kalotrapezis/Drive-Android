@@ -132,6 +132,7 @@ internal fun EventEditor(
     isNew: Boolean,
     wide: Boolean,
     cancel: () -> Unit,
+    heading: String? = null,
     save: (CalEvent, CalendarInfo?) -> Unit,
 ) {
     val context = LocalContext.current
@@ -168,7 +169,7 @@ internal fun EventEditor(
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
-                Text(if (isNew) "New event" else "Edit event", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(heading ?: if (isNew) "New event" else "Edit event", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = { save(result(), cal) }) { Text("Save") }
             }
             HorizontalDivider()
@@ -429,6 +430,137 @@ internal fun EventEditor(
                 CalendarFiles.PALETTE.forEach { c ->
                     Box(Modifier.size(36.dp).clip(CircleShape).background(Color(c)).then(if (c == color) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier).clickable { color = c })
                 }
+            }
+        }
+    })
+}
+
+/** What + and Home's Calendar tiles start (the user, 18 Oct: "New : Shedule : burthday : reminder"). */
+internal enum class NewKind(val label: String, val icon: Int) {
+    Event("New", R.drawable.ic_add), Schedule("Schedule", R.drawable.ic_schedule), Birthday("Birthday", R.drawable.ic_cake), Reminder("Reminder", R.drawable.ic_notifications)
+}
+
+/** A date to pick: its words on a button, Android's date picker behind it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun DateButton(d: LocalDate, pattern: String = "EEE, d MMM yyyy", set: (LocalDate) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    TextButton(onClick = { open = true }) { Text(d.format(DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH))) }
+    if (open) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        DatePickerDialog(onDismissRequest = { open = false }, confirmButton = {
+            TextButton(onClick = { state.selectedDateMillis?.let { set(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }; open = false }) { Text("OK") }
+        }, dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } }) { DatePicker(state) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun TimeButton(t: LocalTime, set: (LocalTime) -> Unit) {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    TextButton(onClick = { open = true }) { Text(timeText(context, t.atDate(LocalDate.now()).atZone(ZoneId.systemDefault()))) }
+    if (open) {
+        val state = rememberTimePickerState(t.hour, t.minute, android.text.format.DateFormat.is24HourFormat(context))
+        AlertDialog(onDismissRequest = { open = false }, confirmButton = {
+            TextButton(onClick = { set(LocalTime.of(state.hour, state.minute)); open = false }) { Text("OK") }
+        }, dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } }, text = { TimePicker(state) })
+    }
+}
+
+/**
+ * A birthday: a name and a date, the year if known. Saved in the Birthdays calendar as an all-day event every year; a
+ * known year is the first DTSTART and X-TETRA-BIRTH-YEAR, so the age can show.
+ */
+@Composable internal fun BirthdayDialog(dismiss: () -> Unit, save: (name: String, date: LocalDate, yearKnown: Boolean) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf(LocalDate.now()) }
+    var yearKnown by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Birthday") }, confirmButton = {
+        TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), date, yearKnown) }) { Text("Save") }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Whose birthday") }, singleLine = true)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("Date", Modifier.width(72.dp)); DateButton(date, if (yearKnown) "d MMMM yyyy" else "d MMMM") { date = it } }
+            Row(Modifier.clickable { yearKnown = !yearKnown }, verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(yearKnown, { yearKnown = it }); Text("I know the year (to show the age)")
+            }
+            Text("All day, every year, in the Birthdays calendar; reminded on the day at 9:00.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    })
+}
+
+/** A school year's dates (the user, 18 Oct); the high school's end is a guess until the user says. */
+internal class ScheduleTemplate(val label: String, val startMonth: Int, val startDay: Int, val endMonth: Int, val endDay: Int)
+internal val SCHEDULE_TEMPLATES = listOf(ScheduleTemplate("Elementary school year", 9, 1, 6, 26), ScheduleTemplate("High school year", 9, 1, 6, 15))
+
+/** The school year that a day falls in, from September: 18 Oct 2026 → 1 Sep 2026 – June 2027. */
+internal fun templateDates(t: ScheduleTemplate, today: LocalDate): Pair<LocalDate, LocalDate> {
+    val y = if (today.monthValue >= 8) today.year else today.year - 1
+    return LocalDate.of(y, t.startMonth, t.startDay) to LocalDate.of(y + 1, t.endMonth, t.endDay)
+}
+
+/** A weekly schedule as one repeating event: its first day is the first chosen weekday from [from]; until [to] inclusive. */
+internal fun scheduleEvent(uid: String, title: String, place: String, weekdays: Set<java.time.DayOfWeek>, at: LocalTime, until: LocalTime,
+                           from: LocalDate, to: LocalDate, skip: List<LocalDate>, zone: ZoneId = ZoneId.systemDefault()): CalEvent {
+    val first = generateSequence(from) { it.plusDays(1) }.take(7).first { it.dayOfWeek in weekdays }
+    val start = first.atTime(at).atZone(zone)
+    val end = first.atTime(if (until.isAfter(at)) until else at.plusHours(1)).atZone(zone)
+    val untilUtc = to.atTime(23, 59, 59).atZone(zone).withZoneSameInstant(ZoneOffset.UTC)
+    val byDay = java.time.DayOfWeek.entries.filter { it in weekdays }.joinToString(",") { it.name.take(2) }
+    return CalEvent(uid, title, place, "", false, start, end, rrule = "FREQ=WEEKLY;BYDAY=$byDay;UNTIL=" + ICal.timeValue(untilUtc, false).first,
+        exdates = skip.filter { it.dayOfWeek in weekdays && !it.isBefore(first) && !it.isAfter(to) }.distinct().sorted().map { it.atTime(at).atZone(zone) })
+}
+
+/**
+ * A schedule (a school timetable, a weekly class): one or more weekdays, a time, a start and an end; templates for a
+ * school year; the Holidays calendar's days skipped if wished.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun ScheduleDialog(calendars: List<CalendarInfo>, calendar: CalendarInfo?, holidays: Boolean, dismiss: () -> Unit,
+                                         save: (title: String, place: String, days: Set<java.time.DayOfWeek>, at: LocalTime, until: LocalTime, from: LocalDate, to: LocalDate, skipHolidays: Boolean, CalendarInfo?) -> Unit) {
+    val today = LocalDate.now()
+    var title by remember { mutableStateOf("") }
+    var place by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf(setOf(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.TUESDAY, java.time.DayOfWeek.WEDNESDAY, java.time.DayOfWeek.THURSDAY, java.time.DayOfWeek.FRIDAY)) }
+    var at by remember { mutableStateOf(LocalTime.of(8, 15)) }
+    var until by remember { mutableStateOf(LocalTime.of(13, 30)) }
+    var from by remember { mutableStateOf(today) }
+    var to by remember { mutableStateOf(today.plusMonths(3)) }
+    var skip by remember { mutableStateOf(holidays) }
+    var cal by remember { mutableStateOf(calendar ?: calendars.firstOrNull()) }
+    var template by remember { mutableStateOf<ScheduleTemplate?>(null) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Schedule") }, confirmButton = {
+        TextButton(enabled = title.isNotBlank() && days.isNotEmpty() && !to.isBefore(from), onClick = { save(title.trim(), place.trim(), days, at, until, from, to, skip, cal) }) { Text("Save") }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("What (e.g. Lessons)") }, singleLine = true)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SCHEDULE_TEMPLATES.forEach { t ->
+                    val on = template == t
+                    Box(Modifier.clip(CircleShape).background(if (on) CalendarPink else Color.Transparent).border(1.dp, CalendarPink, CircleShape)
+                        .clickable { template = t; val (a, b) = templateDates(t, today); from = a; to = b; days = days.ifEmpty { setOf(java.time.DayOfWeek.MONDAY) } }.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Text(t.label, color = if (on) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                java.time.DayOfWeek.entries.forEach { d ->
+                    val on = d in days
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(if (on) CalendarPink else Color.Transparent).border(1.dp, CalendarPink, CircleShape)
+                        .clickable { days = if (on) days - d else days + d }, contentAlignment = Alignment.Center) {
+                        Text(d.getDisplayName(TextStyle.NARROW, Locale.ENGLISH), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("From", Modifier.width(56.dp)); TimeButton(at) { at = it }; Text("to"); TimeButton(until) { until = it } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("Starts", Modifier.width(56.dp)); DateButton(from) { from = it } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("Ends", Modifier.width(56.dp)); DateButton(to) { to = it } }
+            if (template == SCHEDULE_TEMPLATES[1]) Text("The high school year's end is a guess (15 June): set the right date.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (holidays) Row(Modifier.clickable { skip = !skip }, verticalAlignment = Alignment.CenterVertically) { Checkbox(skip, { skip = it }); Text("Skip the days in the Holidays calendar") }
+            OutlinedTextField(place, { place = it }, Modifier.fillMaxWidth(), label = { Text("Place") }, singleLine = true)
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                TextButton(onClick = { menu = true }) { Box(Modifier.padding(end = 8.dp).size(12.dp).clip(CircleShape).background(Color(cal?.color ?: CalendarFiles.PALETTE[0]))); Text((cal?.name ?: "Personal (new)") + " ▾") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { calendars.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, onClick = { cal = c; menu = false }) } }
             }
         }
     })

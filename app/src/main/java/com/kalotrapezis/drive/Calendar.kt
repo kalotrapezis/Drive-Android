@@ -396,6 +396,11 @@ object CalendarFiles {
 
     private fun sameTime(p: ICalProp?, t: ZonedDateTime) = p != null && ICal.time(p, t.zone)?.first?.toInstant() == t.toInstant()
 
+    /** One property of the event (not a changed day) set, as written: e.g. a birthday's X-TETRA-BIRTH-YEAR. */
+    fun setProp(file: File, name: String, value: String): CalFile = rewrite(file) { cal ->
+        cal.comps("VEVENT").firstOrNull { it.prop("RECURRENCE-ID") == null }?.set(name, value)
+    }
+
     /** One day of a repeating event changed: a VEVENT with its RECURRENCE-ID in the same file (made or replaced). */
     fun saveDay(f: CalFile, day: ZonedDateTime, e: CalEvent, now: Instant = Instant.now()): CalFile = rewrite(f.file) { cal ->
         val allDay = f.master?.allDay ?: e.allDay

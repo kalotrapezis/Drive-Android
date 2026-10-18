@@ -325,7 +325,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
-    var calendarNew by remember { mutableStateOf(false) } // Home's New event: the Calendar opens on a new one
+    var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
@@ -628,7 +628,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Codes -> screen = Screen.Codes
             Applet.Office -> screen = Screen.Office
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
-            Applet.Calendar -> { calendarNew = false; screen = Screen.Calendar }
+            Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -725,8 +725,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                     openOffice = { screen = Screen.Office },
                     pickOffice = pickOffice,
-                    openCalendar = { calendarNew = false; screen = Screen.Calendar },
-                    newEvent = { calendarNew = true; screen = Screen.Calendar },
+                    openCalendar = { calendarNew = null; screen = Screen.Calendar },
+                    newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -783,7 +783,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                }, startNew = calendarNew)
+                }, startKind = calendarNew)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -892,7 +892,7 @@ private fun Home(
     pickOffice: (OfficePick) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
     openCalendar: () -> Unit,
-    newEvent: () -> Unit,
+    newEvent: (NewKind) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -958,16 +958,16 @@ private fun Home(
                 }
             }
         },
-        // The Calendar (18 Oct): pink, the user's icon; the next event beside it.
+        // The Calendar (18 Oct): pink, the user's icon; New, Schedule, Birthday, Reminder beside it.
         {
             HomeGroup(Category.Calendar.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Calendar", R.drawable.calendar_art, openCalendar, Modifier.weight(1f), artSize = 76)
+                    // four tiles as Office's (the user, 18 Oct: "New : Shedule : burthday : reminder"), each the editor for its kind
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val context = LocalContext.current
-                        val next by produceState<String?>(null) { value = withContext(Dispatchers.IO) { nextEventText(context) } }
-                        HomeCompactCard(next ?: "Nothing coming up", R.drawable.ic_calendar_today, openCalendar)
-                        HomeCompactCard("New event", R.drawable.ic_add, newEvent)
+                        listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, Color(0xFFF77FB3), Modifier.weight(1f)) { newEvent(k) } } }
+                        }
                     }
                 }
             }
@@ -1058,10 +1058,15 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         OfficePick.Slides -> Triple("Slides", R.drawable.ic_play, Color(0xFFE0784F))
         OfficePick.Pdf -> Triple("PDFs", R.drawable.ic_file, PDF_RED)
     } // the list's lighter colours of the four kinds (driveExtensionColor), for the dark card
+    HomeTile(if (wide) "Open $name" else name, icon, tint, modifier, click)
+}
+
+/** One of Home's small tiles (Office's Open, Calendar's New…): a name under its icon in its colour. */
+@Composable private fun HomeTile(label: String, icon: Int, tint: Color, modifier: Modifier, click: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(73.dp).clickable(onClick = click)) {
         Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
-            Text(if (wide) "Open $name" else name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

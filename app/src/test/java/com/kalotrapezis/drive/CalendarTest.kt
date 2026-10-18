@@ -214,4 +214,20 @@ class CalendarTest {
         val f = File(into.dir, CalendarFiles.fileName("Lesson", "a")); f.writeText("x")
         assertEquals(File(into.dir, f.nameWithoutExtension + " (2).ics"), CalendarFiles.newFile(into.dir, "Lesson", "a"))
     }
+
+    @Test fun `a school timetable is one weekly event, its holidays skipped`() {
+        val (from, to) = templateDates(SCHEDULE_TEMPLATES[0], java.time.LocalDate.of(2026, 10, 18))
+        assertEquals(java.time.LocalDate.of(2026, 9, 1) to java.time.LocalDate.of(2027, 6, 26), from to to)
+        val weekdays = setOf(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.TUESDAY, java.time.DayOfWeek.WEDNESDAY, java.time.DayOfWeek.THURSDAY, java.time.DayOfWeek.FRIDAY)
+        val holidays = listOf(java.time.LocalDate.of(2026, 10, 28), java.time.LocalDate.of(2026, 12, 25), java.time.LocalDate.of(2026, 12, 26)) // a Wednesday, a Friday, a Saturday
+        val e = scheduleEvent("timetable", "Lessons", "", weekdays, java.time.LocalTime.of(8, 15), java.time.LocalTime.of(13, 30), from, to, holidays, athens)
+        assertEquals("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20270626T205959Z", e.rrule)
+        assertEquals("2026-09-01T08:15", e.start.toLocalDateTime().toString()) // 1 Sep 2026 is a Tuesday
+        assertEquals(2, e.exdates.size) // the Saturday is not a school day
+        val file = File(cal.dir, CalendarFiles.fileName(e.title, e.uid))
+        val f = CalendarFiles.save(file, e)
+        val days = CalendarFiles.occurrences(cal, f, at("2026-10-26T00:00"), at("2026-10-31T00:00")).map(::local)
+        assertEquals(listOf("2026-10-26T08:15", "2026-10-27T08:15", "2026-10-29T08:15", "2026-10-30T08:15"), days) // 28 Oct off
+        assertEquals("2027-06-25T08:15", CalendarFiles.occurrences(cal, f, at("2027-06-20T00:00"), at("2027-07-10T00:00")).map(::local).last())
+    }
 }

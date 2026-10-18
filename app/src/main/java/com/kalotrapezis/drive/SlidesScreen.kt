@@ -1276,7 +1276,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 // PowerPoint's Reading View: the show from this slide (on a phone or tablet, the screen is its window)
                 RibbonButton("Reading view", w, R.drawable.ic_play) { presenting = c }
                 // the speaker notes under the slide, typed there (PowerPoint's Notes); a desktop always shows them
-                if (!OfficeUi.top) RibbonButton("Notes page", w, R.drawable.ic_comment, on = notesPage) { notesPage = !notesPage; sorter = false; outline = false }
+                // PowerPoint's Show › Notes: the notes pane on or off beside the view chosen (the tablet walk, 18 Oct: not a view of its own)
+                if (!OfficeUi.top) { RibbonDivider(w); RibbonButton("Notes", w, R.drawable.ic_comment, on = notesPage) { notesPage = !notesPage; sorter = false; outline = false } }
                 if (sorter) {
                     RibbonDivider(w)
                     Text("${marked.size} chosen", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
@@ -1643,11 +1644,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         var v by remember(uid, sh.id) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(start)) }
                         var focused by remember(uid, sh.id) { mutableStateOf(false) }; var stepped by remember(uid, sh.id) { mutableStateOf(false) }
                         LaunchedEffect(start) { if (!focused && v.text != start) v = androidx.compose.ui.text.input.TextFieldValue(start) } // Undo shown
+                        // each line at its level, with its bullet or number as the slide shows it (the tablet walk, 18 Oct); only drawn, not typed
+                        val paras = remember(sh) { sh.text?.paras?.let(SlidePara::numbered).orEmpty() }
+                        val shown = remember(paras) { androidx.compose.ui.text.input.VisualTransformation { t -> outlineLines(t.text, paras) } }
                         androidx.compose.foundation.text.BasicTextField(v, { nv -> v = nv
                                 val e = edit ?: return@BasicTextField; val next = e.copy(texts = e.texts + ((uid to sh.id!!) to nv.text.split("\n")))
                                 if (stepped) edit = next else { change(next); stepped = true } },
                             textStyle = (if (first) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium).copy(color = Color.White),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White), visualTransformation = shown,
                             modifier = Modifier.fillMaxWidth().padding(start = if (first) 0.dp else 16.dp, top = 4.dp).onFocusChanged { f -> focused = f.isFocused; if (!f.isFocused) stepped = false },
                             decorationBox = { inner -> Box { if (v.text.isEmpty()) Text(if (first) "Title" else "Text", color = Color.White.copy(alpha = 0.4f), style = if (first) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium); inner() } })
                     }
@@ -3226,4 +3230,23 @@ internal data class SlideSpell(val slide: Int, val id: String, /** what chooses 
         }
     }, confirmButton = { androidx.compose.material3.TextButton(onClick = { ok(pt(w) ?: return@TextButton, pt(h) ?: return@TextButton) }, enabled = pt(w) != null && pt(h) != null) { Text("OK") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
+}
+
+/** View › Outline's lines as drawn: each paragraph indented by its level, its bullet or number before it (the words typed stay as they are). */
+internal fun outlineLines(text: String, paras: List<SlidePara>): androidx.compose.ui.text.input.TransformedText {
+    val lines = text.split("\n")
+    val pre = lines.indices.map { i -> paras.getOrNull(i)?.let { p -> "\u2003\u2003".repeat(p.level) + (p.bullet?.text?.let { "$it  " } ?: "") } ?: "" }
+    val starts = IntArray(lines.size).also { a -> var at = 0; lines.forEachIndexed { i, l -> a[i] = at; at += l.length + 1 } }
+    val out = androidx.compose.ui.text.buildAnnotatedString { lines.forEachIndexed { i, l -> if (i > 0) append('\n')
+        pushStyle(androidx.compose.ui.text.SpanStyle(color = Color.LightGray)); append(pre[i]); pop(); append(l) } }
+    return androidx.compose.ui.text.input.TransformedText(out, object : androidx.compose.ui.text.input.OffsetMapping {
+        override fun originalToTransformed(offset: Int): Int { val line = starts.indexOfLast { it <= offset }.coerceAtLeast(0); return offset + (0..line).sumOf { pre[it].length } }
+        override fun transformedToOriginal(offset: Int): Int {
+            var at = 0
+            for (i in lines.indices) { val len = pre[i].length + lines[i].length
+                if (offset <= at + len) return starts[i] + (offset - at - pre[i].length).coerceIn(0, lines[i].length)
+                at += len + 1 }
+            return text.length
+        }
+    })
 }

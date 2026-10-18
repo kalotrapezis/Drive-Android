@@ -211,8 +211,10 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       Now: the sheet's tab says "Protect sheet" as Review does; Insert › Function is Formulas' Insert function (the same window); Show
       formulas only on Formulas (Excel's place); AutoSum and the Selection pane were already the same in both places (as Excel/PowerPoint).
 - [x] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.
-- [ ] 13. Slides › View: Notes page leaves Normal highlighted; Normal does not hide the notes — exclusive, or a "Notes" toggle.
-- [ ] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers.
+- [x] 13. Slides › View: Notes page leaves Normal highlighted; Normal does not hide the notes — exclusive, or a "Notes" toggle. Now PowerPoint's
+      Show › Notes, a toggle of its own beside the views.
+- [x] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers. Now each line at its level, its
+      bullet or number before it (drawn only; the words typed as before).
 - [ ] 15. Shadow "Offset: bottom right" barely visible in Slides, clear in Words — draw the same.
 - [ ] 16. Slides › Ungroup leaves nothing chosen (PowerPoint keeps the pieces); Undo after Paragraph drops the choice.
 - [ ] 17. Slides: a table cell being typed is not marked on the slide.

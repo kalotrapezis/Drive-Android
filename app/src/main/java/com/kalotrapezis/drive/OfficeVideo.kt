@@ -49,6 +49,31 @@ internal object OfficeVideo {
         Triple(f.path, frame, frame.height / frame.width.coerceAtLeast(1).toFloat())
     }.onFailure { WriterLog.e("video", it) }.getOrNull()
 
+    /** Insert › Audio (Slides): the kinds of sound a deck keeps, and a film's or a sound's media type by its file's ending. */
+    val SOUNDS = setOf("mp3", "m4a", "wav", "ogg", "opus", "aac", "flac")
+    fun audio(path: String) = path.substringAfterLast('.', "").lowercase() in SOUNDS
+    fun mime(ext: String, odp: Boolean = false) = when (ext.lowercase()) { "mov" -> "video/quicktime"; "3gp" -> "video/3gpp"; "mp3" -> "audio/mpeg"; "m4a" -> "audio/mp4"
+        "wav" -> if (odp) "audio/x-wav" else "audio/wav" // LibreOffice's name (with audio/wav its .pptx leaves the sound out)
+        "ogg", "opus" -> "audio/ogg"; "aac" -> "audio/aac"; "flac" -> "audio/flac"; else -> "video/${ext.lowercase()}" }
+
+    /** A sound chosen on the phone copied into [dir] (blocking): its path, else null. */
+    fun soundFromPhone(context: android.content.Context, uri: Uri, dir: File): String? = runCatching {
+        val type = context.contentResolver.getType(uri).orEmpty()
+        val ext = SOUNDS.firstOrNull { mime(it) == type } ?: when (type) { "audio/x-wav" -> "wav"; "audio/mp3" -> "mp3"; "audio/x-m4a" -> "m4a"; else -> "mp3" }
+        File(dir.apply { mkdirs() }, "${System.nanoTime()}.$ext").also { f -> context.contentResolver.openInputStream(uri)!!.use { i -> f.outputStream().use { i.copyTo(it) } } }.path
+    }.onFailure { WriterLog.e("audio", it) }.getOrNull()
+
+    /** A sound's picture on the slide, as PowerPoint's: a speaker on a light square (PNG bytes). */
+    fun speaker(): ByteArray {
+        val b = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888); val c = android.graphics.Canvas(b)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE8EAED.toInt() }
+        c.drawRoundRect(0f, 0f, 192f, 192f, 28f, 28f, p); p.color = 0xFF3C4043.toInt()
+        c.drawPath(android.graphics.Path().apply { moveTo(40f, 76f); lineTo(72f, 76f); lineTo(108f, 44f); lineTo(108f, 148f); lineTo(72f, 116f); lineTo(40f, 116f); close() }, p)
+        p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 10f; p.strokeCap = android.graphics.Paint.Cap.ROUND
+        c.drawArc(96f, 66f, 146f, 126f, -50f, 100f, false, p); c.drawArc(92f, 44f, 168f, 148f, -50f, 100f, false, p)
+        return java.io.ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
+
     /** A video's film to play (blocking): a web address as it is, a copy on the phone, else its part taken out of [file] (a zip) into [cache]. */
     fun film(m: String, file: File?, cache: File): String? = when {
         m.startsWith("http") || File(m).isFile -> m

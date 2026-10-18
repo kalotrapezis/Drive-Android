@@ -674,8 +674,9 @@ internal object SlidesEdit {
                             "</a:p></a:txBody><a:tcPr>${look?.fill?.takeIf { it != NONE }?.let { solid(cellFill(it, r)) }.orEmpty()}</a:tcPr></a:tc>"
                     } + "</a:tr>" } + "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
                 // a video as PowerPoint's Insert › Video makes one: its picture, the film linked (and embedded), a tap playing it
-                else if (a.video != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Video ${a.id}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr>""" +
-                    """<a:videoFile r:link="${rels["video ${a.id}"]}"/>""" + (rels["media ${a.id}"]?.let { """<p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DA1E1DFA6BE}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="$it"/></p:ext></p:extLst>""" } ?: "") +
+                // a sound as its Insert › Audio makes one: the same, an audioFile
+                else if (a.video != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="${if (OfficeVideo.audio(a.video)) "Audio" else "Video"} ${a.id}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr>""" +
+                    """<a:${if (OfficeVideo.audio(a.video)) "audioFile" else "videoFile"} r:link="${rels["video ${a.id}"]}"/>""" + (rels["media ${a.id}"]?.let { """<p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DA1E1DFA6BE}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="$it"/></p:ext></p:extLst>""" } ?: "") +
                     """</p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 else if (a.image != null) """<p:pic $ns><p:nvPicPr><p:cNvPr id="${a.id}" name="Picture ${a.id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rels[a.id]}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>$xfrm<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"""
                 // a text box as PowerPoint's Insert › Text Box makes it: no fill, words from the top left, the box fitting them
@@ -1195,8 +1196,8 @@ internal object SlidesEdit {
                 if (v.startsWith("http")) listOf("video ${a.id}" to relTo("$relNs/video", v, true))
                 else { val ext = v.substringAfterLast('.', "mp4").lowercase().ifEmpty { "mp4" }; val name = "tetra${nextMedia++}.$ext"
                     out["ppt/media/$name"] = File(v).readBytes()
-                    if (!Regex("""<Default Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut)) typesOut = typesOut.replace("</Types>", """<Default Extension="$ext" ContentType="video/${if (ext == "mov") "quicktime" else ext}"/></Types>""")
-                    listOf("video ${a.id}" to relTo("$relNs/video", "../media/$name"), "media ${a.id}" to relTo("http://schemas.microsoft.com/office/2007/relationships/media", "../media/$name")) }
+                    if (!Regex("""<Default Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(typesOut)) typesOut = typesOut.replace("</Types>", """<Default Extension="$ext" ContentType="${OfficeVideo.mime(ext)}"/></Types>""")
+                    listOf("video ${a.id}" to relTo("$relNs/${if (OfficeVideo.audio(v)) "audio" else "video"}", "../media/$name"), "media ${a.id}" to relTo("http://schemas.microsoft.com/office/2007/relationships/media", "../media/$name")) }
             }.toMap()
             val ids = videos + objectLinks + runLinks + media(e.uid, relsXml) + looks.mapNotNull { (id, l) -> l.link?.takeIf { it.isNotEmpty() }?.let { to ->
                 if (to.startsWith("slide:")) to.removePrefix("slide:").toIntOrNull()?.let(partOf::get)?.let { p -> "link $id" to rel(relsXml, "slide", p.substringAfterLast('/')) + " slide" }

@@ -516,7 +516,7 @@ internal object Slides {
                         val flips = e.kid("spPr")?.kid("xfrm")
                         // a video's picture: its film embedded (PowerPoint 2010's p14:media) or linked (a:videoFile: a part, or a web address)
                         val nv = e.kid("nvPicPr")?.kid("nvPr")
-                        val film = nv?.below("media")?.firstOrNull()?.rid("embed")?.let(rels::get) ?: nv?.kid("videoFile")?.rid("link")?.let(rels::get)
+                        val film = nv?.below("media")?.firstOrNull()?.rid("embed")?.let(rels::get) ?: (nv?.kid("videoFile") ?: nv?.kid("audioFile"))?.rid("link")?.let(rels::get)
                         // its style and transparency: the blip's alphaModFix, the outline, the outer shadow, a rounded rectangle
                         val sp = e.kid("spPr"); val ln = sp?.kid("ln")
                         val look = PictureLook(e.below("blip").firstOrNull()?.kid("alphaModFix")?.attr("amt")?.toFloatOrNull()?.div(100_000f)?.coerceIn(0f, 1f) ?: 1f,
@@ -816,7 +816,7 @@ internal object Slides {
             }
             c.restoreToCount(saved)
             // a video's picture: a play mark in its middle (round, so its turn does not matter)
-            if (item.media != null) OfficeVideo.mark(c, item.x, item.y, item.w, item.h)
+            if (item.media?.let(OfficeVideo::audio) == false) OfficeVideo.mark(c, item.x, item.y, item.w, item.h)
         }
         c.restore()
     }

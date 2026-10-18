@@ -344,6 +344,16 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             putVideo(made.first, made.second, made.third)
         }
     }
+    // Insert › Audio (PowerPoint's Audio on My PC): a sound from the phone (kept until Save puts it in the deck), its speaker in the slide's middle, played when tapped
+    val pickSound = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri -> uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val d = deck ?: return@launch; val e = edit ?: return@launch; val c = chosen ?: return@launch
+            val made = withContext(Dispatchers.IO) { OfficeVideo.soundFromPhone(context, uri, File(context.cacheDir, "slide-pictures"))?.let { it to File(File(context.cacheDir, "slide-pictures"), "${System.nanoTime()}.png").apply { writeBytes(OfficeVideo.speaker()) } } }
+                ?: run { message = "That sound could not be read"; return@launch }
+            val k = 40f
+            put(SlidesEdit.Added(e.newId(e.order[c].uid, taken(e, c)), (d.width - k) / 2, (d.height - k) / 2, k, k, image = made.second.path, video = made.first)); WriterLog.i("Slides: a sound put on")
+        }
+    }
     /** Insert › Video › Online video: a web address (YouTube's picture fetched for it; else a dark one saying what it is), opened when tapped in a show. */
     fun putOnlineVideo(url: String) = scope.launch {
         val poster = withContext(Dispatchers.IO) { OfficeVideo.poster(url) }
@@ -1196,6 +1206,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
                 // Video (asked 17 Oct): from the phone (kept in the deck) or online (a web address), played when tapped in a show
                 VideoButton(w, phone = { pickVideo.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::putOnlineVideo)
+                RibbonButton("Audio", w, R.drawable.ic_volume_up, enabled = chosen != null) { pickSound.launch("audio/*") }
                 // Chart (as PowerPoint's): Words' chart editor, the chart across most of the slide
                 RibbonButton("Chart", w, R.drawable.ic_bar_chart) { charting = null to WORD_SAMPLE_CHART }
                 // Link (as Words'): a box's words linked to a web page or a slide; nothing chosen: a text box of words to show
@@ -1954,7 +1965,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             val it0 = view?.slides?.getOrNull(c)?.items?.lastOrNull { it.anim == item }
                             // several chosen, or a group: PowerPoint's names for the tab's things
                             if (more.isNotEmpty()) "Arrange" else if (it0?.grouped == true) "Group" else when (it0) {
-                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> if (it0.math != null) "Equation" else if (it0.media != null) "Video" else "Image"; is SlideItem.Chart -> "Chart"
+                                is SlideItem.Table -> "Table"; is SlideItem.Picture -> if (it0.math != null) "Equation" else if (it0.media?.let(OfficeVideo::audio) == true) "Audio" else if (it0.media != null) "Video" else "Image"; is SlideItem.Chart -> "Chart"
                                 is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
                                 null -> if (a?.prst == "table") "Table" else if (a?.image != null) "Image" else "Shape"
                             }
@@ -3088,7 +3099,7 @@ private fun SelectionPane(slide: Slide, chosen: String?, dismiss: () -> Unit, ch
     var naming by remember { mutableStateOf<Pair<String, String>?>(null) }
     fun kind(it0: SlideItem) = when (it0) {
         is SlideItem.Shape -> if (it0.shape == null && it0.text != null) "Text box" else "Shape"
-        is SlideItem.Picture -> if (it0.media != null) "Video" else if (it0.math != null) "Equation" else "Picture"
+        is SlideItem.Picture -> if (it0.media?.let(OfficeVideo::audio) == true) "Audio" else if (it0.media != null) "Video" else if (it0.math != null) "Equation" else "Picture"
         is SlideItem.Chart -> "Chart"; is SlideItem.Table -> "Table"
     }
     androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text("Selection pane") },
@@ -3126,7 +3137,7 @@ private fun SelectionPane(slide: Slide, chosen: String?, dismiss: () -> Unit, ch
 private fun AnimationPane(list: List<SlideEffect>, slide: Slide, chosen: String?, dismiss: () -> Unit, choose: (String) -> Unit, set: (List<SlideEffect>) -> Unit) {
     fun named(target: String): String = when (val it0 = slide.items.lastOrNull { it.anim == target }) {
         is SlideItem.Shape -> it0.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { it.text } }?.trim()?.take(28)?.ifEmpty { null } ?: "Shape"
-        is SlideItem.Picture -> if (it0.media != null) "Video" else if (it0.math != null) "Equation" else "Picture"
+        is SlideItem.Picture -> if (it0.media?.let(OfficeVideo::audio) == true) "Audio" else if (it0.media != null) "Video" else if (it0.math != null) "Equation" else "Picture"
         is SlideItem.Chart -> "Chart"; is SlideItem.Table -> "Table"; null -> "Something put on"
     }
     fun what(fx: SlideEffect) = fx.kind.replaceFirstChar { it.uppercase() } + when { fx.emphasis -> ""; fx.exit -> " out"; else -> " in" }

@@ -940,6 +940,39 @@ class SlidesTest {
         }
     }
 
+    /** Insert › Audio: a sound from the phone (a short WAV) kept in the deck as PowerPoint's audioFile and Impress's plugin, read back as a sound, and kept by LibreOffice. */
+    @Test fun `a sound put on saved`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        val dir = scratchDir("audio")
+        val poster = File(dir, "speaker.png").apply { writeBytes(Slides.read(File("src/test/resources/slides.pptx")).slides[2].items.filterIsInstance<SlideItem.Picture>().first().bytes()!!) }
+        // a quarter second of silence: RIFF, 8 kHz, 8 bits, one channel
+        val n = 2000; val wav = java.nio.ByteBuffer.allocate(44 + n).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply {
+            put("RIFF".toByteArray()); putInt(36 + n); put("WAVEfmt ".toByteArray()); putInt(16); putShort(1); putShort(1); putInt(8000); putInt(8000); putShort(1); putShort(8)
+            put("data".toByteArray()); putInt(n); repeat(n) { put(0x80.toByte()) } }.array()
+        val sound = File(dir, "sound.wav").apply { writeBytes(wav) }
+        assertTrue(OfficeVideo.audio(sound.path)); assertEquals("audio/wav", OfficeVideo.mime("wav"))
+        for (name in listOf("slides.pptx", "slides.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val e = SlidesEdit.start(deck).copy(added = mapOf(1 to listOf(SlidesEdit.Added("9410", 340f, 250f, 40f, 40f, image = poster.path, video = sound.path))))
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("audio-$name")
+            if (src.extension == "odp") SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+            val got = Slides.read(out).slides[1].items.filterIsInstance<SlideItem.Picture>().single { it.media != null }.media!!
+            assertTrue("$name: $got", OfficeVideo.audio(got))
+            java.util.zip.ZipFile(out).use { z ->
+                assertTrue(name, z.getInputStream(z.getEntry(got)).readBytes().contentEquals(wav))
+                val all = z.entries().toList().filter { it.name.endsWith(".xml") || it.name.endsWith(".rels") }.joinToString("") { String(z.getInputStream(it).readBytes()) }
+                if (name.endsWith("pptx")) assertTrue(name, "<a:audioFile" in all && "relationships/audio\"" in all && "ContentType=\"audio/wav\"" in all)
+                else assertTrue(name, "draw:mime-type=\"audio/x-wav\"" in all && "manifest:media-type=\"audio/x-wav\"" in all)
+            }
+            if (lo) {
+                val d2 = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${d2.path}/profile", "--convert-to", other, "--outdir", d2.path, out.path).redirectErrorStream(true).start().waitFor()
+                val kept = Slides.read(d2.listFiles()!!.single { it.extension == other }).slides[1].items.mapNotNull { it.media }
+                assertEquals("LibreOffice's $other of $name: $kept", 1, kept.size)
+            }
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

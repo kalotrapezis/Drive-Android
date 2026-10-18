@@ -106,7 +106,7 @@ How to write here:
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each) [done 18 Oct: the deck rebuilt in the other format, see B › File]; (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the
-  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
+  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides [audio done 18 Oct; Online video 17 Oct]; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
@@ -697,6 +697,11 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       Show taps (the user, 17 Oct: a tap going forward "overlaps with actions like play video"; asked, chose "hold while playing"): a tap
       still goes through the slide's clicks and then the next slide (PowerPoint's way), a tap on a video or link plays or follows it, and
       now while a video plays a tap beside it only stops it — the next tap goes on; swipes and keys go on at once. Emulator: checked.
+      Sound done 18 Oct (office-F): Slides › Insert › Audio (PowerPoint's Audio on My PC) — a sound from the phone (mp3, m4a, wav, ogg,
+      aac, flac) as a speaker in the slide's middle, its tab "Audio" with Play, played in its frame when tapped in a show; saved as
+      PowerPoint's (p:pic with a:audioFile and p14:media, the audio relationship) and Impress's (draw:plugin with the sound's type —
+      audio/x-wav for a WAV, LibreOffice's name: with audio/wav its .pptx leaves the sound out). `a sound put on saved` (both formats,
+      LibreOffice's conversions). Emulator: a tone picked from Music, saved, read back as a sound, played. Online video was done 17 Oct.
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
   (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 

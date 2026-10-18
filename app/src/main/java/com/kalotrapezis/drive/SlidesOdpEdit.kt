@@ -483,10 +483,10 @@ internal object SlidesOdpEdit {
                 // a video as Impress keeps one: a plugin playing the film (in the package's Media, or a web address), its picture beside
                 val v = a.video
                 val href = if (v.startsWith("http")) v else { val ext = v.substringAfterLast('.', "mp4").lowercase(); val path = "Media/tetra${nextPicture++}.$ext"; out[path] = File(v).readBytes()
-                    manifest?.documentElement?.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", path); setAttributeNS(MANIFEST, "manifest:media-type", "video/${if (ext == "mov") "quicktime" else ext}") }); path }
+                    manifest?.documentElement?.appendChild(manifest.createElementNS(MANIFEST, "manifest:file-entry").apply { setAttributeNS(MANIFEST, "manifest:full-path", path); setAttributeNS(MANIFEST, "manifest:media-type", OfficeVideo.mime(ext, odp = true)) }); path }
                 val st = derive("graphic", null, "picture") { st -> props(st, "graphic-properties").apply { setAttributeNS(DRAW, "draw:stroke", "none"); setAttributeNS(DRAW, "draw:fill", "none") } }
                 fun esc(t: String) = t.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;")
-                """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:plugin xlink:href="${esc(href)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad" draw:mime-type="video/mp4">""" +
+                """<draw:frame $ns draw:style-name="$st" draw:layer="layout" $box><draw:plugin xlink:href="${esc(href)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad" draw:mime-type="${if (v.startsWith("http")) "video/mp4" else OfficeVideo.mime(v.substringAfterLast('.', "mp4"), odp = true)}">""" +
                     """<draw:param draw:name="Loop" draw:value="false"/><draw:param draw:name="Mute" draw:value="false"/><draw:param draw:name="VolumeDB" draw:value="0"/></draw:plugin>""" +
                     """<draw:image xlink:href="${picture(a)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"><text:p/></draw:image></draw:frame>"""
             } else if (a.image != null) {

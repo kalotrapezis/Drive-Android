@@ -1499,19 +1499,25 @@ sync and you to be able to work with it with a skill just by editing files like 
 week month year. On narow screen keep the calendar at the top I like to see you now a week or two or three or month and
 be able to choose." Then: "Alltho to be closer to our thing we could bring calendar to the bottom and ajenta to the top".
 And for Home: "On the default buttons at home add New : Shedule : burthday : reminder."
-- [~] (calendar session, 18 Oct) **Wide** (tablet landscape, desktop): the small month and the calendars (show/hide,
+- [x] (0cdba78, 1eb85cf; Drive 050cff8) **Wide** (tablet landscape, desktop): the small month and the calendars (show/hide,
       New calendar, Import, Export) always beside the grid; the island only Day · Week · Month · Year (a new Year view)
       and New event; the drawer only what is left (the reminders switch). The top in Tetra's pill style.
-- [~] **Narrow** (phone, tablet portrait, a narrow desktop window): the events on top; a small calendar at the bottom,
+- [x] **Narrow** (phone, tablet portrait, a narrow desktop window): the events on top; a small calendar at the bottom,
       just above the island — 1, 2 or 3 weeks or the month, its handle dragged up for more and down for fewer (kept);
       a day tapped there moves the events to it. The island and drawer as before. Same at the same widths on the PC.
-- [~] **Kinds**: Home's Calendar card gets four tiles as Office's — New, Schedule, Birthday, Reminder — and + in the app
+- [x] **Kinds**: Home's Calendar card gets four tiles as Office's — New, Schedule, Birthday, Reminder — and + in the app
       offers the same. Birthday: a Birthdays calendar (made if missing), all day, yearly, name and date, the year
       optional (kept as X-TETRA-BIRTH-YEAR so the age shows). Schedule: chosen weekdays, a time, a start and end — one
       event `RRULE:FREQ=WEEKLY;BYDAY=…;UNTIL=…`; templates "Elementary school year" (1 Sep – 26 Jun, the user's dates)
       and "High school year" (1 Sep – 15 Jun: **the end date needs the user's confirmation**), both editable; "Skip the
       Holidays calendar's days" adds an EXDATE for each. Reminder: one event with a list of notifications. All plain
       .ics the tetra-calendar skill reads and writes.
+- [x] (1eb85cf, 37a2c86, f7ccd75) The user on the tablet, 18 Oct: the top floats over the content as in Files; reminders
+      in the Hyper Island with a ✕ Done (pink in a black circle with a pink rim) and Snooze — ongoing, as Xiaomi's Clock
+      timer; seen on the tablet (HyperOS raises no island for the app in front, so Settings › Calendar's test reminder
+      comes 5 s later); ✕ marks that time done and its other reminders do not ring. Settings › Calendar: notifications,
+      alarms on time, battery, Hyper Island, Autostart, the reminders switch, a test reminder, Import, Export all.
+      Desktop the same at the same widths (Drive branch `calendar`, 18 Oct).
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

@@ -183,6 +183,37 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
 - [ ] **Inconsistencies**: the checklist below, the three apps side by side on the tablet. Each difference is made
       the same or written down as deliberate.
 
+**The tablet walk, 18 Oct 07:10–07:50 (main session, build 19781a2 on 971f6b37)** — fixed by the office-strips session in this order:
+- [ ] 1. Slides › Home › Paragraph: OK with only Line spacing changed puts the first paragraph's indent on every paragraph (sub-points
+      lose their level). Only the fields changed are applied.
+- [ ] 2. Slides › Multilevel: the "1. / 1.1. / 1.1.1." card gives "1." at level 2 — draw what the card shows, or drop the card for slides.
+- [ ] 3. Slides: no gap between a number and its words ("1.Read") in the editor while unsaved; saved, level 2 has it, level 1 not. One renderer.
+- [ ] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares
+      values); "The first row is headers" ticked even when row 1 is data.
+- [ ] 5. Tables: on a protected sheet a tap does not choose the cell, nothing says why — choose it, refuse typing with a message.
+- [ ] 6. Slides: Save clears Undo — all three keep the history over a save.
+- [x] 7. Tables › Sheet › Unhide popup → strip (7ee3675).
+- [x] 8. Slides › View › Zoom popup → strip (7ee3675).
+- [ ] 9. Slides › Insert › Table: "‹ Table" (7ee3675); one shared table-size picker with Words' Insert › Table.
+- [ ] 10. Words › Page numbers in Insert and in Layout, once a strip, once a list — one form.
+- [ ] 11. Duplicates: Tables Sheet › Protect vs Review › Protect sheet; Formulas › Insert function vs Insert › Function; Show formulas
+      in Formulas and View; AutoSum in Home and Formulas; Slides' Selection pane in Home and in the Shape tab — one place, or one form.
+- [ ] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.
+- [ ] 13. Slides › View: Notes page leaves Normal highlighted; Normal does not hide the notes — exclusive, or a "Notes" toggle.
+- [ ] 14. Slides › View › Outline: sub-points at the main points' level, without their numbers.
+- [ ] 15. Shadow "Offset: bottom right" barely visible in Slides, clear in Words — draw the same.
+- [ ] 16. Slides › Ungroup leaves nothing chosen (PowerPoint keeps the pieces); Undo after Paragraph drops the choice.
+- [ ] 17. Slides: a table cell being typed is not marked on the slide.
+- [ ] 18. The ribbon's height jumps a few px between tabs (Slides Home vs Group/Shape; Tables Home vs View).
+- [ ] 19. Some ribbons centred (Design, Arrange, Sheet), others from the left (View) when they fit — one.
+- [ ] 20. Words' contextual tab row lacks Selection / × at its start when a shape is chosen (Slides and Tables have it).
+- [ ] 21. Tables' top bar has no Find (Words and Slides have it).
+- [ ] 22. Words › Insert › Shapes › Block arrows: left-right and up-down arrows drawn as diamonds.
+Working on the tablet: speaker notes, Select all/Group/drag/Ungroup, Distribute, Reset, Shape options Dash/Shadow (both), Gradient, Slide
+size 16:9 Ensure fit, table Row below, Zoom 200% + pan, Fade + Fly In, the show letterboxed; Words' heart with dot + shadow; Tables'
+Gridlines, column Hide, sheet Hide/Unhide, Protect/Unprotect; LibreOffice opens all three saved copies; touch targets Tables 2 (edge-cut).
+Not walked yet: Tables Merge & centre, Replace, Chart, Link, Text to columns, Insert function, rich-text cell; Words beyond Insert/Shapes.
+
 **Made the same** (one shared component where today each app has its own code):
 - [x] **The tab indicator**: Words drew a bubble behind the chosen tab; Tables and Slides a dash under it. Now one
       shared tab row for all three (`OfficeTabRow`, OfficeUi.kt: each app's tabs, its dash colour, the contextual

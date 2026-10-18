@@ -33,9 +33,11 @@ How to write here:
       "Search fonts" field beside its name (over the cards on a phone). Words' fingerprint unchanged on the emulator and
       the tablet; `OfficeFontsTest`; the user tried it on the tablet ("I used it it works"). Not done: a name typed that
       is not in the list cannot be used as a font (Word allows it); Slides gets the strip with B's Home.
-- [~] (calendar session, 17 Oct) **Calendar**, Tetra's last app: designed below (§ Calendar); waiting for the user's
-      go-ahead before building. Builds on its own branch `calendar` (worktree Drive-Android-worktrees/calendar, from
-      writer-library) and the desktop's `calendar` (worktree Drive-worktrees/calendar), not in the Office checkout.
+- [x] (calendar session, 17–18 Oct) **Calendar**, Tetra's last app (§ Calendar below): steps 1–7 built, 18 Oct, on
+      Drive-Android branch `calendar` (worktree Drive-Android-worktrees/calendar, from writer-library 6fdf06a: a308980,
+      242c094, 4cc9368, 4c43b7a, 7584567) and Drive branch `calendar` (worktree Drive-worktrees/calendar, from
+      bidirectional-sync 36a82bd: c2ab218, ea3e221). Checked on the emulator (tablet size and phone size) and the desktop
+      hidden; **not pushed, not merged, not on the tablet yet** — step 8 waits for the user. Skill installed.
 - [~] (office-engine session, 17 Oct) B top-down on the engine, then C, then A's walk (the user: "ok comit and continue to finish office").
       Done here: Home (0ce3c4d), Insert › Text box (17b9bfb), Drop cap strip + Raised (c9c4683); handing on (notes:
       office-engine-17oct.md in the group's notes folder). Tablet in use (Crunchyroll) 15:00: these three seen on the emulator only.
@@ -1307,7 +1309,7 @@ what is not already above:
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.
 
 
-## Calendar — the last app (designed 17 Oct, calendar session; not built yet)
+## Calendar — the last app (designed 17 Oct, built 18 Oct on the `calendar` branches; the real pair still to do)
 
 **The user, 17 Oct:** "Everything to be handled as a file on phone, tablet and PC so any AI with the skill is able to
 manipulate the events." Claude should organise, create and manage the calendar by editing files on the computer, and
@@ -1442,17 +1444,117 @@ UIDs, unknown zone, bad RRULE) — run after every edit.
   files, and RRULE cases with their expected dates — run on both sides so the two engines agree.
 
 ### Steps (each a commit, each checked on the tablet, then the phone and PC)
-- [ ] 1. Android: the files — `Calendar.kt` read/write/expand + the fixtures, unit tests; `Calendar` a required folder.
-- [ ] 2. Android: the screens read-only — big-screen month/week/day + side panel; phone week row + agenda; Home card,
-      launcher icon (tools/applet-icons.py with Calendar.png).
-- [ ] 3. Android: create, edit, delete; calendars (new, colour, rename, delete, show/hide); repeats with the three-way
-      question; drag on the tablet.
-- [ ] 4. Android: reminders and notifications (planner, exact alarm, boot, snooze, after-sync re-plan, Xiaomi prompts).
-- [ ] 5. Android: import .ics and Takeout, export.
-- [ ] 6. The skill + `calendar.py`; Claude makes and changes events on the PC, the tablet shows and rings after sync.
-- [ ] 7. Desktop: `calendar.js` + `Calendar.tsx` (view, edit, import/export), reminders, start at login.
-- [ ] 8. The real pair: an event made on each device and by Claude, edited on two at once (conflict), deleted, all
-      three agree; a reminder rings on the tablet with the app closed and after a reboot.
+- [x] (a308980) 1. Android: the files — `Calendar.kt` read/write/expand (lib-recur) + fixtures (Google's, Claude-style,
+      repeats), `CalendarTest`; `Calendar` a required folder with its emblem.
+- [x] (242c094) 2. Android: the screens — big screen month/week/day/agenda + side panel; phone week row (pulled down: the
+      month) + agenda, Day, 3 days, Month; Home's pink group (the user's icon, the next event), launcher icon.
+- [x] (4cc9368) 3. Android: create (Create, +, an empty hour, Home's New event), edit, delete; calendars (new, colour,
+      rename, delete, show/hide); repeats (presets + Custom) with This / Following / All; Keep this one for a conflict.
+      **Not done: drag an event to move or resize it on the tablet** (tap and edit works).
+- [x] (4c43b7a) 4. Android: reminders — one exact alarm (USE_EXACT_ALARM) for the next, re-planned from the files on open,
+      edit, a file landing, after every sync (SyncClient), boot, clock/zone change, update; missed ones up to a day;
+      Snooze 10 min; notifications asked once; Xiaomi note (Autostart, battery). Emulator: rang at the second, Snooze
+      re-rang, the alarm came back after a reboot.
+- [x] (4c43b7a) 5. Android: import .ics / Takeout zip (side panel, or "Open with › Tetra Calendar"), export one .ics
+      (VTIMEZONEs written) or all as a zip.
+- [x] (7584567) 6. `skills/tetra-calendar` (SKILL.md + calendar.py: list, agenda, find, add, new-calendar, trash, check),
+      installed in ~/.claude/skills; its agenda gives the app's days on the fixtures.
+- [x] (Drive c2ab218, ea3e221) 7. Desktop: `calendar.js` (own engine, the phone's fixtures and answers in
+      test/calendar.test.js), `Calendar.tsx` (Google web layout, editor, card, import/export), fs.watch, reminders via
+      notify(), "Reminders on this computer", "Start Tetra when I log in" (autostart, --hidden); Calendar a required
+      folder in Files. Not done: a VTIMEZONE written for a zone the files only name (the phone writes them).
+- [ ] 8. The real pair (waits for the user and the tablet): merge `calendar` into writer-library/main (Android) and
+      bidirectional-sync (Drive), install on the tablet and the PC; an event made on each device and by Claude, edited on
+      two at once (conflict), deleted, all three agree; a reminder rings on the tablet with the app closed and after a
+      reboot. Then the user's own calendar: Google Takeout imported.
+- Later, if wanted: drag to move/resize; multi-day events as one bar (Google's) instead of a chip per day.
+
+### Tetra's island instead of Google's panel (the user, 18 Oct, relayed by the main session)
+"After the calendar app is finished try to bring it closer to the UX with an island and bottom drawer that opens for
+the rest like what calendars to see and what not. The same for the big screen not hamburger menu an island that is
+close to the UX we are using to the rest of the Tetra app." And: "The calendar will go to desktop as well. So it can
+sync and you to be able to work with it with a skill just by editing files like normal."
+- [x] (0ed5b56) Phone and tablet: no hamburger, no side panel. Tetra's bottom island (Files' and
+      Notes' `IslandBottomBar` / `IslandNavigationItem`): the views (phone: Agenda, Day, Month; tablet: Day, Week, Month,
+      Agenda) and New; pulled up, the drawer (the same `ModalBottomSheet` as Notes' and Files'): the calendars with their
+      coloured boxes (show/hide, ⋯ colour/name/export/delete), New calendar, Import, Export all, the small month on a
+      big screen, 3 days on a phone, Reminders on this device. The top keeps Today, ‹ › and the month's name.
+- [x] (Drive 7b9115c, 218f4ea) Desktop the same: Notes' bottom island (Day, Week, Month, Agenda, New event, Calendars)
+      and its drawer for the rest, not the side panel; Drive's HANDOFF.md says where it is. The desktop part is already files only (no database copy): it reads Files/Calendar on every
+      look and fs.watch shows any edit (Claude's, the skill's, sync's) at once; the skill's paths (~/Tetra/Files/Calendar)
+      are what both apps read and write. Checked 18 Oct: a file made by the skill's calendar.py is read by the desktop with
+      the same days and reminder times (and by the phone: the same fixtures and answers in both test suites).
+- [x] (534e341, bc0f3ff; Drive 7736b99, 0559fd0) Closer to the rest of Tetra (the user via the main session, 18 Oct, after
+      0ed5b56 on the emulator): Files' top (Back and the month in islands, Today ‹ › beside them; the desktop's
+      title-island); Files' bottom (the island at the left with the current view labelled, 3 days on the phone's island,
+      New event the round island at the right); the drawer pads for the navigation bar; overlapping events readable as
+      Google lays them out (starts within 15 min side by side, later ones cascade on top indented, under 30 min a chip).
+- [x] The user's own Google calendar (~/Λήψεις/…ical.zip, kept out of both repos and out of ~/Tetra): 393 events in on the
+      emulator through Open with › Tetra Calendar, the desktop engine and the phone engine (CalendarRealImportTest, run
+      only with TETRA_CALENDAR_ZIP); out again, all 397 entries line for line equal; imported twice, no doubles; the phone,
+      the desktop and the skill agree on all 1639 occurrences and 758 reminder times (2015–2030). It found a bug, fixed:
+      two events of one title whose Google UIDs begin alike got one file name, one lost; names now use the UID's hash and
+      never take another's. The skill's helper is now tetra_calendar.py (calendar.py hid Python's own module).
+
+### Wide and narrow, and kinds of event (the user, 18 Oct, relayed by the main session; overrides part of the island ask)
+"On a wide screen dont hide the calendar or the opitions as it was then the island it would hide only the setting day
+week month year. On narow screen keep the calendar at the top I like to see you now a week or two or three or month and
+be able to choose." Then: "Alltho to be closer to our thing we could bring calendar to the bottom and ajenta to the top".
+And for Home: "On the default buttons at home add New : Shedule : burthday : reminder."
+- [x] (0cdba78, 1eb85cf; Drive 050cff8) **Wide** (tablet landscape, desktop): the small month and the calendars (show/hide,
+      New calendar, Import, Export) always beside the grid; the island only Day · Week · Month · Year (a new Year view)
+      and New event; the drawer only what is left (the reminders switch). The top in Tetra's pill style.
+- [x] **Narrow** (phone, tablet portrait, a narrow desktop window): the events on top; a small calendar at the bottom,
+      just above the island — 1, 2 or 3 weeks or the month, its handle dragged up for more and down for fewer (kept);
+      a day tapped there moves the events to it. The island and drawer as before. Same at the same widths on the PC.
+- [x] **Kinds**: Home's Calendar card gets four tiles as Office's — New, Schedule, Birthday, Reminder — and + in the app
+      offers the same. Birthday: a Birthdays calendar (made if missing), all day, yearly, name and date, the year
+      optional (kept as X-TETRA-BIRTH-YEAR so the age shows). Schedule: chosen weekdays, a time, a start and end — one
+      event `RRULE:FREQ=WEEKLY;BYDAY=…;UNTIL=…`; templates "Elementary school year" (1 Sep – 26 Jun, the user's dates)
+      and "High school year" (1 Sep – 15 Jun: **the end date needs the user's confirmation**), both editable; "Skip the
+      Holidays calendar's days" adds an EXDATE for each. Reminder: one event with a list of notifications. All plain
+      .ics the tetra-calendar skill reads and writes.
+- [x] (1eb85cf, 37a2c86, f7ccd75) The user on the tablet, 18 Oct: the top floats over the content as in Files; reminders
+      in the Hyper Island with a ✕ Done (pink in a black circle with a pink rim) and Snooze — ongoing, as Xiaomi's Clock
+      timer; seen on the tablet (HyperOS raises no island for the app in front, so Settings › Calendar's test reminder
+      comes 5 s later); ✕ marks that time done and its other reminders do not ring. Settings › Calendar: notifications,
+      alarms on time, battery, Hyper Island, Autostart, the reminders switch, a test reminder, Import, Export all.
+      Desktop the same at the same widths (Drive branch `calendar`, 18 Oct).
+- [x] (1f00114; Drive 756d805) **Share with Claude** (the user, 18 Oct: "Add a share with Claude in the settings of the
+      calendar app for the user to download the skill"): skills/tetra-calendar the one source, zipped into the Android app
+      at build time (assets/tetra-calendar.zip) and copied into desktop/skills before a desktop build. Android, in the
+      drawer and Settings › Calendar: Share (the share sheet) and Save to Files. Desktop, in the Settings drawer: Save as…
+      (~/Downloads) and Copy to ~/.claude/skills. "Lets Claude read and change this calendar by editing its files."
+- [x] (322fe65; Drive bc47403) Wide screens (the user, 18 Oct: "The today and the arrows for the tablet place them at the
+      bottom between the + and the island on its own island", then "Closer to the + button to be easily reachable with
+      the thum"): the top keeps the title; the views' island at the left, ‹ Today › in its own island beside the + at the
+      right; the grid stops above them. Phone and narrow windows unchanged (no room at the bottom beside the week strip).
+- [x] (7ed20a5; Drive 2cf2fa2; SYNC_PLAN 6am) Calendar changes travel at once (the user, 18 Oct: "once there is an update
+      on calendar like on notes send it imediatly across devices as soon as connection available"): a Calendar-only sync
+      on Files' own path (`/files/manifest/scoped`, scope `calendar`), 2.5 s after a change, waiting for a network as a
+      job; the computer's changes (the skill too) by its nudge, or a quarter-hourly look with Tetra closed. Reusable for
+      the Timer (its own scope). **Not yet run between real devices** (the emulator cannot scan the pairing code).
+- [x] (46a6309; Drive 83c4e50) **Refresh, Trash and Settings at the top; no delay after a change** (the user, 18 Oct):
+      Refresh beside the title (tablet/desktop), the Trash beside it (phone: in the drawer) with each event's days left
+      and Restore; desktop Settings is Gallery's tune menu with Share with Claude. Saves push at once (desktop: 300 ms).
+      **Run on the real pair** (tablet ↔ installed PC Tetra, older, so the whole sync): Thursday/Friday lessons arrived
+      7 s after Refresh; the user's new event reached the PC in seconds, its deletion was in the PC's Trash 3 s later and
+      stayed gone. The phone's hotspot first blocked device-to-device traffic (restarting it fixed that). New .deb:
+      Drive-worktrees/calendar/desktop/release/local-drive-desktop_0.3.0-beta.4_amd64.deb (not installed).
+
+- [x] (Drive ca93bdb; 2f3c21e) **Clock and month pickers on the desktop; a repeat's cancelled days follow its time**
+      (the user, 18 Oct: ΤΠΕ Β' at 11:50–12:25 snapped to 11:45–12:20, "why a list and not a clock", "why is the date not
+      a calendar"): every time field types any minute ("12:25", "1225", "925") and opens a clock as the phone's (hours
+      00–11 outside, 12–23 inside, then minutes); every date field opens a month (‹ ›, the year list for birthdays,
+      Today). Moving a repeat's start moves its EXDATEs and RECURRENCE-IDs by as much, desktop and Android (a test in
+      each). Checked in the desktop source build against the real library, nothing saved; installed Tetra restarted.
+      Not done: the user's own ΤΠΕ Β' file (its EXDATEs are still at 11:50) — the main session asks the user; "this and
+      following" still drops the cancelled days after the split (both apps).
+
+- [x] (73b2354; Drive 7111221) **"This and following" keeps the cancelled and changed days after the split**:
+      the new event gets the old series' EXDATEs and RECURRENCE-ID days from the split day on, moved by as much as that
+      day moved (shiftRepeat), desktop and Android (a test in each, the staff-meeting fixture). Both suites pass; not
+      tried in the apps by hand.
 
 
 ## Timer (18 Oct, timer session; branches `timer` in both repos, worktrees Drive-Android-worktrees/timer-b50bfc and Drive-worktrees/timer)

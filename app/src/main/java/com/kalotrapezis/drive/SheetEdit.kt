@@ -812,3 +812,15 @@ internal object SheetGoalSeek {
         } finally { book.edit(index, by, was) } // the cell as it was: the found value goes in as one change of its own
     }
 }
+
+/** Formulas › Evaluate formula (Excel's): cell [k]'s formula worked out a step at a time ([SheetCalc.steps]), on the cells' values now. */
+internal object SheetEvaluate {
+    fun steps(book: Workbook, index: Int, k: Long): List<String> {
+        val sheet = book.sheet(index); val name = book.tabs[index].name
+        val f = sheet.cells[k]?.formula ?: return emptyList()
+        fun at(s: String?) = if (s == null || s.equals(name, true)) sheet else book.tabs.indexOfFirst { it.name.equals(s, true) }.takeIf { it >= 0 }?.let { book.sheet(it) }
+        val ctx = SheetCalc.Context({ s, r, c -> at(s)?.let { SheetRecalc.valueOf(it[r, c]) } ?: SheetCalc.Err("#REF!") }, format = book.format, names = book.names,
+            formulaOf = { s, r, c -> at(s)?.get(r, c)?.formula })
+        return SheetCalc.steps(f, ctx)
+    }
+}

@@ -181,6 +181,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var symbols by remember { mutableStateOf(false) } // Insert › Symbol: Words' dialog
     var symbol by remember { mutableStateOf<String?>(null) } // the one chosen, put in once the dialog has gone
     var inserting by remember { mutableStateOf(false) } // Formulas › Insert function
+    var evaluating by remember { mutableStateOf<Pair<String, List<String>>?>(null) } // Formulas › Evaluate formula: the cell and its steps
     var inserted by remember { mutableStateOf<String?>(null) } // the function chosen, put in once the dialog has gone
     var charting by remember { mutableStateOf<Pair<SheetRange, DocChart>?>(null) }
     var linking by remember { mutableStateOf(false) } // Insert › Link: Words' dialog on the chosen cell
@@ -1294,6 +1295,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                     view.row = Sheet.row(next); view.col = Sheet.col(next); view.reveal++
                                     message = "${s[Sheet.row(next), Sheet.col(next)]?.text} in ${Sheets.colName(Sheet.col(next))}${Sheet.row(next) + 1} (${errors.indexOf(next) + 1} of ${errors.size})" } }
                             if (traced.isNotEmpty()) RibbonButton("Remove marks", w, R.drawable.ic_close) { traced = emptySet() }
+                            // Excel's Evaluate Formula: the chosen cell's formula worked out a step at a time
+                            RibbonButton("Evaluate formula", w, R.drawable.ic_play, enabled = s[cr, cc]?.formula != null) {
+                                evaluating = (Sheets.colName(cc) + (cr + 1)) to SheetEvaluate.steps(b, index, Sheet.key(cr, cc)); WriterLog.i("Sheets: a formula evaluated") }
                             // Excel's Name Manager: the workbook's names, one for the chosen cells, one taken away
                             if (editing && b.kind != "csv") RibbonButton("Names", w, R.drawable.ic_label) { namesFor = g?.let { SheetRange(l.rows[it.r1], l.cols[it.c1], l.rows[it.r2], l.cols[it.c2]) } ?: SheetRange(cr, cc, cr, cc) }
                             // Excel's Calculate Sheet: every formula here worked out again (NOW and TODAY move on), one step of Undo.
@@ -2082,6 +2086,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     // Insert › Symbol (Words'): put in where one types in the cell, typing begun if it was not
     if (symbols) SymbolDialog({ symbols = false }) { sym -> symbols = false; symbol = sym }
     if (inserting) FunctionsDialog({ inserting = false }) { f -> inserting = false; inserted = f }
+    evaluating?.let { (at, steps) ->
+        var shown by remember(steps) { mutableStateOf(1) }
+        AlertDialog(onDismissRequest = { evaluating = null }, title = { Text("Evaluate formula: $at") }, text = {
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 360.dp)) { items(shown) { k ->
+                Text(steps[k], fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontWeight = if (k == shown - 1) FontWeight.Bold else FontWeight.Normal,
+                    color = if (k == shown - 1) Color.Unspecified else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 4.dp)) } }
+        }, confirmButton = { if (shown < steps.size) TextButton(onClick = { shown++ }) { Text("Evaluate") } else TextButton(onClick = { shown = 1 }) { Text("Restart") } },
+            dismissButton = { TextButton(onClick = { evaluating = null }) { Text("Close") } })
+    }
     // a function chosen: a new formula in the cell, or (typing a formula) put in where the cursor is
     LaunchedEffect(inserted) { val f = inserted ?: return@LaunchedEffect
         delay(150)

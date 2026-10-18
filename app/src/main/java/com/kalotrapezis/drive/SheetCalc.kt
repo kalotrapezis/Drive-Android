@@ -187,6 +187,50 @@ internal object SheetCalc {
         when (val v = calc(parse(formula), ctx)) { is Area -> if (v.range.r1 == v.range.r2 && v.range.c1 == v.range.c2) value(Ref(v.sheet, v.range, true), ctx) else grid(v, ctx); else -> v }
     } catch (e: Unknown) { throw e } catch (e: StackOverflowError) { Err("#NUM!") }
 
+    /**
+     * Excel's Evaluate Formula: [formula] as it is worked out, a step at a time — the leftmost innermost part not yet a value
+     * (a cell, a function whose arguments are values, an operation on two values) replaced by its result. Ranges stay as
+     * they are (a function reads them whole); a part giving several values (FILTER, SORT…) is worked out with what reads it.
+     */
+    fun steps(formula: String, ctx: Context, max: Int = 60): List<String> {
+        var n = try { parse(formula) } catch (_: Unknown) { return listOf(formula) }
+        val out = arrayListOf("=" + show(n))
+        // a step that reads the same as the last (a sign put on a number) not shown twice
+        while (out.size < max) { n = try { reduce(n, ctx) } catch (_: Unknown) { null } ?: break; ("=" + show(n)).let { if (it != out.last()) out += it } }
+        return out
+    }
+    private fun literal(v: Any?): Node? = when (v) { null -> Num(0.0); is Number -> Num(v.toDouble()); is String -> Str(v); is Boolean -> Bool(v); is Err -> ErrNode(v); else -> null }
+    private fun reduce(n: Node, ctx: Context): Node? = when (n) {
+        is Num, is Str, is Bool, is ErrNode -> null
+        is Ref -> if (n.single) literal(value(n, ctx)) else null
+        is Name -> literal(value(n, ctx))
+        is Unary -> reduce(n.x, ctx)?.let { Unary(n.op, it) } ?: literal(value(n, ctx))
+        is Binary -> reduce(n.a, ctx)?.let { Binary(n.op, it, n.b) } ?: reduce(n.b, ctx)?.let { Binary(n.op, n.a, it) } ?: literal(value(n, ctx))
+        is Call -> n.args.indices.firstNotNullOfOrNull { i -> reduce(n.args[i], ctx)?.let { r -> Call(n.name, n.args.toMutableList().also { it[i] = r }) } }
+            ?: literal(calc(n, ctx).takeIf { it !is Arr && it !is Area })
+    }
+    private fun rank(n: Node) = when (n) { is Binary -> when (n.op) { "&" -> 2; "+", "-" -> 3; "*", "/" -> 4; "^" -> 5; else -> 1 }; is Unary -> 6; else -> 7 }
+    /** A tree written back as a formula (without "="), brackets where the order needs them. */
+    fun show(n: Node): String {
+        fun wrap(x: Node, at: Int) = show(x).let { if (rank(x) < at || x is Num && x.v < 0) "($it)" else it }
+        fun cell(r: Int, c: Int) = Sheets.colName(c) + (r + 1)
+        return when (n) {
+            is Num -> if (n.v == Math.floor(n.v) && abs(n.v) < 1e15) n.v.toLong().toString() else n.v.toBigDecimal().stripTrailingZeros().toPlainString()
+            is Str -> "\"" + n.v.replace("\"", "\"\"") + "\""
+            is Bool -> if (n.v) "TRUE" else "FALSE"
+            is ErrNode -> n.e.code
+            is Name -> n.name
+            is Ref -> (n.sheet?.let { SheetBook.quoted(it) + "!" } ?: "") + n.range.let { g -> when {
+                n.single -> cell(g.r1, g.c1)
+                g.r1 == 0 && g.r2 >= 1_048_575 -> Sheets.colName(g.c1) + ":" + Sheets.colName(g.c2)
+                g.c1 == 0 && g.c2 >= 16383 -> "${g.r1 + 1}:${g.r2 + 1}"
+                else -> cell(g.r1, g.c1) + ":" + cell(g.r2, g.c2) } }
+            is Call -> n.name + "(" + n.args.joinToString(",") { show(it) } + ")"
+            is Unary -> n.op + wrap(n.x, 6)
+            is Binary -> wrap(n.a, rank(n)) + n.op + wrap(n.b, rank(n) + 1)
+        }
+    }
+
     /** A range's values in rows (up to 10,000 rows and 200 columns). */
     private fun grid(a: Area, ctx: Context) = Arr((a.range.r1..min(a.range.r2, a.range.r1 + 9_999)).map { r -> (a.range.c1..min(a.range.c2, a.range.c1 + 199)).map { c -> ctx.cell(a.sheet, r, c) } })
     private fun arr(v: Any?, ctx: Context): Arr = when (v) { is Arr -> v; is Area -> grid(v, ctx); else -> Arr(listOf(listOf(v))) }

@@ -254,6 +254,18 @@ class SheetEditTest {
         assertEquals(2.0, s[0, 0]?.value); assertEquals(7.0, s[0, 1]?.value) // tried, then put back
     }
 
+    @Test fun `formula evaluated step by step`() {
+        val b = Sheets.csv("2,3,0".toByteArray()); val h = SheetHistory()
+        h.apply(b, 0, mapOf(Sheet.key(0, 2) to SheetInput.cell("=A1*(B1+1)+SUM(A1:B1)", null, 0, "General", b.format)))
+        assertEquals(listOf("=A1*(B1+1)+SUM(A1:B1)", "=2*(B1+1)+SUM(A1:B1)", "=2*(3+1)+SUM(A1:B1)", "=2*4+SUM(A1:B1)", "=8+SUM(A1:B1)", "=8+5", "=13"),
+            SheetEvaluate.steps(b, 0, Sheet.key(0, 2)))
+        // a string with a quote in it, and -A1 (a sign, then a number: one step); ' stands for " here
+        fun q(t: String) = t.replace('\'', '"')
+        h.apply(b, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell(q("=IF(A1>1,'big '''&B1,-A1)"), null, 0, "General", b.format)))
+        assertEquals(listOf("=IF(A1>1,'big '''&B1,-A1)", "=IF(2>1,'big '''&B1,-A1)", "=IF(TRUE,'big '''&B1,-A1)", "=IF(TRUE,'big '''&3,-A1)",
+            "=IF(TRUE,'big ''3',-A1)", "=IF(TRUE,'big ''3',-2)", "='big ''3'").map(::q), SheetEvaluate.steps(b, 0, Sheet.key(1, 0)))
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

@@ -968,7 +968,7 @@ what is not already above:
       D2 shifted down (B2's merge below refused). shortcut: merges, rules, validations, links, notes and other sheets' formulas stay.
 - [ ] **Insert**: Equation and WordArt (Words'); header and footer (with Page layout); icons (later); slicers
       (later, with PivotTables).
-- [~] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
+- [x] **Formulas**: Recently used; Insert function by category (as Excel's dialog: a search, the arguments explained);
       Calculate now and automatic / manual; trace precedents and dependents as arrows; evaluate a formula step by step.
       Done (office-F session, 18 Oct): Insert function by category with a search (FunctionsDialog); Precedents, Dependents and
       Error checking (cells marked, `SheetTrace`); Recently used (the last ten functions put in — Insert function, the row of
@@ -977,6 +977,9 @@ what is not already above:
       Formulas › Calculate sheet (Excel's: every formula here worked out again, NOW and TODAY moving on; one step of Undo).
       Emulator: =NOW()*86400 moved on by 20. Not done, on purpose: manual calculation — Tetra works out on every change (a file
       set to manual keeps its setting); other sheets are worked out as their own cells change.
+      Formulas › Evaluate formula (Excel's dialog: Evaluate shows the next step, the leftmost innermost part replaced by its value —
+      `SheetCalc.steps` on the tree, written back with `SheetCalc.show`; `formula evaluated step by step`). Emulator: B5's
+      =SUM(B2:B3) to =1192.5. Precedents and dependents are marked cells, not arrows.
 - [~] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
       Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers

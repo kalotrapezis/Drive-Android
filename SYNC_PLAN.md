@@ -2304,3 +2304,29 @@ stopping at the first thing that does not:
 
 What I expect to break first: nothing in 1–4, and 6 is the one that has never run
 between two real devices.
+
+### 6am. A part of Drive at once: the Calendar (built 18 Oct, branches `calendar`)
+
+The user: "once there is an update on calendar like on notes send it imediatly across devices as soon as connection
+available". Notes travel at once through their own endpoint; the Calendar is files (Tetra/Calendar, one .ics per event),
+so it goes through Files sync's own requests and rules — only for its part, so it takes seconds:
+
+- **A scope** names the part: `calendar` = `Calendar/` and the Trash's `.ics` (a deleted event is a move into Trash).
+  Phone `DriveScope`, computer `files.js SCOPES`; the Timer will add its own line in each.
+- **The request**: `POST /files/manifest/scoped` with `{ scope, files }` — the same answer as `/files/manifest` (want,
+  moved, have, moveTo), computed by the same `reconcile`, but the memory (`sync_manifest`, `file_offered`,
+  `file_updates`) is read and replaced for that part only, deletions are only remembered for bytes found nowhere else
+  here, and `device_holdings` is not pruned. Its own address on purpose: a computer too old for parts answers "Unknown
+  request" rather than taking a part's list for the whole Drive (it would offer everything else back as copies); an
+  unknown scope is a 400.
+- **When**: a change in the phone's Calendar → `ScopedSync.soon` 2.5 s later; the computer away or no network → a
+  JobScheduler job with a network constraint, retried with backoff until it gets through. A change on the computer
+  (the app, the tetra-calendar skill, a hand edit: fs.watch) → the nudge 2.5 s later (`/sync`), on which the phone runs
+  the Calendar's part at once (Tetra open there); with Tetra closed, a quarter-hourly look (off when sync without
+  asking is off). What arrives re-plans the reminders and shows in an open Calendar (its folder watcher).
+- **Conflicts**: Files' rule — one side changed it, it replaces the other (old version in Files history); both changed
+  it, both kept (`x (2).ics`), and the Calendar shows the newer with "2 versions" and Keep this one.
+- Tested: desktop `files.test.js` (a scoped reconcile leaves the rest's memory exactly as it was; an edit here is
+  offered as a replacement; a delete there is followed into Trash; the next whole sync finds nothing amiss) and
+  `sync.test.js` (the scoped request end to end; an unknown scope refused; the whole sync's address ignores a scope);
+  Android `CalendarTest` (the scope's paths). **Not yet run between real devices.**

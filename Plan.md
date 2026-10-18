@@ -987,8 +987,10 @@ what is not already above:
       working-out tried by the secant method, then put back; the found value one change). `goal sought`; emulator: B3 made 765.5 so
       B5 is 2000; sort.csv imported at F8. Clear filter was there (a column's tab, its chip); Data › Reapply (while a filter or sort is
       on) works them out again on the cells as they are now, as Excel's.
-- [ ] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
+- [~] **Review**: next / previous comment, show all; notes (Excel's older comments) apart from threaded comments;
       workbook statistics (as Words' counts); protect the workbook's structure; accessibility check (later).
+      Done (office-F session, 18 Oct): Previous / Next note, Workbook statistics, Protect sheet (above); Show all notes (each
+      note in Excel's yellow box beside its cell, drawn over the cells, frozen rows' and columns' too). Emulator: A2's note shown.
 - [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
       columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
       Done (office-F session, 18 Oct) but the page views: freezing (above, kept in the file); View › Zoom to selection (the chosen

@@ -193,6 +193,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var boxing by remember { mutableStateOf(false) } // Insert › Text box: its words asked
     var sortingRows by remember { mutableStateOf<SheetRange?>(null) } // Data › Sort: the cells (the sheet's), their levels asked
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
+    var allNotes by remember { mutableStateOf(false) } // Review › Show all notes
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
@@ -1362,6 +1363,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 view.row = Sheet.row(k); view.col = Sheet.col(k); view.reveal++; message = s.cells[k]?.note }
                             RibbonButton("Previous note", w, R.drawable.ic_keyboard_arrow_up, enabled = notes.isNotEmpty()) { goNote(false) }
                             RibbonButton("Next note", w, R.drawable.ic_keyboard_arrow_down, enabled = notes.isNotEmpty()) { goNote(true) }
+                            RibbonButton("Show all notes", w, R.drawable.ic_comment, on = allNotes, enabled = notes.isNotEmpty() || allNotes) { allNotes = !allNotes }
                             if (editing) RibbonButton(if (s[cr, cc]?.note != null) "Edit note" else "New note", w, R.drawable.ic_comment) { noting = true }
                             RibbonDivider(w)
                             if (editing && b.kind != "csv") RibbonButton(if (s.protected) "Unprotect sheet" else "Protect sheet", w, R.drawable.ic_lock, on = s.protected) {
@@ -1576,7 +1578,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 s != null && b != null && l != null -> {
-                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L), formulas, version,
+                    SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L, allNotes), formulas, version,
                         column = { col, _ -> header = 'c' to col; group = null }, row = { r, _ -> header = 'r' to r; group = null },
                         pick = { r, c ->
                             header = null
@@ -2213,7 +2215,7 @@ private fun HitsList(book: Workbook, hits: List<SheetHit>, searched: Int, sheets
 /** What a protected sheet's refusal says (Excel's: unprotect it there first). */
 private const val PROTECTED = "This sheet is protected: unprotect it (tap its tab › Unprotect) to change these cells"
 
-internal class SheetMarks(val found: Set<Long>, val current: Long)
+internal class SheetMarks(val found: Set<Long>, val current: Long, /** Review › Show all notes */ val notes: Boolean = false)
 
 @Composable
 private fun SearchBar(query: String, change: (String) -> Unit, count: Int, current: Int, everywhere: Boolean?, hits: Int, toggle: () -> Unit, move: (Int) -> Unit, close: () -> Unit,
@@ -2530,6 +2532,9 @@ internal class SheetPainter(
     private val formulas: Boolean = false,
 ) {
     private val rAt = layout.rows; private val cAt = layout.cols
+    /** The cells with notes, as drawn (Review › Show all notes). */
+    private val noted by lazy { ArrayList<Pair<Int, Int>>().also { l -> sheet.cells.forEach { k, c -> if (c.note != null) {
+        val r = layout.row(Sheet.row(k)); val col = layout.col(Sheet.col(k)); if (r >= 0 && col >= 0) l += r to col } } } }
     private val cols = cAt.size; private val rows = rAt.size
     private val colX = FloatArray(cols + 1).also { a -> for (c in 0 until cols) a[c + 1] = a[c] + sheet.width(cAt[c]) }
     private val rowY = FloatArray(rows + 1).also { a -> for (r in 0 until rows) a[r + 1] = a[r] + sheet.height(rAt[r]) }
@@ -3055,6 +3060,19 @@ internal class SheetPainter(
                 fill.color = android.graphics.Color.WHITE; c.drawCircle(hx, hy, 8f * density / s, fill)
                 fill.color = EXCEL_GREEN_ARGB; c.drawCircle(hx, hy, 6f * density / s, fill)
             }
+        }
+        // Review › Show all notes: each in Excel's yellow box beside its cell, its first lines (as Excel's 144 × 79 box)
+        // (from every noted cell: one in a frozen row or column has its box over the scrolling cells)
+        if (marks.notes && !printing) for ((r, k) in noted) {
+            val n = at(r, k)?.note ?: continue
+            val g = merge(r, k) ?: SheetRange(r, k, r, k)
+            val x = colX[g.c2 + 1] + 8f; val y = rowY[g.r1]
+            if (x > sx1 || x + 144f < sx0 || y > sy1 || y + 80f < sy0) continue
+            val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f; color = 0xFF000000.toInt() }
+            val lay = StaticLayout.Builder.obtain(n, 0, n.length, tp, 136).setMaxLines(5).setEllipsize(android.text.TextUtils.TruncateAt.END).build()
+            fill.color = 0xFFFFFFE1.toInt(); c.drawRect(x, y, x + 144f, y + maxOf(lay.height + 8f, 40f), fill)
+            line.color = 0xFF808080.toInt(); line.strokeWidth = 1f; c.drawRect(x, y, x + 144f, y + maxOf(lay.height + 8f, 40f), line)
+            c.save(); c.translate(x + 4f, y + 4f); lay.draw(c); c.restore()
         }
         if (marks.current >= 0) {
             val r = layout.row(Sheet.row(marks.current)); val k = layout.col(Sheet.col(marks.current))

@@ -33,9 +33,11 @@ How to write here:
       "Search fonts" field beside its name (over the cards on a phone). Words' fingerprint unchanged on the emulator and
       the tablet; `OfficeFontsTest`; the user tried it on the tablet ("I used it it works"). Not done: a name typed that
       is not in the list cannot be used as a font (Word allows it); Slides gets the strip with B's Home.
-- [~] (calendar session, 17 Oct) **Calendar**, Tetra's last app: designed below (§ Calendar); waiting for the user's
-      go-ahead before building. Builds on its own branch `calendar` (worktree Drive-Android-worktrees/calendar, from
-      writer-library) and the desktop's `calendar` (worktree Drive-worktrees/calendar), not in the Office checkout.
+- [x] (calendar session, 17–18 Oct) **Calendar**, Tetra's last app (§ Calendar below): steps 1–7 built, 18 Oct, on
+      Drive-Android branch `calendar` (worktree Drive-Android-worktrees/calendar, from writer-library 6fdf06a: a308980,
+      242c094, 4cc9368, 4c43b7a, 7584567) and Drive branch `calendar` (worktree Drive-worktrees/calendar, from
+      bidirectional-sync 36a82bd: c2ab218, ea3e221). Checked on the emulator (tablet size and phone size) and the desktop
+      hidden; **not pushed, not merged, not on the tablet yet** — step 8 waits for the user. Skill installed.
 - [~] (office-engine session, 17 Oct) B top-down on the engine, then C, then A's walk (the user: "ok comit and continue to finish office").
       Done here: Home (0ce3c4d), Insert › Text box (17b9bfb), Drop cap strip + Raised (c9c4683); handing on (notes:
       office-engine-17oct.md in the group's notes folder). Tablet in use (Crunchyroll) 15:00: these three seen on the emulator only.
@@ -1305,7 +1307,7 @@ what is not already above:
 Its own open items stay in THE PLAN's Phase 2 (HANDOFF.md). Anything the UI/UX pass finds in Words goes into A.
 
 
-## Calendar — the last app (designed 17 Oct, calendar session; not built yet)
+## Calendar — the last app (designed 17 Oct, built 18 Oct on the `calendar` branches; the real pair still to do)
 
 **The user, 17 Oct:** "Everything to be handled as a file on phone, tablet and PC so any AI with the skill is able to
 manipulate the events." Claude should organise, create and manage the calendar by editing files on the computer, and
@@ -1440,17 +1442,30 @@ UIDs, unknown zone, bad RRULE) — run after every edit.
   files, and RRULE cases with their expected dates — run on both sides so the two engines agree.
 
 ### Steps (each a commit, each checked on the tablet, then the phone and PC)
-- [ ] 1. Android: the files — `Calendar.kt` read/write/expand + the fixtures, unit tests; `Calendar` a required folder.
-- [ ] 2. Android: the screens read-only — big-screen month/week/day + side panel; phone week row + agenda; Home card,
-      launcher icon (tools/applet-icons.py with Calendar.png).
-- [ ] 3. Android: create, edit, delete; calendars (new, colour, rename, delete, show/hide); repeats with the three-way
-      question; drag on the tablet.
-- [ ] 4. Android: reminders and notifications (planner, exact alarm, boot, snooze, after-sync re-plan, Xiaomi prompts).
-- [ ] 5. Android: import .ics and Takeout, export.
-- [ ] 6. The skill + `calendar.py`; Claude makes and changes events on the PC, the tablet shows and rings after sync.
-- [ ] 7. Desktop: `calendar.js` + `Calendar.tsx` (view, edit, import/export), reminders, start at login.
-- [ ] 8. The real pair: an event made on each device and by Claude, edited on two at once (conflict), deleted, all
-      three agree; a reminder rings on the tablet with the app closed and after a reboot.
+- [x] (a308980) 1. Android: the files — `Calendar.kt` read/write/expand (lib-recur) + fixtures (Google's, Claude-style,
+      repeats), `CalendarTest`; `Calendar` a required folder with its emblem.
+- [x] (242c094) 2. Android: the screens — big screen month/week/day/agenda + side panel; phone week row (pulled down: the
+      month) + agenda, Day, 3 days, Month; Home's pink group (the user's icon, the next event), launcher icon.
+- [x] (4cc9368) 3. Android: create (Create, +, an empty hour, Home's New event), edit, delete; calendars (new, colour,
+      rename, delete, show/hide); repeats (presets + Custom) with This / Following / All; Keep this one for a conflict.
+      **Not done: drag an event to move or resize it on the tablet** (tap and edit works).
+- [x] (4c43b7a) 4. Android: reminders — one exact alarm (USE_EXACT_ALARM) for the next, re-planned from the files on open,
+      edit, a file landing, after every sync (SyncClient), boot, clock/zone change, update; missed ones up to a day;
+      Snooze 10 min; notifications asked once; Xiaomi note (Autostart, battery). Emulator: rang at the second, Snooze
+      re-rang, the alarm came back after a reboot.
+- [x] (4c43b7a) 5. Android: import .ics / Takeout zip (side panel, or "Open with › Tetra Calendar"), export one .ics
+      (VTIMEZONEs written) or all as a zip.
+- [x] (7584567) 6. `skills/tetra-calendar` (SKILL.md + calendar.py: list, agenda, find, add, new-calendar, trash, check),
+      installed in ~/.claude/skills; its agenda gives the app's days on the fixtures.
+- [x] (Drive c2ab218, ea3e221) 7. Desktop: `calendar.js` (own engine, the phone's fixtures and answers in
+      test/calendar.test.js), `Calendar.tsx` (Google web layout, editor, card, import/export), fs.watch, reminders via
+      notify(), "Reminders on this computer", "Start Tetra when I log in" (autostart, --hidden); Calendar a required
+      folder in Files. Not done: a VTIMEZONE written for a zone the files only name (the phone writes them).
+- [ ] 8. The real pair (waits for the user and the tablet): merge `calendar` into writer-library/main (Android) and
+      bidirectional-sync (Drive), install on the tablet and the PC; an event made on each device and by Claude, edited on
+      two at once (conflict), deleted, all three agree; a reminder rings on the tablet with the app closed and after a
+      reboot. Then the user's own calendar: Google Takeout imported.
+- Later, if wanted: drag to move/resize; multi-day events as one bar (Google's) instead of a chip per day.
 
 
 ## The user's original wishlist (Sept 2026, unchanged)
